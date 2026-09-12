@@ -1,4 +1,4 @@
-import { MarketAnalysisReport } from '../types/analysis';
+import { MarketAnalysisReport } from '@/shared/types/analysis';
 
 export const PRESET_ANALYSES: MarketAnalysisReport[] = [
   {
