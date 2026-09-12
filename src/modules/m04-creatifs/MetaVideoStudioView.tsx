@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { MetaAdCampaign, MetaAdScene } from '@/shared/types/analysis';
+import { MetaAdCampaign } from '@/shared/types/analysis';
 import { motion, AnimatePresence } from 'motion/react';
 import { BarChart, Bar, XAxis, YAxis, Tooltip as RechartsTooltip, ResponsiveContainer, Cell, ScatterChart, Scatter, ZAxis, AreaChart, Area, CartesianGrid } from 'recharts';
 import { usePreferences } from '@/app/providers/PreferencesContext';
@@ -14,14 +14,10 @@ import {
   CheckCircle2,
   Copy,
   Check,
-  Sparkles,
   Smartphone,
   Square,
   Layers,
   Clock,
-  Send,
-  Eye,
-  Target,
   ExternalLink,
   Flame,
   Radio,
@@ -35,11 +31,7 @@ interface MetaVideoStudioViewProps {
   isGenerating?: boolean;
 }
 
-export const MetaVideoStudioView: React.FC<MetaVideoStudioViewProps> = ({
-  campaigns,
-  onGenerateNewScript,
-  isGenerating,
-}) => {
+export const MetaVideoStudioView: React.FC<MetaVideoStudioViewProps> = ({ campaigns }) => {
   const { t } = usePreferences();
   const [selectedCampaign, setSelectedCampaign] = useState<MetaAdCampaign>(campaigns[0] || null);
   const [activeSceneIndex, setActiveSceneIndex] = useState<number>(0);
@@ -48,7 +40,21 @@ export const MetaVideoStudioView: React.FC<MetaVideoStudioViewProps> = ({
   const [isAudioMuted, setIsAudioMuted] = useState<boolean>(false);
   const [copiedText, setCopiedText] = useState<string | null>(null);
 
-  const timerRef = useRef<NodeJS.Timeout | null>(null);
+  // `NodeJS.Timeout` n'a pas de sens dans du code navigateur : dans le DOM,
+  // setTimeout renvoie un number. ReturnType couvre les deux environnements.
+  const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  /**
+   * Convertit un timecode « m:ss » en secondes.
+   * L'ancienne version ne lisait que le segment après « : » et ignorait les
+   * minutes : toute scène au-delà de 59 s produisait une durée fausse, voire
+   * négative.
+   */
+  const timecodeToSeconds = (timecode: string): number => {
+    const parts = timecode.trim().split(':').map((p) => Number.parseInt(p, 10));
+    if (parts.some((p) => !Number.isFinite(p))) return 0;
+    return parts.reduce((total, part) => total * 60 + part, 0);
+  };
 
   useEffect(() => {
     if (campaigns && campaigns.length > 0 && (!selectedCampaign || !campaigns.some(c => c.id === selectedCampaign.id))) {
@@ -75,7 +81,8 @@ export const MetaVideoStudioView: React.FC<MetaVideoStudioViewProps> = ({
   // Video playback loop simulator
   useEffect(() => {
     if (!isPlaying || !selectedCampaign || selectedCampaign.scenes.length === 0) {
-      if (timerRef.current) clearInterval(timerRef.current);
+      // C'est un setTimeout qui est posé plus bas, pas un setInterval.
+      if (timerRef.current) clearTimeout(timerRef.current);
       return;
     }
 
@@ -242,13 +249,14 @@ export const MetaVideoStudioView: React.FC<MetaVideoStudioViewProps> = ({
           <div className="h-64 w-full">
             <ResponsiveContainer width="100%" height="100%">
               <BarChart
-                data={selectedCampaign?.scenes.map(s => {
-                  const times = s.timing.split(' - ').map(t => parseInt(t.split(':')[1]));
+                data={(selectedCampaign?.scenes ?? []).map((s) => {
+                  const [start, end] = s.timing.split(' - ');
+                  const duration = timecodeToSeconds(end ?? '') - timecodeToSeconds(start ?? '');
                   return {
                     phase: s.phase,
-                    duration: times[1] - times[0],
+                    duration: Math.max(0, duration),
                   };
-                }) || []}
+                })}
                 margin={{ top: 10, right: 30, left: -20, bottom: 25 }}
               >
                 <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />

@@ -14,10 +14,10 @@ Rien d'autre ne peut être testé tant que ce lot n'est pas terminé.
 | 0.3 | `tsconfig.json` + `vite.config.ts` | Fichiers présents, `strict: true` | ✅ |
 | 0.4 | **Installer Node.js ≥ 20.11** | `node -v` répond | ⛔ **Action utilisateur** |
 | 0.5 | `npm install` | `node_modules/` présent | ⛔ Dépend de 0.4 |
-| 0.6 | Reconstruire `LandingPage`, `AccountView`, `BottomLeftModuleMenu` | `npm run build` passe | ⛔ |
-| 0.7 | Implémenter `server/index.ts` + routes `/api/*` | `npm run dev` sert le front ET l'API | ⛔ |
+| 0.6 | Reconstruire `LandingPage`, `AccountView`, `BottomLeftModuleMenu` | `npm run build` passe | ✍️ Écrit, non compilé |
+| 0.7 | Implémenter `server/index.ts` + routes `/api/*` | `npm run dev` sert le front ET l'API | ✍️ Écrit, non compilé |
 | 0.8 | `npm run typecheck` sans erreur | 0 erreur TypeScript | ⛔ |
-| 0.9 | Corriger les 8 bugs D1–D8 de `docs/AUDIT.md` | Chacun vérifié manuellement | ⛔ |
+| 0.9 | Corriger les bugs D1–D8 de `docs/AUDIT.md` | Chacun vérifié manuellement | ✍️ D1,D2,D3,D6,D7 corrigés · D4,D5,D8 dans _legacy |
 
 ## Lot 1 — Socle de confiance (le cœur du produit)
 

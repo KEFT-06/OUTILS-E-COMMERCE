@@ -1,0 +1,59 @@
+{
+  "version": "2026.09.1",
+  "updatedAt": "2026-09-12",
+  "note": "Table de configuration éditable sans déploiement de code (CdC §6.4.1, point non négociable : les politiques Meta et TikTok évoluent plusieurs fois par an). À migrer en base de données lors du Lot 2.",
+  "rules": [
+    {
+      "id": "earnings-claim",
+      "category": "Promesses de gains chiffrées",
+      "severity": "block",
+      "description": "Montant de gain annoncé, avec ou sans période.",
+      "patterns": [
+        "(?:gagn|gagne[rz]?|encaiss|empoch|touch)\\w*\\s+(?:jusqu'?à\\s+)?\\d[\\d\\s.,]*\\s*(?:fcfa|xof|xaf|€|eur|euros?|\\$|usd|k)",
+        "\\d[\\d\\s.,]*\\s*(?:fcfa|xof|xaf|€|eur|euros?|\\$|usd)\\s*(?:/|par\\s+)(?:jour|semaine|mois|an)",
+        "(?:revenus?|salaire|chiffre d'affaires)\\s+(?:de|à)\\s+\\d[\\d\\s.,]*"
+      ],
+      "action": "Blocage de l'export. Reformulation proposée sans montant chiffré.",
+      "rewriteHint": "Décrire la méthode et le gain de temps, jamais un montant. Exemple : « la méthode complète pour structurer votre offre » au lieu de « gagnez 500 000 FCFA/mois »."
+    },
+    {
+      "id": "before-after",
+      "category": "Séquences avant/après",
+      "severity": "warn",
+      "description": "Comparaison avant/après, explicite ou implicite.",
+      "patterns": [
+        "\\bavant\\s*(?:/|\\||et|→|->)\\s*après\\b",
+        "\\bbefore\\s*(?:/|\\||and|→|->)\\s*after\\b",
+        "(?:j'étais|j'ai commencé).{0,60}(?:maintenant|aujourd'hui).{0,60}(?:je gagne|je fais|j'ai)"
+      ],
+      "action": "Alerte. Reformulation en storytelling neutre proposée.",
+      "rewriteHint": "Raconter la démarche et les étapes, pas la transformation chiffrée mise en contraste."
+    },
+    {
+      "id": "unsubstantiated-testimonial",
+      "category": "Témoignages financiers non étayés",
+      "severity": "warn",
+      "description": "Témoignage à la première personne portant un résultat financier.",
+      "patterns": [
+        "(?:j'ai|j'ai pu)\\s+(?:gagné|généré|encaissé|fait)\\s+\\d",
+        "grâce à (?:cette méthode|ce guide|cette formation).{0,50}\\d[\\d\\s.,]*\\s*(?:fcfa|€|\\$)"
+      ],
+      "action": "Alerte. Anonymisation ou généralisation suggérée. Jamais de blocage sans reformulation proposée.",
+      "rewriteHint": "Conserver le témoignage sur le ressenti et la méthode, retirer le montant, ou fournir une preuve vérifiable."
+    },
+    {
+      "id": "guaranteed-result",
+      "category": "Garantie de résultat",
+      "severity": "block",
+      "description": "Promesse de résultat certain ou sans risque.",
+      "patterns": [
+        "(?:résultats?|succès|gains?)\\s+(?:garantis?|assurés?|certains?)",
+        "\\b(?:100\\s*%|sans)\\s*(?:de\\s+)?risque\\b",
+        "\\bvous allez (?:forcément|obligatoirement|à coup sûr)\\b"
+      ],
+      "action": "Blocage de l'export.",
+      "rewriteHint": "Remplacer la certitude par la méthode : « la démarche que nous appliquons » plutôt que « résultats garantis »."
+    }
+  ],
+  "requiredDisclaimer": "Smart Creator fournit des analyses basées sur des données publiques. Aucun résultat financier n'est garanti."
+}

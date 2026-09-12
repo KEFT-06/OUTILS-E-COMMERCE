@@ -1,18 +1,131 @@
 @import "tailwindcss";
 
+/* ---------------------------------------------------------------------------
+   Thème sombre piloté par une classe.
+   PreferencesContext ajoute/retire `.dark` sur <html>. Tailwind v4 utilise
+   prefers-color-scheme par défaut : cette variante rétablit le contrôle manuel.
+   --------------------------------------------------------------------------- */
+@custom-variant dark (&:where(.dark, .dark *));
+
+/* ---------------------------------------------------------------------------
+   Tokens. Définis une seule fois ici, jamais uniquement dans un bloc de thème.
+   Cf. docs/DESIGN-SYSTEM.md — c'est ce qui avait cassé le mode sombre initial.
+   --------------------------------------------------------------------------- */
+@theme {
+  --font-sans: "Plus Jakarta Sans", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  --font-display: "Outfit", "Plus Jakarta Sans", sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, monospace;
+
+  /* Niveaux de taux — RÉSERVÉS au scoring, jamais décoratifs */
+  --color-rate-excellent: oklch(0.7 0.15 162);
+  --color-rate-good: oklch(0.65 0.17 255);
+  --color-rate-medium: oklch(0.76 0.16 75);
+  --color-rate-low: oklch(0.65 0.2 15);
+
+  /* Nuances manquantes dans l'échelle Tailwind (cf. audit D6 :
+     slate-850 / slate-750 étaient inventées et silencieusement ignorées) */
+  --color-slate-750: oklch(0.32 0.02 256);
+  --color-slate-850: oklch(0.25 0.02 256);
+}
+
+:root {
+  --surface: oklch(1 0 0);
+  --surface-sunken: oklch(0.98 0.003 256);
+  --surface-raised: oklch(1 0 0);
+  --border-subtle: oklch(0.92 0.006 256);
+  --text-primary: oklch(0.21 0.02 256);
+  --text-muted: oklch(0.55 0.02 256);
+
+  /* Verre liquide — 3 niveaux, pas plus */
+  --glass-1-bg: oklch(1 0 0 / 72%);
+  --glass-1-border: oklch(1 0 0 / 40%);
+  --glass-1-blur: 16px;
+  --glass-2-bg: oklch(1 0 0 / 85%);
+  --glass-2-border: oklch(1 0 0 / 30%);
+  --glass-2-blur: 10px;
+  --glass-shadow: 0 8px 32px oklch(0.21 0.02 256 / 8%);
+
+  color-scheme: light;
+}
+
+.dark {
+  --surface: oklch(0.21 0.02 256);
+  --surface-sunken: oklch(0.17 0.02 256);
+  --surface-raised: oklch(0.25 0.02 256);
+  --border-subtle: oklch(0.32 0.02 256);
+  --text-primary: oklch(0.97 0.003 256);
+  --text-muted: oklch(0.7 0.015 256);
+
+  --glass-1-bg: oklch(0.25 0.02 256 / 72%);
+  --glass-1-border: oklch(1 0 0 / 10%);
+  --glass-2-bg: oklch(0.25 0.02 256 / 85%);
+  --glass-2-border: oklch(1 0 0 / 8%);
+  --glass-shadow: 0 8px 32px oklch(0 0 0 / 40%);
+
+  color-scheme: dark;
+}
+
 @layer base {
   body {
-    font-family: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    font-family: var(--font-sans);
+    background: var(--surface-sunken);
+    color: var(--text-primary);
   }
+
   .font-display {
-    font-family: 'Outfit', 'Plus Jakarta Sans', sans-serif;
+    font-family: var(--font-display);
   }
-  .font-mono {
-    font-family: 'JetBrains Mono', monospace;
+
+  /* Focus visible dans les deux thèmes — exigence a11y du design system */
+  :focus-visible {
+    outline: 2px solid var(--color-rate-good);
+    outline-offset: 2px;
   }
 }
 
-/* Custom subtle scrollbar */
+@layer components {
+  /* ---------------------------------------------------------------------
+     Verre liquide. Effet de HIÉRARCHIE, pas de décoration.
+     Maximum 3 surfaces visibles simultanément (coût de backdrop-filter).
+     Jamais sur une zone de texte longue ni dans une liste virtualisée.
+     --------------------------------------------------------------------- */
+  .glass-1 {
+    background: var(--glass-1-bg);
+    backdrop-filter: blur(var(--glass-1-blur)) saturate(180%);
+    -webkit-backdrop-filter: blur(var(--glass-1-blur)) saturate(180%);
+    border: 1px solid var(--glass-1-border);
+    box-shadow: var(--glass-shadow);
+  }
+
+  .glass-2 {
+    background: var(--glass-2-bg);
+    backdrop-filter: blur(var(--glass-2-blur)) saturate(150%);
+    -webkit-backdrop-filter: blur(var(--glass-2-blur)) saturate(150%);
+    border: 1px solid var(--glass-2-border);
+    box-shadow: var(--glass-shadow);
+  }
+
+  /* Repli sans flou : mobile, transparence réduite, ou absence de support.
+     Le texte reste lisible dans tous les cas — la règle de contraste prime. */
+  @media (max-width: 767px), (prefers-reduced-transparency: reduce) {
+    .glass-1,
+    .glass-2 {
+      background: var(--surface-raised);
+      backdrop-filter: none;
+      -webkit-backdrop-filter: none;
+      border-color: var(--border-subtle);
+    }
+  }
+
+  @supports not (backdrop-filter: blur(1px)) {
+    .glass-1,
+    .glass-2 {
+      background: var(--surface-raised);
+    }
+  }
+}
+
+/* Barre de défilement discrète */
 ::-webkit-scrollbar {
   width: 6px;
   height: 6px;
@@ -21,18 +134,41 @@
   background: transparent;
 }
 ::-webkit-scrollbar-thumb {
-  background: #cbd5e1;
+  background: var(--border-subtle);
   border-radius: 9999px;
 }
 ::-webkit-scrollbar-thumb:hover {
-  background: #94a3b8;
+  background: var(--text-muted);
+}
+
+.no-scrollbar {
+  scrollbar-width: none;
+}
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+
+/* Mouvement réduit : on ne garde que les changements d'opacité */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
 }
 
 @media print {
-  header, footer, button, .no-print {
+  header,
+  footer,
+  button,
+  .no-print {
     display: none !important;
   }
   body {
     background: white !important;
+    color: black !important;
   }
 }

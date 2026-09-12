@@ -1,8 +1,6 @@
-import React, { useState } from 'react';
+import React, { useMemo, useState } from 'react';
 import {
   RadarScanResult,
-  RadarTrendingNiche,
-  RadarTrendingProduct,
 } from '@/shared/types/analysis';
 import {
   Flame,
@@ -15,18 +13,10 @@ import {
   ExternalLink,
   Zap,
   ArrowRight,
-  Package,
   Video,
   FileText,
   RefreshCw,
-  SlidersHorizontal,
-  CheckCircle2,
-  Clock,
-  Layers,
-  ChevronRight,
-  ShieldCheck,
   AlertCircle,
-  Tag,
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { BarChart, Bar, XAxis, YAxis, Tooltip as RechartsTooltip, ResponsiveContainer, Cell, ScatterChart, Scatter, ZAxis } from 'recharts';
@@ -61,7 +51,27 @@ export const RadarTrendsView: React.FC<RadarTrendsViewProps> = ({
   const [isScanning, setIsScanning] = useState(false);
   const { t } = usePreferences();
   const [scanStep, setScanStep] = useState(0);
-  const [activeNicheDetail, setActiveNicheDetail] = useState<RadarTrendingNiche | null>(null);
+  const [scanError, setScanError] = useState<string | null>(null);
+
+  /**
+   * Classement des niches pour le graphique en barres.
+   *
+   * Calculé UNE fois et réutilisé pour les données ET pour les <Cell>.
+   * Auparavant les barres étaient triées mais les couleurs mappées sur le
+   * tableau non trié : la barre de tête n'avait pas la couleur de tête.
+   */
+  const topNiches = useMemo(
+    () =>
+      (scanResult?.niches ?? [])
+        .map((n) => ({
+          name: n.nicheName.length > 15 ? `${n.nicheName.substring(0, 15)}...` : n.nicheName,
+          score: n.explosionScore,
+          rawName: n.nicheName,
+        }))
+        .sort((a, b) => b.score - a.score)
+        .slice(0, 5),
+    [scanResult],
+  );
 
   // Scanning stages simulation for UX polish
   const scanSteps = [
@@ -74,6 +84,7 @@ export const RadarTrendsView: React.FC<RadarTrendsViewProps> = ({
   const handleLaunchScan = async (categoryFilter?: string, queryOverride?: string) => {
     setIsScanning(true);
     setScanStep(0);
+    setScanError(null);
 
     const stepInterval = setInterval(() => {
       setScanStep((prev) => (prev < scanSteps.length - 1 ? prev + 1 : prev));
@@ -92,9 +103,29 @@ export const RadarTrendsView: React.FC<RadarTrendsViewProps> = ({
       if (response.ok) {
         const data: RadarScanResult = await response.json();
         setScanResult(data);
+        return;
       }
-    } catch (err) {
-      console.error('Erreur scan radar:', err);
+
+      // Un échec doit être VU par l'utilisateur. Auparavant, un statut non-ok
+      // était silencieusement ignoré : l'écran restait vide sans explication.
+      const payload = (await response.json().catch(() => null)) as
+        | { error?: { message?: string } }
+        | null;
+
+      setScanError(
+        payload?.error?.message ??
+          t(
+            'Le scan de marché est momentanément indisponible. Réessayez dans quelques instants.',
+            'Market scanning is temporarily unavailable. Please try again shortly.',
+          ),
+      );
+    } catch {
+      setScanError(
+        t(
+          'Impossible de joindre le serveur. Vérifiez votre connexion.',
+          'Could not reach the server. Check your connection.',
+        ),
+      );
     } finally {
       clearInterval(stepInterval);
       setIsScanning(false);
@@ -219,6 +250,29 @@ export const RadarTrendsView: React.FC<RadarTrendsViewProps> = ({
         </div>
       </div>
 
+      {/* État d'erreur — un échec silencieux est pire qu'un message d'erreur */}
+      {scanError && !isScanning && (
+        <div
+          role="alert"
+          className="flex items-start gap-3 rounded-xl border border-amber-300/70 bg-amber-50 p-4 dark:border-amber-500/30 dark:bg-amber-500/10"
+        >
+          <AlertCircle className="mt-0.5 h-4 w-4 shrink-0 text-amber-600" />
+          <div className="min-w-0 flex-1">
+            <p className="text-xs font-bold text-amber-900 dark:text-amber-200">
+              {t('Scan interrompu', 'Scan interrupted')}
+            </p>
+            <p className="mt-0.5 text-xs text-amber-800 dark:text-amber-300">{scanError}</p>
+          </div>
+          <button
+            type="button"
+            onClick={() => handleLaunchScan()}
+            className="shrink-0 rounded-lg bg-amber-600 px-3 py-1.5 text-xs font-bold text-white transition-colors hover:bg-amber-700"
+          >
+            {t('Réessayer', 'Retry')}
+          </button>
+        </div>
+      )}
+
       {/* Scan Results Overview Header */}
       {scanResult && (
         <div className="bg-emerald-50/70 border border-emerald-200/80 rounded-xl p-4 sm:p-5">
@@ -328,12 +382,8 @@ export const RadarTrendsView: React.FC<RadarTrendsViewProps> = ({
             </h3>
             <div className="h-64 w-full">
               <ResponsiveContainer width="100%" height="100%">
-                <BarChart 
-                  data={scanResult.niches.map(n => ({
-                    name: n.nicheName.length > 15 ? n.nicheName.substring(0, 15) + '...' : n.nicheName,
-                    score: n.explosionScore,
-                    rawName: n.nicheName
-                  })).sort((a,b) => b.score - a.score).slice(0, 5)} 
+                <BarChart
+                  data={topNiches}
                   layout="vertical"
                   margin={{ top: 5, right: 30, left: 30, bottom: 5 }}
                 >
@@ -353,11 +403,9 @@ export const RadarTrendsView: React.FC<RadarTrendsViewProps> = ({
                     }}
                   />
                   <Bar dataKey="score" radius={[0, 6, 6, 0]} barSize={24}>
-                    {
-                      scanResult.niches.map((entry, index) => (
-                        <Cell key={`cell-${index}`} fill={index === 0 ? '#10b981' : '#4f46e5'} />
-                      ))
-                    }
+                    {topNiches.map((entry, index) => (
+                      <Cell key={entry.rawName} fill={index === 0 ? '#10b981' : '#4f46e5'} />
+                    ))}
                   </Bar>
                 </BarChart>
               </ResponsiveContainer>
