@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import { useState } from 'react';
 import { AuthProvider, useAuth } from '@/features/auth/AuthContext';
 import { NexusHeader, StrategicTab } from '@/shared/layout/NexusHeader';
 import { StrategicAnalysisView } from '@/modules/m02-analyse/StrategicAnalysisView';
@@ -14,7 +14,9 @@ import { AccountView } from '@/features/account/AccountView';
 import { BottomLeftModuleMenu } from '@/shared/layout/BottomLeftModuleMenu';
 import { PRESET_ANALYSES } from '@/data/presetAnalyses';
 import { MarketAnalysisReport } from '@/shared/types/analysis';
-import { generateAnalysisPDF } from '@/shared/lib/pdfGenerator';
+import { ComplianceBlockedError, exportReportPDF } from '@/shared/lib/complianceGate';
+import { ReportComplianceVerdict } from '@/shared/types/compliance';
+import { ComplianceBlockDialog } from '@/shared/ui/ComplianceBlockDialog';
 import { CheckCircle2, AlertCircle, Info } from 'lucide-react';
 
 import { PreferencesProvider, usePreferences } from '@/app/providers/PreferencesContext';
@@ -30,6 +32,9 @@ function NexusVeilleWorkspace() {
   const [isSearching, setIsSearching] = useState<boolean>(false);
   const [isExportingPDF, setIsExportingPDF] = useState<boolean>(false);
   const [notification, setNotification] = useState<{ type: 'success' | 'warning' | 'info'; message: string } | null>(null);
+
+  // Verdict de conformité ayant refusé un export, affiché en détail à l'utilisateur.
+  const [blockedVerdict, setBlockedVerdict] = useState<ReportComplianceVerdict | null>(null);
 
   const showToast = (message: string, type: 'success' | 'warning' | 'info' = 'success') => {
     setNotification({ type, message });
@@ -54,193 +59,20 @@ function NexusVeilleWorkspace() {
         setViewMode('app');
         showToast(`Veille terminée pour « ${data.nicheName} »`);
       } else {
-        // Fallback: Create dynamic structured report
-        const fallbackReport: MarketAnalysisReport = {
-          id: `report-${Date.now()}`,
-          query,
-          nicheName: query.charAt(0).toUpperCase() + query.slice(1),
-          dateCreated: new Date().toLocaleDateString('fr-FR', { day: 'numeric', month: 'long', year: 'numeric' }),
-          overallVerdict: 'Opportunité Forte',
-          executiveSummary: `L'analyse du web pour « ${query} » révèle une demande soutenue portée par la recherche d'efficacité et d'outils clés en main. Les barrières à l'entrée sont modérées et la marge opérationnelle sur les formats digitaux dépasse 95%.`,
-          rates: {
-            demand: {
-              key: 'demand',
-              label: 'Taux de Demande Marché',
-              level: 'Élevé',
-              score: 86,
-              description: `Forte accélération des requêtes web associées à ${query} avec un intérêt d'achat élevé.`,
-              trend: 'up',
-            },
-            saturation: {
-              key: 'saturation',
-              label: 'Taux de Saturation Concurrentielle',
-              level: 'Moyen',
-              score: 52,
-              description: 'Présence d\'acteurs généralistes mais absence d\'offre hyper-spécialisée prête à l\'emploi.',
-              trend: 'stable',
-            },
-            profitability: {
-              key: 'profitability',
-              label: 'Taux de Rentabilité & Marge',
-              level: 'Très élevé',
-              score: 96,
-              description: 'Format digital avec coût de revient nul après conception. Marge brute quasi-totale.',
-              trend: 'up',
-            },
-            opportunity: {
-              key: 'opportunity',
-              label: 'Taux d\'Opportunité Stratégique',
-              level: 'Très élevé',
-              score: 89,
-              description: 'Opportunité prioritaire pour lancer un premier produit digital en moins de 5 jours.',
-              trend: 'up',
-            },
-            virality: {
-              key: 'virality',
-              label: 'Taux de Potentiel Viral / Ads',
-              level: 'Élevé',
-              score: 83,
-              description: 'Fort taux de clic prévisible sur formats courts verticaux (Meta Ads & Reels).',
-              trend: 'up',
-            },
-          },
-          searchTrends: [
-            { keyword: `${query} avis`, volume: '22 400 / mois', growthRate: '+165%', growthType: 'explosive', intent: 'commercial' },
-            { keyword: `meilleur ${query}`, volume: '18 100 / mois', growthRate: '+95%', growthType: 'steady', intent: 'transactional' },
-            { keyword: `comment utiliser ${query}`, volume: '14 500 / mois', growthRate: '+80%', growthType: 'steady', intent: 'informational' },
-          ],
-          competitors: [
-            {
-              id: `comp-${Date.now()}-1`,
-              name: `Leader ${query}`,
-              urlOrHandle: `@${query.toLowerCase().replace(/\s+/g, '_')}_pro`,
-              priceRange: '39€ - 97€',
-              positioning: 'Offre standard du marché',
-              strengths: ['Bonne visibilité SEO', 'Audience établie'],
-              weaknesses: ['Support inexistant', 'Interface vieillissante'],
-              exploitableGaps: ['Créer un produit plus synthétique, ultra-rapide à prendre en main en 15 minutes.'],
-            },
-          ],
-          digitalProducts: [
-            {
-              id: `prod-${Date.now()}-1`,
-              title: `Le Guide Expert & Templates : ${query}`,
-              subtitle: 'Le système complet pour passer à l\'action et obtenir des résultats mesurables.',
-              type: 'bundle',
-              typeName: 'Pack Digital + Templates',
-              recommendedPrice: 39,
-              currency: 'EUR',
-              estimatedProductionDays: 3,
-              estimatedMarginPercent: 97,
-              targetAudience: 'Professionnels et passionnés cherchant un résultat concret immédiat.',
-              transformationPromise: 'Supprimer 80% des frictions et automatiser votre mise en œuvre.',
-              tableOfContents: [
-                { moduleNumber: 1, title: 'Fondations & Diagnostic Initial', details: 'Évaluer son point de départ en 10 minutes.' },
-                { moduleNumber: 2, title: 'La Méthode Accélérée Pas à Pas', details: 'Déploiement des outils essentiels.' },
-                { moduleNumber: 3, title: 'Modèles & Fichiers Clés en Main', details: 'Ressources téléchargeables immédiatement.' },
-                { moduleNumber: 4, title: 'Checklists & Optimisation Continue', details: 'Éviter les erreurs les plus courantes.' },
-              ],
-              leadMagnet: {
-                title: `La Checklist Essentielle : ${query}`,
-                format: 'PDF 2 pages',
-                hook: 'Le récapitulatif gratuit des 10 étapes incontournables.',
-              },
-              imageUrl: 'https://images.unsplash.com/photo-1460925895917-afdab827c52f?auto=format&fit=crop&w=1200&q=80',
-            },
-          ],
-          adCampaigns: [
-            {
-              id: `ad-${Date.now()}-aida`,
-              framework: 'AIDA',
-              frameworkFullName: 'Attention — Intérêt — Désir — Action',
-              targetProductTitle: `Le Guide Expert : ${query}`,
-              hookHeadline: `Tu perds encore du temps avec ${query} ? Regarde ça.`,
-              metaPrimaryText: `Marre de chercher des solutions incomplètes sur Google ? 🛑\n\nDécouvrez la méthode complète qui simplifie tout en quelques clics.\n\n✅ 100% prêt à l'emploi\n✅ Sans perte de temps\n✅ Résultats dès la première semaine`,
-              metaHeadline: `Accès immédiat : Pack Digital ${query}`,
-              callToAction: 'Télécharger maintenant',
-              aspectRatio: '9:16',
-              durationSeconds: 18,
-              scenes: [
-                {
-                  sceneNumber: 1,
-                  timing: '0:00 - 0:03',
-                  phase: 'Attention',
-                  visualDescription: `Plan serré sur la friction quotidienne liée à ${query}`,
-                  onScreenText: `L'erreur que 90% des gens font avec ${query} ❌`,
-                  spokenVoiceover: `Si tu galères encore avec ça, arrête tout deux secondes.`,
-                  soundAndVibe: 'Beat punchy et alerte sonore',
-                },
-                {
-                  sceneNumber: 2,
-                  timing: '0:03 - 0:08',
-                  phase: 'Intérêt',
-                  visualDescription: 'Transition dynamique vers la solution clé en main',
-                  onScreenText: 'Voici la méthode simplifiée en 3 étapes ✨',
-                  spokenVoiceover: 'Au lieu de réinventer la roue, utilise un système déjà testé et optimisé.',
-                  soundAndVibe: 'Swoosh et musique moderne',
-                },
-                {
-                  sceneNumber: 3,
-                  timing: '0:08 - 0:14',
-                  phase: 'Désir',
-                  visualDescription: 'Démonstration à l\'écran des résultats obtenus',
-                  onScreenText: 'Gain de temps immédiat garanti ⚡️',
-                  spokenVoiceover: 'Tu télécharges les templates, tu les adaptes en 5 minutes et c\'est réglé.',
-                  soundAndVibe: 'Satisfaction visuelle',
-                },
-                {
-                  sceneNumber: 4,
-                  timing: '0:14 - 0:18',
-                  phase: 'Action',
-                  visualDescription: 'Affichage du bouton de téléchargement avec offre de lancement',
-                  onScreenText: 'Clique sous la vidéo pour le télécharger 👇',
-                  spokenVoiceover: 'Clique sur le lien dès maintenant pour en profiter.',
-                  soundAndVibe: 'Carillon positif de fin',
-                },
-              ],
-              complianceCheck: [
-                { rule: 'Pas de promesses irréalistes de gains', compliant: true, explanation: 'Validé : focus organisation et efficacité.' },
-                { rule: 'Optimisé mode silencieux (Sound-off)', compliant: true, explanation: 'Validé : textes d\'écran clairs.' },
-                { rule: 'Marges 9:16 respectées', compliant: true, explanation: 'Validé : zones de sécurité Reels conformes.' },
-              ],
-              metaTargeting: {
-                interests: [query, 'Productivité', 'Entrepreneuriat'],
-                demographics: '25 - 50 ans',
-                placements: ['Instagram Reels', 'Facebook Reels'],
-              },
-            },
-          ],
-          illustrativeImages: [
-            {
-              title: 'Tableau de bord de performance et tendances',
-              url: 'https://images.unsplash.com/photo-1460925895917-afdab827c52f?auto=format&fit=crop&w=1200&q=80',
-              caption: 'Suivi des indicateurs clés et de la demande du marché.',
-            },
-            {
-              title: 'Espace de travail et outils digitaux',
-              url: 'https://images.unsplash.com/photo-1498050108023-c5249f4df085?auto=format&fit=crop&w=1200&q=80',
-              caption: 'Conception ergonomique et intégration rapide.',
-            },
-          ],
-          strategicActionPlan: [
-            {
-              phase: 'Phase 1 : Validation & Lead Magnet',
-              title: 'Capter les premiers prospects',
-              steps: ['Diffuser la checklist gratuite sur les réseaux', 'Collecter les emails des personnes intéressées'],
-            },
-            {
-              phase: 'Phase 2 : Vente Principale',
-              title: 'Conversion payante',
-              steps: ['Lancer la campagne publicitaire Meta Ads', 'Proposer le pack digital à 39€'],
-            },
-          ],
-        };
+        // Aucun repli fabriqué ici. Un rapport inventé — concurrents, volumes de
+        // recherche, conformité « validée » — présenté comme une analyse du marché
+        // est exactement ce que le CdC §9.4 interdit, et ce qui est reproché au
+        // concurrent direct. On remonte le message du serveur, qui explique ce qui
+        // manque réellement (clé absente, module pas encore livré).
+        const payload = (await response.json().catch(() => null)) as
+          | { error?: { message?: string } }
+          | null;
 
-        setAllReports((prev) => [fallbackReport, ...prev]);
-        setCurrentReport(fallbackReport);
-        setActiveStrategicTab('veille');
-        setViewMode('app');
-        showToast(`Rapport généré pour « ${query} »`);
+        showToast(
+          payload?.error?.message ??
+            "L'analyse n'a pas pu être lancée. Réessayez dans un moment.",
+          'warning',
+        );
       }
     } catch (err) {
       console.error('Erreur recherche niche:', err);
@@ -250,13 +82,23 @@ function NexusVeilleWorkspace() {
     }
   };
 
-  // PDF Export Handler
+  // Export PDF — passe obligatoirement par la porte de conformité (CdC §6.4.1).
   const handleExportPDF = async () => {
     setIsExportingPDF(true);
     try {
-      await generateAnalysisPDF(currentReport);
-      showToast('Dossier PDF téléchargé avec succès !');
+      const verdict = await exportReportPDF(currentReport);
+
+      showToast(
+        verdict.findings.length > 0
+          ? `Dossier PDF téléchargé — ${verdict.findings.length} point(s) de vigilance signalé(s).`
+          : 'Dossier PDF téléchargé avec succès !',
+        verdict.findings.length > 0 ? 'info' : 'success',
+      );
     } catch (e) {
+      if (e instanceof ComplianceBlockedError) {
+        setBlockedVerdict(e.verdict);
+        return;
+      }
       console.error(e);
       showToast('Erreur export PDF', 'warning');
     } finally {
@@ -420,6 +262,15 @@ function NexusVeilleWorkspace() {
         )}
 
       </main>
+
+      {/* Détail d'un export refusé par la conformité — sans échappatoire. */}
+      <ComplianceBlockDialog
+        verdict={blockedVerdict}
+        open={blockedVerdict !== null}
+        onOpenChange={(isOpen) => {
+          if (!isOpen) setBlockedVerdict(null);
+        }}
+      />
 
       {/* Toast Notification */}
       {notification && (

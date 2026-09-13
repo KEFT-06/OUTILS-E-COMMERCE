@@ -15,7 +15,11 @@ import {
   computeCompetitiveScore,
   describeMethodology,
 } from '@server/services/scoring';
-import { checkText, getRulesMetadata } from '@server/services/compliance';
+import {
+  ComplianceUnavailableError,
+  checkText,
+  getRulesMetadata,
+} from '@server/services/compliance';
 
 export const api = Router();
 
@@ -83,10 +87,25 @@ api.post(
 /*  Conformité — différenciateur n°2 : droit de veto avant tout export         */
 /* -------------------------------------------------------------------------- */
 
+/**
+ * Traduit l'indisponibilité de la table en 503 explicite.
+ *
+ * Le client doit pouvoir distinguer « rien à signaler » d'« impossible de
+ * vérifier » : dans le second cas il bloque l'export au lieu de l'autoriser.
+ * Un 500 générique laisserait cette distinction à l'interprétation.
+ */
+function asComplianceRouteError(error: unknown): never {
+  if (error instanceof ComplianceUnavailableError) {
+    console.error('[conformité] table illisible :', error.configPath, error.cause);
+    throw new AppError(503, error.message, 'COMPLIANCE_UNAVAILABLE');
+  }
+  throw error;
+}
+
 api.get(
   '/compliance/rules',
   asyncRoute(async (_req, res) => {
-    res.json(await getRulesMetadata());
+    res.json(await getRulesMetadata().catch(asComplianceRouteError));
   }),
 );
 
@@ -100,7 +119,7 @@ api.post(
   validateBody(complianceSchema),
   asyncRoute(async (req, res) => {
     const { text } = req.body as z.infer<typeof complianceSchema>;
-    res.json(await checkText(text));
+    res.json(await checkText(text).catch(asComplianceRouteError));
   }),
 );
 

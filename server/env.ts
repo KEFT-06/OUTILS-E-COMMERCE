@@ -38,6 +38,16 @@ const schema = z.object({
   DATABASE_URL: z.string().optional(),
   REDIS_URL: z.string().optional(),
 
+  /**
+   * Emplacement de la table de règles de conformité.
+   *
+   * Doit rester un fichier EXTERNE au bundle : le CdC §6.4.1 exige de pouvoir
+   * l'éditer sans redéployer. L'inliner dans le build réglerait le problème de
+   * chemin mais supprimerait cette propriété — ce serait résoudre un incident
+   * en cassant une exigence.
+   */
+  COMPLIANCE_RULES_PATH: z.string().optional(),
+
   SESSION_SECRET: z.string().min(32).optional(),
   JWT_SECRET: z.string().min(32).optional(),
 });

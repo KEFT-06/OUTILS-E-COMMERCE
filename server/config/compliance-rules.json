@@ -1,6 +1,6 @@
 {
-  "version": "2026.09.1",
-  "updatedAt": "2026-09-12",
+  "version": "2026.09.2",
+  "updatedAt": "2026-09-13",
   "note": "Table de configuration éditable sans déploiement de code (CdC §6.4.1, point non négociable : les politiques Meta et TikTok évoluent plusieurs fois par an). À migrer en base de données lors du Lot 2.",
   "rules": [
     {
@@ -9,7 +9,7 @@
       "severity": "block",
       "description": "Montant de gain annoncé, avec ou sans période.",
       "patterns": [
-        "(?:gagn|gagne[rz]?|encaiss|empoch|touch)\\w*\\s+(?:jusqu'?à\\s+)?\\d[\\d\\s.,]*\\s*(?:fcfa|xof|xaf|€|eur|euros?|\\$|usd|k)",
+        "(?:gagn|gagne[rz]?|encaiss|empoch|touch)[\\w\\u00C0-\\u024F]*\\s+(?:jusqu'?à\\s+)?\\d[\\d\\s.,]*\\s*(?:fcfa|xof|xaf|€|eur|euros?|\\$|usd|k)",
         "\\d[\\d\\s.,]*\\s*(?:fcfa|xof|xaf|€|eur|euros?|\\$|usd)\\s*(?:/|par\\s+)(?:jour|semaine|mois|an)",
         "(?:revenus?|salaire|chiffre d'affaires)\\s+(?:de|à)\\s+\\d[\\d\\s.,]*"
       ],

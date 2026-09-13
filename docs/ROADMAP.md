@@ -12,11 +12,11 @@ Rien d'autre ne peut être testé tant que ce lot n'est pas terminé.
 | 0.1 | `git init` + snapshot de sécurité | `git log` affiche le commit initial | ✅ |
 | 0.2 | Restructuration en modules + alias `@/` | 0 import relatif dans `src/`, 26/26 alias résolvent | ✅ |
 | 0.3 | `tsconfig.json` + `vite.config.ts` | Fichiers présents, `strict: true` | ✅ |
-| 0.4 | **Installer Node.js ≥ 20.11** | `node -v` répond | ⛔ **Action utilisateur** |
-| 0.5 | `npm install` | `node_modules/` présent | ⛔ Dépend de 0.4 |
-| 0.6 | Reconstruire `LandingPage`, `AccountView`, `BottomLeftModuleMenu` | `npm run build` passe | ✍️ Écrit, non compilé |
-| 0.7 | Implémenter `server/index.ts` + routes `/api/*` | `npm run dev` sert le front ET l'API | ✍️ Écrit, non compilé |
-| 0.8 | `npm run typecheck` sans erreur | 0 erreur TypeScript | ⛔ |
+| 0.4 | **Installer Node.js ≥ 20.11** | `node -v` répond | ✅ v24.21.0 |
+| 0.5 | `npm install` | `node_modules/` présent | ✅ |
+| 0.6 | Reconstruire `LandingPage`, `AccountView`, `BottomLeftModuleMenu` | `npm run build` passe | ✅ |
+| 0.7 | Implémenter `server/index.ts` + routes `/api/*` | `npm run dev` sert le front ET l'API | ✅ API vérifiée sur `:3001` |
+| 0.8 | `npm run typecheck` sans erreur | 0 erreur TypeScript | ✅ |
 | 0.9 | Corriger les bugs D1–D8 de `docs/AUDIT.md` | Chacun vérifié manuellement | ✍️ D1,D2,D3,D6,D7 corrigés · D4,D5,D8 dans _legacy |
 
 ## Lot 1 — Socle de confiance (le cœur du produit)
@@ -29,15 +29,62 @@ c'est la **traçabilité**. Ce lot livre les différenciateurs 1, 2 et 3 du cahi
   établies 20 %). Le score est **persisté avec sa version de méthodologie**.
   *Acceptation :* cliquer sur n'importe quel taux ouvre un panneau montrant chaque critère,
   sa valeur brute, son poids, sa contribution au total, et l'horodatage de la mesure.
+  **✅ Livré.** Moteur dans `server/services/scoring`, panneau dans
+  `src/shared/ui/ScoreTracePanel.tsx`, badge rendu cliquable dans `src/shared/ui/RateBadge.tsx`.
+  La trace est lue telle que persistée (jamais recalculée à l'affichage) et le panneau
+  alerte si la version de méthodologie du serveur a changé depuis la mesure.
+  > ⚠️ **Portée réelle :** sur les 5 taux affichés, seul le **taux de saturation
+  > concurrentielle** correspond à ce que mesure le moteur (les 4 critères du CdC §6.1).
+  > Les 4 autres — demande, rentabilité, opportunité, viralité — sont éditoriaux : leur
+  > panneau affiche « méthodologie non publiée » au lieu d'une ventilation reconstituée.
+  > Leur donner une méthode de calcul est un travail à part entière, à cadrer.
 - **1.2 — Vérificateur de conformité** (CdC §6.4.1). Service isolé, 4 catégories de risque,
   règles en table de configuration éditable sans redéploiement.
   *Acceptation :* saisir « Gagnez 500 000 FCFA/mois » → export **bloqué** + reformulation proposée.
+  **✅ Livré et vérifié en bout de chaîne.** La phrase déclenche deux règles bloquantes
+  et l'export est refusé, avec la reformulation proposée à l'écran.
+  Porte unique dans `src/shared/lib/complianceGate.ts` : `exportReportPDF()` est le seul
+  chemin d'export exposé, la vérification n'est donc pas une ligne qu'un bouton peut
+  oublier d'appeler. L'impression (`window.print()`) passe par le même contrôle — elle
+  produit un document diffusable au même titre qu'un téléchargement.
+  Le refus s'affiche via `src/shared/ui/ComplianceBlockDialog.tsx`, **sans bouton
+  « exporter quand même »** : un veto contournable n'est pas un veto.
+  > 🐛 **Bug corrigé au passage — le service était inopérant en production.**
+  > `compliance/index.ts` résolvait sa table via `import.meta.url`. Après bundling
+  > esbuild en `dist/server.js`, le chemin pointait hors du projet
+  > (`<projet>/../config/compliance-rules.json`) : chaque appel échouait en 500.
+  > Le chemin se résout désormais depuis le répertoire de travail, surchargeable par
+  > `COMPLIANCE_RULES_PATH`. Vérifié sur le build, pas seulement en dev.
+  > 🐛 **Trou dans la table de règles — corrigé.** La règle bloquante sur les gains
+  > chiffrés utilisait `\w`, qui en JavaScript ne couvre pas les lettres accentuées.
+  > « J'ai **gagné** 250 000 FCFA » n'était donc qu'un simple avertissement. Table
+  > passée en v2026.09.2 ; la phrase bloque désormais.
+  > ⚠️ **Échec fermé, à connaître :** si la table est illisible ou l'API injoignable,
+  > l'export est **bloqué**, pas autorisé. Un export qui passe parce que le
+  > vérificateur est en panne est exactement le trou que le veto doit fermer.
 - **1.3 — Simulateur de crédits IA** (CdC §8). Composant transversal affiché avant **chaque**
   action consommant des points.
   *Acceptation :* coût, équivalent monétaire, solde avant, solde après — visibles avant validation.
 - **1.4 — Mention légale obligatoire** sur chaque rapport (CdC §9.4).
 - **1.5 — Purge des fausses données** : le Cockpit ne doit plus afficher de chiffres inventés
   sous le libellé « Performance Réelle ». Soit données réelles, soit état vide explicite.
+  **✅ Livré.** Quatre foyers supprimés :
+  1. `CockpitDashboard` — le bloc « Performance Réelle des Ventes » (485k FCFA, 124 ventes,
+     ROI 3,2x, +24,5 %, graphique 7 jours) attribué à une agrégation Maketou & Taliopay,
+     remplacé par `NoDataState` ; aucun de ces deux services ne publie d'API (CdC §6.6).
+  2. `CockpitDashboard` — le solde de crédits écrit en dur (`38 / 100`, « ≈ 12 500 FCFA »),
+     désormais lu depuis le profil, source unique partagée avec la page Compte.
+     *Au passage :* les deux écrans se contredisaient — 38 points « restants » au cockpit
+     contre 62 sur le compte, le `38` étant en réalité le nombre de points **consommés**.
+  3. `CockpitDashboard` — deux « marchés suivis » fictifs et leurs variations inventées,
+     remplacés par la niche réellement analysée (tension issue de sa trace) et les niches
+     enregistrées par l'utilisateur, sans score fabriqué.
+  4. `App.tsx` — le repli de ~180 lignes qui fabriquait un rapport complet (concurrents,
+     volumes de recherche, conformité « validée ») quand `/api/analyze-niche` échouait.
+     Le message d'erreur du serveur est maintenant remonté tel quel.
+  > Reste à traiter hors périmètre 1.5 : la timeline du plan d'action affichait un
+  > avancement fictif — elle rend désormais le `strategicActionPlan` du rapport, mais
+  > aucun suivi d'avancement réel n'existe encore.
 
 ## Lot 2 — Données réelles (module 1)
 

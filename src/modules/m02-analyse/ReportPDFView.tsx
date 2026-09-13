@@ -1,18 +1,21 @@
 import React, { useState } from 'react';
 import { MarketAnalysisReport, MarketRate } from '@/shared/types/analysis';
-import { generateAnalysisPDF } from '@/shared/lib/pdfGenerator';
+import {
+  ComplianceBlockedError,
+  checkReportCompliance,
+  exportReportPDF,
+} from '@/shared/lib/complianceGate';
+import { ReportComplianceVerdict } from '@/shared/types/compliance';
+import { ComplianceBlockDialog } from '@/shared/ui/ComplianceBlockDialog';
 import { RateBadge } from '@/shared/ui/RateBadge';
 import { BrandLogo } from '@/shared/ui/BrandLogo';
 import {
-  FileText,
   Download,
   Printer,
   Sparkles,
   CheckCircle2,
   Image as ImageIcon,
   Loader2,
-  ExternalLink,
-  ShieldCheck,
   BarChart3,
   BookOpen,
   Video,
@@ -25,14 +28,19 @@ interface ReportPDFViewProps {
 export const ReportPDFView: React.FC<ReportPDFViewProps> = ({ report }) => {
   const [isDownloading, setIsDownloading] = useState<boolean>(false);
   const [downloadSuccess, setDownloadSuccess] = useState<boolean>(false);
+  const [blockedVerdict, setBlockedVerdict] = useState<ReportComplianceVerdict | null>(null);
 
   const handleDownloadPDF = async () => {
     try {
       setIsDownloading(true);
-      await generateAnalysisPDF(report);
+      await exportReportPDF(report);
       setDownloadSuccess(true);
       setTimeout(() => setDownloadSuccess(false), 3500);
     } catch (err) {
+      if (err instanceof ComplianceBlockedError) {
+        setBlockedVerdict(err.verdict);
+        return;
+      }
       console.error('Erreur génération PDF:', err);
       alert('Impossible de générer le PDF. Veuillez réessayer.');
     } finally {
@@ -40,7 +48,19 @@ export const ReportPDFView: React.FC<ReportPDFViewProps> = ({ report }) => {
     }
   };
 
-  const handlePrint = () => {
+  /**
+   * L'impression produit un document diffusable au même titre qu'un
+   * téléchargement : elle passe donc par le même contrôle. La laisser libre
+   * aurait fait de la fenêtre d'impression le contournement le plus simple du veto.
+   */
+  const handlePrint = async () => {
+    const verdict = await checkReportCompliance(report);
+
+    if (!verdict.exportAllowed) {
+      setBlockedVerdict(verdict);
+      return;
+    }
+
     window.print();
   };
 
@@ -264,6 +284,14 @@ export const ReportPDFView: React.FC<ReportPDFViewProps> = ({ report }) => {
         </div>
 
       </div>
+
+      <ComplianceBlockDialog
+        verdict={blockedVerdict}
+        open={blockedVerdict !== null}
+        onOpenChange={(isOpen) => {
+          if (!isOpen) setBlockedVerdict(null);
+        }}
+      />
 
     </div>
   );

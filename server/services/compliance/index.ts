@@ -1,7 +1,7 @@
 import { readFile } from 'node:fs/promises';
-import { fileURLToPath } from 'node:url';
-import { dirname, join } from 'node:path';
+import { isAbsolute, join, resolve } from 'node:path';
 import { z } from 'zod';
+import { env } from '@server/env';
 
 /**
  * Vérificateur de conformité publicitaire — module 6.4.1 du cahier des charges.
@@ -58,8 +58,38 @@ export interface ComplianceVerdict {
   requiredDisclaimer: string;
 }
 
-const here = dirname(fileURLToPath(import.meta.url));
-const CONFIG_PATH = join(here, '..', '..', 'config', 'compliance-rules.json');
+/**
+ * Le chemin se résout depuis le répertoire de travail, jamais depuis
+ * `import.meta.url`.
+ *
+ * Raison : esbuild aplatit tout le serveur en `dist/server.js`. Une résolution
+ * relative au module donnait alors `<projet>/../config/compliance-rules.json`,
+ * soit un dossier hors projet — la table n'était jamais trouvée en production et
+ * le vérificateur tombait en erreur à chaque appel. Le service à droit de veto
+ * était donc inopérant dans le seul environnement qui compte.
+ */
+const CONFIG_PATH = env.COMPLIANCE_RULES_PATH
+  ? isAbsolute(env.COMPLIANCE_RULES_PATH)
+    ? env.COMPLIANCE_RULES_PATH
+    : resolve(process.cwd(), env.COMPLIANCE_RULES_PATH)
+  : join(process.cwd(), 'server', 'config', 'compliance-rules.json');
+
+/**
+ * Levée quand la table de règles est introuvable ou invalide.
+ * Traduite en 503 par la route : jamais en « verdict favorable par défaut ».
+ */
+export class ComplianceUnavailableError extends Error {
+  constructor(
+    readonly configPath: string,
+    override readonly cause: unknown,
+  ) {
+    super(
+      'La table de règles de conformité est introuvable ou invalide. ' +
+        "Par sécurité, aucun export n'est autorisé tant qu'elle n'est pas rétablie.",
+    );
+    this.name = 'ComplianceUnavailableError';
+  }
+}
 
 let cache: { config: ComplianceConfig; compiled: Map<string, RegExp[]> } | null = null;
 
@@ -70,8 +100,16 @@ let cache: { config: ComplianceConfig; compiled: Map<string, RegExp[]> } | null 
 async function getConfig() {
   if (cache) return cache;
 
-  const raw = await readFile(CONFIG_PATH, 'utf8');
-  const config = configSchema.parse(JSON.parse(raw));
+  let config: ComplianceConfig;
+  try {
+    const raw = await readFile(CONFIG_PATH, 'utf8');
+    config = configSchema.parse(JSON.parse(raw));
+  } catch (cause) {
+    // Échec fermé. Si la table est illisible, le service ne peut rendre aucun
+    // verdict — et un contenu qui s'exporterait sans verdict viderait le droit
+    // de veto de son sens. On refuse, bruyamment.
+    throw new ComplianceUnavailableError(CONFIG_PATH, cause);
+  }
 
   const compiled = new Map<string, RegExp[]>();
   for (const rule of config.rules) {
