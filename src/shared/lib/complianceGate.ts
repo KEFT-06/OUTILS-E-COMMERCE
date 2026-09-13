@@ -113,15 +113,22 @@ async function checkSection(section: ComplianceSection): Promise<ComplianceVerdi
   return (await response.json()) as ComplianceVerdict;
 }
 
-/**
- * Soumet chaque section au vérificateur et fusionne les verdicts.
- * Ne lève jamais : un échec devient un verdict bloquant motivé.
- */
 export async function checkReportCompliance(
   report: MarketAnalysisReport,
 ): Promise<ReportComplianceVerdict> {
-  const sections = collectReportSections(report);
+  return checkSectionsCompliance(collectReportSections(report));
+}
 
+/**
+ * Soumet des sections étiquetées au vérificateur et fusionne les verdicts.
+ *
+ * Commun aux rapports et aux produits : une seule logique de veto, pour qu'un
+ * type de document ne puisse pas devenir plus permissif que l'autre.
+ * Ne lève jamais : un échec devient un verdict bloquant motivé.
+ */
+export async function checkSectionsCompliance(
+  sections: ComplianceSection[],
+): Promise<ReportComplianceVerdict> {
   try {
     const verdicts = await Promise.all(
       sections.map(async (section) => ({ section, verdict: await checkSection(section) })),

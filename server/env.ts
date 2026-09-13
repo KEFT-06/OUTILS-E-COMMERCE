@@ -54,6 +54,9 @@ const schema = z.object({
   /** Fourchettes de prix produits et coûts publicitaires (CdC §2). */
   PRICING_PATH: z.string().optional(),
 
+  /** Paramètres et corpus du vérificateur d'originalité (feuille de route 3.2). */
+  ORIGINALITY_PATH: z.string().optional(),
+
   /**
    * Source d'ingestion publicitaire active : « meta » (défaut) ou « fixture ».
    *

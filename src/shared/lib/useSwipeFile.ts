@@ -1,17 +1,12 @@
 import { useSyncExternalStore } from 'react';
+import { createPersistentStore, isRecord } from '@/shared/lib/persistentStore';
 import { GalleryAd } from '@/shared/types/ingestion';
 
 /**
  * Swipe file personnel — feuille de route 2.3.
  *
- * Stocké dans le navigateur en attendant la base de données. Deux leçons de
- * l'audit (D4 : `JSON.parse` sans garde qui faisait planter l'application au
- * montage) s'appliquent directement ici : la lecture du stockage ne peut jamais
- * lever, et chaque entrée relue est validée. Un octet corrompu doit coûter une
- * entrée, pas l'écran entier.
- *
- * Magasin partagé via `useSyncExternalStore` : la galerie et la vue swipe file
- * affichent le même état sans se le passer en props.
+ * Stocké dans le navigateur en attendant la base de données. Chaque entrée
+ * relue est validée : un octet corrompu coûte une entrée, pas l'écran entier.
  */
 
 /** Contexte de collecte, conservé avec l'annonce pour qu'elle reste interprétable. */
@@ -30,20 +25,8 @@ export interface SwipeEntry extends SwipeContext {
   note: string;
 }
 
-interface SwipeState {
-  entries: SwipeEntry[];
-  /** true ⇒ la dernière écriture a échoué : le swipe file ne survivra pas à l'onglet. */
-  writeFailed: boolean;
-}
-
-const STORAGE_KEY = 'smartcreator_swipe_file_v1';
-
 export function swipeKey(source: string, externalId: string): string {
   return `${source}::${externalId}`;
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === 'object' && value !== null;
 }
 
 function isOptionalString(value: unknown): boolean {
@@ -78,89 +61,50 @@ function isSwipeEntry(value: unknown): value is SwipeEntry {
   );
 }
 
-function readStorage(): SwipeEntry[] {
-  try {
-    const raw = localStorage.getItem(STORAGE_KEY);
-    if (!raw) return [];
-    const parsed: unknown = JSON.parse(raw);
-    return Array.isArray(parsed) ? parsed.filter(isSwipeEntry) : [];
-  } catch {
-    return [];
-  }
-}
+const store = createPersistentStore<SwipeEntry[]>(
+  'smartcreator_swipe_file_v1',
+  (raw) => (Array.isArray(raw) ? raw.filter(isSwipeEntry) : []),
+  [],
+);
 
-let state: SwipeState = { entries: readStorage(), writeFailed: false };
-const listeners = new Set<() => void>();
-
-function notify(): void {
-  listeners.forEach((listener) => listener());
-}
-
-function commit(entries: SwipeEntry[]): void {
-  let writeFailed = false;
-
-  try {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(entries));
-  } catch {
-    // Stockage plein ou bloqué (navigation privée) : on garde en mémoire et on
-    // le signale. Perdre silencieusement un swipe file à la fermeture de
-    // l'onglet serait la pire issue possible.
-    writeFailed = true;
-  }
-
-  state = { entries, writeFailed };
-  notify();
-}
-
-// Synchronisation entre onglets : sans elle, deux onglets ouverts s'écrasent
-// mutuellement leurs sauvegardes.
-if (typeof window !== 'undefined') {
-  window.addEventListener('storage', (event) => {
-    if (event.key !== STORAGE_KEY) return;
-    state = { entries: readStorage(), writeFailed: state.writeFailed };
-    notify();
-  });
-}
-
-function subscribe(listener: () => void): () => void {
-  listeners.add(listener);
-  return () => {
-    listeners.delete(listener);
-  };
-}
-
-function getSnapshot(): SwipeState {
-  return state;
+/** Lecture hors composant React : exports et vérification d'originalité. */
+export function getSwipeEntries(): SwipeEntry[] {
+  return store.getState().value;
 }
 
 export function useSwipeFile() {
-  const snapshot = useSyncExternalStore(subscribe, getSnapshot);
+  const snapshot = useSyncExternalStore(store.subscribe, store.getState);
+  const entries = snapshot.value;
 
   return {
-    entries: snapshot.entries,
+    entries,
     writeFailed: snapshot.writeFailed,
 
-    isSaved: (key: string) => snapshot.entries.some((entry) => entry.key === key),
+    isSaved: (key: string) => entries.some((entry) => entry.key === key),
 
     toggle: (ad: GalleryAd, context: SwipeContext) => {
+      const current = store.getState().value;
       const key = swipeKey(context.source, ad.externalId);
 
-      if (state.entries.some((entry) => entry.key === key)) {
-        commit(state.entries.filter((entry) => entry.key !== key));
+      if (current.some((entry) => entry.key === key)) {
+        store.commit(current.filter((entry) => entry.key !== key));
         return;
       }
 
-      commit([
+      store.commit([
         { ...context, key, ad, savedAt: new Date().toISOString(), note: '' },
-        ...state.entries,
+        ...current,
       ]);
     },
 
-    remove: (key: string) => commit(state.entries.filter((entry) => entry.key !== key)),
+    remove: (key: string) =>
+      store.commit(store.getState().value.filter((entry) => entry.key !== key)),
 
     updateNote: (key: string, note: string) =>
-      commit(state.entries.map((entry) => (entry.key === key ? { ...entry, note } : entry))),
+      store.commit(
+        store.getState().value.map((entry) => (entry.key === key ? { ...entry, note } : entry)),
+      ),
 
-    clear: () => commit([]),
+    clear: () => store.commit([]),
   };
 }

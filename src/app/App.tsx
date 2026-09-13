@@ -196,6 +196,7 @@ function NexusVeilleWorkspace() {
         {/* TAB 2: Conception & Production des Produits Digitaux */}
         {activeStrategicTab === 'products' && (
           <DigitalProductsView
+            report={currentReport}
             products={currentReport.digitalProducts}
             onSelectProductForAd={(_prod) => {
               setActiveStrategicTab('meta_ads');

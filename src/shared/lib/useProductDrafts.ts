@@ -1,0 +1,93 @@
+import { useSyncExternalStore } from 'react';
+import { createPersistentStore, isRecord } from '@/shared/lib/persistentStore';
+import { DigitalProductIdea } from '@/shared/types/analysis';
+
+/**
+ * Brouillons du mode Expert — feuille de route 3.1.
+ *
+ * Les retouches de l'utilisateur sont enregistrées à côté du produit d'origine,
+ * jamais à sa place : on peut toujours revenir à la version issue du rapport, et
+ * un export sait s'il porte sur une version retouchée.
+ */
+
+type ProductDrafts = Record<string, DigitalProductIdea>;
+
+const PRODUCT_TYPES: readonly DigitalProductIdea['type'][] = [
+  'ebook',
+  'template',
+  'masterclass',
+  'bundle',
+  'micro_tool',
+];
+
+function isModule(value: unknown): boolean {
+  return (
+    isRecord(value) &&
+    typeof value.moduleNumber === 'number' &&
+    typeof value.title === 'string' &&
+    typeof value.details === 'string'
+  );
+}
+
+function isProduct(value: unknown): value is DigitalProductIdea {
+  if (!isRecord(value)) return false;
+
+  const leadMagnet = value.leadMagnet;
+  const modules = value.tableOfContents;
+  if (!isRecord(leadMagnet) || !Array.isArray(modules)) return false;
+
+  return (
+    typeof value.id === 'string' &&
+    typeof value.title === 'string' &&
+    typeof value.subtitle === 'string' &&
+    PRODUCT_TYPES.includes(value.type as DigitalProductIdea['type']) &&
+    typeof value.typeName === 'string' &&
+    typeof value.recommendedPrice === 'number' &&
+    typeof value.currency === 'string' &&
+    typeof value.estimatedProductionDays === 'number' &&
+    typeof value.estimatedMarginPercent === 'number' &&
+    typeof value.targetAudience === 'string' &&
+    typeof value.transformationPromise === 'string' &&
+    typeof value.imageUrl === 'string' &&
+    modules.every(isModule) &&
+    typeof leadMagnet.title === 'string' &&
+    typeof leadMagnet.format === 'string' &&
+    typeof leadMagnet.hook === 'string'
+  );
+}
+
+const store = createPersistentStore<ProductDrafts>(
+  'smartcreator_product_drafts_v1',
+  (raw) => {
+    if (!isRecord(raw)) return {};
+    // Une clé qui ne correspond pas à l'identifiant du produit stocké signale
+    // une donnée altérée : on l'écarte plutôt que d'afficher le mauvais produit.
+    return Object.fromEntries(
+      Object.entries(raw).filter(([id, product]) => isProduct(product) && product.id === id),
+    ) as ProductDrafts;
+  },
+  {},
+);
+
+export function useProductDrafts() {
+  const snapshot = useSyncExternalStore(store.subscribe, store.getState);
+  const drafts = snapshot.value;
+
+  return {
+    writeFailed: snapshot.writeFailed,
+
+    hasDraft: (productId: string) => Object.prototype.hasOwnProperty.call(drafts, productId),
+
+    /** Version à afficher et à exporter : le brouillon s'il existe, sinon l'original. */
+    effective: (product: DigitalProductIdea): DigitalProductIdea => drafts[product.id] ?? product,
+
+    saveDraft: (product: DigitalProductIdea) =>
+      store.commit({ ...store.getState().value, [product.id]: product }),
+
+    discardDraft: (productId: string) => {
+      const next = { ...store.getState().value };
+      delete next[productId];
+      store.commit(next);
+    },
+  };
+}

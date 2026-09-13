@@ -23,6 +23,10 @@ import {
 import { CreditConfigUnavailableError, getCostTable } from '@server/services/credits';
 import { PricingUnavailableError, getPricing } from '@server/services/pricing';
 import { annotateAd, getActiveAdapter, listAdapters } from '@server/services/ingestion';
+import {
+  OriginalityConfigUnavailableError,
+  checkOriginality,
+} from '@server/services/originality';
 
 export const api = Router();
 
@@ -242,6 +246,42 @@ api.post(
       },
       advertiserCount: new Set(ingestion.ads.map((ad) => ad.advertiserId)).size,
     });
+  }),
+);
+
+/* -------------------------------------------------------------------------- */
+/*  Originalité — avertissement bloquant sous le seuil (feuille de route 3.2)  */
+/* -------------------------------------------------------------------------- */
+
+const originalitySchema = z.object({
+  text: z.string().min(1).max(50_000),
+  // Plafonds choisis pour rester sous la limite de 1 Mo du corps de requête.
+  references: z
+    .array(
+      z.object({
+        label: z.string().trim().min(1).max(200),
+        text: z.string().min(1).max(10_000),
+      }),
+    )
+    .max(80)
+    .optional(),
+});
+
+api.post(
+  '/originality/check',
+  validateBody(originalitySchema),
+  asyncRoute(async (req, res) => {
+    const { text, references } = req.body as z.infer<typeof originalitySchema>;
+
+    try {
+      res.json(await checkOriginality(text, references ?? []));
+    } catch (error) {
+      if (error instanceof OriginalityConfigUnavailableError) {
+        console.error('[originalité] paramètres illisibles :', error.configPath, error.cause);
+        throw new AppError(503, error.message, 'ORIGINALITY_UNAVAILABLE');
+      }
+      throw error;
+    }
   }),
 );
 

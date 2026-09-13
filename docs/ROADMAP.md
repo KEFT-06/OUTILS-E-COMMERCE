@@ -212,11 +212,65 @@ c'est la **traçabilité**. Ce lot livre les différenciateurs 1, 2 et 3 du cahi
 ## Lot 3 — Production de contenu (modules 3, 8)
 
 - **3.1** Studio de Création, 3 modes : Génératif, Expert, Vidéo → Produit.
+  **🟡 Mode Expert livré ; les deux autres affichés désactivés, avec leur raison.**
+  `ProductStudioPanel` et `ProductExpertEditor` (`src/modules/m03-studio/`) : titre, sous-titre,
+  public, promesse, modules (ajout, suppression, numérotation), lead magnet. Les retouches sont
+  un brouillon **à côté** de la version du rapport, jamais à sa place : on peut y revenir, et
+  l'export porte la mention « version retouchée ». Le Studio affiche la version qui sera exportée.
+  - Génératif et Vidéo → Produit restent désactivés : la génération par IA n'est pas implémentée
+    et dépend d'un fournisseur de texte (et de transcription pour la vidéo). Les masquer
+    laisserait croire qu'ils n'ont jamais été prévus ; les activer produirait un bouton qui échoue.
+  - Brouillons et swipe file partagent désormais `createPersistentStore` : lecture validée,
+    échec d'écriture signalé, synchronisation entre onglets.
 - **3.2** Vérificateur anti-plagiat, avertissement bloquant sous 70 % d'originalité.
+  **✅ Livré — originalité mesurée contre un corpus connu, pas contre le web.**
+  `server/services/originality`, `POST /api/originality/check`, paramètres dans
+  `server/config/originality.json` (seuil 70 %, n-grammes de 5 mots, 30 mots minimum).
+  Chaque mot couvert par une suite de 5 mots identique dans une référence compte comme repris ;
+  comparaison insensible à la casse et aux accents. Chaque verdict montre les passages en cause.
+  Vérifié sur 5 cas : texte trop court → non mesurable ; sans référence → non mesurable ;
+  moitié recopiée → 51,6 % bloquant ; texte original → 100 % ; copie en majuscules sans accents
+  → 0 % bloquant.
+  - Blocage intégré à la porte d'export du produit, avec échec fermé si le service ne répond pas.
+    Une mesure **impossible** (texte court, aucune référence) ne bloque pas : elle est imprimée
+    comme telle dans le document.
+  - Corpus actuel : les publicités du swipe file. Les textes « concurrents » du rapport sont
+    exclus à dessein — ils sont rédigés par l'analyse de Smart Creator, et les comparer ferait
+    passer pour du plagiat la reprise de notre propre analyse. Le corpus serveur part vide :
+    le remplir de textes inventés produirait des mesures sans valeur.
+  > ⚠️ **Limite à ne jamais masquer :** ce n'est pas une recherche sur le web. La portée de la
+  > mesure est affichée avec chaque verdict et imprimée dans chaque export.
 - **3.3** Export PDF (sommaire cliquable + bibliographie) et DOCX.
+  **✅ Livré, vérifié sur les fichiers générés.** PDF et DOCX sont rendus depuis **un même modèle
+  neutre** (`src/shared/lib/productDocument.ts`) : deux moteurs lisant chacun la donnée brute
+  finissent par produire deux documents différents pour le même produit.
+  - PDF : lien interne sur chaque ligne du sommaire **et** signet par chapitre (les lecteurs
+    n'exploitent pas tous le même mécanisme). Sur le produit de démonstration : 3 pages,
+    17 destinations internes (8 lignes de sommaire + 9 signets).
+  - DOCX : sommaire en liens internes vers des signets posés sur chaque titre — 8 signets,
+    8 liens, 0 lien cassé. Pas de table des matières automatique Word, qui reste vide tant que
+    l'utilisateur n'a pas mis à jour les champs.
+  - Bibliographie : sources web du rapport, provenance des données (source, date, échantillon),
+    concurrents analysés. Rapport de démonstration signalé comme tel : ses entrées ne sont pas
+    des sources vérifiées. Liens externes filtrés par `safeHttpUrl`.
+  - Mention légale sur chaque page, section « Contrôles avant export » (conformité, originalité,
+    date). Le paramètre de contrôle est obligatoire : aucun rendu sans vérification.
+  - `docx` chargé à la demande : fichier séparé de 346 ko, absent du bundle principal.
 - **3.4** **Storybook Africain via Gamma** — contes illustrés, ancrage culturel par pays.
 - **3.5** Cohérence de personnage : seed réutilisé à chaque page. Contrainte technique n°1
   du module, à valider auprès du fournisseur d'images **avant** de s'engager sur le module.
+  **⛔ Validation faite : pas de seed chez Gamma. Décision requise avant de construire le module.**
+  Vérifié dans la documentation de l'API publique Gamma v1.0 le 14 septembre 2026 :
+  - La génération de documents (`POST /v1.0/generations`) n'expose que `imageOptions.model`,
+    `source` et `style` : **aucun seed, aucune référence de personnage**.
+  - L'endpoint d'images autonome (`POST /v1.0/images`) accepte jusqu'à 4 `referenceImages` de
+    rôle `subject`, **sans seed**.
+  L'approche du cahier des charges (seed réutilisé à chaque page) est donc impossible avec Gamma.
+  Deux options : (a) générer chaque illustration via `/v1.0/images` avec la même image de
+  référence du personnage, puis assembler le conte — cohérence à éprouver sur un vrai conte avant
+  tout engagement ; (b) retenir un autre fournisseur d'images qui expose un seed. Tant que ce
+  choix n'est pas fait, le Storybook ne doit pas promettre un personnage cohérent d'une page à
+  l'autre.
 
 ## Lot 4 — Créatifs & vidéo (module 4)
 

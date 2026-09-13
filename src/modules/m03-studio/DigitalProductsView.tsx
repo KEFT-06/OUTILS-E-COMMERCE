@@ -1,6 +1,8 @@
 import React, { useEffect, useState } from 'react';
-import { DigitalProductIdea } from '@/shared/types/analysis';
+import { DigitalProductIdea, MarketAnalysisReport } from '@/shared/types/analysis';
 import { usePricing } from '@/shared/lib/usePricing';
+import { useProductDrafts } from '@/shared/lib/useProductDrafts';
+import { ProductStudioPanel } from '@/modules/m03-studio/ProductStudioPanel';
 import { motion, AnimatePresence } from 'motion/react';
 import {
   ResponsiveContainer,
@@ -28,22 +30,29 @@ import { Button } from '@/shared/ui/button';
 import { Badge } from '@/shared/ui/badge';
 
 interface DigitalProductsViewProps {
+  /** Rapport d'origine : sa provenance et ses sources alimentent la bibliographie des exports. */
+  report: MarketAnalysisReport;
   products: DigitalProductIdea[];
   onSelectProductForAd: (product: DigitalProductIdea) => void;
 }
 
 export const DigitalProductsView: React.FC<DigitalProductsViewProps> = ({
+  report,
   products,
   onSelectProductForAd,
 }) => {
   const { pricing, isLoading: isPricingLoading, error: pricingError } = usePricing();
+  const drafts = useProductDrafts();
 
-  const [selectedProduct, setSelectedProduct] = useState<DigitalProductIdea>(products[0] || null);
+  // Produit choisi tel qu'issu du rapport. L'écran affiche sa version retouchée
+  // en mode Expert quand elle existe : on voit ce qui sera exporté.
+  const [baseProduct, setSelectedProduct] = useState<DigitalProductIdea>(products[0] || null);
+  const selectedProduct = baseProduct ? drafts.effective(baseProduct) : baseProduct;
   const [salesGoal, setSalesGoal] = useState<number>(50);
   // `null` tant que les bornes ne sont pas connues : on n'invente pas de prix
   // de départ, il vient du produit ou de la table (CdC §2).
   const [customPrice, setCustomPrice] = useState<number | null>(
-    selectedProduct ? selectedProduct.recommendedPrice : null,
+    baseProduct ? baseProduct.recommendedPrice : null,
   );
   const [estimatedMetaCPA, setEstimatedMetaCPA] = useState<number | null>(null);
   const [expandedModule, setExpandedModule] = useState<number | null>(null);
@@ -189,6 +198,9 @@ export const DigitalProductsView: React.FC<DigitalProductsViewProps> = ({
           );
         })}
       </div>
+
+      {/* Modes de création et exports contrôlés (feuille de route 3.1 à 3.3) */}
+      <ProductStudioPanel baseProduct={baseProduct} report={report} />
 
       {/* Main Selected Product Workbench (Left: Product Architecture, Right: ROI Simulator) */}
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start">
