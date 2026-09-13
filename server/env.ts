@@ -54,6 +54,15 @@ const schema = z.object({
   /** Fourchettes de prix produits et coûts publicitaires (CdC §2). */
   PRICING_PATH: z.string().optional(),
 
+  /**
+   * Source d'ingestion publicitaire active : « meta » (défaut) ou « fixture ».
+   *
+   * `fixture` produit des publicités de démonstration et doit être demandé
+   * explicitement. Le laisser se déclencher par défaut ferait servir des
+   * chiffres fictifs à toute installation mal configurée.
+   */
+  AD_INGESTION_ADAPTER: z.enum(['meta', 'fixture']).optional(),
+
   SESSION_SECRET: z.string().min(32).optional(),
   JWT_SECRET: z.string().min(32).optional(),
 });

@@ -22,6 +22,7 @@ import {
 } from '@server/services/compliance';
 import { CreditConfigUnavailableError, getCostTable } from '@server/services/credits';
 import { PricingUnavailableError, getPricing } from '@server/services/pricing';
+import { getActiveAdapter, listAdapters } from '@server/services/ingestion';
 
 export const api = Router();
 
@@ -160,6 +161,70 @@ api.get(
       }
       throw error;
     }
+  }),
+);
+
+/* -------------------------------------------------------------------------- */
+/*  Ingestion publicitaire — source interchangeable (feuille de route 2.1)     */
+/* -------------------------------------------------------------------------- */
+
+/** Diagnostic : quelles sources existent, laquelle est active, et pourquoi. */
+api.get('/ingestion/adapters', (_req, res) => {
+  const active = getActiveAdapter();
+  res.json({ active: active.id, adapters: listAdapters() });
+});
+
+const ingestionSchema = z.object({
+  niche: nicheQuerySchema,
+  market: marketSchema.optional(),
+  limit: z.number().int().min(1).max(500).optional(),
+});
+
+/**
+ * Collecte les publicités puis calcule le score d'intensité concurrentielle.
+ *
+ * C'est la chaîne complète du différenciateur n°1 sur données réelles :
+ * ingestion → signaux bruts → `computeCompetitiveScore` → trace vérifiable.
+ * Le rapport d'analyse rédigé (agent ANALYSTE) vient plus tard et dépend d'un
+ * fournisseur de texte ; cette route, elle, ne dépend que de la source d'ads.
+ */
+api.post(
+  '/ingestion/scan',
+  aiLimiter,
+  validateBody(ingestionSchema),
+  asyncRoute(async (req, res) => {
+    const { niche, market, limit } = req.body as z.infer<typeof ingestionSchema>;
+    const adapter = getActiveAdapter();
+
+    const availability = adapter.isAvailable();
+    if (!availability.available) {
+      throw new AppError(503, availability.reason, 'INGESTION_UNAVAILABLE');
+    }
+
+    const ingestion = await adapter.fetchAds({
+      niche,
+      ...(market ? { market } : {}),
+      ...(limit ? { limit } : {}),
+    });
+
+    const score = computeCompetitiveScore(ingestion.signals, new Date(ingestion.collectedAt));
+
+    res.json({
+      score,
+      signals: ingestion.signals,
+      // La provenance voyage avec les chiffres et non à côté : c'est ce qui
+      // permet à l'interface de l'afficher sous chaque graphique sans la
+      // reconstituer, donc sans risquer de la faire diverger.
+      provenance: {
+        source: ingestion.sourceLabel,
+        collectedAt: ingestion.collectedAt,
+        sampleSize: ingestion.ads.length,
+        sampleUnit: 'publicités',
+        isDemonstration: ingestion.isDemonstration,
+        ...(ingestion.sourceUrl ? { sourceUrl: ingestion.sourceUrl } : {}),
+      },
+      advertiserCount: new Set(ingestion.ads.map((ad) => ad.advertiserId)).size,
+    });
   }),
 );
 

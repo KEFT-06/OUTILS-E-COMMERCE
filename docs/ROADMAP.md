@@ -116,6 +116,28 @@ c'est la **traçabilité**. Ce lot livre les différenciateurs 1, 2 et 3 du cahi
 ## Lot 2 — Données réelles (module 1)
 
 - **2.1** Pipeline d'ingestion Meta Ad Library — conçu comme module interchangeable.
+  **🟡 Pipeline livré, source réelle bloquée.**
+  Tout ce que l'application connaît de l'ingestion tient dans l'interface
+  `AdIngestionAdapter` (`server/services/ingestion/types.ts`). Ajouter TikTok Creative
+  Center ou un fournisseur tiers revient à déposer une implémentation dans le registre :
+  ni les routes, ni l'interface, ni le moteur de scoring n'ont à le savoir.
+  - `deriveSignals()` est centralisé, pas dupliqué par adaptateur : deux sources doivent
+    calculer leurs signaux de la même façon, sinon les scores ne sont plus comparables.
+  - `POST /api/ingestion/scan` exécute la chaîne complète — collecte → signaux →
+    `computeCompetitiveScore` → trace vérifiable — et renvoie la provenance **avec** les
+    chiffres, pour que l'interface n'ait pas à la reconstituer.
+  - `GET /api/ingestion/adapters` dit quelles sources existent, laquelle est active, et
+    pourquoi une source indisponible l'est.
+  - Adaptateur `fixture` pour exercer le pipeline sans accès Meta. Il ne s'active que sur
+    `AD_INGESTION_ADAPTER=fixture`, jamais par défaut : s'il se déclenchait par simple
+    absence de configuration, une installation mal paramétrée servirait des chiffres
+    fictifs en croyant servir le marché. Sortie déterministe, annonceurs ouvertement
+    fictifs, étiquette « démonstration » portée jusqu'à l'écran.
+  > ⛔ **Bloqué sur toi :** l'adaptateur Meta est **écrit mais non vérifié contre l'API
+  > réelle**. Son mapping suit la documentation publique de `ads_archive` et doit être
+  > confronté à une vraie réponse. Il lui faut un jeton délivré après App Review +
+  > Business Verification — démarche à engager maintenant, son instruction dépasse
+  > souvent le temps de développement (CdC §6.11.5).
 - **2.2** Galerie publicitaire filtrable (format, durée, CTA, budget estimé, marché).
 - **2.3** Swipe file personnel + export CSV/PDF.
 - **2.4** Fiche annonceur avec historique.
