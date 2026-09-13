@@ -17,7 +17,7 @@ import { MarketAnalysisReport } from '@/shared/types/analysis';
 import { BrandLogo } from '@/shared/ui/BrandLogo';
 import { useAuth } from '@/features/auth/AuthContext';
 
-export type StrategicTab = 'cockpit' | 'radar' | 'veille' | 'products' | 'meta_ads' | 'pdf_report' | 'kit_lancement' | 'distribution' | 'affiliation' | 'storybook' | 'pages_produits' | 'multilingue' | 'campagnes';
+export type StrategicTab = 'cockpit' | 'radar' | 'ad_gallery' | 'veille' | 'products' | 'meta_ads' | 'pdf_report' | 'kit_lancement' | 'distribution' | 'affiliation' | 'storybook' | 'pages_produits' | 'multilingue' | 'campagnes';
 
 interface NexusHeaderProps {
   activeTab: StrategicTab;

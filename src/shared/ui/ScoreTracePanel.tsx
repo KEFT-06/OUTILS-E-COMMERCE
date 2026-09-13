@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { AlertTriangle, FlaskConical, Info, Scale } from 'lucide-react';
+import { FALLBACK_DISCLAIMER } from '@/shared/lib/legal';
 import { MarketRate } from '@/shared/types/analysis';
 import { MethodologyDoc } from '@/shared/types/scoring';
 import { RateBadge } from '@/shared/ui/RateBadge';
@@ -255,8 +256,7 @@ export const ScoreTracePanel: React.FC<ScoreTracePanelProps> = ({ rate, open, on
             <div className="flex items-start gap-2 border-t border-slate-200 pt-3">
               <Info className="h-3.5 w-3.5 shrink-0 text-slate-400 mt-0.5" />
               <p className="text-[11px] leading-relaxed text-slate-500">
-                {methodology?.disclaimer ??
-                  'Smart Creator fournit des analyses basées sur des données publiques. Aucun résultat financier n’est garanti.'}
+                {methodology?.disclaimer ?? FALLBACK_DISCLAIMER}
               </p>
             </div>
           </div>

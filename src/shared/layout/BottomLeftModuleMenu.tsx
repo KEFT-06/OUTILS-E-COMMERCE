@@ -14,6 +14,7 @@ import {
   Languages,
   Megaphone,
   Grid3x3,
+  LayoutGrid,
   X,
   ChevronRight,
 } from 'lucide-react';
@@ -39,12 +40,14 @@ interface ModuleEntry {
 }
 
 /**
- * Les 13 entrées correspondent une à une aux onglets rendus par App.tsx.
- * L'ordre suit la numérotation du cahier des charges, pas l'ordre d'implémentation.
+ * Les 14 entrées correspondent une à une aux onglets rendus par App.tsx.
+ * L'ordre suit la numérotation du cahier des charges, pas l'ordre d'implémentation :
+ * la galerie partage le numéro 01 parce qu'elle fait partie du module Radar.
  */
 const MODULES: readonly ModuleEntry[] = [
   { id: 'cockpit', num: '00', fr: 'Cockpit Créateur', en: 'Creator Cockpit', descFr: 'Performances, solde IA et plan d’action', descEn: 'Performance, AI balance and action plan', icon: LayoutDashboard, ready: true },
   { id: 'radar', num: '01', fr: 'Radar Marché', en: 'Market Radar', descFr: 'Détection des niches en accélération', descEn: 'Detection of accelerating niches', icon: Radar, ready: true },
+  { id: 'ad_gallery', num: '01', fr: 'Galerie Publicitaire', en: 'Ad Gallery', descFr: 'Publicités, swipe file et fiches annonceurs', descEn: 'Ads, swipe file and advertiser sheets', icon: LayoutGrid, ready: true },
   { id: 'veille', num: '02', fr: 'Analyse Stratégique', en: 'Strategic Analysis', descFr: 'Les 5 taux et le benchmark concurrentiel', descEn: 'The 5 rates and competitive benchmark', icon: Telescope, ready: true },
   { id: 'products', num: '03', fr: 'Studio de Création', en: 'Creation Studio', descFr: 'Ebooks, templates et rentabilité', descEn: 'Ebooks, templates and profitability', icon: Package, ready: true },
   { id: 'meta_ads', num: '04', fr: 'Créatifs Publicitaires', en: 'Ad Creatives', descFr: 'Scripts vidéo AIDA et PAS', descEn: 'AIDA and PAS video scripts', icon: Clapperboard, ready: true },

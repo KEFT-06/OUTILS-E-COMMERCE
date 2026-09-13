@@ -51,7 +51,13 @@ export const fixtureAdapter: AdIngestionAdapter = {
 
   async fetchAds(query: IngestionQuery): Promise<IngestionResult> {
     const collectedAt = new Date();
-    const random = seededRandom(hashString(query.niche));
+    const nicheSeed = hashString(query.niche);
+    const random = seededRandom(nicheSeed);
+
+    // Identifiants préfixés par la niche : sans cela, « demo-0-0 » désignait une
+    // publicité différente pour chaque niche, et un swipe file mêlant deux
+    // collectes confondait des annonces distinctes.
+    const nicheKey = nicheSeed.toString(36);
 
     const advertiserCount = 18 + Math.floor(random() * 40);
     const adsPerAdvertiser = 3 + Math.floor(random() * 6);
@@ -70,8 +76,8 @@ export const fixtureAdapter: AdIngestionAdapter = {
         const stoppedAfter = Math.floor(random() * Math.max(1, ageDays));
 
         ads.push({
-          externalId: `demo-${a}-${n}`,
-          advertiserId: `demo-advertiser-${a}`,
+          externalId: `demo-${nicheKey}-${a}-${n}`,
+          advertiserId: `demo-advertiser-${nicheKey}-${a}`,
           advertiserName: `Annonceur de démonstration ${a + 1}`,
           startedAt: startedAt.toISOString(),
           ...(isStopped

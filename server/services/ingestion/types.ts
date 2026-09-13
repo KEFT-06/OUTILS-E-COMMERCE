@@ -71,6 +71,56 @@ export interface AdIngestionAdapter {
   fetchAds(query: IngestionQuery): Promise<IngestionResult>;
 }
 
+const DAY_MS = 86_400_000;
+
+/** Seuil au-delà duquel une publicité est dite « établie » (CdC §6.1). */
+export const ESTABLISHED_AFTER_DAYS = 14;
+
+export function isAdActive(ad: IngestedAd, at: Date): boolean {
+  return !ad.endedAt || new Date(ad.endedAt) > at;
+}
+
+/**
+ * Durée de diffusion observée à l'instant `at`, en jours, non arrondie.
+ *
+ * La fin retenue est la plus précoce entre l'arrêt programmé et l'instant de
+ * collecte. Une publicité active dont l'arrêt est planifié dans dix jours n'a
+ * pas encore dix jours de diffusion de plus : la version précédente comptait
+ * jusqu'à cette date future et surestimait la durée de vie moyenne.
+ */
+export function adLifetimeDays(ad: IngestedAd, at: Date): number {
+  const start = new Date(ad.startedAt).getTime();
+  const plannedEnd = ad.endedAt ? new Date(ad.endedAt).getTime() : at.getTime();
+  const end = Math.min(plannedEnd, at.getTime());
+  return Math.max(0, (end - start) / DAY_MS);
+}
+
+/** Publicité enrichie des mêmes calculs que ceux qui alimentent le score. */
+export interface AnnotatedAd extends IngestedAd {
+  /** Arrondi au dixième, pour l'affichage uniquement. */
+  lifetimeDays: number;
+  isActive: boolean;
+  /** Même définition que le signal `establishedAds` : active et diffusée > 14 jours. */
+  isEstablished: boolean;
+}
+
+/**
+ * Le client affiche ces valeurs au lieu de les recalculer : une règle recopiée
+ * dans le navigateur finirait par diverger de celle qui produit le score, et la
+ * galerie contredirait alors l'indicateur qu'elle est censée illustrer.
+ */
+export function annotateAd(ad: IngestedAd, at: Date): AnnotatedAd {
+  const isActive = isAdActive(ad, at);
+  const lifetime = adLifetimeDays(ad, at);
+
+  return {
+    ...ad,
+    lifetimeDays: Math.round(lifetime * 10) / 10,
+    isActive,
+    isEstablished: isActive && lifetime > ESTABLISHED_AFTER_DAYS,
+  };
+}
+
 /**
  * Dérive les signaux du moteur de scoring à partir des publicités collectées.
  *
@@ -79,23 +129,18 @@ export interface AdIngestionAdapter {
  * ne sont plus comparables entre elles.
  */
 export function deriveSignals(ads: IngestedAd[], collectedAt: Date): RawSignals {
-  const activeAds = ads.filter((ad) => !ad.endedAt || new Date(ad.endedAt) > collectedAt);
+  const activeAds = ads.filter((ad) => isAdActive(ad, collectedAt));
 
   const uniqueAdvertisers = new Set(activeAds.map((ad) => ad.advertiserId)).size;
 
-  const lifetimes = activeAds.map((ad) => {
-    const start = new Date(ad.startedAt).getTime();
-    const end = ad.endedAt ? new Date(ad.endedAt).getTime() : collectedAt.getTime();
-    return Math.max(0, (end - start) / 86_400_000);
-  });
+  const lifetimes = activeAds.map((ad) => adLifetimeDays(ad, collectedAt));
 
   const averageLifetimeDays =
     lifetimes.length > 0
       ? Math.round((lifetimes.reduce((sum, d) => sum + d, 0) / lifetimes.length) * 10) / 10
       : 0;
 
-  // « Établie » = diffusée depuis plus de 14 jours (CdC §6.1).
-  const establishedAds = lifetimes.filter((days) => days > 14).length;
+  const establishedAds = lifetimes.filter((days) => days > ESTABLISHED_AFTER_DAYS).length;
 
   return {
     uniqueAdvertisers,

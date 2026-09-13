@@ -1,5 +1,5 @@
 {
-  "version": "2026.09.1",
+  "version": "2026.09.2",
   "updatedAt": "2026-09-13",
   "note": "Grille tarifaire des research points (CdC §8). Table de configuration éditable sans déploiement, au même titre que la table de conformité. À migrer en base lors du Lot 2, avec un historique de versions : un coût qui change doit rester traçable pour les factures déjà émises.",
   "currency": "FCFA",
@@ -17,6 +17,12 @@
       "label": "Scan du Radar Marché",
       "cost": 3,
       "description": "Détection des tendances et des annonceurs actifs sur un marché donné."
+    },
+    {
+      "id": "ad_gallery_scan",
+      "label": "Collecte de publicités pour la galerie",
+      "cost": 3,
+      "description": "Collecte des publicités d'une niche sur un marché, avec calcul du score d'intensité concurrentielle sur ce même échantillon."
     },
     {
       "id": "product_generation",

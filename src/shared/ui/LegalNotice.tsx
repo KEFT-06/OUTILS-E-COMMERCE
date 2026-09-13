@@ -1,20 +1,18 @@
 import React, { useEffect, useState } from 'react';
 import { Scale } from 'lucide-react';
+import {
+  FALLBACK_DISCLAIMER,
+  fetchRequiredDisclaimer,
+  getCachedDisclaimer,
+} from '@/shared/lib/legal';
 
 /**
  * Mention légale obligatoire sur chaque rapport (CdC §9.4).
  *
- * Le texte provient de la table de conformité, source unique : le jour où la
- * formulation légale change, elle change partout, sans chasse aux copies dans
- * le code. Le repli n'est là que pour garantir qu'aucun rapport ne s'affiche
- * sans mention si l'API est momentanément absente.
+ * Le texte provient de la table de conformité, via `shared/lib/legal` : le jour
+ * où la formulation légale change, elle change partout, sans chasse aux copies
+ * dans le code.
  */
-const FALLBACK_DISCLAIMER =
-  'Smart Creator fournit des analyses basées sur des données publiques. ' +
-  "Aucun résultat financier n'est garanti.";
-
-let disclaimerCache: string | null = null;
-
 interface LegalNoticeProps {
   /** `inline` pour un pied de page discret, `block` pour un encart délimité. */
   variant?: 'inline' | 'block';
@@ -22,21 +20,16 @@ interface LegalNoticeProps {
 }
 
 export const LegalNotice: React.FC<LegalNoticeProps> = ({ variant = 'inline', className = '' }) => {
-  const [disclaimer, setDisclaimer] = useState<string>(disclaimerCache ?? FALLBACK_DISCLAIMER);
+  const [disclaimer, setDisclaimer] = useState<string>(
+    () => getCachedDisclaimer() ?? FALLBACK_DISCLAIMER,
+  );
 
   useEffect(() => {
-    if (disclaimerCache) return;
-
     let cancelled = false;
 
-    fetch('/api/compliance/rules')
-      .then((response) => (response.ok ? response.json() : null))
-      .then((data: { requiredDisclaimer?: string } | null) => {
-        if (cancelled || !data?.requiredDisclaimer) return;
-        disclaimerCache = data.requiredDisclaimer;
-        setDisclaimer(data.requiredDisclaimer);
-      })
-      .catch(() => undefined);
+    fetchRequiredDisclaimer().then((text) => {
+      if (!cancelled) setDisclaimer(text);
+    });
 
     return () => {
       cancelled = true;

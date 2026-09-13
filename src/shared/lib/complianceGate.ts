@@ -5,6 +5,7 @@ import {
   LocatedFinding,
   ReportComplianceVerdict,
 } from '@/shared/types/compliance';
+import { FALLBACK_DISCLAIMER } from '@/shared/lib/legal';
 import { generateAnalysisPDF } from '@/shared/lib/pdfGenerator';
 
 /**
@@ -26,14 +27,6 @@ import { generateAnalysisPDF } from '@/shared/lib/pdfGenerator';
 
 /** Marge sous la limite de 20 000 caractères de l'API. */
 const MAX_SECTION_CHARS = 18_000;
-
-/**
- * Filet de sécurité : un document ne doit jamais sortir sans mention légale,
- * même si la table de règles en renvoyait une vide (CdC §9.4).
- */
-const FALLBACK_DISCLAIMER =
-  'Smart Creator fournit des analyses basées sur des données publiques. ' +
-  "Aucun résultat financier n'est garanti.";
 
 export class ComplianceBlockedError extends Error {
   constructor(readonly verdict: ReportComplianceVerdict) {

@@ -139,8 +139,42 @@ c'est la **traçabilité**. Ce lot livre les différenciateurs 1, 2 et 3 du cahi
   > Business Verification — démarche à engager maintenant, son instruction dépasse
   > souvent le temps de développement (CdC §6.11.5).
 - **2.2** Galerie publicitaire filtrable (format, durée, CTA, budget estimé, marché).
+  **🟡 Livré partiellement — filtres limités à ce que la source fournit.**
+  Onglet « Galerie Publicitaire » (`src/modules/m01-radar/AdGalleryView.tsx`), alimenté par
+  `POST /api/ingestion/scan`. Score et publicités arrivent **dans la même réponse** : la galerie
+  montre exactement la collecte dont le score est issu. Statut, durée de vie et caractère
+  « établi » sont calculés par le serveur avec les fonctions qui produisent les signaux
+  (`annotateAd`), jamais recalculés dans le navigateur — vérifié : sur 150 publicités,
+  119 actives et 84 établies côté galerie comme côté score.
+  - Filtres livrés : marché (à la collecte), statut actif/arrêté, durée de diffusion minimale,
+    recherche par annonceur ou texte.
+  - **Non livrés : format, CTA, budget estimé.** Aucune source branchée ne les fournit, et leur
+    disponibilité dans la Meta Ad Library pour des publicités commerciales reste à vérifier
+    contre l'API réelle (le budget n'y est documenté que pour les publicités politiques ou
+    sociales). L'écran le dit ; ils ne seront pas estimés.
+  - Liens externes filtrés par `safeHttpUrl` : une URL « javascript: » fournie par une source
+    s'exécuterait au clic.
+  - Collecte soumise au simulateur de crédits (nouvelle action `ad_gallery_scan`, grille v2026.09.2).
 - **2.3** Swipe file personnel + export CSV/PDF.
+  **✅ Livré, stockage navigateur.** Sauvegarde depuis la galerie, notes personnelles, export CSV
+  et PDF (`src/shared/lib/useSwipeFile.ts`, `src/shared/lib/swipeExport.ts`).
+  - Lecture du stockage validée entrée par entrée (leçon de l'audit D4) : un octet corrompu coûte
+    une entrée, pas l'écran. Échec d'écriture signalé à l'écran plutôt que perdu en silence.
+    Synchronisation entre onglets.
+  - CSV : séparateur « ; » et BOM pour Excel en français ; **neutralisation des formules** — une
+    cellule commençant par `=`, `+`, `-` ou `@` venue d'une publicité tierce s'exécuterait à
+    l'ouverture du fichier.
+  - PDF : mention légale sur chaque page ; emojis retirés, les polices de jsPDF ne les rendent pas.
+  - **Choix assumé :** l'export du swipe file ne passe **pas** par le veto de conformité. Il
+    rassemble des publicités de tiers pour la veille, pas un contenu publié ; le bloquer rendrait
+    l'outil inutile sur les annonces qui méritent d'être étudiées. Chaque export se déclare en tête
+    comme document de veille non destiné à la diffusion, et signale les publicités de démonstration.
+  > Stockage local uniquement : la synchronisation avec le compte attend la base de données.
 - **2.4** Fiche annonceur avec historique.
+  **🟡 Livré sur une collecte.** `src/modules/m01-radar/AdvertiserSheet.tsx` : publicités, actives,
+  établies, diffusion moyenne, frise de diffusion. La fiche indique explicitement que l'historique
+  se limite à la collecte en cours : un suivi dans le temps suppose de conserver les collectes
+  successives, donc la base de données.
 - **2.5** Fourchettes de prix **dynamiques en base**, jamais figées dans le code (CdC §2).
   **✅ Livré.** Les bornes vivaient dans les attributs `min`/`max` de deux curseurs React
   (`9–199 €` pour le prix, `4–40 €` pour le CPA) : corriger un prix de marché exigeait un

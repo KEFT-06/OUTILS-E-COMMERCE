@@ -22,7 +22,7 @@ import {
 } from '@server/services/compliance';
 import { CreditConfigUnavailableError, getCostTable } from '@server/services/credits';
 import { PricingUnavailableError, getPricing } from '@server/services/pricing';
-import { getActiveAdapter, listAdapters } from '@server/services/ingestion';
+import { annotateAd, getActiveAdapter, listAdapters } from '@server/services/ingestion';
 
 export const api = Router();
 
@@ -174,6 +174,13 @@ api.get('/ingestion/adapters', (_req, res) => {
   res.json({ active: active.id, adapters: listAdapters() });
 });
 
+/**
+ * Plafond de publicités renvoyées à la galerie. Le score, lui, reste calculé
+ * sur l'échantillon complet : tronquer les signaux fausserait la mesure, alors
+ * que tronquer l'affichage ne coûte qu'un « et N autres ».
+ */
+const GALLERY_AD_LIMIT = 200;
+
 const ingestionSchema = z.object({
   niche: nicheQuerySchema,
   market: marketSchema.optional(),
@@ -209,9 +216,19 @@ api.post(
 
     const score = computeCompetitiveScore(ingestion.signals, new Date(ingestion.collectedAt));
 
+    // Les publicités accompagnent le score dans la même réponse : la galerie et
+    // l'indicateur décrivent alors rigoureusement la même collecte. Deux appels
+    // séparés auraient produit deux instants de mesure, donc un écart possible
+    // entre ce que le score affirme et ce que la galerie montre.
     res.json({
       score,
       signals: ingestion.signals,
+      // Annotées avec les fonctions qui produisent les signaux : la galerie
+      // affiche les mêmes durées et statuts que ceux comptés par le score.
+      ads: ingestion.ads
+        .slice(0, GALLERY_AD_LIMIT)
+        .map((ad) => annotateAd(ad, new Date(ingestion.collectedAt))),
+      adsTruncated: ingestion.ads.length > GALLERY_AD_LIMIT,
       // La provenance voyage avec les chiffres et non à côté : c'est ce qui
       // permet à l'interface de l'afficher sous chaque graphique sans la
       // reconstituer, donc sans risquer de la faire diverger.

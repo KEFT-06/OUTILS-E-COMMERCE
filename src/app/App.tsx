@@ -6,6 +6,7 @@ import { DigitalProductsView } from '@/modules/m03-studio/DigitalProductsView';
 import { MetaVideoStudioView } from '@/modules/m04-creatifs/MetaVideoStudioView';
 import { ReportPDFView } from '@/modules/m02-analyse/ReportPDFView';
 import { RadarTrendsView } from '@/modules/m01-radar/RadarTrendsView';
+import { AdGalleryView } from '@/modules/m01-radar/AdGalleryView';
 import { CockpitDashboard } from '@/modules/cockpit/CockpitDashboard';
 import { PlaceholderModuleView } from '@/shared/ui/PlaceholderModuleView';
 import { LandingPage } from '@/features/landing/LandingPage';
@@ -179,6 +180,9 @@ function NexusVeilleWorkspace() {
             isAnalyzingNiche={isSearching}
           />
         )}
+
+        {/* TAB 01 bis : Galerie publicitaire, swipe file et fiches annonceurs (Lot 2) */}
+        {activeStrategicTab === 'ad_gallery' && <AdGalleryView />}
 
         {/* TAB 1: Veille Concurrentielle & Taux de Marché */}
         {activeStrategicTab === 'veille' && (
