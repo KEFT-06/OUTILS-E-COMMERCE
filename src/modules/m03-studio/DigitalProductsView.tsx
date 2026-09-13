@@ -16,17 +16,12 @@ import {
   Video,
   Package,
   Clock,
-  Euro,
   Sparkles,
-  CheckCircle2,
   ChevronDown,
   ChevronUp,
-  ArrowRight,
   TrendingUp,
   Percent,
   Gift,
-  Sliders as SliderIcon,
-  HelpCircle,
 } from 'lucide-react';
 import { Button } from '@/shared/ui/button';
 import { Badge } from '@/shared/ui/badge';
@@ -91,8 +86,6 @@ export const DigitalProductsView: React.FC<DigitalProductsViewProps> = ({
       </div>
     );
   }
-
-  const FormatIcon = getFormatIcon(selectedProduct.type);
 
   return (
     <div className="space-y-8 animate-in fade-in duration-200">

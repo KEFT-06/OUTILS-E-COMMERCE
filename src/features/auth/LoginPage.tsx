@@ -9,11 +9,9 @@ import {
   EyeOff,
   ArrowRight,
   ShieldCheck,
-  Sparkles,
   Zap,
   CheckCircle2,
   ArrowLeft,
-  KeyRound,
 } from 'lucide-react';
 
 export const LoginPage: React.FC = () => {

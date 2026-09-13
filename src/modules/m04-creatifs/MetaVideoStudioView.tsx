@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { MetaAdCampaign } from '@/shared/types/analysis';
 import { motion, AnimatePresence } from 'motion/react';
-import { BarChart, Bar, XAxis, YAxis, Tooltip as RechartsTooltip, ResponsiveContainer, Cell, ScatterChart, Scatter, ZAxis, AreaChart, Area, CartesianGrid } from 'recharts';
+import { BarChart, Bar, XAxis, YAxis, Tooltip as RechartsTooltip, ResponsiveContainer, Cell, AreaChart, Area, CartesianGrid } from 'recharts';
 import { usePreferences } from '@/app/providers/PreferencesContext';
 import {
   Video,
@@ -277,7 +277,7 @@ export const MetaVideoStudioView: React.FC<MetaVideoStudioViewProps> = ({ campai
                 />
                 <Bar dataKey="duration" radius={[6, 6, 0, 0]}>
                   {
-                    (selectedCampaign?.scenes || []).map((entry, index) => (
+                    (selectedCampaign?.scenes ?? []).map((_entry, index) => (
                       <Cell key={`cell-${index}`} fill={index === 0 ? '#f59e0b' : index === 3 ? '#10b981' : '#4f46e5'} />
                     ))
                   }
@@ -401,7 +401,7 @@ export const MetaVideoStudioView: React.FC<MetaVideoStudioViewProps> = ({ campai
 
             {/* Progress Bar of Scenes */}
             <div className="absolute top-2 left-4 right-4 z-30 flex gap-1">
-              {selectedCampaign.scenes.map((s, idx) => (
+              {selectedCampaign.scenes.map((_scene, idx) => (
                 <div
                   key={idx}
                   onClick={() => {

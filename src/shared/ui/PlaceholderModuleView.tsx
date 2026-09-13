@@ -1,5 +1,5 @@
 import React from 'react';
-import { Sparkles, Clock, Hammer, AlertCircle } from 'lucide-react';
+import { Clock, Hammer } from 'lucide-react';
 
 interface PlaceholderModuleViewProps {
   moduleNumber: string;

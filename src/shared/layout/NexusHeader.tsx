@@ -1,25 +1,17 @@
 import React, { useState, useRef, useEffect } from 'react';
 import {
-  Compass,
-  FileText,
-  Video,
   Sparkles,
   Search,
   Download,
   Loader2,
   CheckCircle,
-  Layers,
-  TrendingUp,
   ChevronDown,
   User,
   Home,
   LogOut,
-  Sliders,
-  Globe,
-  Package,
   Sun,
   Moon,
-  Languages
+  Languages,
 } from 'lucide-react';
 import { MarketAnalysisReport } from '@/shared/types/analysis';
 import { BrandLogo } from '@/shared/ui/BrandLogo';
@@ -41,21 +33,9 @@ interface NexusHeaderProps {
   onOpenLanding?: () => void;
 }
 
-interface ModuleInfo {
-  id: StrategicTab;
-  title: string;
-  shortName: string;
-  description: string;
-  icon: React.ComponentType<{ className?: string }>;
-  tag: string;
-  badgeColor: string;
-}
-
 import { usePreferences } from '@/app/providers/PreferencesContext';
 
 export const NexusHeader: React.FC<NexusHeaderProps> = ({
-  activeTab,
-  setActiveTab,
   currentReport,
   allReports,
   onSelectReport,
