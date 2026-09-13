@@ -65,7 +65,34 @@ c'est la **traçabilité**. Ce lot livre les différenciateurs 1, 2 et 3 du cahi
 - **1.3 — Simulateur de crédits IA** (CdC §8). Composant transversal affiché avant **chaque**
   action consommant des points.
   *Acceptation :* coût, équivalent monétaire, solde avant, solde après — visibles avant validation.
+  **✅ Livré.** Les quatre informations sont affichées avant validation par
+  `src/shared/ui/CreditSimulatorDialog.tsx`.
+  Rendu transversal via `CreditGateProvider` et `runWithCredits(actionId, action)` : si chaque
+  écran devait instancier sa propre confirmation, la règle serait respectée le jour de son
+  écriture et violée au troisième écran ajouté. Câblé sur l'analyse de niche et le scan Radar.
+  Grille tarifaire dans `server/config/credit-costs.json`, éditable sans redéploiement,
+  servie par `GET /api/credits/costs`.
+  - Les points ne sont **débités qu'après succès** : facturer une action qui n'a rien
+    produit serait indéfendable. Les chemins d'échec lèvent pour garantir ce comportement.
+  - Fermer la fenêtre vaut refus ; aucune action n'est déclenchée sans clic sur « Confirmer ».
+  - Échec fermé : sans grille tarifaire, aucune action n'est lancée — débiter à l'aveugle
+    serait pire que ne rien faire.
+  > ⚠️ **`pointValueFcfa: 250` est une valeur provisoire que j'ai choisie**, pas une donnée
+  > commerciale. Elle remplace un « ≈ 12 500 FCFA » qui était écrit en dur dans le Cockpit
+  > sans source. **À valider avant toute mise en production facturée.** Le statut provisoire
+  > est affiché à l'utilisateur dans le simulateur tant qu'il n'est pas levé.
 - **1.4 — Mention légale obligatoire** sur chaque rapport (CdC §9.4).
+  **✅ Livré.** `src/shared/ui/LegalNotice.tsx` sur la vue d'analyse et l'aperçu du rapport,
+  texte tiré de la table de conformité (source unique) avec repli si l'API est absente.
+  Dans le PDF, la mention est répétée **sur chaque page** : un rapport se diffuse souvent en
+  extrait ou en capture, et une mention qui ne survit pas au découpage ne protège personne.
+  `generateAnalysisPDF()` exige désormais un tampon de conformité — un PDF ne peut plus être
+  produit sans être passé par le vérificateur.
+  > 🐛 **Fausse allégation supprimée.** Le PDF imprimait, pour chaque campagne,
+  > « ✓ Conformité Meta Ads : 100% validé — Pas d'allégations trompeuses ». Cette ligne était
+  > écrite en dur : elle s'affichait à l'identique quel que soit le contenu, y compris sur une
+  > campagne que le vérificateur n'avait jamais examinée. Remplacée par le résultat réel du
+  > contrôle (horodatage, version de la table, nombre de points de vigilance).
 - **1.5 — Purge des fausses données** : le Cockpit ne doit plus afficher de chiffres inventés
   sous le libellé « Performance Réelle ». Soit données réelles, soit état vide explicite.
   **✅ Livré.** Quatre foyers supprimés :

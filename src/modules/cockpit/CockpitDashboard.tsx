@@ -10,16 +10,8 @@ import {
 import { MarketAnalysisReport } from '@/shared/types/analysis';
 import { usePreferences } from '@/app/providers/PreferencesContext';
 import { useAuth } from '@/features/auth/AuthContext';
+import { useCreditGate } from '@/app/providers/CreditGateProvider';
 import { NoDataState } from '@/shared/ui/NoDataState';
-
-/**
- * Valeur d'un research point, en FCFA.
- *
- * À déplacer en table de configuration serveur avec le reste de la grille
- * tarifaire (CdC §8) : un prix figé dans le bundle client ne peut pas être
- * corrigé sans redéploiement, et se retrouve à diverger de la facturation réelle.
- */
-const FCFA_PER_RESEARCH_POINT = 250;
 
 interface CockpitDashboardProps {
   report: MarketAnalysisReport;
@@ -34,6 +26,7 @@ export const CockpitDashboard: React.FC<CockpitDashboardProps> = ({
 }) => {
   const { t } = usePreferences();
   const { user } = useAuth();
+  const { costTable } = useCreditGate();
 
   // Le solde vient du profil, source unique partagée avec la page Compte.
   // Il était auparavant réécrit en dur ici — les deux écrans s'en trouvaient
@@ -99,11 +92,23 @@ export const CockpitDashboard: React.FC<CockpitDashboardProps> = ({
               ></div>
             </div>
             
+            {/*
+              L'équivalent monétaire vient de la grille tarifaire servie par
+              l'API, jamais d'une constante du bundle : un prix figé côté client
+              ne peut pas être corrigé sans redéploiement et finit par diverger
+              de la facturation réelle. Tant que la grille n'est pas chargée,
+              on n'affiche pas de montant plutôt qu'un montant approximatif.
+            */}
             <div className="flex items-center justify-between text-[11px] font-semibold mb-6">
               <span className="text-slate-500">Équivalent estimé :</span>
-              <span className="text-slate-900">
-                ≈ {(creditsRemaining * FCFA_PER_RESEARCH_POINT).toLocaleString('fr-FR')} FCFA
-              </span>
+              {costTable ? (
+                <span className="text-slate-900">
+                  ≈ {(creditsRemaining * costTable.pointValue).toLocaleString('fr-FR')}{' '}
+                  {costTable.currency}
+                </span>
+              ) : (
+                <span className="text-slate-400">grille indisponible</span>
+              )}
             </div>
             
             <button 

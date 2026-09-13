@@ -10,6 +10,12 @@ interface AuthContextType {
   signup: (name: string, email: string, password?: string) => Promise<boolean>;
   logout: () => void;
   updateProfile: (updates: Partial<UserProfile>) => void;
+  /**
+   * Débite des research points. Passe par une mise à jour fonctionnelle plutôt
+   * que par `updateProfile` : deux débits rapprochés calculés depuis une même
+   * lecture du solde en perdraient un.
+   */
+  consumeCredits: (points: number) => void;
 }
 
 const DEFAULT_USER: UserProfile = {
@@ -101,6 +107,18 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     setUser((prev) => (prev ? { ...prev, ...updates } : null));
   };
 
+  const consumeCredits = (points: number) => {
+    setUser((prev) => {
+      if (!prev) return null;
+      return {
+        ...prev,
+        // Plafonné à la limite : le solde ne devient jamais négatif, même si
+        // deux actions passent le contrôle en parallèle.
+        apiSearchesUsed: Math.min(prev.apiSearchesLimit, prev.apiSearchesUsed + points),
+      };
+    });
+  };
+
   return (
     <AuthContext.Provider
       value={{
@@ -112,6 +130,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         signup,
         logout,
         updateProfile,
+        consumeCredits,
       }}
     >
       {children}

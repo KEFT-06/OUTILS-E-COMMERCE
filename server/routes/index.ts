@@ -20,6 +20,7 @@ import {
   checkText,
   getRulesMetadata,
 } from '@server/services/compliance';
+import { CreditConfigUnavailableError, getCostTable } from '@server/services/credits';
 
 export const api = Router();
 
@@ -120,6 +121,25 @@ api.post(
   asyncRoute(async (req, res) => {
     const { text } = req.body as z.infer<typeof complianceSchema>;
     res.json(await checkText(text).catch(asComplianceRouteError));
+  }),
+);
+
+/* -------------------------------------------------------------------------- */
+/*  Crédits — différenciateur n°3 : le coût est annoncé avant l'action         */
+/* -------------------------------------------------------------------------- */
+
+api.get(
+  '/credits/costs',
+  asyncRoute(async (_req, res) => {
+    try {
+      res.json(await getCostTable());
+    } catch (error) {
+      if (error instanceof CreditConfigUnavailableError) {
+        console.error('[crédits] grille illisible :', error.configPath, error.cause);
+        throw new AppError(503, error.message, 'CREDIT_CONFIG_UNAVAILABLE');
+      }
+      throw error;
+    }
   }),
 );
 

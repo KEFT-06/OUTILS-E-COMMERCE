@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { MarketAnalysisReport, MarketRate } from '@/shared/types/analysis';
 import { RateBadge } from '@/shared/ui/RateBadge';
 import { ScoreTracePanel } from '@/shared/ui/ScoreTracePanel';
+import { LegalNotice } from '@/shared/ui/LegalNotice';
 import { motion } from 'motion/react';
 import {
   ResponsiveContainer,
@@ -658,6 +659,9 @@ export const StrategicAnalysisView: React.FC<StrategicAnalysisViewProps> = ({
             </div>
           </section>
         )}
+
+        {/* Mention légale obligatoire sur chaque rapport — CdC §9.4. */}
+        <LegalNotice variant="block" />
 
         {/* Panneau de traçabilité, ouvert depuis n'importe quel badge de taux. */}
         <ScoreTracePanel

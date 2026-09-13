@@ -179,5 +179,8 @@ export async function getRulesMetadata() {
     updatedAt: config.updatedAt,
     ruleCount: config.rules.length,
     categories: [...new Set(config.rules.map((r) => r.category))],
+    // Exposée ici pour que les écrans puissent afficher la mention légale
+    // obligatoire (CdC §9.4) sans avoir à soumettre un texte au vérificateur.
+    requiredDisclaimer: config.requiredDisclaimer,
   };
 }

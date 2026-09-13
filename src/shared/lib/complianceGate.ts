@@ -27,6 +27,14 @@ import { generateAnalysisPDF } from '@/shared/lib/pdfGenerator';
 /** Marge sous la limite de 20 000 caractères de l'API. */
 const MAX_SECTION_CHARS = 18_000;
 
+/**
+ * Filet de sécurité : un document ne doit jamais sortir sans mention légale,
+ * même si la table de règles en renvoyait une vide (CdC §9.4).
+ */
+const FALLBACK_DISCLAIMER =
+  'Smart Creator fournit des analyses basées sur des données publiques. ' +
+  "Aucun résultat financier n'est garanti.";
+
 export class ComplianceBlockedError extends Error {
   constructor(readonly verdict: ReportComplianceVerdict) {
     super("Export bloqué par le vérificateur de conformité.");
@@ -171,6 +179,14 @@ export async function exportReportPDF(
     throw new ComplianceBlockedError(verdict);
   }
 
-  await generateAnalysisPDF(report);
+  // Le verdict est apposé sur le document : mention légale obligatoire sur
+  // chaque page, version de la table de règles et horodatage du contrôle.
+  await generateAnalysisPDF(report, {
+    rulesVersion: verdict.rulesVersion,
+    checkedAt: verdict.checkedAt,
+    warningCount: verdict.findings.filter((f) => f.severity === 'warn').length,
+    disclaimer: verdict.requiredDisclaimer || FALLBACK_DISCLAIMER,
+  });
+
   return verdict;
 }

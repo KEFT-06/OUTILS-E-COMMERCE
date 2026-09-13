@@ -8,6 +8,7 @@ import {
 import { ReportComplianceVerdict } from '@/shared/types/compliance';
 import { ComplianceBlockDialog } from '@/shared/ui/ComplianceBlockDialog';
 import { RateBadge } from '@/shared/ui/RateBadge';
+import { LegalNotice } from '@/shared/ui/LegalNotice';
 import { BrandLogo } from '@/shared/ui/BrandLogo';
 import {
   Download,
@@ -279,8 +280,12 @@ export const ReportPDFView: React.FC<ReportPDFViewProps> = ({ report }) => {
         </div>
 
         {/* Document Footer */}
-        <div className="pt-6 border-t border-slate-200 text-center text-xs text-slate-400">
-          Smart Creator — Intelligence Économique & Studio de Création de Produits Digitaux
+        <div className="pt-6 border-t border-slate-200 space-y-3">
+          {/* Mention légale obligatoire — CdC §9.4. */}
+          <LegalNotice variant="block" />
+          <p className="text-center text-xs text-slate-400">
+            Smart Creator — Intelligence Économique & Studio de Création de Produits Digitaux
+          </p>
         </div>
 
       </div>

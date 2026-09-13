@@ -48,6 +48,9 @@ const schema = z.object({
    */
   COMPLIANCE_RULES_PATH: z.string().optional(),
 
+  /** Grille tarifaire des research points (CdC §8). Mêmes contraintes. */
+  CREDIT_COSTS_PATH: z.string().optional(),
+
   SESSION_SECRET: z.string().min(32).optional(),
   JWT_SECRET: z.string().min(32).optional(),
 });

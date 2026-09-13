@@ -20,10 +20,12 @@ import { ComplianceBlockDialog } from '@/shared/ui/ComplianceBlockDialog';
 import { CheckCircle2, AlertCircle, Info } from 'lucide-react';
 
 import { PreferencesProvider, usePreferences } from '@/app/providers/PreferencesContext';
+import { CreditGateProvider, useCreditGate } from '@/app/providers/CreditGateProvider';
 
 function NexusVeilleWorkspace() {
   const { viewMode, setViewMode } = useAuth();
   const { t } = usePreferences();
+  const { runWithCredits } = useCreditGate();
   
   // Strategic Intelligence State
   const [activeStrategicTab, setActiveStrategicTab] = useState<StrategicTab>('cockpit');
@@ -41,44 +43,57 @@ function NexusVeilleWorkspace() {
     setTimeout(() => setNotification(null), 3500);
   };
 
-  // Live Web AI Search Handler
+  /**
+   * Analyse d'une nouvelle niche.
+   *
+   * Passe par la porte de crédits : le simulateur montre le coût, l'équivalent
+   * monétaire et le solde avant/après, et l'appel n'est lancé qu'après
+   * confirmation. Les points ne sont débités qu'en cas de succès — facturer une
+   * analyse qui n'a rien produit serait indéfendable.
+   */
   const handleSearchNewNiche = async (query: string) => {
-    setIsSearching(true);
     try {
-      const response = await fetch('/api/analyze-niche', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ query }),
+      await runWithCredits('niche_analysis', async () => {
+        setIsSearching(true);
+        try {
+          const response = await fetch('/api/analyze-niche', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ query }),
+          });
+
+          if (!response.ok) {
+            // Aucun repli fabriqué ici. Un rapport inventé — concurrents, volumes
+            // de recherche, conformité « validée » — présenté comme une analyse du
+            // marché est exactement ce que le CdC §9.4 interdit, et ce qui est
+            // reproché au concurrent direct. On remonte le message du serveur, qui
+            // explique ce qui manque réellement (clé absente, module pas livré).
+            const payload = (await response.json().catch(() => null)) as
+              | { error?: { message?: string } }
+              | null;
+
+            throw new Error(
+              payload?.error?.message ??
+                "L'analyse n'a pas pu être lancée. Réessayez dans un moment.",
+            );
+          }
+
+          const data: MarketAnalysisReport = await response.json();
+          setAllReports((prev) => [data, ...prev]);
+          setCurrentReport(data);
+          setActiveStrategicTab('veille');
+          setViewMode('app');
+          showToast(`Veille terminée pour « ${data.nicheName} »`);
+        } finally {
+          setIsSearching(false);
+        }
       });
-
-      if (response.ok) {
-        const data: MarketAnalysisReport = await response.json();
-        setAllReports((prev) => [data, ...prev]);
-        setCurrentReport(data);
-        setActiveStrategicTab('veille');
-        setViewMode('app');
-        showToast(`Veille terminée pour « ${data.nicheName} »`);
-      } else {
-        // Aucun repli fabriqué ici. Un rapport inventé — concurrents, volumes de
-        // recherche, conformité « validée » — présenté comme une analyse du marché
-        // est exactement ce que le CdC §9.4 interdit, et ce qui est reproché au
-        // concurrent direct. On remonte le message du serveur, qui explique ce qui
-        // manque réellement (clé absente, module pas encore livré).
-        const payload = (await response.json().catch(() => null)) as
-          | { error?: { message?: string } }
-          | null;
-
-        showToast(
-          payload?.error?.message ??
-            "L'analyse n'a pas pu être lancée. Réessayez dans un moment.",
-          'warning',
-        );
-      }
     } catch (err) {
       console.error('Erreur recherche niche:', err);
-      showToast('Erreur lors de la recherche', 'warning');
-    } finally {
-      setIsSearching(false);
+      showToast(
+        err instanceof Error ? err.message : 'Erreur lors de la recherche',
+        'warning',
+      );
     }
   };
 
@@ -329,7 +344,10 @@ export default function App() {
   return (
     <AuthProvider>
       <PreferencesProvider>
-        <NexusVeilleWorkspace />
+        {/* Sous AuthProvider : la porte de crédits lit et débite le solde du profil. */}
+        <CreditGateProvider>
+          <NexusVeilleWorkspace />
+        </CreditGateProvider>
       </PreferencesProvider>
     </AuthProvider>
   );

@@ -1,7 +1,27 @@
 import { jsPDF } from 'jspdf';
 import { MarketAnalysisReport } from '@/shared/types/analysis';
 
-export async function generateAnalysisPDF(report: MarketAnalysisReport): Promise<void> {
+/**
+ * Preuve de contrôle apposée sur le document exporté (CdC §9.4).
+ *
+ * Ce paramètre est **obligatoire** : rendre le tampon facultatif reviendrait à
+ * autoriser la production d'un PDF qui n'a pas passé le vérificateur, et le
+ * droit de veto ne tiendrait plus qu'à la discipline de l'appelant.
+ */
+export interface PDFComplianceStamp {
+  rulesVersion: string;
+  /** Horodatage ISO du contrôle. */
+  checkedAt: string;
+  /** Points de vigilance non bloquants relevés sur l'ensemble du rapport. */
+  warningCount: number;
+  /** Mention légale imposée par la table de conformité. */
+  disclaimer: string;
+}
+
+export async function generateAnalysisPDF(
+  report: MarketAnalysisReport,
+  stamp: PDFComplianceStamp,
+): Promise<void> {
   const doc = new jsPDF({
     orientation: 'portrait',
     unit: 'mm',
@@ -299,22 +319,82 @@ export async function generateAnalysisPDF(report: MarketAnalysisReport): Promise
     const scenesLines = doc.splitTextToSize(scenesText, contentWidth - 10);
     doc.text(scenesLines.slice(0, 4), margin + 5, currentY + 17);
 
-    doc.setFont('helvetica', 'bold');
-    doc.setFontSize(8);
-    doc.setTextColor(16, 185, 129);
-    doc.text(`✓ Conformité Meta Ads : 100% validé — Pas d'allégations trompeuses, lisible en son coupé.`, margin + 5, currentY + 38);
+    // La ligne « ✓ Conformité Meta Ads : 100% validé » qui figurait ici était
+    // écrite en dur : elle s'affichait à l'identique quel que soit le contenu,
+    // y compris sur une campagne que le vérificateur n'avait jamais examinée.
+    // Le résultat réel du contrôle est désormais rendu une seule fois, en fin
+    // de document, à partir du verdict qui a autorisé l'export.
 
     currentY += 46;
   });
 
-  // === FOOTER ON ALL PAGES ===
+  // === CONTRÔLE DE CONFORMITÉ (CdC §6.4.1 et §9.4) ===
+  checkPageBreak(34);
+
+  doc.setFillColor(248, 250, 252);
+  doc.setDrawColor(226, 232, 240);
+  doc.roundedRect(margin, currentY, contentWidth, 28, 2, 2, 'FD');
+
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(9);
+  doc.setTextColor(15, 23, 42);
+  doc.text('CONTRÔLE DE CONFORMITÉ', margin + 5, currentY + 7);
+
+  doc.setFont('helvetica', 'normal');
+  doc.setFontSize(8);
+
+  const checkedLabel = new Date(stamp.checkedAt).toLocaleString('fr-FR', {
+    day: 'numeric',
+    month: 'long',
+    year: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+  });
+
+  if (stamp.warningCount > 0) {
+    doc.setTextColor(180, 83, 9); // Amber 700
+    doc.text(
+      `Aucune formulation bloquante. ${stamp.warningCount} point(s) de vigilance signalé(s).`,
+      margin + 5,
+      currentY + 14,
+    );
+  } else {
+    doc.setTextColor(4, 120, 87); // Emerald 700
+    doc.text('Aucune formulation bloquante ni point de vigilance relevé.', margin + 5, currentY + 14);
+  }
+
+  doc.setTextColor(100, 116, 139);
+  doc.text(
+    `Contrôle effectué le ${checkedLabel} — table de règles v${stamp.rulesVersion}.`,
+    margin + 5,
+    currentY + 20,
+  );
+
+  currentY += 34;
+
+  // === PIED DE PAGE SUR TOUTES LES PAGES ===
+  // La mention légale est répétée sur chaque page, pas seulement en couverture :
+  // un rapport se diffuse souvent page par page, en capture ou en extrait, et
+  // une mention qui ne survit pas au découpage ne protège personne (CdC §9.4).
   const totalPages = doc.getNumberOfPages();
   for (let i = 1; i <= totalPages; i++) {
     doc.setPage(i);
+
+    doc.setFont('helvetica', 'italic');
+    doc.setFontSize(6.5);
+    doc.setTextColor(120, 130, 145);
+    const disclaimerLines = doc.splitTextToSize(stamp.disclaimer, contentWidth);
+    doc.text(disclaimerLines.slice(0, 2), pageWidth / 2, pageHeight - 12, { align: 'center' });
+
     doc.setFont('helvetica', 'normal');
-    doc.setFontSize(8);
+    doc.setFontSize(7.5);
     doc.setTextColor(148, 163, 184);
-    doc.text(`Smart Creator Intelligence Platform • Confidentiel • Page ${i} sur ${totalPages}`, pageWidth / 2, pageHeight - 8, { align: 'center' });
+    doc.text(
+      `Smart Creator Intelligence Platform • Confidentiel • Page ${i} sur ${totalPages}`,
+      pageWidth / 2,
+      pageHeight - 6,
+      { align: 'center' },
+    );
   }
 
   // Save file

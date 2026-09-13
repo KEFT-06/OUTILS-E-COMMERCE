@@ -21,6 +21,7 @@ import {
 import { motion, AnimatePresence } from 'motion/react';
 import { BarChart, Bar, XAxis, YAxis, Tooltip as RechartsTooltip, ResponsiveContainer, Cell, ScatterChart, Scatter, ZAxis } from 'recharts';
 import { usePreferences } from '@/app/providers/PreferencesContext';
+import { useCreditGate } from '@/app/providers/CreditGateProvider';
 
 interface RadarTrendsViewProps {
   initialScanData?: RadarScanResult | null;
@@ -50,6 +51,7 @@ export const RadarTrendsView: React.FC<RadarTrendsViewProps> = ({
   const [scanResult, setScanResult] = useState<RadarScanResult | null>(initialScanData || null);
   const [isScanning, setIsScanning] = useState(false);
   const { t } = usePreferences();
+  const { runWithCredits } = useCreditGate();
   const [scanStep, setScanStep] = useState(0);
   const [scanError, setScanError] = useState<string | null>(null);
 
@@ -81,56 +83,75 @@ export const RadarTrendsView: React.FC<RadarTrendsViewProps> = ({
     'Calcul des indices de vélocité, saturation concurrentielle et marges nettes...',
   ];
 
+  /**
+   * Le scan consomme des research points : il passe donc par le simulateur,
+   * qui annonce le coût et le solde après opération avant tout appel réseau.
+   */
   const handleLaunchScan = async (categoryFilter?: string, queryOverride?: string) => {
-    setIsScanning(true);
-    setScanStep(0);
-    setScanError(null);
+    await runWithCredits('radar_scan', async () => {
+      setIsScanning(true);
+      setScanStep(0);
+      setScanError(null);
 
-    const stepInterval = setInterval(() => {
-      setScanStep((prev) => (prev < scanSteps.length - 1 ? prev + 1 : prev));
-    }, 700);
+      const stepInterval = setInterval(() => {
+        setScanStep((prev) => (prev < scanSteps.length - 1 ? prev + 1 : prev));
+      }, 700);
 
-    try {
-      const response = await fetch('/api/radar-trends', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          category: categoryFilter || (selectedCategory !== 'all' ? selectedCategory : undefined),
-          customQuery: queryOverride !== undefined ? queryOverride : searchQuery,
-        }),
-      });
+      // Drapeau local, et non l'état `scanError` : celui-ci ne serait pas encore
+      // à jour au moment où le bloc catch s'exécute.
+      let errorShown = false;
 
-      if (response.ok) {
-        const data: RadarScanResult = await response.json();
-        setScanResult(data);
-        return;
-      }
+      try {
+        const response = await fetch('/api/radar-trends', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            category: categoryFilter || (selectedCategory !== 'all' ? selectedCategory : undefined),
+            customQuery: queryOverride !== undefined ? queryOverride : searchQuery,
+          }),
+        });
 
-      // Un échec doit être VU par l'utilisateur. Auparavant, un statut non-ok
-      // était silencieusement ignoré : l'écran restait vide sans explication.
-      const payload = (await response.json().catch(() => null)) as
-        | { error?: { message?: string } }
-        | null;
+        if (response.ok) {
+          const data: RadarScanResult = await response.json();
+          setScanResult(data);
+          return;
+        }
 
-      setScanError(
-        payload?.error?.message ??
+        // Un échec doit être VU par l'utilisateur. Auparavant, un statut non-ok
+        // était silencieusement ignoré : l'écran restait vide sans explication.
+        const payload = (await response.json().catch(() => null)) as
+          | { error?: { message?: string } }
+          | null;
+
+        const message =
+          payload?.error?.message ??
           t(
             'Le scan de marché est momentanément indisponible. Réessayez dans quelques instants.',
             'Market scanning is temporarily unavailable. Please try again shortly.',
-          ),
-      );
-    } catch {
-      setScanError(
-        t(
-          'Impossible de joindre le serveur. Vérifiez votre connexion.',
-          'Could not reach the server. Check your connection.',
-        ),
-      );
-    } finally {
-      clearInterval(stepInterval);
-      setIsScanning(false);
-      setScanStep(0);
-    }
+          );
+
+        setScanError(message);
+        errorShown = true;
+        // Lever empêche la porte de crédits de débiter un scan qui n'a rien rendu.
+        throw new Error(message);
+      } catch (error) {
+        if (!errorShown) {
+          setScanError(
+            t(
+              'Impossible de joindre le serveur. Vérifiez votre connexion.',
+              'Could not reach the server. Check your connection.',
+            ),
+          );
+        }
+        throw error;
+      } finally {
+        clearInterval(stepInterval);
+        setIsScanning(false);
+        setScanStep(0);
+      }
+    }).catch(() => {
+      // L'erreur est déjà affichée dans le bandeau du scan.
+    });
   };
 
   return (

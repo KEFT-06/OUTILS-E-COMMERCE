@@ -1,0 +1,46 @@
+{
+  "version": "2026.09.1",
+  "updatedAt": "2026-09-13",
+  "note": "Grille tarifaire des research points (CdC §8). Table de configuration éditable sans déploiement, au même titre que la table de conformité. À migrer en base lors du Lot 2, avec un historique de versions : un coût qui change doit rester traçable pour les factures déjà émises.",
+  "currency": "FCFA",
+  "pointValueFcfa": 250,
+  "pointValueStatus": "PROVISOIRE — valeur non validée commercialement. Elle remplace un « ≈ 12 500 FCFA » qui était écrit en dur dans le Cockpit sans source. À confirmer avant toute mise en production facturée.",
+  "actions": [
+    {
+      "id": "niche_analysis",
+      "label": "Analyse stratégique d'une niche",
+      "cost": 5,
+      "description": "Rapport complet : indicateurs de marché, concurrents, produits digitaux et plan d'action."
+    },
+    {
+      "id": "radar_scan",
+      "label": "Scan du Radar Marché",
+      "cost": 3,
+      "description": "Détection des tendances et des annonceurs actifs sur un marché donné."
+    },
+    {
+      "id": "product_generation",
+      "label": "Génération d'un produit digital",
+      "cost": 4,
+      "description": "Structure complète d'un produit : sommaire, promesse de transformation et lead magnet."
+    },
+    {
+      "id": "ad_campaign",
+      "label": "Génération d'une campagne publicitaire",
+      "cost": 3,
+      "description": "Accroches, textes Meta Ads et découpage vidéo scène par scène."
+    },
+    {
+      "id": "video_generation",
+      "label": "Génération d'une vidéo",
+      "cost": 12,
+      "description": "Rendu vidéo par le fournisseur externe. Coût le plus élevé de la grille."
+    },
+    {
+      "id": "image_generation",
+      "label": "Génération d'un visuel",
+      "cost": 1,
+      "description": "Visuel unique au format demandé."
+    }
+  ]
+}
