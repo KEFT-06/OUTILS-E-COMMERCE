@@ -1,3 +1,5 @@
+import { ScoreTrace } from '@/shared/types/scoring';
+
 export type TauxLevel = 'Faible' | 'Moyen' | 'Élevé' | 'Très élevé';
 
 export interface MarketRate {
@@ -7,6 +9,12 @@ export interface MarketRate {
   score: number; // 0 to 100
   description: string;
   trend: 'up' | 'stable' | 'down';
+  /**
+   * Trace de calcul persistée. Absente tant que la méthodologie du taux n'est
+   * pas publiée : dans ce cas le panneau de détail le dit, plutôt que d'inventer
+   * une ventilation.
+   */
+  trace?: ScoreTrace;
 }
 
 export interface SearchTrendKeyword {

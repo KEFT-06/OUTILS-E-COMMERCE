@@ -23,7 +23,64 @@ export const PRESET_ANALYSES: MarketAnalysisReport[] = [
         level: 'Moyen',
         score: 48,
         description: 'Beaucoup de templates basiques gratuits, mais une pénurie marquée de systèmes avancés avec automatisation IA clé en main.',
-        trend: 'stable'
+        trend: 'stable',
+        // Trace produite par `computeCompetitiveScore` (server/services/scoring) sur
+        // des signaux de démonstration, puis figée ici. Elle n'est pas recalculée à
+        // l'affichage : c'est ce qui la rend vérifiable.
+        trace: {
+          score: 48,
+          level: 'Moyen',
+          methodologyVersion: '1.0.0',
+          measuredAt: '2026-09-08T09:30:00.000Z',
+          sampleSize: 120,
+          source: 'demonstration',
+          breakdown: [
+            {
+              key: 'uniqueAdvertisers',
+              label: 'Annonceurs uniques',
+              weight: 30,
+              rawValue: 34,
+              highThreshold: 50,
+              normalized: 51,
+              contribution: 15,
+              unit: '',
+              explanation: '34 mesuré pour un seuil « élevé » de 50. Normalisé à 51/100, pondéré à 30 % → 15 points sur le score final.'
+            },
+            {
+              key: 'activeAds',
+              label: 'Publicités actives',
+              weight: 25,
+              rawValue: 120,
+              highThreshold: 200,
+              normalized: 45,
+              contribution: 11,
+              unit: '',
+              explanation: '120 mesuré pour un seuil « élevé » de 200. Normalisé à 45/100, pondéré à 25 % → 11 points sur le score final.'
+            },
+            {
+              key: 'averageLifetimeDays',
+              label: 'Durée de vie moyenne',
+              weight: 25,
+              rawValue: 12,
+              highThreshold: 21,
+              normalized: 43,
+              contribution: 11,
+              unit: '',
+              explanation: '12 mesuré pour un seuil « élevé » de 21. Normalisé à 43/100, pondéré à 25 % → 11 points sur le score final.'
+            },
+            {
+              key: 'establishedAds',
+              label: 'Publicités établies (> 14 j)',
+              weight: 20,
+              rawValue: 29.2,
+              highThreshold: 40,
+              normalized: 55,
+              contribution: 11,
+              unit: ' %',
+              explanation: '29.2 % mesuré pour un seuil « élevé » de 40 %. Normalisé à 55/100, pondéré à 20 % → 11 points sur le score final.'
+            }
+          ]
+        }
       },
       profitability: {
         key: 'profitability',
@@ -356,7 +413,61 @@ export const PRESET_ANALYSES: MarketAnalysisReport[] = [
         level: 'Élevé',
         score: 68,
         description: 'Nombreux blogs et comptes Instagram, mais rareté des programmes structurés avec listes de courses exactes et batch cooking.',
-        trend: 'up'
+        trend: 'up',
+        trace: {
+          score: 68,
+          level: 'Élevé',
+          methodologyVersion: '1.0.0',
+          measuredAt: '2026-09-10T07:15:00.000Z',
+          sampleSize: 240,
+          source: 'demonstration',
+          breakdown: [
+            {
+              key: 'uniqueAdvertisers',
+              label: 'Annonceurs uniques',
+              weight: 30,
+              rawValue: 62,
+              highThreshold: 50,
+              normalized: 81,
+              contribution: 24,
+              unit: '',
+              explanation: '62 mesuré pour un seuil « élevé » de 50. Normalisé à 81/100, pondéré à 30 % → 24 points sur le score final.'
+            },
+            {
+              key: 'activeAds',
+              label: 'Publicités actives',
+              weight: 25,
+              rawValue: 240,
+              highThreshold: 200,
+              normalized: 80,
+              contribution: 20,
+              unit: '',
+              explanation: '240 mesuré pour un seuil « élevé » de 200. Normalisé à 80/100, pondéré à 25 % → 20 points sur le score final.'
+            },
+            {
+              key: 'averageLifetimeDays',
+              label: 'Durée de vie moyenne',
+              weight: 25,
+              rawValue: 16,
+              highThreshold: 21,
+              normalized: 57,
+              contribution: 14,
+              unit: '',
+              explanation: '16 mesuré pour un seuil « élevé » de 21. Normalisé à 57/100, pondéré à 25 % → 14 points sur le score final.'
+            },
+            {
+              key: 'establishedAds',
+              label: 'Publicités établies (> 14 j)',
+              weight: 20,
+              rawValue: 26.7,
+              highThreshold: 40,
+              normalized: 50,
+              contribution: 10,
+              unit: ' %',
+              explanation: '26.7 % mesuré pour un seuil « élevé » de 40 %. Normalisé à 50/100, pondéré à 20 % → 10 points sur le score final.'
+            }
+          ]
+        }
       },
       profitability: {
         key: 'profitability',

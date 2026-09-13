@@ -39,6 +39,12 @@ export interface CriterionBreakdown {
   normalized: number;
   /** Contribution au score final : normalized × weight / 100. */
   contribution: number;
+  /**
+   * Unité d'affichage de `rawValue` et `highThreshold` : '' ou ' %'.
+   * Exposée pour que le client n'ait pas à redeviner quels critères sont des
+   * pourcentages — une règle dupliquée est une règle qui divergera.
+   */
+  unit: string;
   /** Phrase lisible expliquant le calcul, affichée dans le panneau de détail. */
   explanation: string;
 }
@@ -142,6 +148,7 @@ export function computeCompetitiveScore(signals: RawSignals, measuredAt = new Da
       highThreshold: criterion.highThreshold,
       normalized,
       contribution,
+      unit,
       explanation:
         `${rawValue}${unit} mesuré pour un seuil « élevé » de ${criterion.highThreshold}${unit}. ` +
         `Normalisé à ${normalized}/100, pondéré à ${criterion.weight} % ` +

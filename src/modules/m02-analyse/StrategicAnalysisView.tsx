@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { MarketAnalysisReport, MarketRate } from '@/shared/types/analysis';
 import { RateBadge } from '@/shared/ui/RateBadge';
+import { ScoreTracePanel } from '@/shared/ui/ScoreTracePanel';
 import { motion } from 'motion/react';
 import {
   ResponsiveContainer,
@@ -18,7 +19,6 @@ import {
 } from 'recharts';
 import {
   TrendingUp,
-  ShieldCheck,
   Zap,
   Target,
   Users,
@@ -26,22 +26,18 @@ import {
   AlertCircle,
   CheckCircle2,
   BarChart3,
-  ArrowUpRight,
   Sparkles,
   Flame,
   Award,
   ChevronRight,
-  Layers,
-  PieChart,
   Activity,
   Globe,
   Compass,
   ExternalLink,
 } from 'lucide-react';
 import { Button } from '@/shared/ui/button';
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/shared/ui/card';
 import { Badge } from '@/shared/ui/badge';
-import { Tooltip, TooltipTrigger, TooltipContent, TooltipProvider } from '@/shared/ui/tooltip';
+import { TooltipProvider } from '@/shared/ui/tooltip';
 
 interface StrategicAnalysisViewProps {
   report: MarketAnalysisReport;
@@ -55,6 +51,9 @@ export const StrategicAnalysisView: React.FC<StrategicAnalysisViewProps> = ({
   onNavigateToMetaAds,
 }) => {
   const [activeAnalysisView, setActiveAnalysisView] = useState<'grid' | 'radar'>('grid');
+
+  // Taux dont le panneau de traçabilité est ouvert (différenciateur n°1, CdC §6.1).
+  const [inspectedRate, setInspectedRate] = useState<MarketRate | null>(null);
 
   const ratesList: MarketRate[] = [
     report.rates.demand,
@@ -286,7 +285,12 @@ export const StrategicAnalysisView: React.FC<StrategicAnalysisViewProps> = ({
                         <span className="text-xs font-bold uppercase tracking-wider text-slate-600">
                           {rate.label}
                         </span>
-                        <RateBadge level={rate.level} size="md" />
+                        <RateBadge
+                          level={rate.level}
+                          size="md"
+                          inspectLabel={rate.label}
+                          onInspect={() => setInspectedRate(rate)}
+                        />
                       </div>
 
                       {/* Score display */}
@@ -375,7 +379,12 @@ export const StrategicAnalysisView: React.FC<StrategicAnalysisViewProps> = ({
                   {ratesList.map((r) => (
                     <div key={r.key} className="flex items-center justify-between text-xs py-1 border-b border-slate-100">
                       <span className="font-medium text-slate-700">{r.label}</span>
-                      <RateBadge level={r.level} size="sm" />
+                      <RateBadge
+                        level={r.level}
+                        size="sm"
+                        inspectLabel={r.label}
+                        onInspect={() => setInspectedRate(r)}
+                      />
                     </div>
                   ))}
                 </div>
@@ -426,7 +435,7 @@ export const StrategicAnalysisView: React.FC<StrategicAnalysisViewProps> = ({
                   }}
                 />
                 <Bar dataKey="volume" radius={[8, 8, 0, 0]}>
-                  {searchTrendData.map((entry, index) => (
+                  {searchTrendData.map((_entry, index) => (
                     <Cell
                       key={`cell-${index}`}
                       fill={index === 0 ? '#4f46e5' : index === 1 ? '#0284c7' : '#059669'}
@@ -650,6 +659,14 @@ export const StrategicAnalysisView: React.FC<StrategicAnalysisViewProps> = ({
           </section>
         )}
 
+        {/* Panneau de traçabilité, ouvert depuis n'importe quel badge de taux. */}
+        <ScoreTracePanel
+          rate={inspectedRate}
+          open={inspectedRate !== null}
+          onOpenChange={(isOpen) => {
+            if (!isOpen) setInspectedRate(null);
+          }}
+        />
       </div>
     </TooltipProvider>
   );
