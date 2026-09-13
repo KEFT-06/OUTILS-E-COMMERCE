@@ -21,6 +21,7 @@ import {
   getRulesMetadata,
 } from '@server/services/compliance';
 import { CreditConfigUnavailableError, getCostTable } from '@server/services/credits';
+import { PricingUnavailableError, getPricing } from '@server/services/pricing';
 
 export const api = Router();
 
@@ -137,6 +138,25 @@ api.get(
       if (error instanceof CreditConfigUnavailableError) {
         console.error('[crédits] grille illisible :', error.configPath, error.cause);
         throw new AppError(503, error.message, 'CREDIT_CONFIG_UNAVAILABLE');
+      }
+      throw error;
+    }
+  }),
+);
+
+/* -------------------------------------------------------------------------- */
+/*  Fourchettes de prix — CdC §2 : jamais figées dans le code                  */
+/* -------------------------------------------------------------------------- */
+
+api.get(
+  '/pricing/ranges',
+  asyncRoute(async (_req, res) => {
+    try {
+      res.json(await getPricing());
+    } catch (error) {
+      if (error instanceof PricingUnavailableError) {
+        console.error('[prix] table illisible :', error.configPath, error.cause);
+        throw new AppError(503, error.message, 'PRICING_UNAVAILABLE');
       }
       throw error;
     }

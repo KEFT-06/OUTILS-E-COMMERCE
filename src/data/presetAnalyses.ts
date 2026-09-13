@@ -389,7 +389,33 @@ export const PRESET_ANALYSES: MarketAnalysisReport[] = [
           'Optimiser les créatives publicitaires en testant de nouveaux hooks vidéo 0-3s.'
         ]
       }
-    ]
+    ],
+    // Provenance affichée sous chaque graphique (feuille de route, 2.6).
+    // Ce rapport est un jeu de démonstration : le dire explicitement est la
+    // seule façon d'éviter qu'il soit lu comme une mesure de marché.
+    dataProvenance: {
+      rates: {
+        source: 'Jeu de démonstration Smart Creator',
+        collectedAt: '2026-09-08T09:30:00.000Z',
+        sampleSize: 120,
+        sampleUnit: 'publicités',
+        isDemonstration: true
+      },
+      searchTrends: {
+        source: 'Jeu de démonstration Smart Creator',
+        collectedAt: '2026-09-08T09:30:00.000Z',
+        sampleSize: 4,
+        sampleUnit: 'requêtes suivies',
+        isDemonstration: true
+      },
+      adCampaigns: {
+        source: 'Jeu de démonstration Smart Creator',
+        collectedAt: '2026-09-08T09:30:00.000Z',
+        sampleSize: 2,
+        sampleUnit: 'campagnes',
+        isDemonstration: true
+      }
+    }
   },
   {
     id: 'report-nutrition-anti-inflammatoire',
@@ -633,6 +659,29 @@ export const PRESET_ANALYSES: MarketAnalysisReport[] = [
         title: 'Conversion à 34€',
         steps: ['Proposer le guide à prix spécial de lancement pendant 72 heures', 'Ajouter un bonus exclusif : le carnet de desserts sans sucre raffiné']
       }
-    ]
+    ],
+    dataProvenance: {
+      rates: {
+        source: 'Jeu de démonstration Smart Creator',
+        collectedAt: '2026-09-10T07:15:00.000Z',
+        sampleSize: 240,
+        sampleUnit: 'publicités',
+        isDemonstration: true
+      },
+      searchTrends: {
+        source: 'Jeu de démonstration Smart Creator',
+        collectedAt: '2026-09-10T07:15:00.000Z',
+        sampleSize: 3,
+        sampleUnit: 'requêtes suivies',
+        isDemonstration: true
+      },
+      adCampaigns: {
+        source: 'Jeu de démonstration Smart Creator',
+        collectedAt: '2026-09-10T07:15:00.000Z',
+        sampleSize: 1,
+        sampleUnit: 'campagne',
+        isDemonstration: true
+      }
+    }
   }
 ];

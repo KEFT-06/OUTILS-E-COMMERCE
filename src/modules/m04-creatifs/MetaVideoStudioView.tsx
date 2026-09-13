@@ -3,6 +3,8 @@ import { MetaAdCampaign } from '@/shared/types/analysis';
 import { motion, AnimatePresence } from 'motion/react';
 import { BarChart, Bar, XAxis, YAxis, Tooltip as RechartsTooltip, ResponsiveContainer, Cell, AreaChart, Area, CartesianGrid } from 'recharts';
 import { usePreferences } from '@/app/providers/PreferencesContext';
+import { DataProvenance } from '@/shared/types/provenance';
+import { ChartProvenance } from '@/shared/ui/ChartProvenance';
 import {
   Video,
   Play,
@@ -27,11 +29,16 @@ import { Badge } from '@/shared/ui/badge';
 
 interface MetaVideoStudioViewProps {
   campaigns: MetaAdCampaign[];
+  /** Provenance des campagnes, affichée sous les graphiques (feuille de route, 2.6). */
+  provenance?: DataProvenance;
   onGenerateNewScript?: (framework: 'AIDA' | 'PAS' | 'BAB' | 'UGC') => void;
   isGenerating?: boolean;
 }
 
-export const MetaVideoStudioView: React.FC<MetaVideoStudioViewProps> = ({ campaigns }) => {
+export const MetaVideoStudioView: React.FC<MetaVideoStudioViewProps> = ({
+  campaigns,
+  provenance,
+}) => {
   const { t } = usePreferences();
   const [selectedCampaign, setSelectedCampaign] = useState<MetaAdCampaign>(campaigns[0] || null);
   const [activeSceneIndex, setActiveSceneIndex] = useState<number>(0);
@@ -238,6 +245,7 @@ export const MetaVideoStudioView: React.FC<MetaVideoStudioViewProps> = ({ campai
               </AreaChart>
             </ResponsiveContainer>
           </div>
+          <ChartProvenance provenance={provenance} />
         </div>
 
         {/* Chart 2: Time Allocation per Phase (Bar Chart) */}
@@ -285,6 +293,7 @@ export const MetaVideoStudioView: React.FC<MetaVideoStudioViewProps> = ({ campai
               </BarChart>
             </ResponsiveContainer>
           </div>
+          <ChartProvenance provenance={provenance} />
         </div>
       </div>
 

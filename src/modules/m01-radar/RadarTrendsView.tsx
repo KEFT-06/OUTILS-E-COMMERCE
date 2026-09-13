@@ -22,6 +22,8 @@ import { motion, AnimatePresence } from 'motion/react';
 import { BarChart, Bar, XAxis, YAxis, Tooltip as RechartsTooltip, ResponsiveContainer, Cell, ScatterChart, Scatter, ZAxis } from 'recharts';
 import { usePreferences } from '@/app/providers/PreferencesContext';
 import { useCreditGate } from '@/app/providers/CreditGateProvider';
+import { DataProvenance } from '@/shared/types/provenance';
+import { ChartProvenance } from '@/shared/ui/ChartProvenance';
 
 interface RadarTrendsViewProps {
   initialScanData?: RadarScanResult | null;
@@ -52,6 +54,21 @@ export const RadarTrendsView: React.FC<RadarTrendsViewProps> = ({
   const [isScanning, setIsScanning] = useState(false);
   const { t } = usePreferences();
   const { runWithCredits } = useCreditGate();
+
+  /**
+   * Provenance dérivée du scan lui-même (feuille de route, 2.6). Les plateformes
+   * réellement interrogées et l'horodatage sont portés par le résultat : les
+   * réafficher ici évite d'avoir à les redéclarer, donc à les laisser diverger.
+   */
+  const scanProvenance: DataProvenance | undefined = scanResult
+    ? {
+        source: scanResult.platformsScanned.join(', ') || 'Sources non précisées',
+        collectedAt: scanResult.timestamp,
+        sampleSize: scanResult.totalNichesFound,
+        sampleUnit: 'niches détectées',
+        isDemonstration: false,
+      }
+    : undefined;
   const [scanStep, setScanStep] = useState(0);
   const [scanError, setScanError] = useState<string | null>(null);
 
@@ -393,6 +410,7 @@ export const RadarTrendsView: React.FC<RadarTrendsViewProps> = ({
                 </ScatterChart>
               </ResponsiveContainer>
             </div>
+            <ChartProvenance provenance={scanProvenance} />
           </div>
 
           {/* Chart 2: Top Niches by Score (Bar Chart) */}
@@ -431,6 +449,7 @@ export const RadarTrendsView: React.FC<RadarTrendsViewProps> = ({
                 </BarChart>
               </ResponsiveContainer>
             </div>
+            <ChartProvenance provenance={scanProvenance} />
           </div>
         </div>
       )}

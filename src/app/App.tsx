@@ -203,6 +203,7 @@ function NexusVeilleWorkspace() {
         {activeStrategicTab === 'meta_ads' && (
           <MetaVideoStudioView
             campaigns={currentReport.adCampaigns}
+            provenance={currentReport.dataProvenance?.adCampaigns}
           />
         )}
 

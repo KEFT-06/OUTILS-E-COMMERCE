@@ -1,4 +1,5 @@
 import { ScoreTrace } from '@/shared/types/scoring';
+import { ReportDataProvenance } from '@/shared/types/provenance';
 
 export type TauxLevel = 'Faible' | 'Moyen' | 'Élevé' | 'Très élevé';
 
@@ -126,6 +127,11 @@ export interface MarketAnalysisReport {
     steps: string[];
   }[];
   groundingSources?: WebGroundingSource[];
+  /**
+   * Provenance des blocs chiffrés, affichée sous chaque graphique.
+   * Absente ⇒ le graphique le signale à l'écran plutôt que de se taire.
+   */
+  dataProvenance?: ReportDataProvenance;
 }
 
 export interface WebGroundingSource {

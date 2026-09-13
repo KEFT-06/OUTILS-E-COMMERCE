@@ -1,5 +1,6 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { DigitalProductIdea } from '@/shared/types/analysis';
+import { usePricing } from '@/shared/lib/usePricing';
 import { motion, AnimatePresence } from 'motion/react';
 import {
   ResponsiveContainer,
@@ -35,11 +36,24 @@ export const DigitalProductsView: React.FC<DigitalProductsViewProps> = ({
   products,
   onSelectProductForAd,
 }) => {
+  const { pricing, isLoading: isPricingLoading, error: pricingError } = usePricing();
+
   const [selectedProduct, setSelectedProduct] = useState<DigitalProductIdea>(products[0] || null);
   const [salesGoal, setSalesGoal] = useState<number>(50);
-  const [customPrice, setCustomPrice] = useState<number>(selectedProduct ? selectedProduct.recommendedPrice : 39);
-  const [estimatedMetaCPA, setEstimatedMetaCPA] = useState<number>(12); // Estimated Meta CPA
+  // `null` tant que les bornes ne sont pas connues : on n'invente pas de prix
+  // de départ, il vient du produit ou de la table (CdC §2).
+  const [customPrice, setCustomPrice] = useState<number | null>(
+    selectedProduct ? selectedProduct.recommendedPrice : null,
+  );
+  const [estimatedMetaCPA, setEstimatedMetaCPA] = useState<number | null>(null);
   const [expandedModule, setExpandedModule] = useState<number | null>(null);
+
+  // Initialisation des curseurs depuis la table, une fois celle-ci disponible.
+  useEffect(() => {
+    if (!pricing) return;
+    setCustomPrice((prev) => prev ?? pricing.sellingPrice.default);
+    setEstimatedMetaCPA((prev) => prev ?? pricing.adCostPerAcquisition.default);
+  }, [pricing]);
 
   const handleSelectProduct = (prod: DigitalProductIdea) => {
     setSelectedProduct(prod);
@@ -59,16 +73,21 @@ export const DigitalProductsView: React.FC<DigitalProductsViewProps> = ({
     }
   };
 
-  // Financial calculations
-  const grossRevenue = salesGoal * customPrice;
-  const totalAdSpend = salesGoal * estimatedMetaCPA;
+  // Financial calculations — à zéro tant que les bornes ne sont pas chargées,
+  // plutôt que calculées sur des valeurs supposées.
+  const priceValue = customPrice ?? 0;
+  const cpaValue = estimatedMetaCPA ?? 0;
+  const currencySymbol = pricing?.currencySymbol ?? '';
+
+  const grossRevenue = salesGoal * priceValue;
+  const totalAdSpend = salesGoal * cpaValue;
   const estimatedNetProfit = Math.max(0, grossRevenue - totalAdSpend);
   const netMarginPercent = grossRevenue > 0 ? Math.round((estimatedNetProfit / grossRevenue) * 100) : 0;
 
   // Chart data for revenue curve
   const projectionData = [10, 25, 50, 75, 100, 150, 200].map((units) => {
-    const rev = units * customPrice;
-    const ads = units * estimatedMetaCPA;
+    const rev = units * priceValue;
+    const ads = units * cpaValue;
     const profit = Math.max(0, rev - ads);
     return {
       units: `${units} vtes`,
@@ -350,53 +369,87 @@ export const DigitalProductsView: React.FC<DigitalProductsViewProps> = ({
               </div>
             </div>
 
-            {/* Custom Price Slider */}
-            <div>
-              <div className="flex justify-between items-center mb-1.5">
-                <span className="font-bold text-slate-700">Prix de Vente Unitaire :</span>
-                <span className="font-mono font-black text-slate-900 text-sm bg-white px-2.5 py-0.5 rounded border border-slate-200">
-                  {customPrice} €
-                </span>
+            {/*
+              Les bornes des deux curseurs viennent de la table servie par l'API.
+              Elles étaient auparavant écrites dans les attributs min/max, ce qui
+              imposait un redéploiement pour corriger un prix de marché — ce que
+              le CdC §2 interdit explicitement.
+            */}
+            {!pricing ? (
+              <div className="rounded-xl border border-dashed border-slate-300 bg-white/60 p-4 text-center">
+                <p className="text-xs font-semibold text-slate-600">
+                  {isPricingLoading
+                    ? 'Chargement des fourchettes de prix…'
+                    : 'Fourchettes de prix indisponibles'}
+                </p>
+                {pricingError && (
+                  <p className="mt-1 text-[11px] leading-relaxed text-slate-500">
+                    {pricingError} Le simulateur reste inactif : afficher une échelle de prix
+                    inventée serait pire que de ne rien afficher.
+                  </p>
+                )}
               </div>
-              <input
-                type="range"
-                min="9"
-                max="199"
-                step="5"
-                value={customPrice}
-                onChange={(e) => setCustomPrice(Number(e.target.value))}
-                className="w-full accent-indigo-600 cursor-pointer"
-              />
-              <div className="flex justify-between text-[10px] text-slate-400 mt-1">
-                <span>9 €</span>
-                <span>97 €</span>
-                <span>199 €</span>
-              </div>
-            </div>
+            ) : (
+              <>
+                {/* Custom Price Slider */}
+                <div>
+                  <div className="flex justify-between items-center mb-1.5">
+                    <span className="font-bold text-slate-700">Prix de Vente Unitaire :</span>
+                    <span className="font-mono font-black text-slate-900 text-sm bg-white px-2.5 py-0.5 rounded border border-slate-200">
+                      {priceValue} {currencySymbol}
+                    </span>
+                  </div>
+                  <input
+                    type="range"
+                    min={pricing.sellingPrice.min}
+                    max={pricing.sellingPrice.max}
+                    step={pricing.sellingPrice.step}
+                    value={priceValue}
+                    onChange={(e) => setCustomPrice(Number(e.target.value))}
+                    className="w-full accent-indigo-600 cursor-pointer"
+                  />
+                  <div className="flex justify-between text-[10px] text-slate-400 mt-1">
+                    {pricing.sellingPrice.marks.map((mark) => (
+                      <span key={mark.value}>{mark.label}</span>
+                    ))}
+                  </div>
+                </div>
 
-            {/* Meta CPA Estimation */}
-            <div>
-              <div className="flex justify-between items-center mb-1.5">
-                <span className="font-bold text-slate-700">Coût d'Acquisition Pub (CPA Meta Ads) :</span>
-                <span className="font-mono font-bold text-rose-600 text-xs bg-white px-2 py-0.5 rounded border border-rose-200">
-                  {estimatedMetaCPA} € / vente
-                </span>
-              </div>
-              <input
-                type="range"
-                min="4"
-                max="40"
-                step="2"
-                value={estimatedMetaCPA}
-                onChange={(e) => setEstimatedMetaCPA(Number(e.target.value))}
-                className="w-full accent-rose-600 cursor-pointer"
-              />
-              <div className="flex justify-between text-[10px] text-slate-400 mt-1">
-                <span>4 € (Viral)</span>
-                <span>20 € (Moyen)</span>
-                <span>40 € (Compétitif)</span>
-              </div>
-            </div>
+                {/* Meta CPA Estimation */}
+                <div>
+                  <div className="flex justify-between items-center mb-1.5">
+                    <span className="font-bold text-slate-700">Coût d'Acquisition Pub (CPA Meta Ads) :</span>
+                    <span className="font-mono font-bold text-rose-600 text-xs bg-white px-2 py-0.5 rounded border border-rose-200">
+                      {cpaValue} {currencySymbol} / vente
+                    </span>
+                  </div>
+                  <input
+                    type="range"
+                    min={pricing.adCostPerAcquisition.min}
+                    max={pricing.adCostPerAcquisition.max}
+                    step={pricing.adCostPerAcquisition.step}
+                    value={cpaValue}
+                    onChange={(e) => setEstimatedMetaCPA(Number(e.target.value))}
+                    className="w-full accent-rose-600 cursor-pointer"
+                  />
+                  <div className="flex justify-between text-[10px] text-slate-400 mt-1">
+                    {pricing.adCostPerAcquisition.marks.map((mark) => (
+                      <span key={mark.value}>{mark.label}</span>
+                    ))}
+                  </div>
+                </div>
+
+                {pricing.valuesStatus && (
+                  <p className="text-[10px] leading-relaxed text-amber-700">
+                    {pricing.valuesStatus}
+                  </p>
+                )}
+
+                <p className="text-[10px] text-slate-400">
+                  Fourchettes v{pricing.version} · mises à jour le {pricing.updatedAt}
+                </p>
+              </>
+            )}
 
           </div>
 

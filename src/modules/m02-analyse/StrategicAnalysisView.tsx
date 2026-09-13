@@ -3,6 +3,7 @@ import { MarketAnalysisReport, MarketRate } from '@/shared/types/analysis';
 import { RateBadge } from '@/shared/ui/RateBadge';
 import { ScoreTracePanel } from '@/shared/ui/ScoreTracePanel';
 import { LegalNotice } from '@/shared/ui/LegalNotice';
+import { ChartProvenance } from '@/shared/ui/ChartProvenance';
 import { motion } from 'motion/react';
 import {
   ResponsiveContainer,
@@ -366,6 +367,7 @@ export const StrategicAnalysisView: React.FC<StrategicAnalysisViewProps> = ({
                     />
                   </RadarChart>
                 </ResponsiveContainer>
+                <ChartProvenance provenance={report.dataProvenance?.rates} />
               </div>
 
               <div className="lg:col-span-5 space-y-3">
@@ -445,6 +447,7 @@ export const StrategicAnalysisView: React.FC<StrategicAnalysisViewProps> = ({
                 </Bar>
               </BarChart>
             </ResponsiveContainer>
+            <ChartProvenance provenance={report.dataProvenance?.searchTrends} />
           </div>
 
           {/* Table List of Keywords */}

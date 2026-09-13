@@ -1,0 +1,37 @@
+{
+  "version": "2026.09.1",
+  "updatedAt": "2026-09-13",
+  "note": "Fourchettes de prix et de coûts publicitaires (CdC §2, feuille de route 2.5 : « fourchettes de prix dynamiques en base, jamais figées dans le code »). Ces bornes étaient auparavant écrites en dur dans les curseurs de DigitalProductsView. À migrer en base lors du Lot 2, avec des valeurs par marché.",
+  "currency": "EUR",
+  "currencySymbol": "€",
+  "valuesStatus": "PROVISOIRE — bornes reprises telles quelles depuis l'ancien code figé, sans source marché. À réviser à partir de données réelles (Lot 2) avant toute communication commerciale.",
+  "sellingPrice": {
+    "min": 9,
+    "max": 199,
+    "step": 5,
+    "default": 39,
+    "marks": [
+      { "value": 9, "label": "9 €" },
+      { "value": 97, "label": "97 €" },
+      { "value": 199, "label": "199 €" }
+    ]
+  },
+  "adCostPerAcquisition": {
+    "min": 4,
+    "max": 40,
+    "step": 2,
+    "default": 12,
+    "marks": [
+      { "value": 4, "label": "4 € (Viral)" },
+      { "value": 20, "label": "20 € (Moyen)" },
+      { "value": 40, "label": "40 € (Compétitif)" }
+    ]
+  },
+  "productTypeRanges": [
+    { "type": "ebook", "label": "Ebook", "min": 9, "typical": 24, "max": 49 },
+    { "type": "template", "label": "Template", "min": 12, "typical": 29, "max": 69 },
+    { "type": "masterclass", "label": "Masterclass", "min": 49, "typical": 97, "max": 199 },
+    { "type": "bundle", "label": "Bundle", "min": 29, "typical": 67, "max": 149 },
+    { "type": "micro_tool", "label": "Micro-outil", "min": 5, "typical": 19, "max": 39 }
+  ]
+}

@@ -120,8 +120,33 @@ c'est la **traçabilité**. Ce lot livre les différenciateurs 1, 2 et 3 du cahi
 - **2.3** Swipe file personnel + export CSV/PDF.
 - **2.4** Fiche annonceur avec historique.
 - **2.5** Fourchettes de prix **dynamiques en base**, jamais figées dans le code (CdC §2).
+  **✅ Livré.** Les bornes vivaient dans les attributs `min`/`max` de deux curseurs React
+  (`9–199 €` pour le prix, `4–40 €` pour le CPA) : corriger un prix de marché exigeait un
+  redéploiement. Elles sont désormais dans `server/config/pricing.json`, servies par
+  `GET /api/pricing/ranges`, avec validation de cohérence au chargement (`min < max`,
+  valeur par défaut dans l'intervalle) — une fourchette incohérente est refusée plutôt
+  que de produire un curseur inutilisable.
+  `usePricing()` n'a **aucune valeur de repli** : un repli codé en dur reproduirait
+  exactement ce que le CdC interdit. Sans table, le simulateur reste inactif et le dit.
+  > ⚠️ Les bornes ont été reprises **telles quelles** depuis l'ancien code figé. Elles
+  > n'ont aucune source marché et restent à réviser sur données réelles. Leur statut
+  > provisoire est affiché sous le simulateur.
+  > ⚠️ La devise reste l'euro, comme dans le code d'origine, alors que le produit vise
+  > l'Afrique francophone. La table porte désormais `currency`/`currencySymbol`, donc le
+  > passage au FCFA est une modification de configuration — mais c'est une décision
+  > commerciale, pas technique.
 - **2.6** Dataviz de traçabilité : chaque graphique affiche sa source, sa date de collecte et
   son volume d'échantillon. Un graphique sans provenance affichée est un graphique refusé.
+  **✅ Livré.** `src/shared/ui/ChartProvenance.tsx` sous les six graphiques de l'application
+  (radar décisionnel, momentum des requêtes, rétention et durées de scènes, nuage et
+  classement du Radar).
+  Le composant **ne s'efface pas** quand la provenance manque : il affiche « provenance non
+  renseignée ». C'est l'intérêt de le rendre obligatoire — un graphique dont on a oublié la
+  source se signale à l'écran au lieu de passer inaperçu.
+  Les jeux de démonstration portent un badge « Démonstration » explicite : sans lui, une
+  démo se lit comme une mesure de marché. La provenance du Radar est dérivée du résultat de
+  scan lui-même (plateformes réellement interrogées, horodatage, volume), pour ne pas avoir
+  à la redéclarer et donc à la laisser diverger.
 
 > ⚠️ **Dépendance externe critique.** L'accès à la Meta Ad Library au-delà du volume public
 > exige App Review + Business Verification. Le cahier des charges (§6.11.5) impose d'engager
