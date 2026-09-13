@@ -17,6 +17,7 @@ import {
 import { useCreditGate } from '@/app/providers/CreditGateProvider';
 import { AdvertiserSheet } from '@/modules/m01-radar/AdvertiserSheet';
 import { formatDateFr } from '@/shared/lib/formatDate';
+import { MARKETS, marketLabel } from '@/shared/lib/markets';
 import { safeHttpUrl } from '@/shared/lib/safeUrl';
 import { exportSwipeFileCSV, exportSwipeFilePDF } from '@/shared/lib/swipeExport';
 import { swipeKey, useSwipeFile } from '@/shared/lib/useSwipeFile';
@@ -35,30 +36,6 @@ import { ScoreTracePanel } from '@/shared/ui/ScoreTracePanel';
  * une seule réponse : ce que l'indicateur affirme, la galerie le montre.
  */
 
-/**
- * Marchés acceptés par l'API (`marketSchema`, server/middleware). Le serveur
- * reste l'autorité : un code retiré là-bas sera refusé avec un message explicite.
- */
-const MARKETS: { code: string; label: string }[] = [
-  { code: 'CI', label: "Côte d'Ivoire" },
-  { code: 'SN', label: 'Sénégal' },
-  { code: 'CM', label: 'Cameroun' },
-  { code: 'BJ', label: 'Bénin' },
-  { code: 'TG', label: 'Togo' },
-  { code: 'BF', label: 'Burkina Faso' },
-  { code: 'ML', label: 'Mali' },
-  { code: 'NE', label: 'Niger' },
-  { code: 'GN', label: 'Guinée' },
-  { code: 'CD', label: 'RD Congo' },
-  { code: 'CG', label: 'Congo' },
-  { code: 'GA', label: 'Gabon' },
-  { code: 'TD', label: 'Tchad' },
-  { code: 'MG', label: 'Madagascar' },
-  { code: 'MA', label: 'Maroc' },
-  { code: 'TN', label: 'Tunisie' },
-  { code: 'DZ', label: 'Algérie' },
-];
-
 type StatusFilter = 'all' | 'active' | 'stopped';
 
 const LIFETIME_FILTERS: { value: number; label: string }[] = [
@@ -67,10 +44,6 @@ const LIFETIME_FILTERS: { value: number; label: string }[] = [
   { value: 14, label: '14 jours et plus' },
   { value: 30, label: '30 jours et plus' },
 ];
-
-function marketLabel(code: string): string {
-  return MARKETS.find((market) => market.code === code)?.label ?? code;
-}
 
 const inputClass =
   'w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm text-slate-900 focus:border-indigo-400 focus:outline-none focus:ring-2 focus:ring-indigo-100';

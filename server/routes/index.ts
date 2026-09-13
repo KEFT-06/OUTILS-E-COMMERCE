@@ -27,6 +27,14 @@ import {
   OriginalityConfigUnavailableError,
   checkOriginality,
 } from '@server/services/originality';
+import {
+  StorybookBrief,
+  briefText,
+  createStorybookGeneration,
+  generationIdSchema,
+  getStorybookGeneration,
+  storybookBriefSchema,
+} from '@server/services/storybook';
 
 export const api = Router();
 
@@ -282,6 +290,54 @@ api.post(
       }
       throw error;
     }
+  }),
+);
+
+/* -------------------------------------------------------------------------- */
+/*  Storybook Africain via Gamma (feuille de route 3.4)                        */
+/* -------------------------------------------------------------------------- */
+
+/**
+ * Lance la génération d'un conte.
+ *
+ * Ordre des contrôles : validation, conformité du brief, puis disponibilité de
+ * Gamma. La conformité passe avant le fournisseur pour que l'auteur puisse
+ * corriger son brief même sur un serveur sans clé Gamma.
+ */
+api.post(
+  '/storybook/generations',
+  aiLimiter,
+  validateBody(storybookBriefSchema),
+  asyncRoute(async (req, res) => {
+    const brief = req.body as StorybookBrief;
+
+    const verdict = await checkText(briefText(brief)).catch(asComplianceRouteError);
+    if (!verdict.exportAllowed) {
+      throw new AppError(
+        422,
+        'Le brief contient des formulations non conformes : corrigez-les avant de lancer la génération.',
+        'BRIEF_NON_COMPLIANT',
+        verdict.findings.filter((finding) => finding.severity === 'block'),
+      );
+    }
+
+    if (!providers.gamma) throw providerUnavailable('Gamma');
+
+    res.status(202).json(await createStorybookGeneration(brief));
+  }),
+);
+
+/** Suivi d'une génération. Hors `aiLimiter` : le client sonde toutes les 5 secondes. */
+api.get(
+  '/storybook/generations/:generationId',
+  asyncRoute(async (req, res) => {
+    const parsed = generationIdSchema.safeParse(req.params.generationId);
+    if (!parsed.success) {
+      throw new AppError(400, 'Identifiant de génération invalide.', 'INVALID_GENERATION_ID');
+    }
+    if (!providers.gamma) throw providerUnavailable('Gamma');
+
+    res.json(await getStorybookGeneration(parsed.data));
   }),
 );
 

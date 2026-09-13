@@ -257,6 +257,31 @@ c'est la **traçabilité**. Ce lot livre les différenciateurs 1, 2 et 3 du cahi
     date). Le paramètre de contrôle est obligatoire : aucun rendu sans vérification.
   - `docx` chargé à la demande : fichier séparé de 346 ko, absent du bundle principal.
 - **3.4** **Storybook Africain via Gamma** — contes illustrés, ancrage culturel par pays.
+  **🟡 Livré, non vérifié contre l'API réelle (aucune clé Gamma disponible).**
+  `server/services/storybook`, `POST /api/storybook/generations`, `GET /api/storybook/generations/:id`,
+  écran `src/modules/m08-storybook/StorybookView.tsx`. Écrit d'après la documentation de l'API
+  publique Gamma v1.0 consultée le 14 septembre 2026.
+  - Brief : pays (17 marchés), langue FR/EN, âge, nombre de pages, personnage, thème, éléments
+    culturels, style visuel.
+  - **Ancrage culturel sans invention.** Smart Creator ne fournit aucune « base culturelle » par
+    pays : elle aurait été rédigée sans source. Gamma reçoit la consigne de n'utiliser comme
+    références culturelles précises que les éléments fournis par l'auteur, sans caricature ni
+    stéréotype.
+  - Conformité du brief contrôlée **avant** tout appel (422 avec constats), puis disponibilité
+    de Gamma (503 explicite) : l'auteur peut corriger son brief même sur un serveur sans clé.
+  - Le lien d'export PDF de Gamma est un secret (téléchargeable sans clé) : il ne quitte jamais le
+    serveur. Le client reçoit le lien de consultation, partagé en lecture avec quiconque le détient
+    — l'écran le dit. Les crédits restants du compte Gamma ne sont pas exposés.
+  - Points débités seulement une fois le conte terminé ; échec, écran quitté ou dépassement de
+    10 minutes : aucun débit. **Coût fixé à 15 points : valeur provisoire, à arbitrer.**
+  - L'écran affiche que la cohérence du personnage n'est pas garantie (3.5) et que le conte généré
+    n'est pas relu par le vérificateur de conformité.
+  - L'ancien placeholder promettait une « garantie de cohérence des personnages » : promesse retirée.
+  Vérifié : requêtes FR/EN construites, deux fautes corrigées avant envoi (« le contexte de le
+  Sénégal », « enfants de 6-8 ans ») ; routes : brief conforme sans clé → 503, brief avec promesse
+  de gains → 422 et 2 constats, brief invalide → 400, identifiant de suivi piégé → 400.
+  > ⛔ **Bloqué sur toi :** une clé API Gamma (offre Pro minimum) pour vérifier contre l'API réelle,
+  > et la décision 3.5 sur la cohérence du personnage.
 - **3.5** Cohérence de personnage : seed réutilisé à chaque page. Contrainte technique n°1
   du module, à valider auprès du fournisseur d'images **avant** de s'engager sur le module.
   **⛔ Validation faite : pas de seed chez Gamma. Décision requise avant de construire le module.**

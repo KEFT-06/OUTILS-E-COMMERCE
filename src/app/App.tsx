@@ -7,6 +7,7 @@ import { MetaVideoStudioView } from '@/modules/m04-creatifs/MetaVideoStudioView'
 import { ReportPDFView } from '@/modules/m02-analyse/ReportPDFView';
 import { RadarTrendsView } from '@/modules/m01-radar/RadarTrendsView';
 import { AdGalleryView } from '@/modules/m01-radar/AdGalleryView';
+import { StorybookView } from '@/modules/m08-storybook/StorybookView';
 import { CockpitDashboard } from '@/modules/cockpit/CockpitDashboard';
 import { PlaceholderModuleView } from '@/shared/ui/PlaceholderModuleView';
 import { LandingPage } from '@/features/landing/LandingPage';
@@ -240,13 +241,9 @@ function NexusVeilleWorkspace() {
         )}
 
         {/* TAB 08: Storybook Africain */}
-        {activeStrategicTab === 'storybook' && (
-          <PlaceholderModuleView
-            moduleNumber="08"
-            title="Storybook Africain"
-            description="Création de contes et livres illustrés ancrés dans des noms et contextes africains, avec garantie de cohérence des personnages."
-          />
-        )}
+        {/* L'ancien placeholder promettait une « garantie de cohérence des personnages » :
+            Gamma ne l'offre pas (feuille de route 3.5), l'écran le dit désormais. */}
+        {activeStrategicTab === 'storybook' && <StorybookView />}
 
         {/* TAB 09: Pages Produits */}
         {activeStrategicTab === 'pages_produits' && (
