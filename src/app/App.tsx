@@ -12,6 +12,7 @@ import { CreativeGeneratorPanel } from '@/modules/m04-creatifs/CreativeGenerator
 import { DistributionView } from '@/modules/m06-distribution/DistributionView';
 import { CampaignBlueprintsView } from '@/modules/m11-campagnes/CampaignBlueprintsView';
 import { ProductPageBuilderView } from '@/modules/m09-pages/ProductPageBuilderView';
+import { LaunchKitView } from '@/modules/m05-kit-lancement/LaunchKitView';
 import { CockpitDashboard } from '@/modules/cockpit/CockpitDashboard';
 import { PlaceholderModuleView } from '@/shared/ui/PlaceholderModuleView';
 import { LandingPage } from '@/features/landing/LandingPage';
@@ -222,13 +223,9 @@ function NexusVeilleWorkspace() {
         )}
 
         {/* TAB 05: Kit de Lancement */}
-        {activeStrategicTab === 'kit_lancement' && (
-          <PlaceholderModuleView
-            moduleNumber="05"
-            title="Kit de Lancement"
-            description="Génération des textes publicitaires, scripts vidéos (15s/30s/60s), et descriptions pour pages de vente basés sur les 12 méthodes de copywriting."
-          />
-        )}
+        {/* L'ancien placeholder promettait une génération « basée sur 12 méthodes de
+            copywriting » : aucun fournisseur de texte n'est branché, le kit guide et contrôle. */}
+        {activeStrategicTab === 'kit_lancement' && <LaunchKitView report={currentReport} />}
 
         {/* TAB 06: Distribution & Intégration */}
         {activeStrategicTab === 'distribution' && <DistributionView />}

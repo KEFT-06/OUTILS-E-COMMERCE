@@ -1,0 +1,75 @@
+{
+  "version": "2026.09.1",
+  "updatedAt": "2026-09-14",
+  "note": "Kit de lancement (feuille de route 5.1), éditable sans redéploiement. Les noms des boutons d'appel à l'action sont les noms officiels du gestionnaire de publicités Meta, relevés le 14 septembre 2026 sur la page d'aide citée.",
+  "valuesStatus": "PROVISOIRE — découpages des scripts, repère de débit de voix off et recommandations de boutons par objectif sont des valeurs par défaut, non issues de données de performance.",
+  "voiceOverWordsPerSecond": 2.5,
+  "ctaPlatforms": [
+    {
+      "id": "meta",
+      "label": "Meta (Facebook et Instagram)",
+      "source": "https://www.facebook.com/business/help/410873986524407",
+      "checkedAt": "2026-09-14",
+      "buttons": [
+        { "id": "shop_now", "officialName": "Shop Now", "recommendedFor": ["sales"] },
+        { "id": "order_now", "officialName": "Order Now", "recommendedFor": ["sales"] },
+        { "id": "get_offer", "officialName": "Get Offer", "recommendedFor": ["sales"] },
+        { "id": "download", "officialName": "Download", "recommendedFor": ["sales", "leads"] },
+        { "id": "sign_up", "officialName": "Sign Up", "recommendedFor": ["leads"] },
+        { "id": "subscribe", "officialName": "Subscribe", "recommendedFor": ["leads"] },
+        { "id": "contact_us", "officialName": "Contact Us", "recommendedFor": ["leads"] },
+        { "id": "send_message", "officialName": "Send Message", "recommendedFor": ["leads", "traffic"] },
+        { "id": "send_whatsapp_message", "officialName": "Send WhatsApp Message", "recommendedFor": ["leads", "traffic"] },
+        { "id": "learn_more", "officialName": "Learn More", "recommendedFor": ["traffic"] },
+        { "id": "watch_more", "officialName": "Watch More", "recommendedFor": ["traffic"] },
+        { "id": "open_link", "officialName": "Open Link", "recommendedFor": ["traffic"] },
+        { "id": "get_quote", "officialName": "Get Quote", "recommendedFor": [] },
+        { "id": "apply_now", "officialName": "Apply Now", "recommendedFor": [] },
+        { "id": "book_now", "officialName": "Book Now", "recommendedFor": [] },
+        { "id": "call_now", "officialName": "Call Now", "recommendedFor": [] },
+        { "id": "listen_now", "officialName": "Listen Now", "recommendedFor": [] },
+        { "id": "save", "officialName": "Save", "recommendedFor": [] },
+        { "id": "interested", "officialName": "Interested", "recommendedFor": [] },
+        { "id": "see_menu", "officialName": "See Menu", "recommendedFor": [] },
+        { "id": "request_time", "officialName": "Request Time", "recommendedFor": [] },
+        { "id": "view_event", "officialName": "View Event", "recommendedFor": [] },
+        { "id": "get_directions", "officialName": "Get Directions", "recommendedFor": [] },
+        { "id": "get_showtimes", "officialName": "Get Showtimes", "recommendedFor": [] },
+        { "id": "play_game", "officialName": "Play Game", "recommendedFor": [] },
+        { "id": "preregister", "officialName": "Preregister", "recommendedFor": [] }
+      ]
+    }
+  ],
+  "scriptFormats": [
+    {
+      "durationSeconds": 15,
+      "label": "15 secondes",
+      "beats": [
+        { "id": "hook", "label": "Accroche", "startSecond": 0, "endSecond": 3, "purpose": "Arrêter le défilement : une image ou une phrase qui interpelle la cible." },
+        { "id": "benefit", "label": "Bénéfice", "startSecond": 3, "endSecond": 11, "purpose": "Ce que le produit change, en une seule idée." },
+        { "id": "cta", "label": "Appel à l'action", "startSecond": 11, "endSecond": 15, "purpose": "Dire quoi faire, maintenant." }
+      ]
+    },
+    {
+      "durationSeconds": 30,
+      "label": "30 secondes",
+      "beats": [
+        { "id": "hook", "label": "Accroche", "startSecond": 0, "endSecond": 3, "purpose": "Arrêter le défilement : une image ou une phrase qui interpelle la cible." },
+        { "id": "problem", "label": "Problème", "startSecond": 3, "endSecond": 10, "purpose": "La difficulté vécue, avec les mots de la cible." },
+        { "id": "solution", "label": "Solution", "startSecond": 10, "endSecond": 23, "purpose": "Comment le produit y répond, concrètement." },
+        { "id": "cta", "label": "Appel à l'action", "startSecond": 23, "endSecond": 30, "purpose": "Dire quoi faire, maintenant." }
+      ]
+    },
+    {
+      "durationSeconds": 60,
+      "label": "60 secondes",
+      "beats": [
+        { "id": "hook", "label": "Accroche", "startSecond": 0, "endSecond": 5, "purpose": "Arrêter le défilement : une image ou une phrase qui interpelle la cible." },
+        { "id": "problem", "label": "Problème", "startSecond": 5, "endSecond": 15, "purpose": "La difficulté vécue, avec les mots de la cible." },
+        { "id": "solution", "label": "Solution", "startSecond": 15, "endSecond": 35, "purpose": "Comment le produit y répond, concrètement." },
+        { "id": "content", "label": "Contenu", "startSecond": 35, "endSecond": 50, "purpose": "Ce que contient le produit : modules, supports, bonus." },
+        { "id": "cta", "label": "Appel à l'action", "startSecond": 50, "endSecond": 60, "purpose": "Dire quoi faire, maintenant." }
+      ]
+    }
+  ]
+}

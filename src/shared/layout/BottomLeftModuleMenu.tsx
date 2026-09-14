@@ -51,7 +51,7 @@ const MODULES: readonly ModuleEntry[] = [
   { id: 'veille', num: '02', fr: 'Analyse Stratégique', en: 'Strategic Analysis', descFr: 'Les 5 taux et le benchmark concurrentiel', descEn: 'The 5 rates and competitive benchmark', icon: Telescope, ready: true },
   { id: 'products', num: '03', fr: 'Studio de Création', en: 'Creation Studio', descFr: 'Ebooks, templates et rentabilité', descEn: 'Ebooks, templates and profitability', icon: Package, ready: true },
   { id: 'meta_ads', num: '04', fr: 'Créatifs Publicitaires', en: 'Ad Creatives', descFr: 'Scripts vidéo AIDA et PAS', descEn: 'AIDA and PAS video scripts', icon: Clapperboard, ready: true },
-  { id: 'kit_lancement', num: '05', fr: 'Kit de Lancement', en: 'Launch Kit', descFr: 'Copie publicitaire et pages de vente', descEn: 'Ad copy and sales pages', icon: Rocket, ready: false },
+  { id: 'kit_lancement', num: '05', fr: 'Kit de Lancement', en: 'Launch Kit', descFr: 'Copie publicitaire et pages de vente', descEn: 'Ad copy and sales pages', icon: Rocket, ready: true },
   { id: 'distribution', num: '06', fr: 'Distribution', en: 'Distribution', descFr: 'Connecteurs marketplace', descEn: 'Marketplace connectors', icon: Store, ready: true },
   { id: 'affiliation', num: '07', fr: 'Affiliation', en: 'Affiliate Program', descFr: 'Liens UTM et commissions', descEn: 'UTM links and commissions', icon: Users, ready: false },
   { id: 'storybook', num: '08', fr: 'Storybook Africain', en: 'African Storybook', descFr: 'Contes illustrés ancrés culturellement', descEn: 'Culturally grounded illustrated tales', icon: BookOpen, ready: true },

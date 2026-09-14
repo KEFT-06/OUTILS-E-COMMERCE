@@ -65,6 +65,9 @@ const schema = z.object({
   /** Structures de campagnes Meta et TikTok (feuille de route 5.4). */
   CAMPAIGN_BLUEPRINTS_PATH: z.string().optional(),
 
+  /** Boutons d'appel à l'action et découpages des scripts du kit de lancement (5.1). */
+  LAUNCH_KIT_PATH: z.string().optional(),
+
   /**
    * Clé API Chariow (connecteur marketplace, feuille de route 5.2), créée dans
    * app.chariow.com → Paramètres → Clés API. Serveur uniquement : la

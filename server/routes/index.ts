@@ -53,6 +53,7 @@ import {
   listMarketplaces,
 } from '@server/services/marketplaces';
 import { BlueprintsUnavailableError, getCampaignBlueprints } from '@server/services/blueprints';
+import { LaunchKitUnavailableError, getLaunchKitConfig } from '@server/services/launchKit';
 
 export const api = Router();
 
@@ -502,6 +503,25 @@ api.get(
       if (error instanceof BlueprintsUnavailableError) {
         console.error('[campagnes] table illisible :', error.configPath, error.cause);
         throw new AppError(503, error.message, 'BLUEPRINTS_UNAVAILABLE');
+      }
+      throw error;
+    }
+  }),
+);
+
+/* -------------------------------------------------------------------------- */
+/*  Kit de lancement (feuille de route 5.1)                                    */
+/* -------------------------------------------------------------------------- */
+
+api.get(
+  '/launch-kit/config',
+  asyncRoute(async (_req, res) => {
+    try {
+      res.json(await getLaunchKitConfig());
+    } catch (error) {
+      if (error instanceof LaunchKitUnavailableError) {
+        console.error('[kit de lancement] table illisible :', error.configPath, error.cause);
+        throw new AppError(503, error.message, 'LAUNCH_KIT_UNAVAILABLE');
       }
       throw error;
     }

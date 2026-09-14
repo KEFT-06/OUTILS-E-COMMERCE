@@ -363,6 +363,26 @@ c'est la **traçabilité**. Ce lot livre les différenciateurs 1, 2 et 3 du cahi
 ## Lot 5 — Vendre (modules 5, 6, 9, 11)
 
 - **5.1** Kit de Lancement : copie pub, scripts 15/30/60 s, CTA par marché.
+  **🟡 Livré en outil guidé ; la rédaction automatique reste bloquée (aucun fournisseur de texte).**
+  `server/config/launch-kit.json`, `GET /api/launch-kit/config`, `src/shared/lib/launchKit.ts`,
+  écran `src/modules/m05-kit-lancement/LaunchKitView.tsx`.
+  - **Pas de génération promise.** L'ancien placeholder annonçait une rédaction « basée sur 12 méthodes
+    de copywriting » : rien ne l'implémentait. Le kit structure, contrôle et exporte ; le
+    pré-remplissage ne reprend que les données réelles du produit (promesse, titre, sous-titre).
+  - **Textes publicitaires** : jusqu'à trois variantes (texte principal, titre, description).
+  - **Scripts 15, 30 et 60 s** découpés en temps forts (accroche, problème, solution, contenu, appel à
+    l'action), avec un repère de débit de voix off par temps fort. Table **contrôlée au chargement** :
+    découpage continu de 0 à la durée, sans trou ni chevauchement — vérifié, une table avec un trou à
+    10 s et un script arrêté à 28 s au lieu de 30 est refusée avec les deux motifs exacts.
+  - **Boutons par marché** : les 26 noms officiels du gestionnaire de publicités Meta, relevés le
+    14 septembre 2026 avec leur source, et une recommandation par objectif (ventes, prospects, trafic).
+  - **Export texte** après contrôle de conformité de tous les textes et scripts ; variantes, scripts et
+    marchés non renseignés omis ; mention légale en fin de fichier. Vérifié sur un brouillon réel.
+  > ⚠️ Découpages des scripts, repère de 2,5 mots par seconde et recommandations de boutons : valeurs
+  > par défaut provisoires, affichées comme telles. « CTA par marché » : le kit enregistre le bouton
+  > choisi pour chaque marché ; il n'affirme rien sur les préférences culturelles de chaque pays, faute
+  > de source.
+  > ⛔ La rédaction assistée par IA attend le branchement d'un fournisseur de texte (clé Gemini).
 - **5.2** Connecteurs marketplace en **adapter pattern**. Chariow en premier : c'est le seul
   à disposer d'une API publique documentée (`chariow.dev`). Il sert de gabarit de référence.
   **🟡 Livré en lecture ; vérifié contre un faux serveur, pas contre l'API réelle (aucune clé).**
