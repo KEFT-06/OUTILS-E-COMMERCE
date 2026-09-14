@@ -1,154 +1,278 @@
 @import "tailwindcss";
+@import "tw-animate-css";
 
 /* ---------------------------------------------------------------------------
    Thème sombre piloté par une classe.
-   PreferencesContext ajoute/retire `.dark` sur <html>. Tailwind v4 utilise
-   prefers-color-scheme par défaut : cette variante rétablit le contrôle manuel.
+   PreferencesContext ajoute/retire `.dark` sur <html>.
    --------------------------------------------------------------------------- */
 @custom-variant dark (&:where(.dark, .dark *));
 
 /* ---------------------------------------------------------------------------
-   Tokens. Définis une seule fois ici, jamais uniquement dans un bloc de thème.
-   Cf. docs/DESIGN-SYSTEM.md — c'est ce qui avait cassé le mode sombre initial.
+   Tokens — cf. docs/DESIGN-SYSTEM.md.
+   Chaque couleur est définie une fois sur :root puis redéfinie sous .dark :
+   aucun écran ne code plus de couleur en dur, le thème sombre fonctionne par
+   construction.
    --------------------------------------------------------------------------- */
-@theme {
-  --font-sans: "Plus Jakarta Sans", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-  --font-display: "Outfit", "Plus Jakarta Sans", sans-serif;
-  --font-mono: "JetBrains Mono", ui-monospace, monospace;
-
-  /* Niveaux de taux — RÉSERVÉS au scoring, jamais décoratifs */
-  --color-rate-excellent: oklch(0.7 0.15 162);
-  --color-rate-good: oklch(0.65 0.17 255);
-  --color-rate-medium: oklch(0.76 0.16 75);
-  --color-rate-low: oklch(0.65 0.2 15);
-
-  /* Nuances manquantes dans l'échelle Tailwind (cf. audit D6 :
-     slate-850 / slate-750 étaient inventées et silencieusement ignorées) */
-  --color-slate-750: oklch(0.32 0.02 256);
-  --color-slate-850: oklch(0.25 0.02 256);
-}
-
 :root {
-  --surface: oklch(1 0 0);
-  --surface-sunken: oklch(0.98 0.003 256);
-  --surface-raised: oklch(1 0 0);
-  --border-subtle: oklch(0.92 0.006 256);
-  --text-primary: oklch(0.21 0.02 256);
-  --text-muted: oklch(0.55 0.02 256);
+  --radius: 0.75rem;
 
-  /* Verre liquide — 3 niveaux, pas plus */
-  --glass-1-bg: oklch(1 0 0 / 72%);
-  --glass-1-border: oklch(1 0 0 / 40%);
-  --glass-1-blur: 16px;
-  --glass-2-bg: oklch(1 0 0 / 85%);
-  --glass-2-border: oklch(1 0 0 / 30%);
-  --glass-2-blur: 10px;
-  --glass-shadow: 0 8px 32px oklch(0.21 0.02 256 / 8%);
+  /* Marque — couleurs du logo Smart Creator, inchangées. */
+  --brand-green: #00c853;
+  --brand-orange: #f59e0b;
+  /* Déclinaisons lisibles en texte courant (contraste AA sur fond clair). */
+  --brand-green-text: #0a7c3a;
+  --brand-orange-text: #b45309;
+
+  --background: #f7f8f6;
+  --foreground: #121a15;
+  --card: #ffffff;
+  --card-foreground: #121a15;
+  --popover: #ffffff;
+  --popover-foreground: #121a15;
+  --primary: #00c853;
+  --primary-foreground: #04210f;
+  --secondary: #edf1ec;
+  --secondary-foreground: #121a15;
+  --muted: #edf1ec;
+  --muted-foreground: #56615a;
+  --accent: #e3f6e9;
+  --accent-foreground: #0a5c2c;
+  --destructive: #d92d20;
+  --border: #e0e5df;
+  --input: #d3dad2;
+  --ring: #00a344;
+
+  --chart-1: #0a9a45;
+  --chart-2: #0284c7;
+  --chart-3: #d97706;
+  --chart-4: #7c3aed;
+  --chart-5: #64748b;
+
+  --sidebar: #ffffff;
+  --sidebar-foreground: #121a15;
+  --sidebar-primary: #00c853;
+  --sidebar-primary-foreground: #04210f;
+  --sidebar-accent: #eaf5ed;
+  --sidebar-accent-foreground: #0a5c2c;
+  --sidebar-border: #e0e5df;
+  --sidebar-ring: #00a344;
+
+  /* Niveaux de taux — RÉSERVÉS au scoring, jamais décoratifs. */
+  --rate-excellent: #12b76a;
+  --rate-excellent-text: #067647;
+  --rate-good: #2e90fa;
+  --rate-good-text: #175cd3;
+  --rate-medium: #f79009;
+  --rate-medium-text: #b54708;
+  --rate-low: #f04438;
+  --rate-low-text: #b42318;
+
+  /* États de message (succès, avertissement, information, erreur). */
+  --success: #067647;
+  --success-soft: #ecfdf3;
+  --success-border: #abefc6;
+  --warning: #b54708;
+  --warning-soft: #fffaeb;
+  --warning-border: #fedf89;
+  --info: #175cd3;
+  --info-soft: #eff8ff;
+  --info-border: #b2ddff;
+  --danger: #b42318;
+  --danger-soft: #fef3f2;
+  --danger-border: #fecdca;
+
+  /* Alias de l'ancien système, conservés le temps de la migration. */
+  --surface: var(--card);
+  --surface-raised: var(--card);
+  --surface-sunken: var(--background);
+  --border-subtle: var(--border);
+  --text-primary: var(--foreground);
+  --text-muted: var(--muted-foreground);
 
   color-scheme: light;
 }
 
 .dark {
-  --surface: oklch(0.21 0.02 256);
-  --surface-sunken: oklch(0.17 0.02 256);
-  --surface-raised: oklch(0.25 0.02 256);
-  --border-subtle: oklch(0.32 0.02 256);
-  --text-primary: oklch(0.97 0.003 256);
-  --text-muted: oklch(0.7 0.015 256);
+  --brand-green-text: #3ddc84;
+  --brand-orange-text: #fbbf24;
 
-  --glass-1-bg: oklch(0.25 0.02 256 / 72%);
-  --glass-1-border: oklch(1 0 0 / 10%);
-  --glass-2-bg: oklch(0.25 0.02 256 / 85%);
-  --glass-2-border: oklch(1 0 0 / 8%);
-  --glass-shadow: 0 8px 32px oklch(0 0 0 / 40%);
+  --background: #0b100d;
+  --foreground: #e8ede9;
+  --card: #121915;
+  --card-foreground: #e8ede9;
+  --popover: #151c18;
+  --popover-foreground: #e8ede9;
+  --primary: #00c853;
+  --primary-foreground: #04210f;
+  --secondary: #1b231e;
+  --secondary-foreground: #e8ede9;
+  --muted: #1b231e;
+  --muted-foreground: #9ba8a0;
+  --accent: #13301e;
+  --accent-foreground: #7ee2a6;
+  --destructive: #f04438;
+  --border: #243029;
+  --input: #2c3931;
+  --ring: #00c853;
+
+  --chart-1: #3ddc84;
+  --chart-2: #38bdf8;
+  --chart-3: #fbbf24;
+  --chart-4: #a78bfa;
+  --chart-5: #94a3b8;
+
+  --sidebar: #0e1411;
+  --sidebar-foreground: #e8ede9;
+  --sidebar-primary: #00c853;
+  --sidebar-primary-foreground: #04210f;
+  --sidebar-accent: #17221b;
+  --sidebar-accent-foreground: #7ee2a6;
+  --sidebar-border: #1f2a23;
+  --sidebar-ring: #00c853;
+
+  --rate-excellent: #32d583;
+  --rate-excellent-text: #6ce9a6;
+  --rate-good: #53b1fd;
+  --rate-good-text: #84caff;
+  --rate-medium: #fdb022;
+  --rate-medium-text: #fec84b;
+  --rate-low: #f97066;
+  --rate-low-text: #fda29b;
+
+  --success: #6ce9a6;
+  --success-soft: #0a2a1a;
+  --success-border: #135c35;
+  --warning: #fec84b;
+  --warning-soft: #2b2110;
+  --warning-border: #6b4a0e;
+  --info: #84caff;
+  --info-soft: #0e2238;
+  --info-border: #1d4a7a;
+  --danger: #fda29b;
+  --danger-soft: #2e1413;
+  --danger-border: #7a2620;
 
   color-scheme: dark;
 }
 
+@theme inline {
+  --font-sans: "Plus Jakarta Sans", ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  --font-display: "Outfit", "Plus Jakarta Sans", ui-sans-serif, system-ui, sans-serif;
+  --font-mono: ui-monospace, "Cascadia Mono", "SFMono-Regular", Consolas, monospace;
+
+  --radius-sm: calc(var(--radius) - 4px);
+  --radius-md: calc(var(--radius) - 2px);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) + 4px);
+
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+
+  --color-chart-1: var(--chart-1);
+  --color-chart-2: var(--chart-2);
+  --color-chart-3: var(--chart-3);
+  --color-chart-4: var(--chart-4);
+  --color-chart-5: var(--chart-5);
+
+  --color-sidebar: var(--sidebar);
+  --color-sidebar-foreground: var(--sidebar-foreground);
+  --color-sidebar-primary: var(--sidebar-primary);
+  --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
+  --color-sidebar-accent: var(--sidebar-accent);
+  --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
+  --color-sidebar-border: var(--sidebar-border);
+  --color-sidebar-ring: var(--sidebar-ring);
+
+  --color-brand-green: var(--brand-green);
+  --color-brand-orange: var(--brand-orange);
+  --color-brand-green-text: var(--brand-green-text);
+  --color-brand-orange-text: var(--brand-orange-text);
+
+  --color-rate-excellent: var(--rate-excellent);
+  --color-rate-excellent-text: var(--rate-excellent-text);
+  --color-rate-good: var(--rate-good);
+  --color-rate-good-text: var(--rate-good-text);
+  --color-rate-medium: var(--rate-medium);
+  --color-rate-medium-text: var(--rate-medium-text);
+  --color-rate-low: var(--rate-low);
+  --color-rate-low-text: var(--rate-low-text);
+
+  --color-success: var(--success);
+  --color-success-soft: var(--success-soft);
+  --color-success-border: var(--success-border);
+  --color-warning: var(--warning);
+  --color-warning-soft: var(--warning-soft);
+  --color-warning-border: var(--warning-border);
+  --color-info: var(--info);
+  --color-info-soft: var(--info-soft);
+  --color-info-border: var(--info-border);
+  --color-danger: var(--danger);
+  --color-danger-soft: var(--danger-soft);
+  --color-danger-border: var(--danger-border);
+}
+
 @layer base {
+  * {
+    @apply border-border outline-ring/50;
+  }
+
   body {
-    font-family: var(--font-sans);
-    background: var(--surface-sunken);
-    color: var(--text-primary);
+    @apply bg-background text-foreground font-sans antialiased;
   }
 
-  .font-display {
-    font-family: var(--font-display);
+  h1,
+  h2,
+  h3 {
+    text-wrap: balance;
   }
 
-  /* Focus visible dans les deux thèmes — exigence a11y du design system */
+  /* Focus visible dans les deux thèmes — exigence d'accessibilité. */
   :focus-visible {
-    outline: 2px solid var(--color-rate-good);
+    outline: 2px solid var(--ring);
     outline-offset: 2px;
   }
 }
 
-@layer components {
-  /* ---------------------------------------------------------------------
-     Verre liquide. Effet de HIÉRARCHIE, pas de décoration.
-     Maximum 3 surfaces visibles simultanément (coût de backdrop-filter).
-     Jamais sur une zone de texte longue ni dans une liste virtualisée.
-     --------------------------------------------------------------------- */
-  .glass-1 {
-    background: var(--glass-1-bg);
-    backdrop-filter: blur(var(--glass-1-blur)) saturate(180%);
-    -webkit-backdrop-filter: blur(var(--glass-1-blur)) saturate(180%);
-    border: 1px solid var(--glass-1-border);
-    box-shadow: var(--glass-shadow);
-  }
-
-  .glass-2 {
-    background: var(--glass-2-bg);
-    backdrop-filter: blur(var(--glass-2-blur)) saturate(150%);
-    -webkit-backdrop-filter: blur(var(--glass-2-blur)) saturate(150%);
-    border: 1px solid var(--glass-2-border);
-    box-shadow: var(--glass-shadow);
-  }
-
-  /* Repli sans flou : mobile, transparence réduite, ou absence de support.
-     Le texte reste lisible dans tous les cas — la règle de contraste prime. */
-  @media (max-width: 767px), (prefers-reduced-transparency: reduce) {
-    .glass-1,
-    .glass-2 {
-      background: var(--surface-raised);
-      backdrop-filter: none;
-      -webkit-backdrop-filter: none;
-      border-color: var(--border-subtle);
-    }
-  }
-
-  @supports not (backdrop-filter: blur(1px)) {
-    .glass-1,
-    .glass-2 {
-      background: var(--surface-raised);
-    }
+@utility no-scrollbar {
+  scrollbar-width: none;
+  &::-webkit-scrollbar {
+    display: none;
   }
 }
 
 /* Barre de défilement discrète */
 ::-webkit-scrollbar {
-  width: 6px;
-  height: 6px;
+  width: 8px;
+  height: 8px;
 }
 ::-webkit-scrollbar-track {
   background: transparent;
 }
 ::-webkit-scrollbar-thumb {
-  background: var(--border-subtle);
+  background: var(--border);
   border-radius: 9999px;
 }
 ::-webkit-scrollbar-thumb:hover {
-  background: var(--text-muted);
+  background: var(--muted-foreground);
 }
 
-.no-scrollbar {
-  scrollbar-width: none;
-}
-.no-scrollbar::-webkit-scrollbar {
-  display: none;
-}
-
-/* Mouvement réduit : on ne garde que les changements d'opacité */
+/* Mouvement réduit : on ne garde que les changements d'opacité. */
 @media (prefers-reduced-motion: reduce) {
   *,
   *::before,
@@ -163,6 +287,7 @@
 @media print {
   header,
   footer,
+  nav,
   button,
   .no-print {
     display: none !important;

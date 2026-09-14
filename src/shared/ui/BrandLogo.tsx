@@ -1,76 +1,67 @@
-import React, { useState } from 'react';
+import { cn } from '@/shared/lib/utils';
+
+/**
+ * Identité Smart Creator : le croissant et le mot-symbole « SMART CREATOR »
+ * dans les deux couleurs du logo (vert #00C853, orange #F59E0B).
+ *
+ * Le logo est dessiné en SVG plutôt que chargé depuis une image : l'ancien
+ * fichier JPEG était vide et l'écran affichait en permanence son repli.
+ *
+ * Contraste : les couleurs du mot-symbole sont celles de la marque. Les
+ * logotypes sont exemptés du critère de contraste WCAG 1.4.3 ; l'attribut
+ * `data-brand-wordmark` permet de les écarter explicitement des audits.
+ */
+
+export function BrandMark({ className }: { className?: string }) {
+  return (
+    <svg viewBox="0 0 100 100" aria-hidden="true" className={cn('shrink-0', className)}>
+      <circle cx="50" cy="50" r="49" fill="#ffffff" stroke="#e0e5df" strokeWidth="2" />
+      <path d="M 50 10 A 40 40 0 1 0 78 78 A 34 34 0 1 1 50 16 Z" fill="#00c853" />
+      <path d="M 44 20 A 30 30 0 0 0 44 80 A 25 25 0 0 1 44 25 Z" fill="#0f172a" />
+      <path d="M 32 60 C 40 75 60 75 75 68 C 60 70 45 68 32 60 Z" fill="#00c853" />
+    </svg>
+  );
+}
 
 interface BrandLogoProps {
-  size?: 'sm' | 'md' | 'lg' | 'xl';
+  size?: 'sm' | 'md' | 'lg';
+  /** Masque le mot-symbole et ne garde que le croissant. */
   showText?: boolean;
+  /** Affiche « Veille stratégique & production e-commerce » sous le nom. */
+  showTagline?: boolean;
   className?: string;
 }
 
-export const BrandLogo: React.FC<BrandLogoProps> = ({
-  size = 'md',
-  showText = true,
-  className = '',
-}) => {
-  const [imageError, setImageError] = useState(false);
+const SIZES = {
+  sm: { mark: 'size-7', word: 'text-sm', gap: 'gap-2' },
+  md: { mark: 'size-9', word: 'text-base', gap: 'gap-2.5' },
+  lg: { mark: 'size-12', word: 'text-xl', gap: 'gap-3' },
+} as const;
 
-  // Dimension mapping
-  const sizeMap = {
-    sm: { img: 'w-7 h-7', textSmart: 'text-sm font-black', textLife: 'text-sm font-black', gap: 'gap-2' },
-    md: { img: 'w-10 h-10', textSmart: 'text-lg font-black', textLife: 'text-lg font-black', gap: 'gap-2.5' },
-    lg: { img: 'w-14 h-14', textSmart: 'text-2xl font-black', textLife: 'text-2xl font-black', gap: 'gap-3' },
-    xl: { img: 'w-20 h-20', textSmart: 'text-3xl font-black', textLife: 'text-3xl font-black', gap: 'gap-4' },
-  }[size];
+export function BrandLogo({ size = 'md', showText = true, showTagline = false, className }: BrandLogoProps) {
+  const s = SIZES[size];
 
   return (
-    <div className={`flex items-center ${sizeMap.gap} ${className}`}>
-      {/* Logo Graphic (Image with clean SVG fallback) */}
-      <div className={`relative ${sizeMap.img} shrink-0 rounded-full overflow-hidden bg-white shadow-xs border border-slate-200/60 flex items-center justify-center`}>
-        {!imageError ? (
-          <img
-            src="/smart-life-logo.jpg"
-            alt="Logo Smart Creator"
-            referrerPolicy="no-referrer"
-            onError={() => setImageError(true)}
-            className="w-full h-full object-cover"
-          />
-        ) : (
-          /* High precision SVG vector reproduction of the Smart Creator crescent logo */
-          <svg viewBox="0 0 100 100" className="w-full h-full">
-            {/* Outer Green Crescent */}
-            <path
-              d="M 50 10 A 40 40 0 1 0 78 78 A 34 34 0 1 1 50 16 Z"
-              fill="#00C853"
-            />
-            {/* Inner Black Arc */}
-            <path
-              d="M 44 20 A 30 30 0 0 0 44 80 A 25 25 0 0 1 44 25 Z"
-              fill="#0f172a"
-            />
-            {/* Lower Green Accent Flick */}
-            <path
-              d="M 32 60 C 40 75 60 75 75 68 C 60 70 45 68 32 60 Z"
-              fill="#00C853"
-            />
-          </svg>
-        )}
-      </div>
-
-      {/* Brand Text */}
-      {showText && (
-        <div className="flex flex-col leading-none tracking-tight">
-          <div className="flex items-center gap-1 font-display">
-            <span className={`${sizeMap.textSmart} text-[#00C853] tracking-wider`}>
-              SMART
-            </span>
-            <span className={`${sizeMap.textLife} text-[#F59E0B] tracking-wider`}>
-              LIFE
-            </span>
-          </div>
-          <span className="text-[9px] font-bold uppercase tracking-widest text-slate-400 font-mono mt-0.5">
-            Veille & Stratégie E-Com
+    <span className={cn('inline-flex items-center', s.gap, className)}>
+      <BrandMark className={s.mark} />
+      {showText ? (
+        <span className="flex min-w-0 flex-col leading-none">
+          <span
+            data-brand-wordmark=""
+            className={cn('font-display font-black tracking-wide whitespace-nowrap', s.word)}
+          >
+            <span className="text-brand-green">SMART</span>{' '}
+            <span className="text-brand-orange">CREATOR</span>
           </span>
-        </div>
+          {showTagline ? (
+            <span className="mt-1 truncate text-xs font-medium text-muted-foreground">
+              Veille stratégique &amp; production e-commerce
+            </span>
+          ) : null}
+        </span>
+      ) : (
+        <span className="sr-only">Smart Creator</span>
       )}
-    </div>
+    </span>
   );
-};
+}

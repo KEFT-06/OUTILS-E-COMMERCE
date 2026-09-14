@@ -1,49 +1,51 @@
-import React, { createContext, useContext, useState, useEffect } from 'react';
+import React, { createContext, useCallback, useContext, useEffect, useState } from 'react';
 
 type Theme = 'light' | 'dark';
-type Language = 'FR' | 'EN';
 
+/**
+ * Préférences d'affichage.
+ *
+ * L'interface est en français. Le bouton FR/EN a été retiré : il ne traduisait
+ * qu'une partie des écrans et laissait l'essentiel des modules en français.
+ * `t()` reste en place pour la traduction complète à venir.
+ */
 interface PreferencesContextType {
   theme: Theme;
+  setTheme: (theme: Theme) => void;
   toggleTheme: () => void;
-  language: Language;
-  toggleLanguage: () => void;
+  language: 'FR';
   t: (frStr: string, enStr: string) => string;
+}
+
+const THEME_KEY = 'smartcreator_theme';
+
+function readTheme(): Theme {
+  try {
+    return localStorage.getItem(THEME_KEY) === 'dark' ? 'dark' : 'light';
+  } catch {
+    return 'light';
+  }
 }
 
 const PreferencesContext = createContext<PreferencesContextType | undefined>(undefined);
 
 export const PreferencesProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  const [theme, setTheme] = useState<Theme>(() => {
-    return (localStorage.getItem('smartcreator_theme') as Theme) || 'light';
-  });
-  
-  const [language, setLanguage] = useState<Language>(() => {
-    return (localStorage.getItem('smartcreator_lang') as Language) || 'FR';
-  });
+  const [theme, setTheme] = useState<Theme>(readTheme);
 
   useEffect(() => {
-    if (theme === 'dark') {
-      document.documentElement.classList.add('dark');
-    } else {
-      document.documentElement.classList.remove('dark');
+    document.documentElement.classList.toggle('dark', theme === 'dark');
+    try {
+      localStorage.setItem(THEME_KEY, theme);
+    } catch {
+      // Stockage indisponible : le choix vaut pour la session.
     }
-    localStorage.setItem('smartcreator_theme', theme);
   }, [theme]);
 
-  useEffect(() => {
-    localStorage.setItem('smartcreator_lang', language);
-  }, [language]);
-
-  const toggleTheme = () => setTheme(t => t === 'light' ? 'dark' : 'light');
-  const toggleLanguage = () => setLanguage(l => l === 'FR' ? 'EN' : 'FR');
-
-  const t = (frStr: string, enStr: string) => {
-    return language === 'EN' ? enStr : frStr;
-  };
+  const toggleTheme = useCallback(() => setTheme((current) => (current === 'light' ? 'dark' : 'light')), []);
+  const t = useCallback((frStr: string, _enStr: string) => frStr, []);
 
   return (
-    <PreferencesContext.Provider value={{ theme, toggleTheme, language, toggleLanguage, t }}>
+    <PreferencesContext.Provider value={{ theme, setTheme, toggleTheme, language: 'FR', t }}>
       {children}
     </PreferencesContext.Provider>
   );
@@ -52,7 +54,7 @@ export const PreferencesProvider: React.FC<{ children: React.ReactNode }> = ({ c
 export const usePreferences = () => {
   const context = useContext(PreferencesContext);
   if (context === undefined) {
-    throw new Error('usePreferences must be used within a PreferencesProvider');
+    throw new Error('usePreferences doit être utilisé dans un PreferencesProvider');
   }
   return context;
 };

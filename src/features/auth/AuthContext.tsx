@@ -1,133 +1,150 @@
-import React, { createContext, useContext, useState, useEffect } from 'react';
-import { UserProfile, AppViewMode } from '@/shared/types/auth';
+import React, { createContext, useCallback, useContext, useEffect, useState } from 'react';
+import type { PlanId, UserProfile } from '@/shared/types/auth';
+import { planOf } from '@/shared/lib/plans';
+
+/**
+ * Session locale.
+ *
+ * Il n'existe pas encore d'authentification serveur : le profil vit dans ce
+ * navigateur et aucun mot de passe n'est vérifié. L'écran de connexion le dit.
+ *
+ * Plus aucun profil n'est ouvert par défaut. L'ancienne version connectait tout
+ * visiteur au nom et à l'adresse e-mail du fondateur, avec la photo d'une autre
+ * personne. La démonstration utilise désormais un compte fictif, nommé comme tel.
+ */
 
 interface AuthContextType {
   user: UserProfile | null;
   isAuthenticated: boolean;
-  viewMode: AppViewMode;
-  setViewMode: (mode: AppViewMode) => void;
-  login: (email: string, password?: string) => Promise<boolean>;
-  signup: (name: string, email: string, password?: string) => Promise<boolean>;
+  login: (email: string) => void;
+  signup: (name: string, email: string) => void;
+  loginDemo: () => void;
   logout: () => void;
-  updateProfile: (updates: Partial<UserProfile>) => void;
+  updateProfile: (updates: Partial<Pick<UserProfile, 'name' | 'savedNiches'>>) => void;
   /**
-   * Débite des research points. Passe par une mise à jour fonctionnelle plutôt
-   * que par `updateProfile` : deux débits rapprochés calculés depuis une même
-   * lecture du solde en perdraient un.
+   * Débite des points de recherche. Passe par une mise à jour fonctionnelle :
+   * deux débits rapprochés calculés depuis une même lecture du solde en
+   * perdraient un.
    */
   consumeCredits: (points: number) => void;
 }
 
-const DEFAULT_USER: UserProfile = {
-  id: 'usr_smartcreator_8892',
-  name: 'Karl Foko',
-  email: 'karlfoko01@gmail.com',
-  avatar: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=256&q=80',
-  role: 'Stratège E-Commerce & Créateur',
-  plan: 'Pro',
-  joinedDate: 'Février 2025',
-  apiSearchesUsed: 38,
-  apiSearchesLimit: 100,
-  savedNiches: [
-    'Templates Notion Productivité pour Solopreneurs',
-    'Packs de Prompts IA & Midjourney pour Designers',
-    'Automatisation No-Code & N8N pour Agences',
-  ],
-};
+const STORAGE_KEY = 'smartcreator_user';
+
+const PLAN_IDS: readonly PlanId[] = ['Gratuit', 'Plus', 'Pro', 'Max', 'Elite Enterprise'];
+
+function isUserProfile(value: unknown): value is UserProfile {
+  if (!value || typeof value !== 'object') return false;
+  const v = value as Record<string, unknown>;
+  return (
+    typeof v.id === 'string' &&
+    typeof v.name === 'string' &&
+    typeof v.email === 'string' &&
+    typeof v.role === 'string' &&
+    typeof v.plan === 'string' &&
+    PLAN_IDS.includes(v.plan as PlanId) &&
+    typeof v.isDemo === 'boolean' &&
+    typeof v.joinedAt === 'string' &&
+    typeof v.apiSearchesUsed === 'number' &&
+    typeof v.apiSearchesLimit === 'number' &&
+    Array.isArray(v.savedNiches) &&
+    v.savedNiches.every((niche) => typeof niche === 'string')
+  );
+}
+
+function readStoredUser(): UserProfile | null {
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY);
+    if (!raw) return null;
+    const parsed: unknown = JSON.parse(raw);
+    if (isUserProfile(parsed)) return parsed;
+    // Profil d'une ancienne version ou corrompu : on repart d'une session vide.
+    localStorage.removeItem(STORAGE_KEY);
+    return null;
+  } catch {
+    return null;
+  }
+}
+
+function newId(): string {
+  return typeof crypto !== 'undefined' && 'randomUUID' in crypto
+    ? crypto.randomUUID()
+    : `usr_${Date.now().toString(36)}`;
+}
+
+function createProfile(name: string, email: string, plan: PlanId, isDemo: boolean): UserProfile {
+  return {
+    id: newId(),
+    name,
+    email,
+    role: 'Créateur digital',
+    plan,
+    isDemo,
+    joinedAt: new Date().toISOString(),
+    apiSearchesUsed: 0,
+    apiSearchesLimit: planOf(plan).monthlyPoints ?? 0,
+    savedNiches: [],
+  };
+}
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  const [user, setUser] = useState<UserProfile | null>(() => {
-    const saved = localStorage.getItem('smartcreator_user');
-    if (saved) {
-      try {
-        return JSON.parse(saved);
-      } catch {
-        return DEFAULT_USER;
-      }
-    }
-    return DEFAULT_USER; // Logged in by default with Karl's profile for instant utility
-  });
-
-  const [viewMode, setViewMode] = useState<AppViewMode>(() => {
-    const savedView = localStorage.getItem('smartcreator_viewmode') as AppViewMode;
-    return savedView || 'app';
-  });
+  const [user, setUser] = useState<UserProfile | null>(readStoredUser);
 
   useEffect(() => {
-    if (user) {
-      localStorage.setItem('smartcreator_user', JSON.stringify(user));
-    } else {
-      localStorage.removeItem('smartcreator_user');
+    try {
+      if (user) localStorage.setItem(STORAGE_KEY, JSON.stringify(user));
+      else localStorage.removeItem(STORAGE_KEY);
+    } catch {
+      // Stockage indisponible (navigation privée) : la session reste en mémoire.
     }
   }, [user]);
 
-  useEffect(() => {
-    localStorage.setItem('smartcreator_viewmode', viewMode);
-  }, [viewMode]);
+  const login = useCallback((email: string) => {
+    const clean = email.trim().toLowerCase();
+    setUser(createProfile(clean.split('@')[0] || 'Créateur', clean, 'Gratuit', false));
+  }, []);
 
-  const login = async (email: string, _password?: string): Promise<boolean> => {
-    // Simulate authentication
-    const loggedUser: UserProfile = {
-      ...DEFAULT_USER,
-      email: email || DEFAULT_USER.email,
-      name: email ? email.split('@')[0] : DEFAULT_USER.name,
-    };
-    setUser(loggedUser);
-    setViewMode('app');
-    return true;
-  };
+  const signup = useCallback((name: string, email: string) => {
+    setUser(createProfile(name.trim() || 'Créateur', email.trim().toLowerCase(), 'Gratuit', false));
+  }, []);
 
-  const signup = async (name: string, email: string, _password?: string): Promise<boolean> => {
-    const newUser: UserProfile = {
-      id: `usr_${Date.now()}`,
-      name: name || 'Nouveau Membre',
-      email: email || 'user@smartcreator.io',
-      avatar: 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?auto=format&fit=crop&w=256&q=80',
-      role: 'Créateur Digital',
-      plan: 'Pro',
-      joinedDate: new Date().toLocaleDateString('fr-FR', { month: 'long', year: 'numeric' }),
-      apiSearchesUsed: 1,
-      apiSearchesLimit: 100,
-      savedNiches: ['Templates Notion Productivité'],
-    };
-    setUser(newUser);
-    setViewMode('app');
-    return true;
-  };
-
-  const logout = () => {
-    setUser(null);
-    setViewMode('landing');
-  };
-
-  const updateProfile = (updates: Partial<UserProfile>) => {
-    if (!user) return;
-    setUser((prev) => (prev ? { ...prev, ...updates } : null));
-  };
-
-  const consumeCredits = (points: number) => {
-    setUser((prev) => {
-      if (!prev) return null;
-      return {
-        ...prev,
-        // Plafonné à la limite : le solde ne devient jamais négatif, même si
-        // deux actions passent le contrôle en parallèle.
-        apiSearchesUsed: Math.min(prev.apiSearchesLimit, prev.apiSearchesUsed + points),
-      };
+  const loginDemo = useCallback(() => {
+    setUser({
+      ...createProfile('Compte démo', '', 'Pro', true),
+      apiSearchesUsed: 22,
+      savedNiches: [
+        'Templates Notion productivité pour solopreneurs',
+        'Packs de prompts IA pour designers',
+        'Automatisation no-code pour agences',
+      ],
     });
-  };
+  }, []);
+
+  const logout = useCallback(() => setUser(null), []);
+
+  const updateProfile = useCallback((updates: Partial<Pick<UserProfile, 'name' | 'savedNiches'>>) => {
+    setUser((current) => (current ? { ...current, ...updates } : current));
+  }, []);
+
+  const consumeCredits = useCallback((points: number) => {
+    if (points <= 0) return;
+    setUser((current) =>
+      current
+        ? { ...current, apiSearchesUsed: Math.min(current.apiSearchesLimit, current.apiSearchesUsed + points) }
+        : current,
+    );
+  }, []);
 
   return (
     <AuthContext.Provider
       value={{
         user,
-        isAuthenticated: !!user,
-        viewMode,
-        setViewMode,
+        isAuthenticated: user !== null,
         login,
         signup,
+        loginDemo,
         logout,
         updateProfile,
         consumeCredits,
@@ -140,8 +157,18 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
 export const useAuth = () => {
   const context = useContext(AuthContext);
-  if (!context) {
-    throw new Error('useAuth must be used within an AuthProvider');
+  if (context === undefined) {
+    throw new Error('useAuth doit être utilisé dans un AuthProvider');
   }
   return context;
 };
+
+/** Initiales affichées à la place d'une photo de profil. */
+export function initialsOf(name: string): string {
+  const parts = name.trim().split(/\s+/).filter(Boolean);
+  if (parts.length === 0) return 'SC';
+  return parts
+    .slice(0, 2)
+    .map((part) => part[0]!.toUpperCase())
+    .join('');
+}
