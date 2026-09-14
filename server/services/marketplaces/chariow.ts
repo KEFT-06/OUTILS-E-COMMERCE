@@ -107,6 +107,12 @@ function chariowFailure(status: number): AppError {
   if (status === 401 || status === 403) {
     return new AppError(503, "L'accès à Chariow est refusé : clé API invalide sur le serveur.", 'CHARIOW_ACCESS_DENIED');
   }
+  if (status === 404) {
+    return new AppError(404, 'Ressource introuvable chez Chariow.', 'CHARIOW_NOT_FOUND');
+  }
+  if (status === 422) {
+    return new AppError(400, 'Chariow a refusé la demande : données invalides.', 'CHARIOW_VALIDATION_ERROR');
+  }
   if (status === 429) {
     return new AppError(
       429,
@@ -117,25 +123,48 @@ function chariowFailure(status: number): AppError {
   return new AppError(502, 'Chariow est momentanément indisponible.', 'CHARIOW_UNAVAILABLE');
 }
 
-async function getPage(path: string, query: Record<string, string>): Promise<unknown> {
+/** Appel authentifié à l'API Chariow, partagé par le catalogue, les ventes et l'affiliation. */
+export async function chariowRequest(
+  path: string,
+  options: { method?: 'GET' | 'POST'; query?: Record<string, string>; body?: unknown } = {},
+): Promise<unknown> {
   const apiKey = env.CHARIOW_API_KEY;
   if (!apiKey) throw providerUnavailable('Chariow');
 
   const url = new URL(`${BASE_URL}${path}`);
-  Object.entries(query).forEach(([key, value]) => url.searchParams.set(key, value));
+  Object.entries(options.query ?? {}).forEach(([key, value]) => url.searchParams.set(key, value));
 
+  const hasBody = options.body !== undefined;
   let response: Response;
   try {
     response = await fetch(url, {
-      headers: { Authorization: `Bearer ${apiKey}`, Accept: 'application/json' },
+      method: options.method ?? 'GET',
+      headers: {
+        Authorization: `Bearer ${apiKey}`,
+        Accept: 'application/json',
+        ...(hasBody ? { 'Content-Type': 'application/json' } : {}),
+      },
+      ...(hasBody ? { body: JSON.stringify(options.body) } : {}),
       signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
     });
   } catch {
-    throw new AppError(502, 'Chariow est injoignable.', 'CHARIOW_UNREACHABLE');
+    // Après un délai dépassé sur un envoi, on ne sait pas s'il a eu lieu : le
+    // relancer pourrait envoyer deux fois les mêmes e-mails.
+    throw options.method === 'POST'
+      ? new AppError(
+          504,
+          "Chariow n'a pas répondu à temps : l'envoi a peut-être eu lieu, ne le relancez pas immédiatement.",
+          'CHARIOW_SUBMISSION_UNCERTAIN',
+        )
+      : new AppError(502, 'Chariow est injoignable.', 'CHARIOW_UNREACHABLE');
   }
 
   if (!response.ok) throw chariowFailure(response.status);
   return response.json();
+}
+
+function getPage(path: string, query: Record<string, string>): Promise<unknown> {
+  return chariowRequest(path, { query });
 }
 
 /** Parcourt une liste paginée par curseur, dans la limite de `MAX_PAGES`. */

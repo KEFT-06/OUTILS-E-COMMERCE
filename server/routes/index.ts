@@ -54,6 +54,12 @@ import {
 } from '@server/services/marketplaces';
 import { BlueprintsUnavailableError, getCampaignBlueprints } from '@server/services/blueprints';
 import { LaunchKitUnavailableError, getLaunchKitConfig } from '@server/services/launchKit';
+import {
+  affiliateCodeSchema,
+  getChariowAffiliate,
+  invitationSchema,
+  sendChariowInvitations,
+} from '@server/services/affiliation';
 
 export const api = Router();
 
@@ -525,6 +531,40 @@ api.get(
       }
       throw error;
     }
+  }),
+);
+
+/* -------------------------------------------------------------------------- */
+/*  Affiliation via Chariow (Lot 6)                                            */
+/* -------------------------------------------------------------------------- */
+
+api.get(
+  '/affiliation/chariow/affiliates/:code',
+  asyncRoute(async (req, res) => {
+    const parsed = affiliateCodeSchema.safeParse(req.params.code);
+    if (!parsed.success) {
+      throw new AppError(400, "Code d'affilié invalide.", 'INVALID_AFFILIATE_CODE');
+    }
+    if (!providers.chariow) throw providerUnavailable('Chariow');
+
+    res.json(await getChariowAffiliate(parsed.data));
+  }),
+);
+
+/**
+ * Invitations d'affiliés : Chariow envoie de vrais e-mails, immédiatement.
+ * Consentement explicite exigé et limiteur strict : cette route ne doit pouvoir
+ * être appelée ni par erreur, ni en boucle.
+ */
+api.post(
+  '/affiliation/chariow/invitations',
+  aiLimiter,
+  validateBody(invitationSchema),
+  asyncRoute(async (req, res) => {
+    if (!providers.chariow) throw providerUnavailable('Chariow');
+
+    const { emails } = req.body as z.infer<typeof invitationSchema>;
+    res.status(201).json(await sendChariowInvitations(emails));
   }),
 );
 

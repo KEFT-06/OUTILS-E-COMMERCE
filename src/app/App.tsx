@@ -13,6 +13,7 @@ import { DistributionView } from '@/modules/m06-distribution/DistributionView';
 import { CampaignBlueprintsView } from '@/modules/m11-campagnes/CampaignBlueprintsView';
 import { ProductPageBuilderView } from '@/modules/m09-pages/ProductPageBuilderView';
 import { LaunchKitView } from '@/modules/m05-kit-lancement/LaunchKitView';
+import { AffiliationView } from '@/modules/m07-affiliation/AffiliationView';
 import { CockpitDashboard } from '@/modules/cockpit/CockpitDashboard';
 import { PlaceholderModuleView } from '@/shared/ui/PlaceholderModuleView';
 import { LandingPage } from '@/features/landing/LandingPage';
@@ -231,13 +232,9 @@ function NexusVeilleWorkspace() {
         {activeStrategicTab === 'distribution' && <DistributionView />}
 
         {/* TAB 07: Programme d'Affiliation */}
-        {activeStrategicTab === 'affiliation' && (
-          <PlaceholderModuleView
-            moduleNumber="07"
-            title="Programme d'Affiliation"
-            description="Tableau de bord pour la gestion des affiliés, création de liens uniques UTM, suivi des clics et calcul automatique des commissions."
-          />
-        )}
+        {/* L'ancien placeholder promettait un « calcul automatique des commissions » :
+            Chariow les calcule, Smart Creator affiche le total qu'il publie. */}
+        {activeStrategicTab === 'affiliation' && <AffiliationView />}
 
         {/* TAB 08: Storybook Africain */}
         {/* L'ancien placeholder promettait une « garantie de cohérence des personnages » :

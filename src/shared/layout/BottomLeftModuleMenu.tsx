@@ -53,7 +53,7 @@ const MODULES: readonly ModuleEntry[] = [
   { id: 'meta_ads', num: '04', fr: 'Créatifs Publicitaires', en: 'Ad Creatives', descFr: 'Scripts vidéo AIDA et PAS', descEn: 'AIDA and PAS video scripts', icon: Clapperboard, ready: true },
   { id: 'kit_lancement', num: '05', fr: 'Kit de Lancement', en: 'Launch Kit', descFr: 'Copie publicitaire et pages de vente', descEn: 'Ad copy and sales pages', icon: Rocket, ready: true },
   { id: 'distribution', num: '06', fr: 'Distribution', en: 'Distribution', descFr: 'Connecteurs marketplace', descEn: 'Marketplace connectors', icon: Store, ready: true },
-  { id: 'affiliation', num: '07', fr: 'Affiliation', en: 'Affiliate Program', descFr: 'Liens UTM et commissions', descEn: 'UTM links and commissions', icon: Users, ready: false },
+  { id: 'affiliation', num: '07', fr: 'Affiliation', en: 'Affiliate Program', descFr: 'Liens UTM et commissions', descEn: 'UTM links and commissions', icon: Users, ready: true },
   { id: 'storybook', num: '08', fr: 'Storybook Africain', en: 'African Storybook', descFr: 'Contes illustrés ancrés culturellement', descEn: 'Culturally grounded illustrated tales', icon: BookOpen, ready: true },
   { id: 'pages_produits', num: '09', fr: 'Pages Produits', en: 'Product Pages', descFr: 'Pages orientées conversion', descEn: 'Conversion-oriented pages', icon: LayoutTemplate, ready: true },
   { id: 'multilingue', num: '10', fr: 'Guides Multilingues', en: 'Multilingual Guides', descFr: 'Tiers A, B et C avec relecteurs natifs', descEn: 'Tiers A, B and C with native reviewers', icon: Languages, ready: false },
