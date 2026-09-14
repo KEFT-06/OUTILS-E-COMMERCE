@@ -1,6 +1,5 @@
 import React from 'react';
 import {
-  TrendingUp,
   Zap,
   CreditCard,
   Target,
@@ -12,6 +11,7 @@ import { usePreferences } from '@/app/providers/PreferencesContext';
 import { useAuth } from '@/features/auth/AuthContext';
 import { useCreditGate } from '@/app/providers/CreditGateProvider';
 import { NoDataState } from '@/shared/ui/NoDataState';
+import { SalesSummaryCard } from '@/shared/ui/SalesSummaryCard';
 
 interface CockpitDashboardProps {
   report: MarketAnalysisReport;
@@ -121,35 +121,15 @@ export const CockpitDashboard: React.FC<CockpitDashboardProps> = ({
           </div>
         </div>
 
-        {/* Module 2: Boucle de performance — en attente d'une source de ventes réelles (CdC §26) */}
+        {/* Module 2: Boucle de performance — ventes réelles des marketplaces connectées (feuille de route 5.2) */}
         <div className="col-span-1 md:col-span-8 bg-white rounded-3xl border border-slate-200/80 shadow-[0_8px_30px_rgb(0,0,0,0.04)] p-6">
-          <div className="flex items-center justify-between mb-6">
-            <div className="flex items-center gap-2">
-              <div className="w-8 h-8 rounded-lg bg-emerald-50 text-emerald-600 flex items-center justify-center">
-                <TrendingUp className="w-4 h-4" />
-              </div>
-              <div>
-                <h2 className="text-sm font-bold text-slate-900">Performance des Ventes</h2>
-                <p className="text-[10px] text-slate-500 font-semibold uppercase tracking-wider">
-                  Aucune boutique connectée
-                </p>
-              </div>
-            </div>
-          </div>
-
           {/*
-            Ce bloc affichait 485k FCFA de revenus, 124 ventes et un ROI de 3,2x
-            sous le libellé « Performance Réelle », attribués à une agrégation
-            Maketou & Taliopay. Ces chiffres étaient inventés, et aucun de ces
-            deux services ne publie d'API permettant de les obtenir (CdC §6.6).
-            Tant qu'un connecteur ne renvoie pas de vraies ventes, on n'affiche rien.
+            Ce bloc affichait autrefois 485k FCFA de revenus, 124 ventes et un ROI
+            de 3,2x, inventés et attribués à Maketou & Taliopay. Il n'affiche plus
+            que des ventes remontées par un connecteur, ou l'aveu qu'aucun n'est
+            branché. Plus de ROI : aucune source ne fournit les dépenses publicitaires.
           */}
-          <NoDataState
-            title="Vos ventes s'afficheront ici"
-            reason="Aucune boutique n'est encore reliée à votre compte. Ce tableau restera vide tant qu'une source de ventes réelles ne sera pas connectée — nous préférons ne rien afficher plutôt qu'une estimation."
-            milestone="Lot 5 — connecteurs marketplace"
-            action={{ label: 'Voir les modules disponibles', onClick: () => onNavigateToModule('radar') }}
-          />
+          <SalesSummaryCard />
         </div>
 
         {/* Module 3: Radar & Marchés Suivis */}

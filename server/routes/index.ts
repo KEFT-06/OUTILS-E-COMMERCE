@@ -47,6 +47,12 @@ import {
   visualBriefSchema,
 } from '@server/services/creatives';
 import { requestIdSchema } from '@server/services/higgsfield';
+import {
+  availableMarketplaces,
+  getMarketplace,
+  listMarketplaces,
+} from '@server/services/marketplaces';
+import { BlueprintsUnavailableError, getCampaignBlueprints } from '@server/services/blueprints';
 
 export const api = Router();
 
@@ -425,6 +431,80 @@ api.get(
 
     const disposition = req.query.disposition === 'attachment' ? 'attachment' : 'inline';
     await streamCreativeFile(requestId, disposition, res);
+  }),
+);
+
+/* -------------------------------------------------------------------------- */
+/*  Distribution : connecteurs marketplace (feuille de route 5.2)              */
+/* -------------------------------------------------------------------------- */
+
+/** Connecteurs, disponibilité et capacités déclarées — y compris ceux qui ne peuvent pas exister. */
+api.get('/marketplaces', (_req, res) => {
+  res.json({ marketplaces: listMarketplaces() });
+});
+
+const salesPeriodSchema = z.coerce.number().int().min(1).max(365).catch(30);
+
+/**
+ * Ventes encaissées sur les N derniers jours, pour chaque marketplace disponible.
+ * Agrégats seulement : aucune donnée client ne quitte le serveur.
+ */
+api.get(
+  '/marketplaces/sales-summary',
+  asyncRoute(async (req, res) => {
+    const days = salesPeriodSchema.parse(req.query.days);
+    const sources = availableMarketplaces().filter((adapter) => adapter.capabilities.readSales);
+
+    if (sources.length === 0) {
+      throw new AppError(
+        503,
+        "Aucune marketplace capable de remonter des ventes n'est connectée.",
+        'NO_SALES_SOURCE',
+      );
+    }
+
+    const to = new Date();
+    const from = new Date(to.getTime() - (days - 1) * 86_400_000);
+    const range = { from: from.toISOString().slice(0, 10), to: to.toISOString().slice(0, 10) };
+
+    const summaries = await Promise.all(sources.map((adapter) => adapter.salesSummary(range)));
+    res.json({ days, range, summaries });
+  }),
+);
+
+api.get(
+  '/marketplaces/:marketplaceId/products',
+  asyncRoute(async (req, res) => {
+    const adapter = getMarketplace(req.params.marketplaceId);
+
+    const availability = adapter.isAvailable();
+    if (!availability.available) {
+      throw new AppError(503, availability.reason, 'MARKETPLACE_NOT_AVAILABLE');
+    }
+    if (!adapter.capabilities.readProducts) {
+      throw new AppError(501, `${adapter.label} ne permet pas d'importer son catalogue.`, 'MARKETPLACE_CAPABILITY_MISSING');
+    }
+
+    res.json({ marketplace: adapter.id, ...(await adapter.listProducts()) });
+  }),
+);
+
+/* -------------------------------------------------------------------------- */
+/*  Structures de campagnes Meta et TikTok (feuille de route 5.4)              */
+/* -------------------------------------------------------------------------- */
+
+api.get(
+  '/campaigns/blueprints',
+  asyncRoute(async (_req, res) => {
+    try {
+      res.json(await getCampaignBlueprints());
+    } catch (error) {
+      if (error instanceof BlueprintsUnavailableError) {
+        console.error('[campagnes] table illisible :', error.configPath, error.cause);
+        throw new AppError(503, error.message, 'BLUEPRINTS_UNAVAILABLE');
+      }
+      throw error;
+    }
   }),
 );
 

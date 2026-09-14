@@ -62,6 +62,18 @@ const schema = z.object({
   /** Paramètres et corpus du vérificateur d'originalité (feuille de route 3.2). */
   ORIGINALITY_PATH: z.string().optional(),
 
+  /** Structures de campagnes Meta et TikTok (feuille de route 5.4). */
+  CAMPAIGN_BLUEPRINTS_PATH: z.string().optional(),
+
+  /**
+   * Clé API Chariow (connecteur marketplace, feuille de route 5.2), créée dans
+   * app.chariow.com → Paramètres → Clés API. Serveur uniquement : la
+   * documentation Chariow interdit de l'exposer au navigateur.
+   */
+  CHARIOW_API_KEY: z.string().min(1).optional(),
+  /** Surchargeable pour tester le connecteur contre un serveur factice. */
+  CHARIOW_API_URL: z.string().url().default('https://api.chariow.com/v1'),
+
   /**
    * Source d'ingestion publicitaire active : « meta » (défaut) ou « fixture ».
    *
@@ -95,6 +107,7 @@ export const providers = {
   higgsfield: Boolean(env.HIGGSFIELD_API_KEY_ID && env.HIGGSFIELD_API_KEY_SECRET),
   gamma: Boolean(env.GAMMA_API_KEY),
   meta: Boolean(env.META_ACCESS_TOKEN),
+  chariow: Boolean(env.CHARIOW_API_KEY),
 } as const;
 
 /**

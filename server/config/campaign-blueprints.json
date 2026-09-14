@@ -1,0 +1,139 @@
+{
+  "version": "2026.09.1",
+  "updatedAt": "2026-09-14",
+  "note": "Structures de campagnes Meta et TikTok (feuille de route 5.4), éditables sans redéploiement. Les noms d'objectifs reprennent la nomenclature officielle des gestionnaires de publicités, vérifiée le 14 septembre 2026 sur les pages d'aide citées. Les descriptions des objectifs sont des reformulations, pas des citations.",
+  "valuesStatus": "PROVISOIRE — répartitions de budget, durées et règles de pilotage par défaut, non issues de données de performance. À calibrer avec la boucle de performance (Lot 6).",
+  "platforms": [
+    {
+      "id": "meta",
+      "label": "Meta (Facebook et Instagram)",
+      "objectivesSource": "https://www.facebook.com/business/help/1438417719786914",
+      "objectivesCheckedAt": "2026-09-14",
+      "objectives": [
+        { "id": "awareness", "officialName": "Awareness", "purpose": "Faire connaître la marque auprès des personnes les plus susceptibles de s'en souvenir." },
+        { "id": "traffic", "officialName": "Traffic", "purpose": "Envoyer des personnes vers une destination : site, application ou conversation." },
+        { "id": "engagement", "officialName": "Engagement", "purpose": "Obtenir des messages, des vues de vidéo ou des interactions avec les publications." },
+        { "id": "leads", "officialName": "Leads", "purpose": "Recueillir les coordonnées de prospects intéressés." },
+        { "id": "app_promotion", "officialName": "App promotion", "purpose": "Faire installer ou utiliser une application." },
+        { "id": "sales", "officialName": "Sales", "purpose": "Trouver des personnes susceptibles d'acheter le produit." }
+      ]
+    },
+    {
+      "id": "tiktok",
+      "label": "TikTok",
+      "objectivesSource": "https://ads.tiktok.com/help/article/choose-right-objective",
+      "objectivesCheckedAt": "2026-09-14",
+      "objectives": [
+        { "id": "reach", "officialName": "Reach", "category": "Awareness", "purpose": "Montrer la publicité au plus grand nombre de personnes." },
+        { "id": "traffic", "officialName": "Traffic", "category": "Consideration", "purpose": "Envoyer des personnes vers une page du site ou de l'application." },
+        { "id": "video_views", "officialName": "Video views", "category": "Consideration", "purpose": "Obtenir des vues auprès du public le plus attentif aux vidéos." },
+        { "id": "lead_generation", "officialName": "Lead generation", "category": "Consideration", "purpose": "Permettre aux clients de laisser leurs coordonnées directement sur TikTok." },
+        { "id": "sales", "officialName": "Sales", "category": "Conversion", "purpose": "Faire acheter ; regroupe les anciens objectifs Website conversions et Product sales." }
+      ]
+    }
+  ],
+  "blueprints": [
+    {
+      "id": "meta-lancement-produit-digital",
+      "platform": "meta",
+      "name": "Lancement d'un produit digital",
+      "summary": "Tester plusieurs créatifs sur une audience large, concentrer le budget sur ceux qui vendent, puis relancer les visiteurs qui n'ont pas acheté.",
+      "prerequisites": [
+        "Pixel Meta ou API Conversions installés sur la page de paiement, pour optimiser vers les ventes.",
+        "Au moins trois créatifs distincts, chacun sur un angle différent."
+      ],
+      "phases": [
+        {
+          "id": "test",
+          "name": "Test des créatifs",
+          "objectiveId": "sales",
+          "fallbackObjectiveId": "traffic",
+          "fallbackCondition": "Sans suivi des conversions sur la page de paiement.",
+          "durationDays": 7,
+          "budgetSharePercent": 30,
+          "structure": { "campaigns": 1, "adSets": 1, "adsPerAdSet": 3 },
+          "guidance": "Un seul ensemble de publicités à audience large : en phase de test, ce sont les créatifs qu'on compare, pas les audiences.",
+          "rules": [
+            { "kind": "cut", "description": "Couper une publicité qui a dépensé ce montant sans aucune vente.", "cpaMultiplier": 2 }
+          ]
+        },
+        {
+          "id": "scale",
+          "name": "Montée en charge",
+          "objectiveId": "sales",
+          "durationDays": 21,
+          "budgetSharePercent": 60,
+          "structure": { "campaigns": 1, "adSets": 1, "adsPerAdSet": 2 },
+          "guidance": "Ne garder que les créatifs qui vendent sous le coût d'acquisition cible.",
+          "rules": [
+            { "kind": "scale", "description": "Augmenter le budget par paliers modérés, espacés de quelques jours, tant que le coût d'acquisition reste sous la cible." },
+            { "kind": "cut", "description": "Réduire le budget si le coût d'acquisition dépasse durablement ce montant.", "cpaMultiplier": 1.5 }
+          ]
+        },
+        {
+          "id": "retargeting",
+          "name": "Relance des visiteurs",
+          "objectiveId": "sales",
+          "durationDays": 21,
+          "budgetSharePercent": 10,
+          "structure": { "campaigns": 1, "adSets": 1, "adsPerAdSet": 2 },
+          "guidance": "Audience personnalisée : visiteurs de la page de vente qui n'ont pas acheté. Un message différent de la première exposition.",
+          "rules": [
+            { "kind": "watch", "description": "Surveiller la répétition : une même personne exposée trop souvent au même créatif finit par l'ignorer." }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "tiktok-lancement-produit-digital",
+      "platform": "tiktok",
+      "name": "Lancement d'un produit digital",
+      "summary": "Repérer les vidéos qui retiennent l'attention, les tester en vente, puis investir sur celles qui convertissent.",
+      "prerequisites": [
+        "Pixel TikTok ou API Événements installés sur la page de paiement, pour optimiser vers les ventes.",
+        "Au moins quatre vidéos verticales 9:16 distinctes."
+      ],
+      "phases": [
+        {
+          "id": "attention",
+          "name": "Amorçage vidéo",
+          "objectiveId": "video_views",
+          "durationDays": 5,
+          "budgetSharePercent": 20,
+          "structure": { "campaigns": 1, "adSets": 1, "adsPerAdSet": 4 },
+          "guidance": "Identifier les vidéos que le public regarde jusqu'au bout avant d'engager le budget de vente.",
+          "rules": [
+            { "kind": "watch", "description": "Écarter les vidéos nettement moins regardées jusqu'au bout que les autres." }
+          ]
+        },
+        {
+          "id": "test",
+          "name": "Test des ventes",
+          "objectiveId": "sales",
+          "fallbackObjectiveId": "traffic",
+          "fallbackCondition": "Sans suivi des conversions sur la page de paiement.",
+          "durationDays": 7,
+          "budgetSharePercent": 30,
+          "structure": { "campaigns": 1, "adSets": 1, "adsPerAdSet": 3 },
+          "guidance": "Reprendre les vidéos retenues à la phase précédente, sur une audience large.",
+          "rules": [
+            { "kind": "cut", "description": "Couper une vidéo qui a dépensé ce montant sans aucune vente.", "cpaMultiplier": 2 }
+          ]
+        },
+        {
+          "id": "scale",
+          "name": "Montée en charge",
+          "objectiveId": "sales",
+          "durationDays": 21,
+          "budgetSharePercent": 50,
+          "structure": { "campaigns": 1, "adSets": 1, "adsPerAdSet": 2 },
+          "guidance": "Concentrer le budget sur les vidéos qui vendent et renouveler les créatifs avant qu'ils ne s'usent.",
+          "rules": [
+            { "kind": "scale", "description": "Augmenter le budget par paliers modérés, espacés de quelques jours, tant que le coût d'acquisition reste sous la cible." },
+            { "kind": "cut", "description": "Réduire le budget si le coût d'acquisition dépasse durablement ce montant.", "cpaMultiplier": 1.5 }
+          ]
+        }
+      ]
+    }
+  ]
+}

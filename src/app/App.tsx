@@ -9,6 +9,8 @@ import { RadarTrendsView } from '@/modules/m01-radar/RadarTrendsView';
 import { AdGalleryView } from '@/modules/m01-radar/AdGalleryView';
 import { StorybookView } from '@/modules/m08-storybook/StorybookView';
 import { CreativeGeneratorPanel } from '@/modules/m04-creatifs/CreativeGeneratorPanel';
+import { DistributionView } from '@/modules/m06-distribution/DistributionView';
+import { CampaignBlueprintsView } from '@/modules/m11-campagnes/CampaignBlueprintsView';
 import { CockpitDashboard } from '@/modules/cockpit/CockpitDashboard';
 import { PlaceholderModuleView } from '@/shared/ui/PlaceholderModuleView';
 import { LandingPage } from '@/features/landing/LandingPage';
@@ -228,13 +230,7 @@ function NexusVeilleWorkspace() {
         )}
 
         {/* TAB 06: Distribution & Intégration */}
-        {activeStrategicTab === 'distribution' && (
-          <PlaceholderModuleView
-            moduleNumber="06"
-            title="Distribution Marketplace"
-            description="Connecteurs pour l'écosystème de vente : Maketou, Taliopay, Chariow, et les principales infrastructures de paiement africaines."
-          />
-        )}
+        {activeStrategicTab === 'distribution' && <DistributionView />}
 
         {/* TAB 07: Programme d'Affiliation */}
         {activeStrategicTab === 'affiliation' && (
@@ -269,13 +265,9 @@ function NexusVeilleWorkspace() {
         )}
 
         {/* TAB 11: Structures de Campagnes */}
-        {activeStrategicTab === 'campagnes' && (
-          <PlaceholderModuleView
-            moduleNumber="11"
-            title="Structures de Campagnes"
-            description="Déploiement automatisé des campagnes publicitaires Meta et TikTok Ads depuis le tableau de bord avec retour de performance."
-          />
-        )}
+        {/* L'ancien placeholder annonçait un « déploiement automatisé » des campagnes :
+            rien ne l'implémente. L'écran fournit des structures à reproduire. */}
+        {activeStrategicTab === 'campagnes' && <CampaignBlueprintsView />}
 
         {/* TAB 12: Rapport PDF Illustré avec Visuels */}
         {activeStrategicTab === 'pdf_report' && (

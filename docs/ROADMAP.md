@@ -365,8 +365,48 @@ c'est la **traçabilité**. Ce lot livre les différenciateurs 1, 2 et 3 du cahi
 - **5.1** Kit de Lancement : copie pub, scripts 15/30/60 s, CTA par marché.
 - **5.2** Connecteurs marketplace en **adapter pattern**. Chariow en premier : c'est le seul
   à disposer d'une API publique documentée (`chariow.dev`). Il sert de gabarit de référence.
+  **🟡 Livré en lecture ; vérifié contre un faux serveur, pas contre l'API réelle (aucune clé).**
+  Interface `MarketplaceAdapter` (`server/services/marketplaces`) avec **capacités déclarées** :
+  l'écran n'affiche jamais un bouton que le connecteur ne peut pas honorer.
+  > ⛔ **L'API Chariow ne permet ni de créer ni de publier un produit** (documentation consultée le
+  > 14 septembre 2026 : produits, ventes, clients, remises et licences en lecture, activation de
+  > licence, initiation de paiement). « Publier sur Chariow depuis Smart Creator » est impossible :
+  > le produit se crée sur Chariow, Smart Creator en importe le catalogue et en suit les ventes.
+  - **Ventes réelles dans le Cockpit** : `SalesSummaryCard` remplace l'état vide posé en 1.5.
+    Ventes payées (`completed`, `settled`) sur 30 jours, une ligne par devise — des devises
+    différentes ne s'additionnent pas. Pas de ROI : aucune source ne fournit les dépenses publicitaires.
+  - **Données personnelles** : les ventes Chariow portent e-mail et nom du client. Elles ne sont lues
+    que pour être agrégées ; aucune ne quitte le serveur (vérifié : aucune trace dans la réponse).
+  - 🐛 **Erreur évitée sur les montants.** Un premier résumé de la documentation annonçait des
+    unités mineures pour les ventes ; l'exemple chiffré de `GET /sales/{id}` (`79.20` ↔ « $79.20 »)
+    montre des unités principales. Le connecteur, déjà écrit, aurait affiché un chiffre d'affaires
+    divisé par 100. Corrigé ; conversion en entiers pour sommer sans erreur d'arrondi.
+  - Maketou et Taliopay inscrits au registre comme **non disponibles, avec leur raison** (pas d'API
+    publique, CdC §6.6), plutôt qu'omis ou présentés avec un bouton factice.
+  - Vérifié contre un faux serveur reproduisant les deux formes d'enveloppe documentées : 7 ventes
+    sur 2 pages, 4 payées, 178,20 $US et 20 000 F CFA ; catalogue lu ; Maketou → 503 motivé ;
+    marketplace inconnue → 404 ; sans clé → état vide explicite.
+  > ⛔ **Bloqué sur toi :** une clé API Chariow pour confirmer l'enveloppe et l'unité des montants sur
+  > une vraie réponse. La documentation ne précise pas si la période filtre sur la date de création
+  > ou de paiement des ventes.
 - **5.3** Générateur de pages produits : 7 sections, une image par rôle de conversion, A/B.
 - **5.4** Blueprints de campagnes Meta & TikTok, valeurs en table de configuration.
+  **✅ Livré.** `server/config/campaign-blueprints.json`, `GET /api/campaigns/blueprints`, écran
+  `src/modules/m11-campagnes/CampaignBlueprintsView.tsx`.
+  - Objectifs repris de la **nomenclature officielle** vérifiée le 14 septembre 2026, avec leur source :
+    Meta — Awareness, Traffic, Engagement, Leads, App promotion, Sales ; TikTok — Reach, Traffic,
+    Video views, Lead generation, Sales (qui regroupe les anciens Website conversions et Product sales).
+  - Deux structures « Lancement d'un produit digital » : phases, objectif et objectif de repli sans
+    suivi des conversions, structure campagne / ensembles / publicités, règles de pilotage.
+  - **Table contrôlée au chargement** : budget à 100 % par structure, objectifs présents dans la
+    nomenclature de la plateforme. Vérifié : une table à 95 % et un objectif « website_conversions »
+    pour TikTok est refusée (503) avec les deux motifs exacts.
+  - Les montants ne sont jamais inventés : ils se calculent à partir du budget et du coût
+    d'acquisition cible **saisis par l'utilisateur**.
+  - L'ancien placeholder annonçait un « déploiement automatisé des campagnes avec retour de
+    performance » : rien ne l'implémente, promesse retirée.
+  > ⚠️ Répartitions de budget, durées et règles de pilotage : **valeurs par défaut provisoires**, non
+  > issues de données de performance. Le statut est affiché à l'écran.
 
 > ⚠️ Ni Maketou ni Taliopay ne publient de documentation d'API. Le cahier des charges le dit
 > lui-même (§6.6). Construire Chariow d'abord, puis brancher les autres sur la même interface
