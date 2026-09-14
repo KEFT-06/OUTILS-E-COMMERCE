@@ -11,6 +11,7 @@ import { StorybookView } from '@/modules/m08-storybook/StorybookView';
 import { CreativeGeneratorPanel } from '@/modules/m04-creatifs/CreativeGeneratorPanel';
 import { DistributionView } from '@/modules/m06-distribution/DistributionView';
 import { CampaignBlueprintsView } from '@/modules/m11-campagnes/CampaignBlueprintsView';
+import { ProductPageBuilderView } from '@/modules/m09-pages/ProductPageBuilderView';
 import { CockpitDashboard } from '@/modules/cockpit/CockpitDashboard';
 import { PlaceholderModuleView } from '@/shared/ui/PlaceholderModuleView';
 import { LandingPage } from '@/features/landing/LandingPage';
@@ -247,13 +248,7 @@ function NexusVeilleWorkspace() {
         {activeStrategicTab === 'storybook' && <StorybookView />}
 
         {/* TAB 09: Pages Produits */}
-        {activeStrategicTab === 'pages_produits' && (
-          <PlaceholderModuleView
-            moduleNumber="09"
-            title="Générateur de Pages Produits"
-            description="Assemblage de pages prêtes à publier orientées conversion avec images adaptées à chaque section (Hero, Problème, Bénéfices)."
-          />
-        )}
+        {activeStrategicTab === 'pages_produits' && <ProductPageBuilderView report={currentReport} />}
 
         {/* TAB 10: Guides Multilingues */}
         {activeStrategicTab === 'multilingue' && (

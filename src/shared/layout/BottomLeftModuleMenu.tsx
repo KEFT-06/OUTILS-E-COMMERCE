@@ -55,7 +55,7 @@ const MODULES: readonly ModuleEntry[] = [
   { id: 'distribution', num: '06', fr: 'Distribution', en: 'Distribution', descFr: 'Connecteurs marketplace', descEn: 'Marketplace connectors', icon: Store, ready: true },
   { id: 'affiliation', num: '07', fr: 'Affiliation', en: 'Affiliate Program', descFr: 'Liens UTM et commissions', descEn: 'UTM links and commissions', icon: Users, ready: false },
   { id: 'storybook', num: '08', fr: 'Storybook Africain', en: 'African Storybook', descFr: 'Contes illustrés ancrés culturellement', descEn: 'Culturally grounded illustrated tales', icon: BookOpen, ready: true },
-  { id: 'pages_produits', num: '09', fr: 'Pages Produits', en: 'Product Pages', descFr: 'Pages orientées conversion', descEn: 'Conversion-oriented pages', icon: LayoutTemplate, ready: false },
+  { id: 'pages_produits', num: '09', fr: 'Pages Produits', en: 'Product Pages', descFr: 'Pages orientées conversion', descEn: 'Conversion-oriented pages', icon: LayoutTemplate, ready: true },
   { id: 'multilingue', num: '10', fr: 'Guides Multilingues', en: 'Multilingual Guides', descFr: 'Tiers A, B et C avec relecteurs natifs', descEn: 'Tiers A, B and C with native reviewers', icon: Languages, ready: false },
   { id: 'campagnes', num: '11', fr: 'Structures de Campagnes', en: 'Campaign Structures', descFr: 'Blueprints Meta et TikTok', descEn: 'Meta and TikTok blueprints', icon: Megaphone, ready: true },
   { id: 'pdf_report', num: '12', fr: 'Dossier PDF Illustré', en: 'Illustrated PDF Report', descFr: 'Export haute définition A4', descEn: 'High-definition A4 export', icon: FileText, ready: true },

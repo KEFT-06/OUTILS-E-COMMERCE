@@ -13,6 +13,7 @@ import { useCreditGate } from '@/app/providers/CreditGateProvider';
 import { ApiError, readApiError, toApiError } from '@/shared/lib/apiError';
 import { MARKETS } from '@/shared/lib/markets';
 import { AwarenessLevel, CreativeFormat, CreativeKind, CreativeStatus } from '@/shared/types/creatives';
+import { AWARENESS_OPTIONS } from '@/shared/lib/awareness';
 
 /**
  * Génération de visuels et de vidéos publicitaires — feuille de route 4.1, 4.2 et 4.4.
@@ -30,14 +31,6 @@ import { AwarenessLevel, CreativeFormat, CreativeKind, CreativeStatus } from '@/
 const POLL_INTERVAL_MS = 5_000;
 const MAX_WAIT_MS: Record<CreativeKind, number> = { visual: 10 * 60_000, video: 20 * 60_000 };
 const FAILED_STATUSES: CreativeStatus['status'][] = ['failed', 'nsfw', 'canceled'];
-
-const AWARENESS_OPTIONS: { value: AwarenessLevel; label: string; hint: string }[] = [
-  { value: 'unaware', label: 'Inconscient', hint: "Ne sait pas encore qu'il a un problème : capter l'attention sans parler du produit." },
-  { value: 'problem_aware', label: 'Conscient du problème', hint: 'Vit le problème sans connaître de solution : montrer la frustration.' },
-  { value: 'solution_aware', label: 'Conscient de la solution', hint: 'Sait que des solutions existent : montrer le bénéfice recherché.' },
-  { value: 'product_aware', label: 'Conscient du produit', hint: "Connaît votre produit sans l'avoir acheté : montrer ce qui le distingue." },
-  { value: 'most_aware', label: 'Pleinement conscient', hint: "Prêt à acheter : montrer l'offre et un appel à l'action clair." },
-];
 
 const FORMAT_OPTIONS: { value: CreativeFormat; label: string }[] = [
   { value: '1:1', label: 'Carré 1:1' },

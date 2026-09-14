@@ -390,6 +390,27 @@ c'est la **traçabilité**. Ce lot livre les différenciateurs 1, 2 et 3 du cahi
   > une vraie réponse. La documentation ne précise pas si la période filtre sur la date de création
   > ou de paiement des ventes.
 - **5.3** Générateur de pages produits : 7 sections, une image par rôle de conversion, A/B.
+  **✅ Livré, sans fournisseur externe.** `src/shared/lib/productPage.ts` (modèle et rendu, fonctions
+  pures), `productPageExport.ts` (porte d'export), écran `src/modules/m09-pages/ProductPageBuilderView.tsx`.
+  - **7 sections à rôle de conversion** : accroche, problème, transformation, contenu, pour qui, offre,
+    questions et appel à l'action. **Aucune section « témoignages »** : elle ne pourrait être remplie
+    que de témoignages inventés.
+  - Contenu, public, prix et bonus viennent du produit du Studio (version retouchée en mode Expert
+    si elle existe). Ce que le produit ne contient pas est saisi par l'auteur ; **sans problème décrit
+    ni lien de paiement https, l'export est refusé** plutôt que complété à sa place.
+  - **Une image par rôle** : brief de l'image et niveau de conscience visé (Lot 4) pour chaque section,
+    lien https de l'image fourni par l'auteur. Le générateur ne produit pas lui-même les images.
+  - **A/B** : deux fichiers qui ne diffèrent que par l'accroche et le bouton. La répartition du trafic
+    et la mesure se font sur l'outil qui héberge la page — l'écran le dit.
+  - **Export sûr** (leçon du défaut D8 de l'audit) : HTML autonome, chaque texte échappé, images et
+    lien de paiement acceptés en https uniquement, politique de sécurité intégrée interdisant tout
+    script — garde-fou si un échappement venait à manquer. Mention légale en pied de page.
+  - Conformité contrôlée **sur les deux variantes à la fois** avant chaque téléchargement : exporter
+    la variante A ne doit pas laisser passer une variante B non conforme.
+  Vérifié sur saisies piégées : aucune balise `<script>` ni `<img>` injectée, aucun lien `javascript:`,
+  image http écartée, image https conservée, 7 sections, lien de paiement échappé, variantes A et B
+  correctes, mention légale présente.
+  > ⚠️ Saisies conservées dans le navigateur uniquement, comme le swipe file et les brouillons.
 - **5.4** Blueprints de campagnes Meta & TikTok, valeurs en table de configuration.
   **✅ Livré.** `server/config/campaign-blueprints.json`, `GET /api/campaigns/blueprints`, écran
   `src/modules/m11-campagnes/CampaignBlueprintsView.tsx`.
