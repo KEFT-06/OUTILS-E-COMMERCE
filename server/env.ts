@@ -26,7 +26,12 @@ const schema = z.object({
   // Fournisseurs IA — optionnels : chaque route vérifie la clé dont elle dépend
   // et renvoie 503 avec un message explicite si elle manque.
   GEMINI_API_KEY: z.string().min(1).optional(),
-  HIGGSFIELD_API_KEY: z.string().min(1).optional(),
+  // Higgsfield authentifie par une paire identifiant + secret, envoyée sous la
+  // forme `Authorization: Key ID:SECRET` (docs.higgsfield.ai/docs/authentication).
+  // L'ancienne variable unique HIGGSFIELD_API_KEY ne pouvait fonctionner avec
+  // aucun appel réel : elle est remplacée par les deux noms de la documentation.
+  HIGGSFIELD_API_KEY_ID: z.string().min(1).optional(),
+  HIGGSFIELD_API_KEY_SECRET: z.string().min(1).optional(),
   HIGGSFIELD_API_URL: z.string().url().default('https://api.higgsfield.ai'),
   GAMMA_API_KEY: z.string().min(1).optional(),
 
@@ -87,7 +92,7 @@ export const isProd = env.NODE_ENV === 'production';
 /** Vrai si la clé du fournisseur est présente. Aucune route ne doit la lire directement. */
 export const providers = {
   gemini: Boolean(env.GEMINI_API_KEY),
-  higgsfield: Boolean(env.HIGGSFIELD_API_KEY),
+  higgsfield: Boolean(env.HIGGSFIELD_API_KEY_ID && env.HIGGSFIELD_API_KEY_SECRET),
   gamma: Boolean(env.GAMMA_API_KEY),
   meta: Boolean(env.META_ACCESS_TOKEN),
 } as const;

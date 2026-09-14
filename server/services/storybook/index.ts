@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import { env } from '@server/env';
 import { AppError, marketSchema, providerUnavailable } from '@server/middleware';
+import { COUNTRY_NAMES } from '@server/services/markets';
 
 /**
  * Storybook Africain via Gamma — feuille de route 3.4.
@@ -43,35 +44,6 @@ export type StorybookBrief = z.infer<typeof storybookBriefSchema>;
 export const generationIdSchema = z
   .string()
   .regex(/^[A-Za-z0-9_-]{1,100}$/, 'Identifiant de génération invalide.');
-
-/**
- * Noms des pays dans la langue du conte. `frOf` porte la forme contractée : le
- * texte part tel quel chez Gamma, qui le reprend dans le conte — « le contexte
- * de le Sénégal » y serait imprimé mot pour mot.
- */
-const COUNTRY_NAMES: Record<StorybookBrief['country'], { fr: string; frOf: string; en: string }> = {
-  CI: { fr: "la Côte d'Ivoire", frOf: "de la Côte d'Ivoire", en: "Côte d'Ivoire" },
-  SN: { fr: 'le Sénégal', frOf: 'du Sénégal', en: 'Senegal' },
-  CM: { fr: 'le Cameroun', frOf: 'du Cameroun', en: 'Cameroon' },
-  BJ: { fr: 'le Bénin', frOf: 'du Bénin', en: 'Benin' },
-  TG: { fr: 'le Togo', frOf: 'du Togo', en: 'Togo' },
-  BF: { fr: 'le Burkina Faso', frOf: 'du Burkina Faso', en: 'Burkina Faso' },
-  ML: { fr: 'le Mali', frOf: 'du Mali', en: 'Mali' },
-  NE: { fr: 'le Niger', frOf: 'du Niger', en: 'Niger' },
-  GN: { fr: 'la Guinée', frOf: 'de la Guinée', en: 'Guinea' },
-  CD: {
-    fr: 'la République démocratique du Congo',
-    frOf: 'de la République démocratique du Congo',
-    en: 'the Democratic Republic of the Congo',
-  },
-  CG: { fr: 'la République du Congo', frOf: 'de la République du Congo', en: 'the Republic of the Congo' },
-  GA: { fr: 'le Gabon', frOf: 'du Gabon', en: 'Gabon' },
-  TD: { fr: 'le Tchad', frOf: 'du Tchad', en: 'Chad' },
-  MG: { fr: 'Madagascar', frOf: 'de Madagascar', en: 'Madagascar' },
-  MA: { fr: 'le Maroc', frOf: 'du Maroc', en: 'Morocco' },
-  TN: { fr: 'la Tunisie', frOf: 'de la Tunisie', en: 'Tunisia' },
-  DZ: { fr: "l'Algérie", frOf: "de l'Algérie", en: 'Algeria' },
-};
 
 const AGE_LABELS: Record<StorybookBrief['ageRange'], { fr: string; en: string }> = {
   '3-5': { fr: '3 à 5 ans', en: '3 to 5' },

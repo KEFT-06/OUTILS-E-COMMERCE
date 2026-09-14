@@ -293,16 +293,72 @@ c'est la **traçabilité**. Ce lot livre les différenciateurs 1, 2 et 3 du cahi
   L'approche du cahier des charges (seed réutilisé à chaque page) est donc impossible avec Gamma.
   Deux options : (a) générer chaque illustration via `/v1.0/images` avec la même image de
   référence du personnage, puis assembler le conte — cohérence à éprouver sur un vrai conte avant
-  tout engagement ; (b) retenir un autre fournisseur d'images qui expose un seed. Tant que ce
+  tout engagement ; (b) retenir un autre fournisseur d'images qui expose un seed.
+  **Piste identifiée pour (b)** : d'après la spécification OpenAPI publique de Higgsfield (consultée
+  le 14 septembre 2026), l'endpoint `/higgsfield-ai/soul/character` accepte un
+  `custom_reference_id` (personnage de référence), une `custom_reference_strength` et un `seed`.
+  C'est le seul mécanisme trouvé qui corresponde à l'exigence du cahier des charges ; il reste à
+  éprouver sur un vrai conte (même personnage, 8 à 12 illustrations) avant de s'engager. Tant que ce
   choix n'est pas fait, le Storybook ne doit pas promettre un personnage cohérent d'une page à
   l'autre.
 
 ## Lot 4 — Créatifs & vidéo (module 4)
 
+> Tout le Lot 4 est écrit d'après la **spécification OpenAPI publique de Higgsfield** et sa
+> documentation (docs.higgsfield.ai), consultées le 14 septembre 2026, et **non vérifié contre
+> l'API réelle** : aucun identifiant n'est disponible. Service : `server/services/higgsfield`
+> (client) et `server/services/creatives` (briefs et prompts) ; écran :
+> `src/modules/m04-creatifs/CreativeGeneratorPanel.tsx`, dans l'onglet Créatifs Publicitaires.
+
 - **4.1** Génération de visuels, 3 formats, niveau de conscience prospect **obligatoire**.
+  **🟡 Livré, non vérifié contre l'API réelle.** Modèle `/higgsfield-ai/soul/standard`, formats
+  1:1, 9:16 et 16:9.
+  - Niveau de conscience (Eugene Schwartz : inconscient → pleinement conscient) obligatoire dans le
+    schéma serveur **et** sans valeur présélectionnée à l'écran : un choix par défaut serait retenu
+    par inadvertance et orienterait tout le créatif. Chaque niveau porte sa direction créative.
+  - Ancrage pays sans caricature ; consigne « aucun texte » quand l'auteur n'en demande pas ; aucun
+    logo réel, aucune célébrité, aucun chiffre ou témoignage inventé.
+  Vérifié : prompts construits, brief sans niveau de conscience ou au format 4:3 → 400.
 - **4.2** **Higgsfield AI** texte-à-vidéo : avatars localisés, 9:16 / 1:1 / 16:9.
+  **🟡 Texte-à-vidéo livré ; avatars localisés bloqués côté fournisseur.**
+  Modèle `/kling-video/v2.1/master/text-to-video` : c'est le modèle de l'API publique qui accepte
+  **les trois** formats du cahier des charges (Veo 3.1 n'offre pas le 1:1). Durée 5 ou 10 s,
+  prompt plafonné aux 2 500 caractères du modèle.
+  > ⛔ **Avatars localisés : aucun endpoint d'avatar, de lip-sync ou de « speak » dans la
+  > spécification publique.** Le SDK Node n'en cite un que dans son client v1, déprécié. Rien à
+  > brancher tant que Higgsfield ne l'expose pas dans son API publique.
 - **4.3** **Higgsfield Genjutsu** : Motion Transfer & Object Swap.
+  **⛔ Bloqué côté fournisseur : absent de l'API publique.** Aucun endpoint de Motion Transfer ni
+  d'Object Swap dans la spécification OpenAPI consultée. Ces fonctions existent dans l'application
+  grand public de Higgsfield, pas dans l'API développeur. Ne rien promettre aux utilisateurs à ce
+  sujet tant qu'elles n'y figurent pas.
 - **4.4** Passage conformité obligatoire avant téléchargement — sans exception.
+  **✅ Livré, en deux temps — et avec une limite dite clairement.**
+  1. **Blocage réel, côté serveur** : tout le texte du brief (produit, public, scène, texte à
+     l'écran, style) passe le vérificateur de conformité **avant** l'envoi au fournisseur. Vérifié :
+     « Résultats garantis en 7 jours » dans le texte à l'écran → 422 avec le constat.
+  2. **Attestation, côté écran** : le contenu généré ne peut pas être relu automatiquement de façon
+     fiable. Il est prévisualisé, et le bouton de téléchargement n'apparaît qu'une fois cochés quatre
+     contrôles (promesse de gain, avant/après ou témoignage inventé, texte exact, logo ou personne
+     identifiable).
+  > ⚠️ **Limite assumée :** l'attestation est une étape volontaire, pas un verrou. Une première
+  > conception retenait le lien jusqu'à l'attestation ; elle a été abandonnée, car pour attester
+  > qu'un visuel est conforme il faut l'avoir vu, et le voir suppose son adresse. « Sans exception »
+  > vaut pleinement pour le texte ; pour l'image, c'est un contrôle humain obligatoire à l'écran.
+  - Fichiers relayés par le serveur (`/api/creatives/requests/:id/file`) : la politique de sécurité
+    du navigateur n'a pas à s'ouvrir à un CDN tiers inconnu, et le téléchargement porte un nom propre.
+    Le fournisseur ne les conserve qu'environ **sept jours** — l'écran le dit.
+  - Soumissions jamais rejouées automatiquement : l'API n'accepte pas de clé d'idempotence, une
+    génération relancée après un délai ambigu serait facturée deux fois.
+  - Points débités seulement si un fichier est produit ; refus du filtre de sécurité (`nsfw`), échec
+    ou abandon ne coûtent rien (et ne sont pas facturés par Higgsfield).
+  - Identifiant de suivi validé comme UUID ; configuration corrigée : Higgsfield authentifie par une
+    **paire** identifiant + secret, alors que le serveur n'attendait qu'une clé unique, qui n'aurait
+    fonctionné avec aucun appel réel.
+  > ⛔ **Bloqué sur toi :** identifiants Higgsfield Cloud (identifiant + secret) pour vérifier contre
+  > l'API réelle. Coûts en points (1 par visuel, 12 par vidéo) toujours provisoires.
+  > ⚠️ Aucune authentification réelle : n'importe quel utilisateur connaissant l'identifiant d'une
+  > génération peut en récupérer le fichier. À corriger avec la base de données et les comptes.
 
 ## Lot 5 — Vendre (modules 5, 6, 9, 11)
 

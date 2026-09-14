@@ -1,6 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { AlertTriangle, BookOpen, ExternalLink, Loader2, PenLine, Sparkles } from 'lucide-react';
 import { useCreditGate } from '@/app/providers/CreditGateProvider';
+import { ApiError, readApiError, toApiError } from '@/shared/lib/apiError';
 import { MARKETS } from '@/shared/lib/markets';
 import { safeHttpUrl } from '@/shared/lib/safeUrl';
 import { StorybookBrief, StorybookStatus } from '@/shared/types/storybook';
@@ -20,43 +21,6 @@ import { StorybookBrief, StorybookStatus } from '@/shared/types/storybook';
 const POLL_INTERVAL_MS = 5_000;
 /** Au-delà, le suivi est abandonné et aucun point n'est débité. */
 const MAX_WAIT_MS = 10 * 60_000;
-
-interface BriefFinding {
-  category: string;
-  matched: string;
-  rewriteHint: string;
-}
-
-class StorybookError extends Error {
-  constructor(
-    message: string,
-    readonly findings: BriefFinding[] = [],
-  ) {
-    super(message);
-    this.name = 'StorybookError';
-  }
-}
-
-function parseFindings(details: unknown): BriefFinding[] {
-  if (!Array.isArray(details)) return [];
-
-  return details.flatMap((item) => {
-    if (typeof item !== 'object' || item === null) return [];
-    const record = item as Record<string, unknown>;
-    return typeof record.category === 'string' &&
-      typeof record.matched === 'string' &&
-      typeof record.rewriteHint === 'string'
-      ? [{ category: record.category, matched: record.matched, rewriteHint: record.rewriteHint }]
-      : [];
-  });
-}
-
-async function readApiError(response: Response, fallback: string): Promise<StorybookError> {
-  const payload = (await response.json().catch(() => null)) as
-    | { error?: { message?: string; details?: unknown } }
-    | null;
-  return new StorybookError(payload?.error?.message ?? fallback, parseFindings(payload?.error?.details));
-}
 
 const wait = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
 
@@ -84,7 +48,7 @@ export const StorybookView: React.FC = () => {
   const [isGenerating, setIsGenerating] = useState(false);
   const [elapsedSeconds, setElapsedSeconds] = useState(0);
   const [result, setResult] = useState<StorybookStatus | null>(null);
-  const [error, setError] = useState<StorybookError | null>(null);
+  const [error, setError] = useState<ApiError | null>(null);
 
   // Le suivi s'arrête si l'écran est quitté. Remis à false au montage : en mode
   // strict, React démonte et remonte une fois, ce qui figerait sinon le drapeau.
@@ -150,7 +114,7 @@ export const StorybookView: React.FC = () => {
           while (Date.now() < deadline) {
             await wait(POLL_INTERVAL_MS);
             if (unmountedRef.current) {
-              throw new StorybookError("Suivi interrompu : l'écran a été quitté pendant la génération.");
+              throw new ApiError("Suivi interrompu : l'écran a été quitté pendant la génération.");
             }
 
             const polled = await fetch(`/api/storybook/generations/${encodeURIComponent(generationId)}`);
@@ -162,24 +126,17 @@ export const StorybookView: React.FC = () => {
               return;
             }
             if (status.status === 'failed') {
-              throw new StorybookError(status.errorMessage ?? 'La génération a échoué chez Gamma.');
+              throw new ApiError(status.errorMessage ?? 'La génération a échoué chez Gamma.');
             }
           }
 
-          throw new StorybookError(
-            "La génération dépasse 10 minutes : suivi abandonné. Aucun point n'a été débité.",
-          );
+          throw new ApiError("La génération dépasse 10 minutes : suivi abandonné. Aucun point n'a été débité.");
         } finally {
           if (!unmountedRef.current) setIsGenerating(false);
         }
       });
     } catch (caught) {
-      if (unmountedRef.current) return;
-      setError(
-        caught instanceof StorybookError
-          ? caught
-          : new StorybookError(caught instanceof Error ? caught.message : 'La génération a échoué.'),
-      );
+      if (!unmountedRef.current) setError(toApiError(caught, 'La génération a échoué.'));
     }
   };
 

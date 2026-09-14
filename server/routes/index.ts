@@ -35,6 +35,18 @@ import {
   getStorybookGeneration,
   storybookBriefSchema,
 } from '@server/services/storybook';
+import {
+  VideoBrief,
+  VisualBrief,
+  creativeText,
+  getCreativeStatus,
+  streamCreativeFile,
+  submitVideo,
+  submitVisual,
+  videoBriefSchema,
+  visualBriefSchema,
+} from '@server/services/creatives';
+import { requestIdSchema } from '@server/services/higgsfield';
 
 export const api = Router();
 
@@ -311,15 +323,10 @@ api.post(
   asyncRoute(async (req, res) => {
     const brief = req.body as StorybookBrief;
 
-    const verdict = await checkText(briefText(brief)).catch(asComplianceRouteError);
-    if (!verdict.exportAllowed) {
-      throw new AppError(
-        422,
-        'Le brief contient des formulations non conformes : corrigez-les avant de lancer la génération.',
-        'BRIEF_NON_COMPLIANT',
-        verdict.findings.filter((finding) => finding.severity === 'block'),
-      );
-    }
+    await assertCompliantBrief(
+      briefText(brief),
+      'Le brief contient des formulations non conformes : corrigez-les avant de lancer la génération.',
+    );
 
     if (!providers.gamma) throw providerUnavailable('Gamma');
 
@@ -338,6 +345,86 @@ api.get(
     if (!providers.gamma) throw providerUnavailable('Gamma');
 
     res.json(await getStorybookGeneration(parsed.data));
+  }),
+);
+
+/* -------------------------------------------------------------------------- */
+/*  Créatifs publicitaires : visuels et vidéos (feuille de route 4.1, 4.2, 4.4) */
+/* -------------------------------------------------------------------------- */
+
+/** Refuse une génération dont le brief déclenche une règle bloquante (422 avec constats). */
+async function assertCompliantBrief(text: string, message: string): Promise<void> {
+  const verdict = await checkText(text).catch(asComplianceRouteError);
+  if (!verdict.exportAllowed) {
+    throw new AppError(
+      422,
+      message,
+      'BRIEF_NON_COMPLIANT',
+      verdict.findings.filter((finding) => finding.severity === 'block'),
+    );
+  }
+}
+
+function parseCreativeRequestId(value: string | undefined): string {
+  const parsed = requestIdSchema.safeParse(value);
+  if (!parsed.success) {
+    throw new AppError(400, 'Identifiant de génération invalide.', 'INVALID_GENERATION_ID');
+  }
+  return parsed.data;
+}
+
+api.post(
+  '/creatives/visuals',
+  aiLimiter,
+  validateBody(visualBriefSchema),
+  asyncRoute(async (req, res) => {
+    const brief = req.body as VisualBrief;
+    await assertCompliantBrief(
+      creativeText(brief),
+      'Le brief du visuel contient des formulations non conformes : corrigez-les avant de lancer la génération.',
+    );
+    if (!providers.higgsfield) throw providerUnavailable('Higgsfield');
+
+    res.status(202).json(await submitVisual(brief));
+  }),
+);
+
+api.post(
+  '/creatives/videos',
+  aiLimiter,
+  validateBody(videoBriefSchema),
+  asyncRoute(async (req, res) => {
+    const brief = req.body as VideoBrief;
+    await assertCompliantBrief(
+      creativeText(brief),
+      'Le brief de la vidéo contient des formulations non conformes : corrigez-les avant de lancer la génération.',
+    );
+    if (!providers.higgsfield) throw providerUnavailable('Higgsfield');
+
+    res.status(202).json(await submitVideo(brief));
+  }),
+);
+
+/** Suivi d'une génération. Hors `aiLimiter` : le client sonde toutes les 5 secondes. */
+api.get(
+  '/creatives/requests/:requestId',
+  asyncRoute(async (req, res) => {
+    const requestId = parseCreativeRequestId(req.params.requestId);
+    if (!providers.higgsfield) throw providerUnavailable('Higgsfield');
+
+    res.json(await getCreativeStatus(requestId));
+  }),
+);
+
+/** Fichier généré, relayé depuis le fournisseur (aperçu ou téléchargement). */
+api.get(
+  '/creatives/requests/:requestId/file',
+  asyncRoute(async (req, res) => {
+    const requestId = parseCreativeRequestId(req.params.requestId);
+    if (!providers.higgsfield) throw providerUnavailable('Higgsfield');
+
+    const disposition = req.query.disposition === 'attachment' ? 'attachment' : 'inline';
+    await streamCreativeFile(requestId, disposition, res);
   }),
 );
 

@@ -8,6 +8,7 @@ import { ReportPDFView } from '@/modules/m02-analyse/ReportPDFView';
 import { RadarTrendsView } from '@/modules/m01-radar/RadarTrendsView';
 import { AdGalleryView } from '@/modules/m01-radar/AdGalleryView';
 import { StorybookView } from '@/modules/m08-storybook/StorybookView';
+import { CreativeGeneratorPanel } from '@/modules/m04-creatifs/CreativeGeneratorPanel';
 import { CockpitDashboard } from '@/modules/cockpit/CockpitDashboard';
 import { PlaceholderModuleView } from '@/shared/ui/PlaceholderModuleView';
 import { LandingPage } from '@/features/landing/LandingPage';
@@ -207,10 +208,14 @@ function NexusVeilleWorkspace() {
 
         {/* TAB 3: Studio Vidéos Publicitaires Meta Ads (AIDA & PAS) */}
         {activeStrategicTab === 'meta_ads' && (
-          <MetaVideoStudioView
-            campaigns={currentReport.adCampaigns}
-            provenance={currentReport.dataProvenance?.adCampaigns}
-          />
+          <div className="space-y-8">
+            {/* Visuels et vidéos générés, conformité avant téléchargement (Lot 4) */}
+            <CreativeGeneratorPanel />
+            <MetaVideoStudioView
+              campaigns={currentReport.adCampaigns}
+              provenance={currentReport.dataProvenance?.adCampaigns}
+            />
+          </div>
         )}
 
         {/* TAB 05: Kit de Lancement */}
