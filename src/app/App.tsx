@@ -249,7 +249,8 @@ function NexusVeilleWorkspace() {
           <PlaceholderModuleView
             moduleNumber="10"
             title="Guides Multilingues"
-            description="Traduction assistée par IA et intégration du réseau de relecteurs natifs pour les langues africaines locales et l'anglais."
+            description="Prévu : guides traduits en plusieurs langues, relus par des locuteurs natifs selon trois niveaux (Tier A, B et C)."
+            blocker="Les niveaux A, B et C ne sont pas encore définis (langues couvertes, degré de relecture, prix), et le réseau de relecteurs suppose des comptes et des paiements qui n'existent pas encore. Aucune traduction n'est proposée ni simulée en attendant."
           />
         )}
 

@@ -458,6 +458,46 @@ c'est la **traçabilité**. Ce lot livre les différenciateurs 1, 2 et 3 du cahi
 - Affiliation, multilingue Tier A/B/C, réseau de relecteurs, boucle de performance opt-in
   avec agrégation minimale de 5 vendeurs.
 
+- **Module 7 — Affiliation ✅ livré, dans les limites de l'API Chariow**
+  - **Liens de campagne UTM** conformes à la documentation Google Analytics : `utm_source`,
+    `utm_medium`, `utm_campaign` obligatoires, `utm_id` et `utm_source_platform` recommandés.
+    Valeurs normalisées (GA distingue « Facebook » de « facebook »), paramètres existants conservés,
+    https uniquement, un lien par code d'affilié.
+  - **Suivi d'un affilié Chariow** par son code : statut, pseudonyme, pays, visites, ventes, total
+    publié par Chariow. La fiche Chariow contient nom, e-mail et téléphone : **aucune de ces
+    données ne sort du serveur**.
+  - **Invitations d'affiliés** : Chariow envoie de vrais e-mails, immédiatement. Consentement
+    explicite exigé côté serveur, 25 adresses au plus, dédoublonnage, limiteur strict, jamais de
+    renvoi automatique après un délai dépassé (l'envoi a peut-être eu lieu).
+  - Vérifié contre un faux serveur Chariow : affilié existant sans donnée personnelle dans la
+    réponse ; code inconnu → 404 ; code piégé `../sales` → 400 et jamais transmis ; invitations sans
+    consentement, au-delà de 25 ou avec une adresse invalide → 400 ; envoi valide → 1 envoyée,
+    1 ignorée, doublon fusionné avant l'appel ; ventes du Cockpit inchangées ; sans clé → 503.
+  > ⚠️ **Limites de l'API, pas du produit** : l'API Chariow ne permet ni de lister les affiliés ni
+  > de gérer les commissions, et le format des liens de parrainage n'est pas documenté
+  > publiquement. Smart Creator ne calcule donc aucune commission et ne fabrique aucun lien de
+  > parrainage. L'ancien placeholder promettait un « calcul automatique des commissions » :
+  > promesse retirée. **Non vérifié contre l'API réelle** : aucune clé.
+
+- **Boucle de performance 🟡 règle d'agrégation codée, collecte bloquée**
+  - `server/services/performanceLoop` : seuls les vendeurs consentants sont lus, et une seule ligne
+    sans consentement écarte tout le vendeur ; chaque vendeur compte pour un (moyenne par vendeur,
+    puis médiane entre vendeurs) ; un groupe niche × marché de moins de 5 vendeurs n'est pas publié,
+    ni une mesure fournie par moins de 5 vendeurs. Les groupes écartés ne révèlent ni valeurs ni
+    effectif : « 4 vendeurs » dans une niche rare désigne déjà des concurrents.
+  - Vérifié : 4 consentants + 1 refus → masqué ; 5 vendeurs dont un retrait de consentement →
+    masqué ; gros vendeur à 3 lignes (10, 20, 30) compté une fois, médiane de [20, 1, 2, 3, 4] = 3 ;
+    mesure fournie par 4 vendeurs sur 5 → non publiée.
+  > ⛔ **Bloqué** : il n'existe ni base de données ni authentification serveur (les brouillons vivent
+  > dans le navigateur). Sans identité vérifiée, n'importe qui pourrait se déclarer « 5 vendeurs » et
+  > contourner le seuil. La règle n'est branchée à aucune route tant que la collecte n'existe pas.
+
+- **Module 10 — Multilingue Tier A/B/C et réseau de relecteurs ⛔ non commencé**
+  > ⛔ Le cahier des charges n'est pas dans le dépôt : aucune définition des tiers A, B et C
+  > (langues, niveau de relecture, prix) n'y figure. Le réseau de relecteurs natifs suppose des
+  > comptes, des paiements et une file de relecture, donc une base de données et une
+  > authentification. Le module reste affiché « bientôt » ; rien n'est simulé.
+
 ## Ordre de bataille recommandé
 
 ```
