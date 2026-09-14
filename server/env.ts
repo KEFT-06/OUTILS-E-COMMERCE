@@ -10,6 +10,13 @@ import { z } from 'zod';
 const schema = z.object({
   NODE_ENV: z.enum(['development', 'test', 'production']).default('development'),
   PORT: z.coerce.number().int().positive().default(3001),
+  /**
+   * Adresse d'écoute. Vide : 127.0.0.1 hors production, pour que seul ce poste
+   * joigne l'API — sinon tout appareil du même Wi-Fi pourrait lancer des
+   * générations payées avec les clés du serveur. En production : 0.0.0.0, que
+   * les hébergeurs exigent.
+   */
+  HOST: z.string().optional(),
   APP_URL: z.string().url().default('http://localhost:5173'),
 
   // Origines CORS autorisées, séparées par des virgules.
@@ -103,6 +110,7 @@ if (!parsed.success) {
 
 export const env = parsed.data;
 export const isProd = env.NODE_ENV === 'production';
+export const listenHost = env.HOST || (isProd ? '0.0.0.0' : '127.0.0.1');
 
 /** Vrai si la clé du fournisseur est présente. Aucune route ne doit la lire directement. */
 export const providers = {

@@ -4,7 +4,7 @@ import compression from 'compression';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 
-import { env, isProd, providers } from '@server/env';
+import { env, isProd, listenHost, providers } from '@server/env';
 import { apiLimiter, corsMiddleware, errorHandler, notFoundHandler } from '@server/middleware';
 import { api } from '@server/routes';
 
@@ -96,12 +96,12 @@ app.use(errorHandler);
 /*  Démarrage                                                                  */
 /* -------------------------------------------------------------------------- */
 
-const server = app.listen(env.PORT, () => {
+const server = app.listen(env.PORT, listenHost, () => {
   const configured = Object.entries(providers)
     .filter(([, ok]) => ok)
     .map(([name]) => name);
 
-  console.log(`\n  Smart Creator — API sur http://localhost:${env.PORT}`);
+  console.log(`\n  Smart Creator — API sur http://${listenHost}:${env.PORT}`);
   console.log(`  Environnement : ${env.NODE_ENV}`);
   console.log(
     `  Fournisseurs configurés : ${configured.length > 0 ? configured.join(', ') : 'aucun'}`,

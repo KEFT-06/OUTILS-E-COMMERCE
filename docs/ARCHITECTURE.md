@@ -107,7 +107,11 @@ Export PDF / DOCX / MP4 / publication marketplace
 - [ ] `helmet` + CSP stricte (pas de `unsafe-inline`)
 - [ ] `express-rate-limit` sur toutes les routes, quota resserré sur les routes IA
 - [ ] Validation `zod` de tout corps de requête, tout paramètre, toute query
-- [ ] CORS sur liste blanche explicite (`CORS_ORIGINS`)
+- [x] CORS sur liste blanche explicite (`CORS_ORIGINS`)
+- [x] Écriture refusée (403 `ORIGIN_REFUSED`) quand l'en-tête `Origin` n'est ni autorisé ni celui du
+      serveur : un formulaire posté par un site tiers ne peut pas lancer de génération payée
+- [x] API limitée à `127.0.0.1` en développement (`HOST`) : les autres appareils du réseau ne la
+      joignent pas ; `0.0.0.0` en production
 - [ ] Aucune clé côté client — vérifiable par `grep -r "VITE_" src/`
 - [ ] Échappement HTML systématique dans tout générateur de document (cf. audit D8)
 - [ ] Sessions : cookies `httpOnly` + `secure` + `sameSite=strict`

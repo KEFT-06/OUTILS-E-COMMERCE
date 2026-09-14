@@ -24,7 +24,9 @@ export default defineConfig(({ mode }) => {
       // par le backend, qui seul détient les clés. Cf. docs/ARCHITECTURE.md.
       proxy: {
         '/api': {
-          target: `http://localhost:${apiPort}`,
+          // IPv4 explicite : l'API n'écoute que sur 127.0.0.1 en développement,
+          // alors que « localhost » peut désigner ::1 sous Windows.
+          target: `http://127.0.0.1:${apiPort}`,
           changeOrigin: true,
         },
       },

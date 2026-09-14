@@ -135,10 +135,27 @@ export const aiLimiter = rateLimit({
 /*  CORS — liste blanche stricte                                               */
 /* -------------------------------------------------------------------------- */
 
+const SAFE_METHODS = new Set(['GET', 'HEAD', 'OPTIONS']);
+
 export const corsMiddleware: RequestHandler = (req, res, next) => {
   const origin = req.headers.origin;
+  const allowed = Boolean(origin && env.CORS_ORIGINS.includes(origin));
 
-  if (origin && env.CORS_ORIGINS.includes(origin)) {
+  // Garde anti-CSRF : un formulaire posté depuis un site tiers part sans
+  // pré-vérification CORS, et express.urlencoded l'analyserait. Sans ce refus,
+  // une page piégée ouverte dans le navigateur pourrait lancer une génération
+  // payée. Les appels sans en-tête Origin (serveur à serveur) ne sont pas visés.
+  if (
+    origin &&
+    !allowed &&
+    !SAFE_METHODS.has(req.method) &&
+    origin !== `${req.protocol}://${req.get('host')}`
+  ) {
+    res.status(403).json({ error: { code: 'ORIGIN_REFUSED', message: 'Origine non autorisée.' } });
+    return;
+  }
+
+  if (origin && allowed) {
     res.setHeader('Access-Control-Allow-Origin', origin);
     res.setHeader('Vary', 'Origin');
     res.setHeader('Access-Control-Allow-Credentials', 'true');
