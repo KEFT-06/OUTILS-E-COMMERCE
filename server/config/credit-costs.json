@@ -4,7 +4,7 @@
   "note": "Grille tarifaire des research points (CdC §8). Table de configuration éditable sans déploiement, au même titre que la table de conformité. À migrer en base lors du Lot 2, avec un historique de versions : un coût qui change doit rester traçable pour les factures déjà émises.",
   "currency": "FCFA",
   "pointValueFcfa": 250,
-  "pointValueStatus": "PROVISOIRE — valeur non validée commercialement. Elle remplace un « ≈ 12 500 FCFA » qui était écrit en dur dans le Cockpit sans source. À confirmer avant toute mise en production facturée.",
+  "pointValueStatus": "Valeur du point provisoire, pas encore validée commercialement : à confirmer avant toute facturation.",
   "actions": [
     {
       "id": "niche_analysis",

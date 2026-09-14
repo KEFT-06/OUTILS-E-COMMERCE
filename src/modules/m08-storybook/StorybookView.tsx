@@ -1,17 +1,26 @@
-import React, { useEffect, useRef, useState } from 'react';
-import { AlertTriangle, BookOpen, ExternalLink, Loader2, PenLine, Sparkles } from 'lucide-react';
+import { useEffect, useRef, useState } from 'react';
+import { AlertTriangle, BookOpen, CheckCircle2, ExternalLink, PenLine, Sparkles } from 'lucide-react';
 import { useCreditGate } from '@/app/providers/CreditGateProvider';
+import { PageHeader } from '@/shared/components/PageHeader';
 import { ApiError, readApiError, toApiError } from '@/shared/lib/apiError';
 import { MARKETS } from '@/shared/lib/markets';
 import { safeHttpUrl } from '@/shared/lib/safeUrl';
-import { StorybookBrief, StorybookStatus } from '@/shared/types/storybook';
+import type { StorybookBrief, StorybookStatus } from '@/shared/types/storybook';
+import { Alert, AlertDescription, AlertTitle } from '@/shared/ui/alert';
+import { Button } from '@/shared/ui/button';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/shared/ui/card';
+import { Field, FieldDescription, FieldLabel } from '@/shared/ui/field';
+import { Input } from '@/shared/ui/input';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/shared/ui/select';
+import { Spinner } from '@/shared/ui/spinner';
+import { Textarea } from '@/shared/ui/textarea';
 
 /**
- * Storybook Africain — feuille de route 3.4.
+ * Storybook africain.
  *
- * Trois engagements visibles à l'écran, parce qu'ils conditionnent ce que
- * l'auteur peut promettre à ses propres lecteurs :
- *  - la cohérence du personnage d'une page à l'autre n'est pas garantie (3.5) ;
+ * Trois engagements visibles à l'écran, parce qu'ils conditionnent ce que l'auteur
+ * peut promettre à ses propres lecteurs :
+ *  - la cohérence du personnage d'une page à l'autre n'est pas garantie ;
  *  - aucun fait culturel n'est inventé : seuls les éléments fournis par l'auteur
  *    servent de références culturelles précises ;
  *  - le conte généré n'a pas été relu par le vérificateur de conformité.
@@ -23,11 +32,6 @@ const POLL_INTERVAL_MS = 5_000;
 const MAX_WAIT_MS = 10 * 60_000;
 
 const wait = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
-
-const fieldClass =
-  'w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm text-slate-900 focus:border-indigo-400 focus:outline-none focus:ring-2 focus:ring-indigo-100';
-
-const labelClass = 'mb-1 block text-[11px] font-bold uppercase tracking-wider text-slate-500';
 
 const INITIAL_BRIEF: StorybookBrief = {
   country: 'CI',
@@ -41,7 +45,7 @@ const INITIAL_BRIEF: StorybookBrief = {
   visualStyle: '',
 };
 
-export const StorybookView: React.FC = () => {
+export function StorybookView() {
   const { runWithCredits } = useCreditGate();
 
   const [brief, setBrief] = useState<StorybookBrief>(INITIAL_BRIEF);
@@ -50,8 +54,7 @@ export const StorybookView: React.FC = () => {
   const [result, setResult] = useState<StorybookStatus | null>(null);
   const [error, setError] = useState<ApiError | null>(null);
 
-  // Le suivi s'arrête si l'écran est quitté. Remis à false au montage : en mode
-  // strict, React démonte et remonte une fois, ce qui figerait sinon le drapeau.
+  // Le suivi s'arrête si l'écran est quitté. Remis à false au montage (mode strict).
   const unmountedRef = useRef(false);
   useEffect(() => {
     unmountedRef.current = false;
@@ -96,8 +99,7 @@ export const StorybookView: React.FC = () => {
     setResult(null);
 
     try {
-      // Points débités seulement quand le conte est terminé : un échec, un abandon
-      // ou un dépassement de délai ne coûte rien à l'auteur.
+      // Points débités seulement quand le conte est terminé.
       await runWithCredits('storybook_generation', async () => {
         setIsGenerating(true);
         try {
@@ -143,204 +145,221 @@ export const StorybookView: React.FC = () => {
   const storyUrl = safeHttpUrl(result?.gammaUrl);
 
   return (
-    <div className="space-y-6 animate-in fade-in duration-300">
-      <header>
-        <span className="mb-2 inline-block rounded-md border border-indigo-100 bg-indigo-50 px-2.5 py-1 text-[10px] font-black uppercase tracking-widest text-indigo-700">
-          Module 08
-        </span>
-        <h1 className="flex items-center gap-2 text-2xl font-black tracking-tight text-slate-900 sm:text-3xl">
-          <BookOpen className="h-6 w-6 text-indigo-600" />
-          Storybook Africain
-        </h1>
-        <p className="mt-1 max-w-2xl text-sm text-slate-500">
-          Des contes illustrés ancrés dans le pays de vos lecteurs, générés avec Gamma à partir de
-          votre propre brief.
-        </p>
-      </header>
+    <div className="space-y-6">
+      <PageHeader
+        eyebrow="Créer"
+        title="Storybook africain"
+        description="Des contes illustrés ancrés dans le pays de vos lecteurs, générés avec Gamma à partir de votre brief."
+      />
 
-      <div className="flex items-start gap-2 rounded-2xl border border-amber-300/70 bg-amber-50 px-4 py-3">
-        <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-amber-600" />
-        <p className="text-xs leading-relaxed text-amber-900">
-          <strong>Cohérence du personnage non garantie.</strong> Gamma ne permet pas de fixer
-          l'apparence d'un personnage d'une illustration à l'autre : Smart Creator le demande
-          explicitement, sans pouvoir l'imposer. Vérifiez chaque page avant de publier.
-        </p>
-      </div>
+      <Alert variant="warning">
+        <AlertTriangle />
+        <AlertTitle>Cohérence du personnage non garantie</AlertTitle>
+        <AlertDescription>
+          Gamma ne permet pas de fixer l’apparence d’un personnage d’une illustration à l’autre : Smart Creator le demande
+          explicitement, sans pouvoir l’imposer. Vérifiez chaque page avant de publier.
+        </AlertDescription>
+      </Alert>
 
-      <form onSubmit={handleSubmit} className="space-y-4 rounded-3xl border border-slate-200/80 bg-white p-5 shadow-xs sm:p-6">
-        <div className="grid grid-cols-1 gap-3 sm:grid-cols-4">
-          <label className="block">
-            <span className={labelClass}>Pays d'ancrage</span>
-            <select value={brief.country} onChange={(e) => update('country', e.target.value)} className={fieldClass}>
-              {MARKETS.map((market) => (
-                <option key={market.code} value={market.code}>
-                  {market.label}
-                </option>
-              ))}
-            </select>
-          </label>
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <BookOpen className="size-4 text-brand-green-text" aria-hidden="true" />
+            Brief du conte
+          </CardTitle>
+          <CardDescription>Le prénom du personnage et le thème suffisent pour lancer la génération.</CardDescription>
+        </CardHeader>
+        <CardContent>
+          <form onSubmit={handleSubmit} className="space-y-5">
+            <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+              <Field>
+                <FieldLabel htmlFor="story-country">Pays d’ancrage</FieldLabel>
+                <Select value={brief.country} onValueChange={(value) => update('country', value)}>
+                  <SelectTrigger id="story-country" className="w-full">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {MARKETS.map((market) => (
+                      <SelectItem key={market.code} value={market.code}>
+                        {market.label}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </Field>
 
-          <label className="block">
-            <span className={labelClass}>Langue</span>
-            <select
-              value={brief.language}
-              onChange={(e) => update('language', e.target.value as StorybookBrief['language'])}
-              className={fieldClass}
-            >
-              <option value="fr">Français</option>
-              <option value="en">Anglais</option>
-            </select>
-          </label>
+              <Field>
+                <FieldLabel htmlFor="story-language">Langue</FieldLabel>
+                <Select value={brief.language} onValueChange={(value) => update('language', value as StorybookBrief['language'])}>
+                  <SelectTrigger id="story-language" className="w-full">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="fr">Français</SelectItem>
+                    <SelectItem value="en">Anglais</SelectItem>
+                  </SelectContent>
+                </Select>
+              </Field>
 
-          <label className="block">
-            <span className={labelClass}>Âge des lecteurs</span>
-            <select
-              value={brief.ageRange}
-              onChange={(e) => update('ageRange', e.target.value as StorybookBrief['ageRange'])}
-              className={fieldClass}
-            >
-              <option value="3-5">3 à 5 ans</option>
-              <option value="6-8">6 à 8 ans</option>
-              <option value="9-12">9 à 12 ans</option>
-            </select>
-          </label>
+              <Field>
+                <FieldLabel htmlFor="story-age">Âge des lecteurs</FieldLabel>
+                <Select value={brief.ageRange} onValueChange={(value) => update('ageRange', value as StorybookBrief['ageRange'])}>
+                  <SelectTrigger id="story-age" className="w-full">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="3-5">3 à 5 ans</SelectItem>
+                    <SelectItem value="6-8">6 à 8 ans</SelectItem>
+                    <SelectItem value="9-12">9 à 12 ans</SelectItem>
+                  </SelectContent>
+                </Select>
+              </Field>
 
-          <label className="block">
-            <span className={labelClass}>Pages</span>
-            <input
-              type="number"
-              min={4}
-              max={20}
-              value={brief.pages}
-              onChange={(e) => update('pages', Math.min(20, Math.max(4, Number(e.target.value) || 4)))}
-              className={fieldClass}
-            />
-          </label>
-        </div>
+              <Field>
+                <FieldLabel htmlFor="story-pages">Pages</FieldLabel>
+                <Input
+                  id="story-pages"
+                  type="number"
+                  min={4}
+                  max={20}
+                  value={brief.pages}
+                  onChange={(event) => update('pages', Math.min(20, Math.max(4, Number(event.target.value) || 4)))}
+                />
+                <FieldDescription>Entre 4 et 20.</FieldDescription>
+              </Field>
+            </div>
 
-        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-          <label className="block">
-            <span className={labelClass}>Prénom du personnage principal</span>
-            <input value={brief.heroName} onChange={(e) => update('heroName', e.target.value)} maxLength={60} className={fieldClass} />
-          </label>
+            <div className="grid gap-4 sm:grid-cols-2">
+              <Field>
+                <FieldLabel htmlFor="story-hero">Prénom du personnage principal</FieldLabel>
+                <Input
+                  id="story-hero"
+                  value={brief.heroName}
+                  onChange={(event) => update('heroName', event.target.value)}
+                  maxLength={60}
+                />
+              </Field>
 
-          <label className="block">
-            <span className={labelClass}>Description du personnage</span>
-            <input
-              value={brief.heroDescription}
-              onChange={(e) => update('heroDescription', e.target.value)}
-              maxLength={300}
-              placeholder="âge, apparence, trait de caractère"
-              className={fieldClass}
-            />
-          </label>
+              <Field>
+                <FieldLabel htmlFor="story-hero-description">Description du personnage</FieldLabel>
+                <Input
+                  id="story-hero-description"
+                  value={brief.heroDescription}
+                  onChange={(event) => update('heroDescription', event.target.value)}
+                  maxLength={300}
+                  placeholder="âge, apparence, trait de caractère"
+                />
+              </Field>
 
-          <label className="block sm:col-span-2">
-            <span className={labelClass}>Thème et message du conte</span>
-            <input
-              value={brief.theme}
-              onChange={(e) => update('theme', e.target.value)}
-              maxLength={300}
-              placeholder="ex. le courage d'avouer une erreur"
-              className={fieldClass}
-            />
-          </label>
+              <Field className="sm:col-span-2">
+                <FieldLabel htmlFor="story-theme">Thème et message du conte</FieldLabel>
+                <Input
+                  id="story-theme"
+                  value={brief.theme}
+                  onChange={(event) => update('theme', event.target.value)}
+                  maxLength={300}
+                  placeholder="ex. le courage d’avouer une erreur"
+                />
+              </Field>
 
-          <label className="block sm:col-span-2">
-            <span className={labelClass}>Éléments culturels à intégrer</span>
-            <textarea
-              value={brief.culturalElements}
-              onChange={(e) => update('culturalElements', e.target.value)}
-              rows={3}
-              maxLength={1000}
-              placeholder="prénoms, lieux, plats, fêtes, proverbes que vous connaissez et souhaitez voir figurer"
-              className={fieldClass}
-            />
-            <span className="mt-1 block text-[11px] leading-relaxed text-slate-400">
-              Gamma reçoit la consigne de n'utiliser comme références culturelles précises que ces
-              éléments, et d'éviter caricatures et stéréotypes. Rien n'est inventé à votre place.
-            </span>
-          </label>
+              <Field className="sm:col-span-2">
+                <FieldLabel htmlFor="story-culture">Éléments culturels à intégrer</FieldLabel>
+                <Textarea
+                  id="story-culture"
+                  value={brief.culturalElements}
+                  onChange={(event) => update('culturalElements', event.target.value)}
+                  rows={3}
+                  maxLength={1000}
+                  placeholder="prénoms, lieux, plats, fêtes, proverbes que vous connaissez et souhaitez voir figurer"
+                />
+                <FieldDescription>
+                  Gamma reçoit la consigne de n’utiliser comme références culturelles précises que ces éléments, et
+                  d’éviter caricatures et stéréotypes. Rien n’est inventé à votre place.
+                </FieldDescription>
+              </Field>
 
-          <label className="block sm:col-span-2">
-            <span className={labelClass}>Style visuel (facultatif)</span>
-            <input
-              value={brief.visualStyle}
-              onChange={(e) => update('visualStyle', e.target.value)}
-              maxLength={300}
-              placeholder="ex. aquarelle aux couleurs chaudes"
-              className={fieldClass}
-            />
-          </label>
-        </div>
+              <Field className="sm:col-span-2">
+                <FieldLabel htmlFor="story-style">Style visuel</FieldLabel>
+                <Input
+                  id="story-style"
+                  value={brief.visualStyle}
+                  onChange={(event) => update('visualStyle', event.target.value)}
+                  maxLength={300}
+                  placeholder="facultatif — ex. aquarelle aux couleurs chaudes"
+                />
+              </Field>
+            </div>
 
-        <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-          <p className="text-[11px] leading-relaxed text-slate-400">
-            Le brief passe le vérificateur de conformité avant l'envoi. Le coût en points s'affiche
-            avant validation ; restez sur cet écran pendant la génération.
-          </p>
-          <button
-            type="submit"
-            disabled={!canSubmit}
-            className="inline-flex shrink-0 items-center justify-center gap-2 rounded-xl bg-slate-900 px-4 py-2.5 text-xs font-bold text-white transition-colors hover:bg-indigo-600 disabled:cursor-not-allowed disabled:bg-slate-300"
-          >
-            {isGenerating ? <Loader2 className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4" />}
-            {isGenerating ? 'Génération en cours…' : 'Générer le conte'}
-          </button>
-        </div>
-      </form>
+            <div className="flex flex-col gap-3 border-t pt-4 sm:flex-row sm:items-center sm:justify-between">
+              <p className="text-xs leading-relaxed text-muted-foreground">
+                Le brief passe le vérificateur de conformité avant l’envoi. Le coût en points s’affiche avant validation ;
+                restez sur cet écran pendant la génération.
+              </p>
+              <Button type="submit" disabled={!canSubmit} className="shrink-0">
+                {isGenerating ? <Spinner /> : <Sparkles />}
+                {isGenerating ? 'Génération en cours…' : 'Générer le conte'}
+              </Button>
+            </div>
+          </form>
+        </CardContent>
+      </Card>
 
       {isGenerating && (
-        <div role="status" className="flex items-center gap-2 rounded-2xl border border-indigo-200 bg-indigo-50 px-4 py-3">
-          <Loader2 className="h-4 w-4 shrink-0 animate-spin text-indigo-600" />
-          <p className="text-xs text-indigo-900">
-            Gamma rédige et illustre le conte — {elapsedSeconds} s écoulées. Comptez en général 1 à 3
-            minutes.
-          </p>
-        </div>
+        <Alert variant="info" role="status">
+          <Spinner />
+          <AlertDescription className="tabular-nums">
+            Gamma rédige et illustre le conte : {elapsedSeconds} s écoulées. Comptez en général 1 à 3 minutes.
+          </AlertDescription>
+        </Alert>
       )}
 
       {error && (
-        <div role="alert" className="space-y-2 rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3">
-          <div className="flex items-start gap-2">
-            <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-rose-600" />
-            <p className="text-xs leading-relaxed text-rose-900">{error.message}</p>
-          </div>
-          {error.findings.map((finding, index) => (
-            <div key={`${finding.category}-${index}`} className="ml-6 rounded-xl border border-rose-200 bg-white p-3">
-              <p className="text-[11px] font-black uppercase tracking-wider text-rose-700">{finding.category}</p>
-              <p className="mt-1 text-xs font-semibold text-slate-900">« {finding.matched} »</p>
-              <p className="mt-1.5 flex items-start gap-1.5 text-xs text-slate-600">
-                <PenLine className="mt-0.5 h-3.5 w-3.5 shrink-0" />
-                {finding.rewriteHint}
-              </p>
-            </div>
-          ))}
-        </div>
+        <Alert variant="danger">
+          <AlertTriangle />
+          <AlertTitle>La génération n’a pas abouti</AlertTitle>
+          <AlertDescription>
+            <p>{error.message}</p>
+            {error.findings.length > 0 && (
+              <ul className="mt-2 w-full space-y-2">
+                {error.findings.map((finding, index) => (
+                  <li key={`${finding.category}-${index}`} className="rounded-md border border-danger-border bg-card p-3">
+                    <p className="text-xs font-semibold tracking-wider text-danger uppercase">{finding.category}</p>
+                    <p className="mt-1 font-medium">« {finding.matched} »</p>
+                    <p className="mt-1.5 flex items-start gap-1.5 text-muted-foreground">
+                      <PenLine className="mt-0.5 size-3.5 shrink-0" aria-hidden="true" />
+                      {finding.rewriteHint}
+                    </p>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </AlertDescription>
+        </Alert>
       )}
 
       {result && storyUrl && (
-        <section className="space-y-3 rounded-3xl border border-emerald-200 bg-white p-5 shadow-xs">
-          <h2 className="text-sm font-bold text-slate-900">Votre conte est prêt</h2>
-          <a
-            href={storyUrl}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="inline-flex items-center gap-2 rounded-xl bg-slate-900 px-4 py-2.5 text-xs font-bold text-white hover:bg-indigo-600"
-          >
-            Ouvrir le conte dans Gamma
-            <ExternalLink className="h-3.5 w-3.5" />
-          </a>
-          <ul className="space-y-1 text-[11px] leading-relaxed text-slate-500">
-            <li>
-              Le texte généré n'a pas été relu par le vérificateur de conformité de Smart Creator :
-              relisez-le avant toute diffusion.
-            </li>
-            <li>Vérifiez que le personnage reste reconnaissable d'une page à l'autre.</li>
-            <li>Toute personne disposant de ce lien peut consulter le conte.</li>
-          </ul>
-        </section>
+        <Card className="border-success-border">
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <CheckCircle2 className="size-5 text-success" aria-hidden="true" />
+              Votre conte est prêt
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <Button asChild>
+              <a href={storyUrl} target="_blank" rel="noopener noreferrer">
+                Ouvrir le conte dans Gamma
+                <ExternalLink />
+              </a>
+            </Button>
+            <ul className="list-disc space-y-1 pl-4 text-sm text-muted-foreground">
+              <li>Le texte généré n’a pas été relu par le vérificateur de conformité : relisez-le avant toute diffusion.</li>
+              <li>Vérifiez que le personnage reste reconnaissable d’une page à l’autre.</li>
+              <li>Toute personne disposant de ce lien peut consulter le conte.</li>
+            </ul>
+          </CardContent>
+        </Card>
       )}
     </div>
   );
-};
+}

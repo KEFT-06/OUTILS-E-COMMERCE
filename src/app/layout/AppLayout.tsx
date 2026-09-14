@@ -1,12 +1,31 @@
-import { useEffect } from 'react';
+import { Suspense, useEffect } from 'react';
 import { Outlet, useLocation } from 'react-router-dom';
 import { WorkspaceProvider } from '@/app/providers/WorkspaceProvider';
 import { SidebarInset, SidebarProvider } from '@/shared/ui/sidebar';
+import { Skeleton } from '@/shared/ui/skeleton';
 import { AppHeader } from './AppHeader';
 import { AppSidebar } from './AppSidebar';
 import { CommandPalette } from './CommandPalette';
 import { MobileNav } from './MobileNav';
 import { NicheAnalysisDialog } from './NicheAnalysisDialog';
+
+/** Affiché le temps de télécharger un écran : la forme d'une page, sans contenu inventé. */
+function PageSkeleton() {
+  return (
+    <div className="space-y-6" role="status" aria-label="Chargement de l’écran">
+      <div className="space-y-2">
+        <Skeleton className="h-3 w-16" />
+        <Skeleton className="h-8 w-64" />
+        <Skeleton className="h-4 w-full max-w-md" />
+      </div>
+      <div className="grid gap-6 lg:grid-cols-3">
+        <Skeleton className="h-48 rounded-xl" />
+        <Skeleton className="h-48 rounded-xl lg:col-span-2" />
+      </div>
+      <Skeleton className="h-64 rounded-xl" />
+    </div>
+  );
+}
 
 /**
  * Squelette de l'espace de travail : barre latérale groupée VOIR / CRÉER / VENDRE,
@@ -32,11 +51,15 @@ export function AppLayout() {
         <AppSidebar />
         <SidebarInset>
           <AppHeader />
-          <main id="contenu" tabIndex={-1} className="flex-1 px-4 pt-6 pb-28 outline-none sm:px-6 md:pb-12 lg:px-8">
+          {/* SidebarInset est déjà l'élément <main> : un second <main> dupliquerait le repère. */}
+          <div id="contenu" tabIndex={-1} className="flex-1 px-4 pt-6 pb-28 outline-none sm:px-6 md:pb-12 lg:px-8">
             <div className="mx-auto w-full max-w-6xl">
-              <Outlet />
+              {/* La clé relance le squelette à chaque écran chargé à la demande. */}
+              <Suspense key={pathname} fallback={<PageSkeleton />}>
+                <Outlet />
+              </Suspense>
             </div>
-          </main>
+          </div>
         </SidebarInset>
         <MobileNav />
         <CommandPalette />

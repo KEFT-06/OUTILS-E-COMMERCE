@@ -2,7 +2,7 @@
   "version": "2026.09.1",
   "updatedAt": "2026-09-14",
   "note": "Kit de lancement (feuille de route 5.1), éditable sans redéploiement. Les noms des boutons d'appel à l'action sont les noms officiels du gestionnaire de publicités Meta, relevés le 14 septembre 2026 sur la page d'aide citée.",
-  "valuesStatus": "PROVISOIRE — découpages des scripts, repère de débit de voix off et recommandations de boutons par objectif sont des valeurs par défaut, non issues de données de performance.",
+  "valuesStatus": "Valeurs provisoires : découpages des scripts, débit de voix off et boutons recommandés sont proposés par défaut, pas encore calibrés sur des résultats de campagnes.",
   "voiceOverWordsPerSecond": 2.5,
   "ctaPlatforms": [
     {

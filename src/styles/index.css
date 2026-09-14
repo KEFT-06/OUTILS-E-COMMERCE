@@ -84,13 +84,6 @@
   --danger-soft: #fef3f2;
   --danger-border: #fecdca;
 
-  /* Alias de l'ancien système, conservés le temps de la migration. */
-  --surface: var(--card);
-  --surface-raised: var(--card);
-  --surface-sunken: var(--background);
-  --border-subtle: var(--border);
-  --text-primary: var(--foreground);
-  --text-muted: var(--muted-foreground);
 
   color-scheme: light;
 }
@@ -228,6 +221,30 @@
   --color-danger: var(--danger);
   --color-danger-soft: var(--danger-soft);
   --color-danger-border: var(--danger-border);
+}
+
+/* Défilement de l'accueil (composant Marquee de Magic UI). */
+@theme {
+  --animate-marquee: marquee var(--duration) infinite linear;
+  --animate-marquee-vertical: marquee-vertical var(--duration) linear infinite;
+
+  @keyframes marquee {
+    from {
+      transform: translateX(0);
+    }
+    to {
+      transform: translateX(calc(-100% - var(--gap)));
+    }
+  }
+
+  @keyframes marquee-vertical {
+    from {
+      transform: translateY(0);
+    }
+    to {
+      transform: translateY(calc(-100% - var(--gap)));
+    }
+  }
 }
 
 @layer base {

@@ -498,6 +498,40 @@ c'est la **traçabilité**. Ce lot livre les différenciateurs 1, 2 et 3 du cahi
   > comptes, des paiements et une file de relecture, donc une base de données et une
   > authentification. Le module reste affiché « bientôt » ; rien n'est simulé.
 
+## Refonte UI/UX — septembre 2026 ✅
+
+Suite de l'audit d'interface (26 écrans, 24 problèmes classés). Détail des règles dans
+`docs/DESIGN-SYSTEM.md`.
+
+- **Marque unifiée** : Smart Creator — « Veille stratégique & production e-commerce », couleurs du
+  logo conservées, logo et favicon en SVG (le fichier JPEG du logo était vide).
+- **Bibliothèques** : shadcn/ui, tw-animate-css, React Router, cmdk, Sonner, TanStack Table,
+  React Hook Form + zod, shadcn Charts, Magic UI sur l'accueil. `framer-motion` et les paquets
+  `@radix-ui/react-*` individuels retirés.
+- **Squelette** : une adresse par écran, barre latérale VOIR / CRÉER / VENDRE, palette ⌘K, barre
+  basse sur mobile, écrans chargés à la demande (fichier principal : 803 → 505 ko).
+- **Défauts bloquants corrigés** :
+  - la fenêtre « Analyser une niche » s'ouvrait coupée : elle passe par le Dialog Radix ;
+  - le thème sombre ne changeait que le fond : couleurs nommées redéfinies une seule fois ;
+  - l'adresse e-mail du fondateur était pré-remplie et tout visiteur arrivait connecté à son nom :
+    compte de démonstration fictif, champs vides, avatar à initiales ;
+  - promesses corrigées sur l'accueil, le Radar, les Créatifs et la connexion (« temps réel »,
+    « 100 % conformes », « garantie », « SSL 256-bit », « cohérence de personnage garantie ») ;
+  - courbe de rétention inventée supprimée ; jargon interne (« Lot », « CdC ») retiré des écrans
+    et des messages du serveur.
+- **Ajouts** : pages légales, FAQ et paliers sur l'accueil, capture réelle de l'outil, état des
+  services connectés et parcours « Par où commencer » au Cockpit, choix des marchés avant les
+  boutons dans le Kit de lancement, onglets dans l'Analyse stratégique et l'Affiliation.
+- **Vérifié** : `tsc` et build de production OK. Audit Edge + axe-core sur 34 écrans (1 440 et
+  390 px, clair et sombre) : aucune violation critique ou sérieuse (26 écrans sur 26 en défaut
+  avant), aucun texte sous 12 px (207 avant), aucun débordement horizontal, bouton Retour du
+  navigateur fonctionnel.
+  > ⚠️ **Limites et décisions** : interface en français seulement (le bouton EN ne traduisait que
+  > 8 fichiers) ; connexion locale sans mot de passe, annoncée comme telle ; pages légales à
+  > compléter par l'éditeur (identité, hébergeur, contact) ; prix des paliers non définis ;
+  > `radix-ui` épinglé en 1.4.3 et composants shadcn récupérés par script, le CLI et les versions
+  > récentes dépendant de paquets absents du registre npm.
+
 ## Ordre de bataille recommandé
 
 ```

@@ -1,28 +1,61 @@
+import { lazy } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { ACCOUNT_PATH, pathOf, type ModuleId } from '@/app/navigation';
 import { useWorkspace } from '@/app/providers/WorkspaceProvider';
 import { AccountView } from '@/features/account/AccountView';
-import { CockpitDashboard } from '@/modules/cockpit/CockpitDashboard';
-import { AdGalleryView } from '@/modules/m01-radar/AdGalleryView';
-import { RadarTrendsView } from '@/modules/m01-radar/RadarTrendsView';
-import { ReportPDFView } from '@/modules/m02-analyse/ReportPDFView';
-import { StrategicAnalysisView } from '@/modules/m02-analyse/StrategicAnalysisView';
-import { DigitalProductsView } from '@/modules/m03-studio/DigitalProductsView';
-import { CreativeGeneratorPanel } from '@/modules/m04-creatifs/CreativeGeneratorPanel';
-import { MetaVideoStudioView } from '@/modules/m04-creatifs/MetaVideoStudioView';
-import { LaunchKitView } from '@/modules/m05-kit-lancement/LaunchKitView';
-import { DistributionView } from '@/modules/m06-distribution/DistributionView';
-import { AffiliationView } from '@/modules/m07-affiliation/AffiliationView';
-import { StorybookView } from '@/modules/m08-storybook/StorybookView';
-import { ProductPageBuilderView } from '@/modules/m09-pages/ProductPageBuilderView';
-import { CampaignBlueprintsView } from '@/modules/m11-campagnes/CampaignBlueprintsView';
 import { PageHeader } from '@/shared/components/PageHeader';
 import { PlaceholderModuleView } from '@/shared/ui/PlaceholderModuleView';
 
 /**
  * Un composant par route. Chaque page lit la niche active dans l'espace de
  * travail et traduit ses liens internes en adresses.
+ *
+ * Les écrans sont chargés à la demande : un créateur qui ouvre le Cockpit sur
+ * une connexion mobile ne télécharge pas le studio vidéo ni le générateur de pages.
  */
+
+const CockpitDashboard = lazy(() =>
+  import('@/modules/cockpit/CockpitDashboard').then((module) => ({ default: module.CockpitDashboard })),
+);
+const AdGalleryView = lazy(() =>
+  import('@/modules/m01-radar/AdGalleryView').then((module) => ({ default: module.AdGalleryView })),
+);
+const RadarTrendsView = lazy(() =>
+  import('@/modules/m01-radar/RadarTrendsView').then((module) => ({ default: module.RadarTrendsView })),
+);
+const ReportPDFView = lazy(() =>
+  import('@/modules/m02-analyse/ReportPDFView').then((module) => ({ default: module.ReportPDFView })),
+);
+const StrategicAnalysisView = lazy(() =>
+  import('@/modules/m02-analyse/StrategicAnalysisView').then((module) => ({ default: module.StrategicAnalysisView })),
+);
+const DigitalProductsView = lazy(() =>
+  import('@/modules/m03-studio/DigitalProductsView').then((module) => ({ default: module.DigitalProductsView })),
+);
+const CreativeGeneratorPanel = lazy(() =>
+  import('@/modules/m04-creatifs/CreativeGeneratorPanel').then((module) => ({ default: module.CreativeGeneratorPanel })),
+);
+const MetaVideoStudioView = lazy(() =>
+  import('@/modules/m04-creatifs/MetaVideoStudioView').then((module) => ({ default: module.MetaVideoStudioView })),
+);
+const LaunchKitView = lazy(() =>
+  import('@/modules/m05-kit-lancement/LaunchKitView').then((module) => ({ default: module.LaunchKitView })),
+);
+const DistributionView = lazy(() =>
+  import('@/modules/m06-distribution/DistributionView').then((module) => ({ default: module.DistributionView })),
+);
+const AffiliationView = lazy(() =>
+  import('@/modules/m07-affiliation/AffiliationView').then((module) => ({ default: module.AffiliationView })),
+);
+const StorybookView = lazy(() =>
+  import('@/modules/m08-storybook/StorybookView').then((module) => ({ default: module.StorybookView })),
+);
+const ProductPageBuilderView = lazy(() =>
+  import('@/modules/m09-pages/ProductPageBuilderView').then((module) => ({ default: module.ProductPageBuilderView })),
+);
+const CampaignBlueprintsView = lazy(() =>
+  import('@/modules/m11-campagnes/CampaignBlueprintsView').then((module) => ({ default: module.CampaignBlueprintsView })),
+);
 
 function useGoTo() {
   const navigate = useNavigate();
@@ -94,10 +127,7 @@ export function CreatifsPage() {
         description="Générez un visuel ou une vidéo, puis travaillez les scripts vidéo proposés pour la niche active."
       />
       <CreativeGeneratorPanel />
-      <MetaVideoStudioView
-        campaigns={currentReport.adCampaigns}
-        provenance={currentReport.dataProvenance?.adCampaigns}
-      />
+      <MetaVideoStudioView campaigns={currentReport.adCampaigns} provenance={currentReport.dataProvenance?.adCampaigns} />
     </div>
   );
 }
@@ -131,6 +161,7 @@ export function AffiliationPage() {
 export function MultilinguePage() {
   return (
     <PlaceholderModuleView
+      eyebrow="Créer"
       title="Guides multilingues"
       description="Prévu : des guides traduits en plusieurs langues, relus par des locuteurs natifs selon trois niveaux (Tier A, B et C)."
       blocker="Les niveaux A, B et C ne sont pas encore définis (langues couvertes, degré de relecture, prix), et le réseau de relecteurs suppose des comptes et des paiements qui n’existent pas encore. Aucune traduction n’est proposée ni simulée en attendant."

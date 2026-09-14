@@ -1,6 +1,7 @@
-import React, { useEffect, useState } from 'react';
-import { AlertTriangle, Download, ExternalLink, Info, Loader2, Plus, Rocket, Trash2, Wand2 } from 'lucide-react';
-import { ApiError, readApiError, toApiError } from '@/shared/lib/apiError';
+import { useEffect, useState } from 'react';
+import { AlertTriangle, Check, Download, ExternalLink, Info, Plus, Rocket, Trash2, Wand2 } from 'lucide-react';
+import { PageHeader } from '@/shared/components/PageHeader';
+import { type ApiError, readApiError, toApiError } from '@/shared/lib/apiError';
 import { ComplianceBlockedError } from '@/shared/lib/complianceGate';
 import { formatDateFr } from '@/shared/lib/formatDate';
 import { KitIncompleteError, OBJECTIVE_LABELS, exportLaunchKit, missingForKit } from '@/shared/lib/launchKit';
@@ -8,31 +9,48 @@ import { MARKETS } from '@/shared/lib/markets';
 import { safeHttpUrl } from '@/shared/lib/safeUrl';
 import { MAX_COPY_VARIANTS, emptyKitDraft, useLaunchKitDrafts } from '@/shared/lib/useLaunchKitDrafts';
 import { useProductDrafts } from '@/shared/lib/useProductDrafts';
-import { MarketAnalysisReport } from '@/shared/types/analysis';
-import { ReportComplianceVerdict } from '@/shared/types/compliance';
-import { AdCopyVariant, BeatText, KitObjective, LaunchKitConfig, LaunchKitDraft } from '@/shared/types/launchKit';
+import { cn } from '@/shared/lib/utils';
+import type { MarketAnalysisReport } from '@/shared/types/analysis';
+import type { ReportComplianceVerdict } from '@/shared/types/compliance';
+import type { AdCopyVariant, BeatText, KitObjective, LaunchKitConfig, LaunchKitDraft } from '@/shared/types/launchKit';
+import { Alert, AlertDescription, AlertTitle } from '@/shared/ui/alert';
+import { Button } from '@/shared/ui/button';
+import { Card, CardAction, CardContent, CardDescription, CardHeader, CardTitle } from '@/shared/ui/card';
 import { ComplianceBlockDialog } from '@/shared/ui/ComplianceBlockDialog';
+import { Field, FieldDescription, FieldLabel } from '@/shared/ui/field';
+import { Input } from '@/shared/ui/input';
 import { NoDataState } from '@/shared/ui/NoDataState';
+import {
+  Select,
+  SelectContent,
+  SelectGroup,
+  SelectItem,
+  SelectLabel,
+  SelectSeparator,
+  SelectTrigger,
+  SelectValue,
+} from '@/shared/ui/select';
+import { Skeleton } from '@/shared/ui/skeleton';
+import { Spinner } from '@/shared/ui/spinner';
+import { Textarea } from '@/shared/ui/textarea';
 
 /**
- * Kit de lancement — feuille de route 5.1.
+ * Kit de lancement.
  *
- * Aucun fournisseur de texte n'est branché : le kit structure, pré-remplit
- * depuis le produit réel et contrôle, mais n'écrit pas à la place de l'auteur.
- * L'ancien placeholder promettait une génération « basée sur 12 méthodes de
- * copywriting » que rien n'implémentait.
+ * Aucun fournisseur de texte n'est branché : le kit structure, pré-remplit depuis
+ * le produit réel et contrôle, mais n'écrit pas à la place de l'auteur.
+ *
+ * Les boutons d'appel à l'action ne sont demandés que pour les marchés choisis :
+ * l'ancienne version affichait d'un coup 17 menus « non concerné ».
  */
 
-const fieldClass =
-  'w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 focus:border-indigo-400 focus:outline-none focus:ring-2 focus:ring-indigo-100';
-
-const labelClass = 'mb-1 block text-[11px] font-bold uppercase tracking-wider text-slate-500';
+const NO_BUTTON = '__aucun';
 
 function wordCount(text: string): number {
   return text.trim() ? text.trim().split(/\s+/).length : 0;
 }
 
-export const LaunchKitView: React.FC<{ report: MarketAnalysisReport }> = ({ report }) => {
+export function LaunchKitView({ report }: { report: MarketAnalysisReport }) {
   const productDrafts = useProductDrafts();
   const kitDrafts = useLaunchKitDrafts();
 
@@ -46,7 +64,6 @@ export const LaunchKitView: React.FC<{ report: MarketAnalysisReport }> = ({ repo
 
   useEffect(() => {
     let cancelled = false;
-
     fetch('/api/launch-kit/config')
       .then(async (response) => {
         if (!response.ok) throw await readApiError(response, `Le kit n'a pas pu être chargé (${response.status}).`);
@@ -60,22 +77,23 @@ export const LaunchKitView: React.FC<{ report: MarketAnalysisReport }> = ({ repo
       .catch((caught: unknown) => {
         if (!cancelled) setLoadError(toApiError(caught, "Le kit n'a pas pu être chargé."));
       });
-
     return () => {
       cancelled = true;
     };
   }, []);
 
-  const baseProduct =
-    report.digitalProducts.find((candidate) => candidate.id === productId) ?? report.digitalProducts[0];
+  const baseProduct = report.digitalProducts.find((candidate) => candidate.id === productId) ?? report.digitalProducts[0];
 
   if (!baseProduct) {
     return (
-      <NoDataState
-        icon={Rocket}
-        title="Aucun produit dans ce rapport"
-        reason="Le kit de lancement part d'un produit du Studio. Ce rapport n'en contient pas encore."
-      />
+      <div className="space-y-6">
+        <PageHeader eyebrow="Vendre" title="Kit de lancement" />
+        <NoDataState
+          icon={Rocket}
+          title="Aucun produit dans ce rapport"
+          reason="Le kit de lancement part d’un produit du Studio. Choisissez une niche qui en propose un."
+        />
+      </div>
     );
   }
 
@@ -109,11 +127,18 @@ export const LaunchKitView: React.FC<{ report: MarketAnalysisReport }> = ({ repo
     });
   };
 
+  /** Un marché est ciblé dès qu'il figure dans la table, même sans bouton choisi. */
+  const toggleMarket = (code: string) => {
+    const next = { ...draft.ctaByMarket };
+    if (code in next) delete next[code];
+    else next[code] = '';
+    update({ ctaByMarket: next });
+  };
+
   const handleExport = async () => {
     if (!config) return;
     setIsExporting(true);
     setExportError(null);
-
     try {
       await exportLaunchKit(product, draft, config);
     } catch (error) {
@@ -134,276 +159,358 @@ export const LaunchKitView: React.FC<{ report: MarketAnalysisReport }> = ({ repo
   const platform = config?.ctaPlatforms[0];
   const format = config?.scriptFormats.find((candidate) => candidate.durationSeconds === duration);
   const missing = missingForKit(draft);
+  const targetedMarkets = MARKETS.filter((market) => market.code in draft.ctaByMarket);
 
   return (
-    <div className="space-y-6 animate-in fade-in duration-300">
-      <header className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
-        <div>
-          <span className="mb-2 inline-block rounded-md border border-indigo-100 bg-indigo-50 px-2.5 py-1 text-[10px] font-black uppercase tracking-widest text-indigo-700">
-            Module 05
-          </span>
-          <h1 className="flex items-center gap-2 text-2xl font-black tracking-tight text-slate-900 sm:text-3xl">
-            <Rocket className="h-6 w-6 text-indigo-600" />
-            Kit de Lancement
-          </h1>
-          <p className="mt-1 max-w-2xl text-sm text-slate-500">
-            Textes publicitaires, scripts 15, 30 et 60 secondes, et boutons d'appel à l'action par marché.
-          </p>
-        </div>
-        <label className="block sm:w-72">
-          <span className={labelClass}>Produit</span>
-          <select value={baseProduct.id} onChange={(e) => setProductId(e.target.value)} className={fieldClass}>
-            {report.digitalProducts.map((candidate) => (
-              <option key={candidate.id} value={candidate.id}>
-                {productDrafts.effective(candidate).title}
-              </option>
-            ))}
-          </select>
-        </label>
-      </header>
+    <div className="space-y-6">
+      <PageHeader
+        eyebrow="Vendre"
+        title="Kit de lancement"
+        description="Textes publicitaires, scripts de 15, 30 et 60 secondes, et boutons d’appel à l’action par marché."
+        actions={
+          <Field className="w-full sm:w-72">
+            <FieldLabel htmlFor="kit-product">Produit</FieldLabel>
+            <Select value={baseProduct.id} onValueChange={setProductId}>
+              <SelectTrigger id="kit-product" className="w-full">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {report.digitalProducts.map((candidate) => (
+                  <SelectItem key={candidate.id} value={candidate.id}>
+                    {productDrafts.effective(candidate).title}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </Field>
+        }
+      />
 
-      <div className="flex items-start gap-2 rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3">
-        <Info className="mt-0.5 h-4 w-4 shrink-0 text-slate-500" />
-        <p className="text-xs leading-relaxed text-slate-600">
-          Aucun fournisseur de rédaction n'est branché : le kit vous guide et contrôle vos textes, il ne les écrit pas.
+      <Alert variant="info">
+        <Info />
+        <AlertDescription>
+          Aucun fournisseur de rédaction n’est branché : le kit vous guide et contrôle vos textes, il ne les écrit pas.
           Le pré-remplissage reprend uniquement les données de votre produit.
-        </p>
-      </div>
+        </AlertDescription>
+      </Alert>
 
       {loadError && (
-        <div role="alert" className="flex items-start gap-2 rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3">
-          <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-rose-600" />
-          <p className="text-xs text-rose-900">{loadError.message}</p>
-        </div>
+        <Alert variant="danger">
+          <AlertTriangle />
+          <AlertTitle>Kit indisponible</AlertTitle>
+          <AlertDescription>{loadError.message}</AlertDescription>
+        </Alert>
       )}
 
       {config?.valuesStatus && (
-        <div className="flex items-start gap-2 rounded-2xl border border-amber-300/70 bg-amber-50 px-4 py-3">
-          <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-amber-600" />
-          <p className="text-xs leading-relaxed text-amber-900">{config.valuesStatus}</p>
-        </div>
+        <Alert variant="warning">
+          <AlertTriangle />
+          <AlertDescription>{config.valuesStatus}</AlertDescription>
+        </Alert>
       )}
 
-      <section className="space-y-3 rounded-3xl border border-slate-200/80 bg-white p-5 shadow-xs">
-        <fieldset>
-          <legend className={labelClass}>Objectif de la campagne</legend>
-          <div className="flex flex-wrap gap-2">
-            {(Object.keys(OBJECTIVE_LABELS) as KitObjective[]).map((objective) => (
-              <button
-                key={objective}
-                type="button"
-                aria-pressed={draft.objective === objective}
-                onClick={() => update({ objective })}
-                className={`rounded-xl border px-3 py-2 text-xs font-bold ${
-                  draft.objective === objective ? 'border-slate-900 bg-slate-900 text-white' : 'border-slate-200 text-slate-600'
-                }`}
-              >
-                {OBJECTIVE_LABELS[objective]}
-              </button>
-            ))}
-          </div>
-        </fieldset>
-      </section>
-
-      <section className="space-y-4 rounded-3xl border border-slate-200/80 bg-white p-5 shadow-xs">
-        <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-          <h2 className="text-sm font-bold text-slate-900">Textes publicitaires</h2>
-          <div className="flex gap-2">
-            <button
-              type="button"
-              onClick={prefillFromProduct}
-              className="inline-flex items-center gap-1 rounded-lg border border-slate-200 px-2.5 py-1 text-[11px] font-bold text-slate-700 hover:border-indigo-300"
-            >
-              <Wand2 className="h-3 w-3" />
-              Pré-remplir depuis le produit
-            </button>
-            {draft.copies.length < MAX_COPY_VARIANTS && (
-              <button
-                type="button"
-                onClick={() => update({ copies: [...draft.copies, { primaryText: '', headline: '', description: '' }] })}
-                className="inline-flex items-center gap-1 rounded-lg border border-slate-200 px-2.5 py-1 text-[11px] font-bold text-slate-700 hover:border-indigo-300"
-              >
-                <Plus className="h-3 w-3" />
-                Variante
-              </button>
-            )}
-          </div>
-        </div>
-
-        {draft.copies.map((copy, index) => (
-          <div key={index} className="space-y-2 rounded-2xl border border-slate-200 p-4">
-            <div className="flex items-center justify-between">
-              <p className="text-[11px] font-black uppercase tracking-wider text-indigo-600">Variante {index + 1}</p>
-              {draft.copies.length > 1 && (
-                <button
+      <Card className="py-5">
+        <CardContent>
+          <fieldset className="space-y-2">
+            <legend className="mb-2 text-sm font-medium">Objectif de la campagne</legend>
+            <div className="flex flex-wrap gap-2">
+              {(Object.keys(OBJECTIVE_LABELS) as KitObjective[]).map((objective) => (
+                <Button
+                  key={objective}
                   type="button"
-                  onClick={() => update({ copies: draft.copies.filter((_copy, i) => i !== index) })}
-                  aria-label={`Supprimer la variante ${index + 1}`}
-                  className="rounded-lg border border-slate-200 p-1.5 text-slate-400 hover:text-rose-600"
+                  size="sm"
+                  variant={draft.objective === objective ? 'secondary' : 'outline'}
+                  aria-pressed={draft.objective === objective}
+                  onClick={() => update({ objective })}
+                  className={cn(draft.objective === objective && 'border-primary/40 text-brand-green-text')}
                 >
-                  <Trash2 className="h-3.5 w-3.5" />
-                </button>
-              )}
-            </div>
-            <label className="block">
-              <span className={labelClass}>Texte principal</span>
-              <textarea value={copy.primaryText} onChange={(e) => updateCopy(index, { primaryText: e.target.value })} rows={3} maxLength={2000} className={fieldClass} />
-            </label>
-            <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
-              <label className="block">
-                <span className={labelClass}>Titre</span>
-                <input value={copy.headline} onChange={(e) => updateCopy(index, { headline: e.target.value })} maxLength={120} className={fieldClass} />
-              </label>
-              <label className="block">
-                <span className={labelClass}>Description</span>
-                <input value={copy.description} onChange={(e) => updateCopy(index, { description: e.target.value })} maxLength={200} className={fieldClass} />
-              </label>
-            </div>
-          </div>
-        ))}
-      </section>
-
-      {config && format && (
-        <section className="space-y-4 rounded-3xl border border-slate-200/80 bg-white p-5 shadow-xs">
-          <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-            <h2 className="text-sm font-bold text-slate-900">Scripts vidéo</h2>
-            <div className="inline-flex rounded-xl border border-slate-200 p-1">
-              {config.scriptFormats.map((candidate) => (
-                <button
-                  key={candidate.durationSeconds}
-                  type="button"
-                  aria-pressed={duration === candidate.durationSeconds}
-                  onClick={() => setDuration(candidate.durationSeconds)}
-                  className={`rounded-lg px-3 py-1 text-xs font-bold ${
-                    duration === candidate.durationSeconds ? 'bg-slate-900 text-white' : 'text-slate-600'
-                  }`}
-                >
-                  {candidate.label}
-                </button>
+                  {OBJECTIVE_LABELS[objective]}
+                </Button>
               ))}
             </div>
-          </div>
+          </fieldset>
+        </CardContent>
+      </Card>
 
-          {format.beats.map((beat) => {
-            const text = draft.scripts[String(format.durationSeconds)]?.[beat.id] ?? { onScreen: '', voiceOver: '' };
-            const maxWords = Math.round((beat.endSecond - beat.startSecond) * config.voiceOverWordsPerSecond);
-            const words = wordCount(text.voiceOver);
-            return (
-              <div key={beat.id} className="space-y-2 rounded-2xl border border-slate-200 p-4">
-                <div>
-                  <p className="text-[11px] font-black uppercase tracking-wider text-indigo-600">
-                    {beat.startSecond}–{beat.endSecond} s · {beat.label}
-                  </p>
-                  <p className="text-xs text-slate-500">{beat.purpose}</p>
-                </div>
-                <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
-                  <label className="block">
-                    <span className={labelClass}>Texte à l'écran</span>
-                    <textarea
-                      value={text.onScreen}
-                      onChange={(e) => updateBeat(format.durationSeconds, beat.id, { onScreen: e.target.value })}
-                      rows={2}
-                      maxLength={300}
-                      className={fieldClass}
-                    />
-                  </label>
-                  <label className="block">
-                    <span className={labelClass}>Voix off</span>
-                    <textarea
-                      value={text.voiceOver}
-                      onChange={(e) => updateBeat(format.durationSeconds, beat.id, { voiceOver: e.target.value })}
-                      rows={2}
-                      maxLength={600}
-                      className={fieldClass}
-                    />
-                    <span className={`mt-1 block text-[11px] ${words > maxWords ? 'text-amber-700' : 'text-slate-400'}`}>
-                      {words} mot(s) · repère : {maxWords} au plus pour {beat.endSecond - beat.startSecond} s
-                    </span>
-                  </label>
-                </div>
+      <Card>
+        <CardHeader>
+          <CardTitle>Textes publicitaires</CardTitle>
+          <CardDescription>
+            Jusqu’à {MAX_COPY_VARIANTS} variantes à tester l’une contre l’autre.
+          </CardDescription>
+          <CardAction className="flex flex-wrap gap-2">
+            <Button variant="outline" size="sm" onClick={prefillFromProduct}>
+              <Wand2 />
+              Pré-remplir
+            </Button>
+            {draft.copies.length < MAX_COPY_VARIANTS && (
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => update({ copies: [...draft.copies, { primaryText: '', headline: '', description: '' }] })}
+              >
+                <Plus />
+                Variante
+              </Button>
+            )}
+          </CardAction>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          {draft.copies.map((copy, index) => (
+            <div key={index} className="space-y-3 rounded-lg border p-4">
+              <div className="flex items-center justify-between">
+                <p className="text-sm font-semibold text-brand-green-text">Variante {index + 1}</p>
+                {draft.copies.length > 1 && (
+                  <Button
+                    variant="ghost"
+                    size="icon-sm"
+                    onClick={() => update({ copies: draft.copies.filter((_copy, i) => i !== index) })}
+                    aria-label={`Supprimer la variante ${index + 1}`}
+                  >
+                    <Trash2 />
+                  </Button>
+                )}
               </div>
-            );
-          })}
-        </section>
+              <Field>
+                <FieldLabel htmlFor={`kit-copy-${index}-primary`}>Texte principal</FieldLabel>
+                <Textarea
+                  id={`kit-copy-${index}-primary`}
+                  value={copy.primaryText}
+                  onChange={(event) => updateCopy(index, { primaryText: event.target.value })}
+                  rows={3}
+                  maxLength={2000}
+                />
+              </Field>
+              <div className="grid gap-3 sm:grid-cols-2">
+                <Field>
+                  <FieldLabel htmlFor={`kit-copy-${index}-headline`}>Titre</FieldLabel>
+                  <Input
+                    id={`kit-copy-${index}-headline`}
+                    value={copy.headline}
+                    onChange={(event) => updateCopy(index, { headline: event.target.value })}
+                    maxLength={120}
+                  />
+                </Field>
+                <Field>
+                  <FieldLabel htmlFor={`kit-copy-${index}-description`}>Description</FieldLabel>
+                  <Input
+                    id={`kit-copy-${index}-description`}
+                    value={copy.description}
+                    onChange={(event) => updateCopy(index, { description: event.target.value })}
+                    maxLength={200}
+                  />
+                </Field>
+              </div>
+            </div>
+          ))}
+        </CardContent>
+      </Card>
+
+      {!config && !loadError && <Skeleton className="h-64 rounded-xl" />}
+
+      {config && format && (
+        <Card>
+          <CardHeader>
+            <CardTitle>Scripts vidéo</CardTitle>
+            <CardDescription>Chaque temps du script a un rôle et un nombre de mots conseillé pour la voix off.</CardDescription>
+            <CardAction>
+              <div className="inline-flex flex-wrap rounded-lg border bg-muted/50 p-1" role="group" aria-label="Durée du script">
+                {config.scriptFormats.map((candidate) => (
+                  <Button
+                    key={candidate.durationSeconds}
+                    size="sm"
+                    variant={duration === candidate.durationSeconds ? 'secondary' : 'ghost'}
+                    aria-pressed={duration === candidate.durationSeconds}
+                    onClick={() => setDuration(candidate.durationSeconds)}
+                  >
+                    {candidate.label}
+                  </Button>
+                ))}
+              </div>
+            </CardAction>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            {format.beats.map((beat) => {
+              const text = draft.scripts[String(format.durationSeconds)]?.[beat.id] ?? { onScreen: '', voiceOver: '' };
+              const seconds = beat.endSecond - beat.startSecond;
+              const maxWords = Math.round(seconds * config.voiceOverWordsPerSecond);
+              const words = wordCount(text.voiceOver);
+              return (
+                <div key={beat.id} className="space-y-3 rounded-lg border p-4">
+                  <div>
+                    <p className="text-sm font-semibold">
+                      <span className="text-brand-green-text tabular-nums">
+                        {beat.startSecond}–{beat.endSecond} s
+                      </span>{' '}
+                      · {beat.label}
+                    </p>
+                    <p className="text-sm text-muted-foreground">{beat.purpose}</p>
+                  </div>
+                  <div className="grid gap-3 sm:grid-cols-2">
+                    <Field>
+                      <FieldLabel htmlFor={`beat-${beat.id}-screen`}>Texte à l’écran</FieldLabel>
+                      <Textarea
+                        id={`beat-${beat.id}-screen`}
+                        value={text.onScreen}
+                        onChange={(event) => updateBeat(format.durationSeconds, beat.id, { onScreen: event.target.value })}
+                        rows={2}
+                        maxLength={300}
+                      />
+                    </Field>
+                    <Field>
+                      <FieldLabel htmlFor={`beat-${beat.id}-voice`}>Voix off</FieldLabel>
+                      <Textarea
+                        id={`beat-${beat.id}-voice`}
+                        value={text.voiceOver}
+                        onChange={(event) => updateBeat(format.durationSeconds, beat.id, { voiceOver: event.target.value })}
+                        rows={2}
+                        maxLength={600}
+                      />
+                      <FieldDescription className={cn('tabular-nums', words > maxWords && 'text-warning')}>
+                        {words} mot(s) · {maxWords} au plus pour {seconds} s
+                      </FieldDescription>
+                    </Field>
+                  </div>
+                </div>
+              );
+            })}
+          </CardContent>
+        </Card>
       )}
 
       {platform && (
-        <section className="space-y-3 rounded-3xl border border-slate-200/80 bg-white p-5 shadow-xs">
-          <div>
-            <h2 className="text-sm font-bold text-slate-900">Bouton d'appel à l'action par marché</h2>
-            <p className="text-[11px] text-slate-500">
+        <Card>
+          <CardHeader>
+            <CardTitle>Boutons d’appel à l’action par marché</CardTitle>
+            <CardDescription>
               Noms officiels {platform.label}, vérifiés le {formatDateFr(platform.checkedAt)}.{' '}
               {safeHttpUrl(platform.source) && (
                 <a
                   href={safeHttpUrl(platform.source) ?? undefined}
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="inline-flex items-center gap-0.5 font-semibold text-indigo-600"
+                  className="inline-flex items-center gap-0.5 font-medium text-brand-green-text underline-offset-4 hover:underline"
                 >
-                  source
-                  <ExternalLink className="h-3 w-3" />
+                  Source
+                  <ExternalLink className="size-3" aria-hidden="true" />
                 </a>
               )}
-            </p>
-          </div>
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-5">
+            <fieldset className="space-y-2">
+              <legend className="mb-2 text-sm font-medium">1. Choisissez vos marchés</legend>
+              <div className="flex flex-wrap gap-2">
+                {MARKETS.map((market) => {
+                  const isTargeted = market.code in draft.ctaByMarket;
+                  return (
+                    <Button
+                      key={market.code}
+                      type="button"
+                      size="sm"
+                      variant={isTargeted ? 'secondary' : 'outline'}
+                      aria-pressed={isTargeted}
+                      onClick={() => toggleMarket(market.code)}
+                      className={cn(isTargeted && 'border-primary/40 text-brand-green-text')}
+                    >
+                      {isTargeted && <Check />}
+                      {market.label}
+                    </Button>
+                  );
+                })}
+              </div>
+            </fieldset>
 
-          <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-3">
-            {MARKETS.map((market) => {
-              const recommended = platform.buttons.filter((button) => button.recommendedFor.includes(draft.objective));
-              const others = platform.buttons.filter((button) => !button.recommendedFor.includes(draft.objective));
-              return (
-                <label key={market.code} className="block rounded-xl border border-slate-200 p-2.5">
-                  <span className="mb-1 block text-xs font-semibold text-slate-700">{market.label}</span>
-                  <select
-                    value={draft.ctaByMarket[market.code] ?? ''}
-                    onChange={(e) => update({ ctaByMarket: { ...draft.ctaByMarket, [market.code]: e.target.value } })}
-                    className={fieldClass}
-                  >
-                    <option value="">— non concerné —</option>
-                    <optgroup label={`Recommandés pour : ${OBJECTIVE_LABELS[draft.objective]}`}>
-                      {recommended.map((button) => (
-                        <option key={button.id} value={button.id}>
-                          {button.officialName}
-                        </option>
-                      ))}
-                    </optgroup>
-                    <optgroup label="Autres boutons">
-                      {others.map((button) => (
-                        <option key={button.id} value={button.id}>
-                          {button.officialName}
-                        </option>
-                      ))}
-                    </optgroup>
-                  </select>
-                </label>
-              );
-            })}
-          </div>
-        </section>
+            <div className="space-y-2">
+              <p className="text-sm font-medium">2. Choisissez un bouton pour chacun</p>
+              {targetedMarkets.length === 0 ? (
+                <p className="text-sm text-muted-foreground">Aucun marché sélectionné.</p>
+              ) : (
+                <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+                  {targetedMarkets.map((market) => {
+                    const recommended = platform.buttons.filter((button) => button.recommendedFor.includes(draft.objective));
+                    const others = platform.buttons.filter((button) => !button.recommendedFor.includes(draft.objective));
+                    const value = draft.ctaByMarket[market.code] || NO_BUTTON;
+                    return (
+                      <Field key={market.code}>
+                        <FieldLabel htmlFor={`cta-${market.code}`}>{market.label}</FieldLabel>
+                        <Select
+                          value={value}
+                          onValueChange={(next) =>
+                            update({ ctaByMarket: { ...draft.ctaByMarket, [market.code]: next === NO_BUTTON ? '' : next } })
+                          }
+                        >
+                          <SelectTrigger id={`cta-${market.code}`} className="w-full">
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value={NO_BUTTON}>Pas encore choisi</SelectItem>
+                            <SelectSeparator />
+                            <SelectGroup>
+                              <SelectLabel>Recommandés : {OBJECTIVE_LABELS[draft.objective]}</SelectLabel>
+                              {recommended.map((button) => (
+                                <SelectItem key={button.id} value={button.id}>
+                                  {button.officialName}
+                                </SelectItem>
+                              ))}
+                            </SelectGroup>
+                            <SelectSeparator />
+                            <SelectGroup>
+                              <SelectLabel>Autres boutons</SelectLabel>
+                              {others.map((button) => (
+                                <SelectItem key={button.id} value={button.id}>
+                                  {button.officialName}
+                                </SelectItem>
+                              ))}
+                            </SelectGroup>
+                          </SelectContent>
+                        </Select>
+                      </Field>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+          </CardContent>
+        </Card>
       )}
 
-      <section className="space-y-3 rounded-2xl border border-slate-200/80 bg-white p-4 shadow-xs">
-        {missing.map((item) => (
-          <p key={item} className="flex items-start gap-1.5 text-xs text-rose-700">
-            <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0" />
-            {item}
+      <Card className="py-5">
+        <CardContent className="space-y-3">
+          {missing.length > 0 && (
+            <ul className="space-y-1">
+              {missing.map((item) => (
+                <li key={item} className="flex items-start gap-1.5 text-sm text-warning">
+                  <AlertTriangle className="mt-0.5 size-3.5 shrink-0" aria-hidden="true" />
+                  {item}
+                </li>
+              ))}
+            </ul>
+          )}
+          <Button onClick={handleExport} disabled={!config || missing.length > 0 || isExporting}>
+            {isExporting ? <Spinner /> : <Download />}
+            Télécharger le kit (texte)
+          </Button>
+          {exportError && (
+            <Alert variant="danger">
+              <AlertTriangle />
+              <AlertDescription>{exportError}</AlertDescription>
+            </Alert>
+          )}
+          {kitDrafts.writeFailed && (
+            <Alert variant="warning">
+              <AlertTriangle />
+              <AlertDescription>
+                Ce navigateur refuse l’enregistrement : exportez le kit avant de fermer l’onglet.
+              </AlertDescription>
+            </Alert>
+          )}
+          <p className="text-xs leading-relaxed text-muted-foreground">
+            Tous les textes et scripts passent le vérificateur de conformité avant le téléchargement. Vos saisies sont
+            conservées dans ce navigateur.
           </p>
-        ))}
-        <button
-          type="button"
-          onClick={handleExport}
-          disabled={!config || missing.length > 0 || isExporting}
-          className="inline-flex items-center gap-1.5 rounded-xl bg-slate-900 px-3 py-2 text-xs font-bold text-white hover:bg-indigo-600 disabled:cursor-not-allowed disabled:bg-slate-300"
-        >
-          {isExporting ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Download className="h-3.5 w-3.5" />}
-          Télécharger le kit (texte)
-        </button>
-        {exportError && <p className="text-xs text-rose-700">{exportError}</p>}
-        <p className="text-[11px] leading-relaxed text-slate-400">
-          Tous les textes et scripts passent le vérificateur de conformité avant le téléchargement. Saisies conservées
-          dans ce navigateur{kitDrafts.writeFailed ? ' — ENREGISTREMENT REFUSÉ par le navigateur : exportez avant de fermer' : ''}.
-        </p>
-      </section>
+        </CardContent>
+      </Card>
 
       <ComplianceBlockDialog
         verdict={blockedVerdict}
@@ -414,4 +521,4 @@ export const LaunchKitView: React.FC<{ report: MarketAnalysisReport }> = ({ repo
       />
     </div>
   );
-};
+}

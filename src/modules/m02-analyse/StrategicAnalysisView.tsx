@@ -199,7 +199,7 @@ export function StrategicAnalysisView({ report, onNavigateToProducts, onNavigate
               <div className="flex flex-wrap items-center gap-2">
                 <span className="text-xs font-semibold tracking-wider text-brand-green-text uppercase">Voir</span>
                 {isExampleReport && <Badge variant="info">Rapport d’exemple</Badge>}
-                <span className="text-xs text-muted-foreground">Édition du {report.dateCreated}</span>
+                <span className="text-xs text-muted-foreground">Édition : {report.dateCreated}</span>
               </div>
               <h1 className="font-display text-2xl font-extrabold tracking-tight sm:text-3xl">{report.nicheName}</h1>
               <p className="flex flex-wrap items-center gap-1.5 text-sm text-muted-foreground">

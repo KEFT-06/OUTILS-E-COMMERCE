@@ -36,12 +36,15 @@ export default defineConfig(({ mode }) => {
       rollupOptions: {
         output: {
           // Découpage manuel : recharts + jspdf pèsent lourd et ne sont pas
-          // nécessaires au premier rendu.
+          // nécessaires au premier rendu. Les primitives d'interface (Radix,
+          // palette de commandes, notifications) changent rarement : un
+          // fichier séparé reste en cache d'un déploiement à l'autre.
           manualChunks: {
-            'vendor-react': ['react', 'react-dom'],
+            'vendor-react': ['react', 'react-dom', 'react-router-dom'],
             'vendor-charts': ['recharts'],
             'vendor-pdf': ['jspdf'],
-            'vendor-motion': ['motion', 'framer-motion'],
+            'vendor-motion': ['motion'],
+            'vendor-ui': ['radix-ui', 'cmdk', 'sonner'],
           },
         },
       },

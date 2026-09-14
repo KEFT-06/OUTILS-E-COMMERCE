@@ -1,365 +1,461 @@
-import React from 'react';
-import {
-  Eye,
-  Sparkles,
-  Send,
-  ArrowRight,
-  ShieldCheck,
-  Radar,
-  Telescope,
-  Package,
-  Clapperboard,
-  Rocket,
-  Store,
-  Users,
-  BookOpen,
-  LayoutTemplate,
-  Languages,
-  Megaphone,
-  Sun,
-  Moon,
-  Check,
-} from 'lucide-react';
-import { useAuth } from '@/features/auth/AuthContext';
+import { Suspense, lazy, useEffect, useState, type ReactNode } from 'react';
+import { Link, useNavigate } from 'react-router-dom';
+import { ArrowRight, BadgeCheck, ExternalLink, Moon, Scale, ShieldCheck, Sun, Wallet } from 'lucide-react';
+import { MODULES, MODULE_GROUPS, type ModuleGroup } from '@/app/navigation';
 import { usePreferences } from '@/app/providers/PreferencesContext';
+import { useAuth } from '@/features/auth/AuthContext';
+import { MARKETS } from '@/shared/lib/markets';
+import { PLANS, formatPlanQuota } from '@/shared/lib/plans';
+import { cn } from '@/shared/lib/utils';
+import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from '@/shared/ui/accordion';
+import { Badge } from '@/shared/ui/badge';
 import { BrandLogo } from '@/shared/ui/BrandLogo';
 import { Button } from '@/shared/ui/button';
+import { Card, CardContent, CardDescription, CardHeader } from '@/shared/ui/card';
+import { Marquee } from '@/shared/ui/magicui/marquee';
+
+// Effet décoratif : chargé après la page, il ne retarde pas le premier affichage.
+const BorderBeam = lazy(() => import('@/shared/ui/magicui/border-beam').then((module) => ({ default: module.BorderBeam })));
 
 /**
  * Page d'accueil publique.
  *
- * Règle appliquée : aucun chiffre inventé. Les deux statistiques affichées sont
- * sourcées et leur provenance est visible à l'écran (cf. docs/DESIGN-SYSTEM.md).
- * Pas de faux témoignages, pas de compteur d'utilisateurs fictif.
+ * Règle appliquée : chaque promesse correspond à ce que l'outil fait aujourd'hui.
+ * L'ancienne version annonçait une « cohérence de personnage garantie », une
+ * « publication directe sur la marketplace » et un lancement « sans ressaisie » ;
+ * l'outil lui-même disait le contraire.
  */
-export const LandingPage: React.FC = () => {
-  const { setViewMode, isAuthenticated } = useAuth();
-  const { t, theme, toggleTheme, language, toggleLanguage } = usePreferences();
 
-  const pillars = [
-    {
-      icon: Eye,
-      tone: 'text-rate-good',
-      title: t('VOIR', 'SEE'),
-      body: t(
-        'Une intelligence de marché dont la méthode est consultable. Chaque taux s’ouvre sur le détail de son calcul : critères, poids, valeurs brutes, date de mesure.',
-        'Market intelligence whose method is open to inspection. Every rate opens onto its calculation detail: criteria, weights, raw values, measurement date.',
-      ),
-    },
-    {
-      icon: Sparkles,
-      tone: 'text-rate-medium',
-      title: t('CRÉER', 'CREATE'),
-      body: t(
-        'Ebooks, guides, storybooks illustrés, visuels et vidéos publicitaires. Avec vérificateur anti-plagiat et cohérence de personnage garantie page après page.',
-        'Ebooks, guides, illustrated storybooks, visuals and video ads. With plagiarism checking and character consistency guaranteed page after page.',
-      ),
-    },
-    {
-      icon: Send,
-      tone: 'text-rate-excellent',
-      title: t('VENDRE', 'SELL'),
-      body: t(
-        'Créatifs pré-vérifiés conformes Meta et TikTok, publication directe sur la marketplace choisie, lancement de campagne sans ressaisie.',
-        'Pre-checked creatives compliant with Meta and TikTok, direct publishing to your chosen marketplace, campaign launch without re-entry.',
-      ),
-    },
-  ];
+const GROUP_PITCH: Record<ModuleGroup, string> = {
+  voir: 'Lire la demande, la concurrence et les publicités déjà diffusées.',
+  creer: 'Structurer le produit, ses visuels, ses scripts et sa page de vente.',
+  vendre: 'Préparer la campagne, suivre les ventes et animer vos affiliés.',
+};
 
-  const modules = [
-    { icon: Radar, fr: 'Radar Marché', en: 'Market Radar' },
-    { icon: Telescope, fr: 'Analyse Stratégique IA', en: 'AI Strategic Analysis' },
-    { icon: Package, fr: 'Studio de Création', en: 'Creation Studio' },
-    { icon: Clapperboard, fr: 'Créatifs Publicitaires', en: 'Ad Creatives' },
-    { icon: Rocket, fr: 'Kit de Lancement', en: 'Launch Kit' },
-    { icon: Store, fr: 'Distribution Marketplace', en: 'Marketplace Distribution' },
-    { icon: Users, fr: 'Programme d’Affiliation', en: 'Affiliate Program' },
-    { icon: BookOpen, fr: 'Storybook Africain', en: 'African Storybook' },
-    { icon: LayoutTemplate, fr: 'Pages Produits', en: 'Product Pages' },
-    { icon: Languages, fr: 'Guides Multilingues', en: 'Multilingual Guides' },
-    { icon: Megaphone, fr: 'Structures de Campagnes', en: 'Campaign Structures' },
-  ];
+const COMMITMENTS = [
+  {
+    icon: Scale,
+    title: 'Le scoring est ouvert',
+    body: 'Le taux de saturation repose sur quatre critères publiés : annonceurs uniques (30 %), publicités actives (25 %), durée de vie moyenne (25 %), publicités établies (20 %). Chaque score est archivé avec sa version de méthodologie.',
+  },
+  {
+    icon: ShieldCheck,
+    title: 'La conformité a un droit de veto',
+    body: 'Promesses de gains chiffrées, avant/après trompeurs, témoignages non étayés : repérés avant chaque export, avec une reformulation proposée. Rien ne se télécharge sans ce contrôle.',
+  },
+  {
+    icon: Wallet,
+    title: 'Le coût est annoncé avant',
+    body: 'Chaque action affiche son coût en points, son équivalent en monnaie locale et votre solde après l’opération, avant que vous ne validiez.',
+  },
+];
 
-  const proofs = [
-    {
-      title: t('Le scoring est ouvert', 'Scoring is open'),
-      body: t(
-        'Quatre critères pondérés, publiés : annonceurs uniques (30 %), publicités actives (25 %), durée de vie moyenne (25 %), publicités établies (20 %). Chaque score est archivé avec sa version de méthodologie.',
-        'Four published weighted criteria: unique advertisers (30%), active ads (25%), average lifetime (25%), established ads (20%). Every score is archived with its methodology version.',
-      ),
-    },
-    {
-      title: t('La conformité a un droit de veto', 'Compliance holds a veto'),
-      body: t(
-        'Promesses de gains chiffrées, séquences avant/après, témoignages financiers non étayés : détectés avant export, avec reformulation proposée. Rien ne se télécharge sans passer par là.',
-        'Earnings claims, before/after sequences, unsubstantiated financial testimonials: caught before export, with a rewrite proposed. Nothing downloads without passing through.',
-      ),
-    },
-    {
-      title: t('Le coût est annoncé avant', 'Cost is shown upfront'),
-      body: t(
-        'Chaque génération affiche son coût en points et en monnaie locale, votre solde actuel et votre solde projeté — avant que vous ne validiez.',
-        'Every generation shows its cost in points and local currency, your current balance and projected balance — before you confirm.',
-      ),
-    },
-  ];
+const FAQ = [
+  {
+    question: 'Smart Creator publie-t-il mes produits sur les marketplaces ?',
+    answer:
+      'Non. L’API de Chariow permet de lire votre catalogue et vos ventes, pas de créer un produit. Vous publiez sur la marketplace à partir de l’export du studio, puis Smart Creator suit vos ventes.',
+  },
+  {
+    question: 'Les analyses de marché sont-elles en temps réel ?',
+    answer:
+      'Pas encore. Le scan en direct attend la connexion de la bibliothèque publicitaire Meta et d’un fournisseur d’IA. La démonstration montre un rapport d’exemple complet, étiqueté comme tel.',
+  },
+  {
+    question: 'Mes publicités seront-elles acceptées par Meta ou TikTok ?',
+    answer:
+      'Personne ne peut le garantir. Le vérificateur signale les formulations à risque avant l’export ; la décision finale revient toujours à la plateforme.',
+  },
+  {
+    question: 'Où sont stockées mes données ?',
+    answer:
+      'Dans votre navigateur, pour l’instant : il n’existe pas encore de compte sur nos serveurs. La politique de confidentialité détaille ce qui est transmis aux services tiers.',
+    link: { to: '/confidentialite', label: 'Politique de confidentialité' },
+  },
+  {
+    question: 'Combien coûte Smart Creator ?',
+    answer:
+      'Chaque palier donne un quota mensuel de points de recherche, et chaque action affiche son coût avant validation. Les prix des abonnements seront publiés à leur ouverture.',
+  },
+];
+
+/** Préférence système « réduire les animations », sans charger la bibliothèque motion. */
+function usePrefersReducedMotion(): boolean {
+  const query = '(prefers-reduced-motion: reduce)';
+  const [reduced, setReduced] = useState(() => typeof window !== 'undefined' && window.matchMedia(query).matches);
+
+  useEffect(() => {
+    const media = window.matchMedia(query);
+    const onChange = () => setReduced(media.matches);
+    media.addEventListener('change', onChange);
+    return () => media.removeEventListener('change', onChange);
+  }, []);
+
+  return reduced;
+}
+
+function SectionHeading({ eyebrow, title, description }: { eyebrow: string; title: string; description?: ReactNode }) {
+  return (
+    <div className="max-w-2xl space-y-3">
+      <p className="text-sm font-semibold tracking-wider text-brand-green-text uppercase">{eyebrow}</p>
+      <h2 className="font-display text-3xl font-extrabold tracking-tight sm:text-4xl">{title}</h2>
+      {description && <p className="text-lg leading-relaxed text-muted-foreground">{description}</p>}
+    </div>
+  );
+}
+
+export function LandingPage() {
+  const { isAuthenticated, loginDemo } = useAuth();
+  const { theme, toggleTheme } = usePreferences();
+  const navigate = useNavigate();
+  const reduceMotion = usePrefersReducedMotion();
+
+  useEffect(() => {
+    document.title = 'Smart Creator — Veille stratégique & production e-commerce';
+  }, []);
+
+  const openWorkspace = () => {
+    if (!isAuthenticated) loginDemo();
+    navigate('/app/cockpit');
+  };
+
+  const primaryLabel = isAuthenticated ? 'Ouvrir mon espace' : 'Explorer la démonstration';
 
   return (
-    <div className="min-h-screen bg-[var(--surface-sunken)] text-[var(--text-primary)]">
-      {/* En-tête */}
-      <header className="glass-1 sticky top-0 z-40 rounded-none border-x-0 border-t-0">
+    <div className="min-h-svh bg-background text-foreground">
+      <header className="sticky top-0 z-40 border-b bg-background/85 backdrop-blur supports-[backdrop-filter]:bg-background/70">
         <div className="mx-auto flex h-16 max-w-6xl items-center justify-between gap-4 px-4 sm:px-6">
-          <BrandLogo size="md" />
+          <Link to="/" className="rounded-md" aria-label="Accueil Smart Creator">
+            <BrandLogo size="md" className="lg:hidden" />
+            <BrandLogo size="md" showTagline className="hidden lg:inline-flex" />
+          </Link>
+
+          <nav aria-label="Sections" className="hidden items-center gap-6 text-sm font-medium text-muted-foreground md:flex">
+            <a href="#parcours" className="hover:text-foreground">
+              Le parcours
+            </a>
+            <a href="#engagements" className="hover:text-foreground">
+              Engagements
+            </a>
+            <a href="#paliers" className="hover:text-foreground">
+              Paliers
+            </a>
+            <a href="#questions" className="hover:text-foreground">
+              Questions
+            </a>
+          </nav>
 
           <div className="flex items-center gap-2">
-            <button
-              type="button"
-              onClick={toggleLanguage}
-              className="hidden rounded-xl border border-[var(--border-subtle)] px-3 py-2 text-xs font-bold text-[var(--text-muted)] transition-colors hover:text-[var(--text-primary)] sm:block"
-              aria-label={language === 'FR' ? 'Switch to English' : 'Passer en français'}
-            >
-              {language}
-            </button>
-            <button
-              type="button"
+            <Button
+              variant="ghost"
+              size="icon"
               onClick={toggleTheme}
-              aria-label={t('Changer de thème', 'Toggle theme')}
-              className="flex h-9 w-9 items-center justify-center rounded-xl border border-[var(--border-subtle)] text-[var(--text-muted)] transition-colors hover:text-[var(--text-primary)]"
+              aria-label={theme === 'dark' ? 'Passer au thème clair' : 'Passer au thème sombre'}
             >
-              {theme === 'dark' ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
-            </button>
-            <Button size="sm" onClick={() => setViewMode(isAuthenticated ? 'app' : 'login')}>
-              {isAuthenticated ? t('Ouvrir l’outil', 'Open the tool') : t('Connexion', 'Sign in')}
+              {theme === 'dark' ? <Sun /> : <Moon />}
             </Button>
+            {!isAuthenticated && (
+              <Button variant="ghost" asChild className="hidden sm:inline-flex">
+                <Link to="/connexion">Connexion</Link>
+              </Button>
+            )}
+            <Button onClick={openWorkspace}>{isAuthenticated ? 'Mon espace' : 'Démo'}</Button>
           </div>
         </div>
       </header>
 
       <main>
-        {/* Héros */}
-        <section className="relative overflow-hidden px-4 py-20 sm:px-6 sm:py-28">
+        <section className="relative overflow-hidden border-b">
           <div
             aria-hidden="true"
-            className="pointer-events-none absolute -top-40 left-1/2 h-[32rem] w-[48rem] -translate-x-1/2 rounded-full bg-indigo-500/12 blur-3xl"
+            className="pointer-events-none absolute -top-40 -left-32 size-[36rem] rounded-full bg-brand-green/10 blur-3xl"
           />
           <div
             aria-hidden="true"
-            className="pointer-events-none absolute -bottom-32 right-0 h-96 w-96 rounded-full bg-emerald-500/10 blur-3xl"
+            className="pointer-events-none absolute -right-40 bottom-0 size-[28rem] rounded-full bg-brand-orange/10 blur-3xl"
           />
 
-          <div className="relative mx-auto max-w-3xl text-center">
-            <span className="inline-flex items-center gap-2 rounded-full border border-[var(--border-subtle)] bg-[var(--surface-raised)] px-3.5 py-1.5 text-xs font-bold">
-              <span className="h-1.5 w-1.5 rounded-full bg-rate-excellent" />
-              {t(
-                'Intelligence concurrentielle pour l’Afrique francophone et anglophone',
-                'Competitive intelligence for francophone and anglophone Africa',
-              )}
-            </span>
-
-            <h1 className="mt-6 font-display text-4xl font-black leading-[1.05] tracking-tight sm:text-6xl">
-              {t('Sachez quoi vendre', 'Know what to sell')}
-              <br />
-              <span className="text-[var(--text-muted)]">
-                {t('avant de le produire.', 'before you produce it.')}
-              </span>
-            </h1>
-
-            <p className="mx-auto mt-6 max-w-xl text-base leading-relaxed text-[var(--text-muted)]">
-              {t(
-                'Smart Creator relie la lecture du marché, la production par IA et la mise en vente en un seul parcours. Avec une règle : aucun chiffre affiché sans sa source.',
-                'Smart Creator links market reading, AI production and going to market in a single flow. With one rule: no figure shown without its source.',
-              )}
-            </p>
-
-            <div className="mt-9 flex flex-wrap items-center justify-center gap-3">
-              <Button size="lg" variant="glow" onClick={() => setViewMode('login')} className="gap-2">
-                {t('Commencer l’analyse', 'Start analysing')}
-                <ArrowRight className="h-4 w-4" />
-              </Button>
-              <Button size="lg" variant="outline" onClick={() => setViewMode('app')}>
-                {t('Explorer une démonstration', 'Explore a demo')}
-              </Button>
+          <div className="relative mx-auto grid max-w-6xl items-center gap-12 px-4 py-16 sm:px-6 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.1fr)] lg:py-24">
+            <div className="space-y-6">
+              <Badge variant="brand" className="px-3 py-1 text-sm whitespace-normal">
+                Pour les créateurs de produits digitaux d’Afrique francophone
+              </Badge>
+              <h1 className="font-display text-4xl leading-[1.05] font-black tracking-tight sm:text-5xl lg:text-6xl">
+                Sachez quoi vendre <span className="text-brand-green-text">avant de le produire.</span>
+              </h1>
+              <p className="max-w-xl text-lg leading-relaxed text-muted-foreground">
+                Smart Creator relie la lecture du marché, la création de vos produits digitaux et leur mise en vente. Avec
+                une règle : aucun chiffre affiché sans sa source.
+              </p>
+              <div className="flex flex-wrap gap-3">
+                <Button size="lg" onClick={openWorkspace}>
+                  {primaryLabel}
+                  <ArrowRight />
+                </Button>
+                {!isAuthenticated && (
+                  <Button size="lg" variant="outline" asChild>
+                    <Link to="/connexion">Créer un compte</Link>
+                  </Button>
+                )}
+              </div>
+              <p className="text-sm text-muted-foreground">
+                La démonstration utilise un compte fictif et des rapports d’exemple, étiquetés comme tels.
+              </p>
             </div>
 
-            <p className="mt-4 text-xs text-[var(--text-muted)]">
-              {t(
-                'La démonstration utilise des rapports d’exemple, clairement étiquetés comme tels.',
-                'The demo uses sample reports, clearly labelled as such.',
-              )}
-            </p>
+            <figure className="min-w-0">
+              <div className="relative overflow-hidden rounded-xl border bg-card shadow-2xl">
+                <div className="flex items-center gap-1.5 border-b bg-muted/60 px-3 py-2" aria-hidden="true">
+                  <span className="size-2.5 rounded-full bg-muted-foreground/30" />
+                  <span className="size-2.5 rounded-full bg-muted-foreground/30" />
+                  <span className="size-2.5 rounded-full bg-muted-foreground/30" />
+                  <span className="ml-3 truncate text-xs text-muted-foreground">Smart Creator · Analyse stratégique</span>
+                </div>
+                <img
+                  src="/captures/analyse-clair.jpg"
+                  alt="Écran Analyse stratégique de Smart Creator : verdict, synthèse et onglets des cinq taux, avec un rapport d’exemple"
+                  width={1440}
+                  height={900}
+                  className="block w-full dark:hidden"
+                />
+                <img
+                  src="/captures/analyse-sombre.jpg"
+                  alt="Écran Analyse stratégique de Smart Creator en thème sombre, avec un rapport d’exemple"
+                  width={1440}
+                  height={900}
+                  className="hidden w-full dark:block"
+                />
+                {!reduceMotion && (
+                  <Suspense fallback={null}>
+                    <BorderBeam size={140} duration={12} colorFrom="#00c853" colorTo="#f59e0b" borderWidth={2} />
+                  </Suspense>
+                )}
+              </div>
+              <figcaption className="mt-3 text-center text-sm text-muted-foreground">
+                Capture réelle de l’outil, avec un rapport d’exemple.
+              </figcaption>
+            </figure>
           </div>
         </section>
 
-        {/* VOIR · CRÉER · VENDRE */}
-        <section className="px-4 pb-20 sm:px-6">
-          <div className="mx-auto grid max-w-6xl gap-5 md:grid-cols-3">
-            {pillars.map(({ icon: Icon, tone, title, body }) => (
-              <article
-                key={title}
-                className="rounded-3xl border border-[var(--border-subtle)] bg-[var(--surface-raised)] p-7"
-              >
-                <Icon className={`h-6 w-6 ${tone}`} />
-                <h2 className="mt-4 font-display text-2xl font-black tracking-tight">{title}</h2>
-                <p className="mt-3 text-sm leading-relaxed text-[var(--text-muted)]">{body}</p>
-              </article>
+        <section aria-labelledby="marches-titre" className="border-b py-10">
+          <p id="marches-titre" className="px-4 text-center text-sm font-medium text-muted-foreground">
+            {MARKETS.length} marchés d’Afrique francophone pris en charge
+          </p>
+          <ul className="sr-only">
+            {MARKETS.map((market) => (
+              <li key={market.code}>{market.label}</li>
+            ))}
+          </ul>
+          <div className="relative mt-5" aria-hidden="true">
+            {reduceMotion ? (
+              <div className="mx-auto flex max-w-5xl flex-wrap justify-center gap-2 px-4">
+                {MARKETS.map((market) => (
+                  <span key={market.code} className="rounded-full border bg-card px-4 py-1.5 text-sm font-medium">
+                    {market.label}
+                  </span>
+                ))}
+              </div>
+            ) : (
+              <>
+                <Marquee pauseOnHover className="[--duration:50s]">
+                  {MARKETS.map((market) => (
+                    <span key={market.code} className="rounded-full border bg-card px-4 py-1.5 text-sm font-medium whitespace-nowrap">
+                      {market.label}
+                    </span>
+                  ))}
+                </Marquee>
+                <div className="pointer-events-none absolute inset-y-0 left-0 w-16 bg-gradient-to-r from-background sm:w-32" />
+                <div className="pointer-events-none absolute inset-y-0 right-0 w-16 bg-gradient-to-l from-background sm:w-32" />
+              </>
+            )}
+          </div>
+        </section>
+
+        <section id="parcours" className="mx-auto max-w-6xl scroll-mt-20 px-4 py-20 sm:px-6">
+          <SectionHeading
+            eyebrow="Le parcours"
+            title="Voir, créer, vendre : un seul outil"
+            description="La niche analysée alimente le studio ; le produit du studio alimente les créatifs, le kit de lancement et la page de vente."
+          />
+          <div className="mt-10 grid gap-4 lg:grid-cols-3">
+            {MODULE_GROUPS.map((group) => (
+              <Card key={group.id} className="gap-5">
+                <CardHeader>
+                  <p className="font-display text-3xl font-black tracking-tight uppercase">{group.label.fr}</p>
+                  <CardDescription className="text-base">{GROUP_PITCH[group.id]}</CardDescription>
+                </CardHeader>
+                <CardContent>
+                  <ul className="space-y-4">
+                    {MODULES.filter((entry) => entry.group === group.id).map((entry) => {
+                      const Icon = entry.icon;
+                      return (
+                        <li key={entry.id} className="flex items-start gap-3">
+                          <span className="flex size-9 shrink-0 items-center justify-center rounded-lg bg-accent text-accent-foreground">
+                            <Icon className="size-4" aria-hidden="true" />
+                          </span>
+                          <span className="min-w-0">
+                            <span className="flex flex-wrap items-center gap-2 font-semibold">
+                              {entry.label.fr}
+                              {!entry.ready && <Badge variant="outline">bientôt</Badge>}
+                            </span>
+                            <span className="block text-sm text-muted-foreground">{entry.description.fr}</span>
+                          </span>
+                        </li>
+                      );
+                    })}
+                  </ul>
+                </CardContent>
+              </Card>
             ))}
           </div>
         </section>
 
-        {/* Constat de marché — chiffres sourcés */}
-        <section className="border-y border-[var(--border-subtle)] bg-[var(--surface-raised)] px-4 py-16 sm:px-6">
-          <div className="mx-auto grid max-w-5xl gap-10 md:grid-cols-2">
-            <figure className="m-0">
-              <p className="font-display text-5xl font-black tracking-tighter text-rate-good">18</p>
-              <p className="mt-2 text-sm font-semibold">
-                {t(
-                  'annonceurs uniques détectés sur le montage vidéo en Côte d’Ivoire',
-                  'unique advertisers detected in video editing in Côte d’Ivoire',
-                )}
-              </p>
-              <figcaption className="mt-2 text-xs text-[var(--text-muted)]">
-                {t(
-                  'Pour une demande de contenu massive. La plupart des vendeurs se lancent encore à l’intuition.',
-                  'Against massive content demand. Most sellers still launch on intuition.',
-                )}
-                <br />
-                <span className="font-mono">
-                  {t('Source : analyse terrain Smart Creator', 'Source: Smart Creator field analysis')}
-                </span>
-              </figcaption>
-            </figure>
-
-            <figure className="m-0">
-              <p className="font-display text-5xl font-black tracking-tighter text-rate-medium">25,7 %</p>
-              <p className="mt-2 text-sm font-semibold">
-                {t(
-                  'des comptes Mobile Money enregistrés sont actifs chaque mois',
-                  'of registered Mobile Money accounts are active monthly',
-                )}
-              </p>
-              <figcaption className="mt-2 text-xs text-[var(--text-muted)]">
-                {t(
-                  'L’écart entre comptes déclarés et acheteurs réels change le dimensionnement de vos campagnes.',
-                  'The gap between declared accounts and real buyers changes how you size your campaigns.',
-                )}
-                <br />
-                <span className="font-mono">
-                  {t(
-                    'Source : GSMA, State of the Industry Report on Mobile Money 2026',
-                    'Source: GSMA, State of the Industry Report on Mobile Money 2026',
-                  )}
-                </span>
-              </figcaption>
-            </figure>
-          </div>
-        </section>
-
-        {/* Preuves */}
-        <section className="px-4 py-20 sm:px-6">
-          <div className="mx-auto max-w-6xl">
-            <h2 className="font-display text-3xl font-black tracking-tight sm:text-4xl">
-              {t('Ce qui nous engage', 'What we commit to')}
-            </h2>
-            <p className="mt-3 max-w-2xl text-sm text-[var(--text-muted)]">
-              {t(
-                'Un outil d’analyse ne vaut que par ce qu’il accepte de montrer de sa propre méthode.',
-                'An analysis tool is worth only what it agrees to reveal about its own method.',
-              )}
-            </p>
-
-            <div className="mt-10 grid gap-5 md:grid-cols-3">
-              {proofs.map((proof) => (
-                <article
-                  key={proof.title}
-                  className="rounded-3xl border border-[var(--border-subtle)] bg-[var(--surface-raised)] p-6"
-                >
-                  <ShieldCheck className="h-5 w-5 text-rate-excellent" />
-                  <h3 className="mt-4 text-base font-bold">{proof.title}</h3>
-                  <p className="mt-2 text-sm leading-relaxed text-[var(--text-muted)]">{proof.body}</p>
-                </article>
-              ))}
+        <section id="engagements" className="scroll-mt-20 border-y bg-muted/30">
+          <div className="mx-auto max-w-6xl px-4 py-20 sm:px-6">
+            <SectionHeading
+              eyebrow="Engagements"
+              title="Ce que l’outil accepte de montrer"
+              description="Un outil d’analyse ne vaut que par ce qu’il révèle de sa propre méthode."
+            />
+            <div className="mt-10 grid gap-4 md:grid-cols-3">
+              {COMMITMENTS.map((commitment) => {
+                const Icon = commitment.icon;
+                return (
+                  <Card key={commitment.title}>
+                    <CardHeader>
+                      <span className="flex size-10 items-center justify-center rounded-lg bg-accent text-accent-foreground">
+                        <Icon className="size-5" aria-hidden="true" />
+                      </span>
+                      <h3 className="mt-2 text-lg font-semibold">{commitment.title}</h3>
+                    </CardHeader>
+                    <CardContent>
+                      <p className="leading-relaxed text-muted-foreground">{commitment.body}</p>
+                    </CardContent>
+                  </Card>
+                );
+              })}
             </div>
-          </div>
-        </section>
 
-        {/* Modules */}
-        <section className="border-t border-[var(--border-subtle)] px-4 py-20 sm:px-6">
-          <div className="mx-auto max-w-6xl">
-            <h2 className="font-display text-3xl font-black tracking-tight sm:text-4xl">
-              {t('Onze modules, un seul parcours', 'Eleven modules, one flow')}
-            </h2>
-            <p className="mt-3 max-w-2xl text-sm text-[var(--text-muted)]">
-              {t(
-                'Du radar de marché au lancement de campagne, la sortie de chaque module alimente le suivant sans ressaisie.',
-                'From market radar to campaign launch, each module’s output feeds the next without re-entry.',
-              )}
-            </p>
-
-            <ul className="mt-10 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-              {modules.map(({ icon: Icon, fr, en }, index) => (
-                <li
-                  key={fr}
-                  className="flex items-center gap-3 rounded-2xl border border-[var(--border-subtle)] bg-[var(--surface-raised)] px-4 py-3.5"
+            <figure className="mt-12 grid gap-6 rounded-xl border bg-card p-8 sm:grid-cols-[auto_minmax(0,1fr)] sm:items-center">
+              <p className="font-display text-6xl font-black tracking-tighter text-brand-orange-text tabular-nums">25,7 %</p>
+              <figcaption className="space-y-2">
+                <p className="text-lg font-semibold">
+                  des comptes de mobile money enregistrés dans le monde étaient actifs sur 30 jours en 2025.
+                </p>
+                <p className="text-muted-foreground">
+                  L’écart entre comptes ouverts et acheteurs réels change la façon de dimensionner vos campagnes.
+                </p>
+                <a
+                  href="https://www.gsma.com/sotir/"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="inline-flex items-center gap-1 text-sm font-medium text-brand-green-text underline-offset-4 hover:underline"
                 >
-                  <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-slate-500/10">
-                    <Icon className="h-4 w-4 text-[var(--text-muted)]" />
-                  </span>
-                  <span className="min-w-0">
-                    <span className="block font-mono text-[10px] font-bold text-[var(--text-muted)]">
-                      {String(index + 1).padStart(2, '0')}
-                    </span>
-                    <span className="block truncate text-sm font-bold">{language === 'EN' ? en : fr}</span>
-                  </span>
-                </li>
-              ))}
-            </ul>
+                  Source : GSMA, State of the Industry Report on Mobile Money 2026
+                  <ExternalLink className="size-3.5" aria-hidden="true" />
+                </a>
+              </figcaption>
+            </figure>
           </div>
         </section>
 
-        {/* Appel à l'action */}
-        <section className="px-4 pb-24 sm:px-6">
-          <div className="glass-1 mx-auto max-w-4xl rounded-[2rem] p-10 text-center sm:p-14">
-            <h2 className="font-display text-3xl font-black tracking-tight sm:text-4xl">
-              {t('Arrêtez de deviner votre marché.', 'Stop guessing your market.')}
-            </h2>
-            <p className="mx-auto mt-4 max-w-lg text-sm leading-relaxed text-[var(--text-muted)]">
-              {t(
-                'Analysez une niche, produisez le produit qui y répond, et lancez la campagne — sans changer d’outil.',
-                'Analyse a niche, produce the product that answers it, and launch the campaign — without switching tools.',
-              )}
-            </p>
-            <Button size="lg" variant="glow" onClick={() => setViewMode('login')} className="mt-8 gap-2">
-              {t('Créer mon compte', 'Create my account')}
-              <ArrowRight className="h-4 w-4" />
-            </Button>
+        <section id="paliers" className="mx-auto max-w-6xl scroll-mt-20 px-4 py-20 sm:px-6">
+          <SectionHeading
+            eyebrow="Paliers"
+            title="Un quota de points par mois"
+            description="Chaque action consomme des points et affiche son coût avant validation. Les prix des abonnements seront publiés à leur ouverture."
+          />
+          <ul className="mt-10 grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
+            {PLANS.map((plan) => (
+              <li
+                key={plan.id}
+                className={cn('flex flex-col gap-2 rounded-xl border bg-card p-5', plan.id === 'Pro' && 'border-primary ring-1 ring-primary/30')}
+              >
+                <span className="flex items-center justify-between gap-2 font-semibold">
+                  {plan.id}
+                  {plan.id === 'Pro' && <BadgeCheck className="size-4 text-brand-green-text" aria-label="Palier de la démonstration" />}
+                </span>
+                <span className="text-sm text-muted-foreground tabular-nums">{formatPlanQuota(plan)}</span>
+              </li>
+            ))}
+          </ul>
+          <p className="mt-4 text-sm text-muted-foreground">La démonstration utilise le palier Pro.</p>
+        </section>
 
-            <ul className="mt-8 flex flex-wrap items-center justify-center gap-x-6 gap-y-2 text-xs text-[var(--text-muted)]">
-              {[
-                t('Méthodologie de scoring consultable', 'Inspectable scoring methodology'),
-                t('Conformité vérifiée avant export', 'Compliance checked before export'),
-                t('Coût affiché avant génération', 'Cost shown before generation'),
-              ].map((item) => (
-                <li key={item} className="flex items-center gap-1.5">
-                  <Check className="h-3.5 w-3.5 text-rate-excellent" />
-                  {item}
-                </li>
+        <section id="questions" className="scroll-mt-20 border-t bg-muted/30">
+          <div className="mx-auto grid max-w-6xl gap-10 px-4 py-20 sm:px-6 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.4fr)]">
+            <SectionHeading eyebrow="Questions" title="Ce qu’il faut savoir avant de commencer" />
+            <Accordion type="single" collapsible className="rounded-xl border bg-card px-5">
+              {FAQ.map((item) => (
+                <AccordionItem key={item.question} value={item.question}>
+                  <AccordionTrigger className="text-base">{item.question}</AccordionTrigger>
+                  <AccordionContent className="space-y-2 text-base leading-relaxed text-muted-foreground">
+                    <p>{item.answer}</p>
+                    {item.link && (
+                      <Link to={item.link.to} className="font-medium text-brand-green-text underline-offset-4 hover:underline">
+                        {item.link.label}
+                      </Link>
+                    )}
+                  </AccordionContent>
+                </AccordionItem>
               ))}
-            </ul>
+            </Accordion>
+          </div>
+        </section>
+
+        <section className="mx-auto max-w-6xl px-4 py-20 sm:px-6">
+          <div className="flex flex-col items-start gap-6 rounded-2xl bg-foreground p-8 text-background sm:p-12 lg:flex-row lg:items-center lg:justify-between">
+            <div className="space-y-3">
+              <h2 className="font-display text-3xl font-extrabold tracking-tight sm:text-4xl">Arrêtez de deviner votre marché.</h2>
+              <p className="max-w-xl text-lg opacity-80">
+                Analysez une niche, construisez le produit qui y répond et préparez son lancement, sans changer d’outil.
+              </p>
+            </div>
+            <div className="flex flex-wrap gap-3">
+              <Button size="lg" onClick={openWorkspace}>
+                {primaryLabel}
+                <ArrowRight />
+              </Button>
+              {!isAuthenticated && (
+                <Button
+                  size="lg"
+                  variant="outline"
+                  asChild
+                  className="border-background/30 bg-transparent text-background hover:bg-background/10 hover:text-background dark:border-background/30 dark:bg-transparent"
+                >
+                  <Link to="/connexion">Créer un compte</Link>
+                </Button>
+              )}
+            </div>
           </div>
         </section>
       </main>
 
-      <footer className="border-t border-[var(--border-subtle)] px-4 py-8 sm:px-6">
-        <div className="mx-auto flex max-w-6xl flex-col items-center justify-between gap-4 sm:flex-row">
-          <BrandLogo size="sm" />
-          <p className="max-w-md text-center text-[11px] leading-relaxed text-[var(--text-muted)] sm:text-right">
-            {t(
-              'Smart Creator fournit des analyses basées sur des données publiques. Aucun résultat financier n’est garanti.',
-              'Smart Creator provides analyses based on public data. No financial result is guaranteed.',
-            )}
-          </p>
+      <footer className="border-t">
+        <div className="mx-auto flex max-w-6xl flex-col gap-6 px-4 py-10 sm:px-6 md:flex-row md:items-start md:justify-between">
+          <div className="space-y-3">
+            <BrandLogo size="sm" showTagline />
+            <p className="max-w-md text-sm text-muted-foreground">
+              Smart Creator fournit des analyses fondées sur des données publiques. Aucun résultat financier n’est garanti.
+            </p>
+          </div>
+          <nav aria-label="Informations légales" className="flex flex-col gap-2 text-sm text-muted-foreground">
+            <Link to="/mentions-legales" className="hover:text-foreground">
+              Mentions légales
+            </Link>
+            <Link to="/confidentialite" className="hover:text-foreground">
+              Confidentialité
+            </Link>
+            <Link to="/conditions" className="hover:text-foreground">
+              Conditions d’utilisation
+            </Link>
+          </nav>
         </div>
+        <p className="border-t px-4 py-4 text-center text-xs text-muted-foreground">
+          © {new Date().getFullYear()} Smart Creator — Veille stratégique &amp; production e-commerce
+        </p>
       </footer>
     </div>
   );
-};
+}

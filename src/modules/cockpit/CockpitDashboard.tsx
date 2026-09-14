@@ -232,11 +232,8 @@ export function CockpitDashboard({ report, onNavigateToModule, onOpenBilling }: 
           <CardContent>
             <ol className="divide-y">
               {GETTING_STARTED.map((step, index) => (
-                <li key={step.module}>
-                  <Link
-                    to={pathOf(step.module)}
-                    className="group flex items-center gap-4 rounded-md py-3 first:pt-0 last:pb-0"
-                  >
+                <li key={step.module} className="py-3 first:pt-0 last:pb-0">
+                  <Link to={pathOf(step.module)} className="group flex items-center gap-4 rounded-md">
                     <span className="flex size-8 shrink-0 items-center justify-center rounded-full border text-sm font-semibold tabular-nums group-hover:border-primary group-hover:text-brand-green-text">
                       {index + 1}
                     </span>

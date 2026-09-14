@@ -13,7 +13,7 @@ export * from '@server/services/marketplaces/types';
  */
 function plannedAdapter(id: string, label: string): MarketplaceAdapter {
   const reason =
-    `${label} ne publie pas de documentation d'API (CdC §6.6). ` +
+    `${label} ne publie pas de documentation d'API. ` +
     "Le connecteur se branchera sur la même interface une fois le partenariat négocié.";
   const refuse = () => Promise.reject(new AppError(501, reason, 'MARKETPLACE_NOT_AVAILABLE'));
 

@@ -57,7 +57,11 @@ export function RateBadge({ level, size = 'md', showIcon = true, onInspect, insp
   };
   const Icon = config.icon;
 
-  const classes = cn('inline-flex items-center rounded-full border transition-colors', config.tone, SIZES[size]);
+  const classes = cn(
+    'inline-flex shrink-0 items-center rounded-full border whitespace-nowrap transition-colors',
+    config.tone,
+    SIZES[size],
+  );
 
   const content = (
     <>

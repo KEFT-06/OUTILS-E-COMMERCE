@@ -598,7 +598,7 @@ api.post(
     // TODO(Lot 2) : agent SCOUT → ingestion → computeCompetitiveScore → agent ANALYSTE.
     throw new AppError(
       501,
-      'Le scan de marché en direct arrive au Lot 2. Utilisez les rapports de démonstration en attendant.',
+      'Le scan de marché en direct n’est pas encore disponible. Consultez le rapport d’exemple en attendant.',
       'NOT_IMPLEMENTED',
     );
   }),
@@ -623,7 +623,7 @@ api.post(
     // TODO(Lot 2) : rapport 6 blocs, chaque affirmation portant sa source.
     throw new AppError(
       501,
-      'L’analyse en direct arrive au Lot 2. Utilisez les rapports de démonstration en attendant.',
+      'L’analyse en direct n’est pas encore disponible. Consultez le rapport d’exemple en attendant.',
       'NOT_IMPLEMENTED',
     );
   }),

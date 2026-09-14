@@ -2,7 +2,7 @@
   "version": "2026.09.1",
   "updatedAt": "2026-09-14",
   "note": "Structures de campagnes Meta et TikTok (feuille de route 5.4), éditables sans redéploiement. Les noms d'objectifs reprennent la nomenclature officielle des gestionnaires de publicités, vérifiée le 14 septembre 2026 sur les pages d'aide citées. Les descriptions des objectifs sont des reformulations, pas des citations.",
-  "valuesStatus": "PROVISOIRE — répartitions de budget, durées et règles de pilotage par défaut, non issues de données de performance. À calibrer avec la boucle de performance (Lot 6).",
+  "valuesStatus": "Valeurs provisoires : répartitions de budget, durées et règles de pilotage proposées par défaut, pas encore calibrées sur des résultats de campagnes réels.",
   "platforms": [
     {
       "id": "meta",

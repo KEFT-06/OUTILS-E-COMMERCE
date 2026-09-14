@@ -151,8 +151,10 @@ export function DigitalProductsView({ report, products, onSelectProductForAd }: 
               <Badge variant="brand">{selectedProduct.typeName}</Badge>
               <Badge variant="outline">Marge estimée {selectedProduct.estimatedMarginPercent} %</Badge>
             </div>
-            <CardTitle className="font-display text-xl font-extrabold tracking-tight sm:text-2xl">
-              {selectedProduct.title}
+            <CardTitle>
+              <h2 className="font-display text-xl leading-tight font-extrabold tracking-tight sm:text-2xl">
+                {selectedProduct.title}
+              </h2>
             </CardTitle>
             <CardDescription>{selectedProduct.subtitle}</CardDescription>
           </CardHeader>

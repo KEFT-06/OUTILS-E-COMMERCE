@@ -43,7 +43,7 @@ export function AppSidebar() {
   const remainingPct = user && user.apiSearchesLimit > 0 ? (remaining / user.apiSearchesLimit) * 100 : 0;
 
   return (
-    <Sidebar collapsible="icon">
+    <Sidebar collapsible="icon" role="navigation" aria-label="Navigation principale">
       <SidebarHeader>
         <SidebarMenu>
           <SidebarMenuItem>

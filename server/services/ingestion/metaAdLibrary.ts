@@ -62,7 +62,7 @@ export const metaAdLibraryAdapter: AdIngestionAdapter = {
       return {
         available: false,
         reason:
-          "L'accès à la Meta Ad Library n'est pas configuré. Il requiert un jeton délivré après App Review et Business Verification (CdC §6.11.5).",
+          "L'accès à la Meta Ad Library n'est pas configuré. Il requiert un jeton délivré après App Review et Business Verification de Meta.",
       };
     }
     return { available: true };

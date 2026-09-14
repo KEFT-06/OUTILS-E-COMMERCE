@@ -2,6 +2,7 @@ import { BrowserRouter, Navigate, Route, Routes } from 'react-router-dom';
 import { AuthProvider } from '@/features/auth/AuthContext';
 import { LoginPage } from '@/features/auth/LoginPage';
 import { LandingPage } from '@/features/landing/LandingPage';
+import { LegalPage } from '@/features/legal/LegalPage';
 import { AppLayout } from '@/app/layout/AppLayout';
 import { RequireAuth } from '@/app/layout/RequireAuth';
 import { CreditGateProvider } from '@/app/providers/CreditGateProvider';
@@ -42,6 +43,9 @@ export default function App() {
               <Routes>
                 <Route path="/" element={<LandingPage />} />
                 <Route path="/connexion" element={<LoginPage />} />
+                <Route path="/mentions-legales" element={<LegalPage kind="mentions-legales" />} />
+                <Route path="/confidentialite" element={<LegalPage kind="confidentialite" />} />
+                <Route path="/conditions" element={<LegalPage kind="conditions" />} />
 
                 <Route path="/app" element={<RequireAuth />}>
                   <Route element={<AppLayout />}>
