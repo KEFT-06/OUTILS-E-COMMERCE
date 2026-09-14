@@ -1,45 +1,40 @@
-import React, { useState } from 'react';
-import { MarketAnalysisReport, MarketRate } from '@/shared/types/analysis';
+import { useMemo, useState } from 'react';
+import {
+  AlertCircle,
+  ArrowRight,
+  ArrowUpDown,
+  CheckCircle2,
+  ExternalLink,
+  Globe,
+  Info,
+  Lightbulb,
+  Minus,
+  Search,
+  TrendingDown,
+  TrendingUp,
+} from 'lucide-react';
+import {
+  type Column,
+  type ColumnDef,
+  type SortingState,
+  flexRender,
+  getCoreRowModel,
+  getSortedRowModel,
+  useReactTable,
+} from '@tanstack/react-table';
+import { Bar, BarChart, CartesianGrid, PolarAngleAxis, PolarGrid, PolarRadiusAxis, Radar, RadarChart, XAxis, YAxis } from 'recharts';
+import type { MarketAnalysisReport, MarketRate, SearchTrendKeyword, TauxLevel } from '@/shared/types/analysis';
+import { Badge } from '@/shared/ui/badge';
+import { Button } from '@/shared/ui/button';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/shared/ui/card';
+import { ChartContainer, ChartTooltip, ChartTooltipContent, type ChartConfig } from '@/shared/ui/chart';
+import { ChartProvenance } from '@/shared/ui/ChartProvenance';
+import { LegalNotice } from '@/shared/ui/LegalNotice';
+import { Progress } from '@/shared/ui/progress';
 import { RateBadge } from '@/shared/ui/RateBadge';
 import { ScoreTracePanel } from '@/shared/ui/ScoreTracePanel';
-import { LegalNotice } from '@/shared/ui/LegalNotice';
-import { ChartProvenance } from '@/shared/ui/ChartProvenance';
-import { motion } from 'motion/react';
-import {
-  ResponsiveContainer,
-  RadarChart,
-  PolarGrid,
-  PolarAngleAxis,
-  PolarRadiusAxis,
-  Radar,
-  BarChart,
-  Bar,
-  XAxis,
-  YAxis,
-  Tooltip as RechartsTooltip,
-  Cell,
-} from 'recharts';
-import {
-  TrendingUp,
-  Zap,
-  Target,
-  Users,
-  Search,
-  AlertCircle,
-  CheckCircle2,
-  BarChart3,
-  Sparkles,
-  Flame,
-  Award,
-  ChevronRight,
-  Activity,
-  Globe,
-  Compass,
-  ExternalLink,
-} from 'lucide-react';
-import { Button } from '@/shared/ui/button';
-import { Badge } from '@/shared/ui/badge';
-import { TooltipProvider } from '@/shared/ui/tooltip';
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/shared/ui/table';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/shared/ui/tabs';
 
 interface StrategicAnalysisViewProps {
   report: MarketAnalysisReport;
@@ -47,17 +42,112 @@ interface StrategicAnalysisViewProps {
   onNavigateToMetaAds: () => void;
 }
 
-export const StrategicAnalysisView: React.FC<StrategicAnalysisViewProps> = ({
-  report,
-  onNavigateToProducts,
-  onNavigateToMetaAds,
-}) => {
-  const [activeAnalysisView, setActiveAnalysisView] = useState<'grid' | 'radar'>('grid');
+const VERDICT_VARIANT = {
+  'Opportunité Exceptionnelle': 'success',
+  'Opportunité Forte': 'info',
+  'Marché Compétitif': 'warning',
+  'Niche Risquée': 'danger',
+} as const;
 
-  // Taux dont le panneau de traçabilité est ouvert (différenciateur n°1, CdC §6.1).
+const RATE_BAR: Record<TauxLevel, string> = {
+  'Très élevé': 'bg-rate-excellent',
+  Élevé: 'bg-rate-good',
+  Moyen: 'bg-rate-medium',
+  Faible: 'bg-rate-low',
+};
+
+const TREND = {
+  up: { label: 'En hausse', icon: TrendingUp },
+  stable: { label: 'Stable', icon: Minus },
+  down: { label: 'En repli', icon: TrendingDown },
+} as const;
+
+const GROWTH_TYPE: Record<SearchTrendKeyword['growthType'], { label: string; variant: 'warning' | 'info' | 'secondary' }> = {
+  explosive: { label: 'Accélération forte', variant: 'warning' },
+  steady: { label: 'Croissance régulière', variant: 'info' },
+  niche: { label: 'Très ciblée', variant: 'secondary' },
+};
+
+const INTENT_LABEL: Record<SearchTrendKeyword['intent'], string> = {
+  transactional: 'Transactionnelle',
+  commercial: 'Commerciale',
+  informational: 'Informationnelle',
+};
+
+interface KeywordRow {
+  keyword: string;
+  volumeLabel: string;
+  volume: number;
+  growthLabel: string;
+  growth: number;
+  growthType: SearchTrendKeyword['growthType'];
+  intent: SearchTrendKeyword['intent'];
+}
+
+const parseNumber = (value: string) => Number.parseFloat(value.replace(/[^0-9,.-]/g, '').replace(',', '.')) || 0;
+const parseVolume = (value: string) => Number.parseInt(value.replace(/[^0-9]/g, ''), 10) || 0;
+const compact = new Intl.NumberFormat('fr-FR', { notation: 'compact', maximumFractionDigits: 1 });
+
+function SortHeader({ column, label }: { column: Column<KeywordRow, unknown>; label: string }) {
+  const sorted = column.getIsSorted();
+  return (
+    <Button
+      variant="ghost"
+      size="sm"
+      className="-ml-3 h-8"
+      onClick={() => column.toggleSorting(sorted === 'asc')}
+      aria-label={`Trier par ${label.toLowerCase()}`}
+    >
+      {label}
+      <ArrowUpDown className="size-3.5" />
+    </Button>
+  );
+}
+
+const keywordColumns: ColumnDef<KeywordRow>[] = [
+  {
+    accessorKey: 'keyword',
+    header: 'Mot-clé',
+    cell: ({ row }) => <span className="font-medium">« {row.original.keyword} »</span>,
+  },
+  {
+    accessorKey: 'volume',
+    header: ({ column }) => <SortHeader column={column} label="Volume mensuel" />,
+    cell: ({ row }) => <span className="tabular-nums">{row.original.volumeLabel}</span>,
+  },
+  {
+    accessorKey: 'growth',
+    header: ({ column }) => <SortHeader column={column} label="Croissance" />,
+    cell: ({ row }) => <span className="font-semibold text-success tabular-nums">{row.original.growthLabel}</span>,
+  },
+  {
+    accessorKey: 'growthType',
+    header: 'Tendance',
+    enableSorting: false,
+    cell: ({ row }) => {
+      const type = GROWTH_TYPE[row.original.growthType];
+      return <Badge variant={type.variant}>{type.label}</Badge>;
+    },
+  },
+  {
+    accessorKey: 'intent',
+    header: 'Intention',
+    enableSorting: false,
+    cell: ({ row }) => <Badge variant="outline">{INTENT_LABEL[row.original.intent]}</Badge>,
+  },
+];
+
+const radarConfig = { score: { label: 'Score', color: 'var(--chart-1)' } } satisfies ChartConfig;
+const volumeConfig = { volume: { label: 'Recherches / mois', color: 'var(--chart-2)' } } satisfies ChartConfig;
+
+export function StrategicAnalysisView({ report, onNavigateToProducts, onNavigateToMetaAds }: StrategicAnalysisViewProps) {
+  const [rateView, setRateView] = useState<'grid' | 'radar'>('grid');
   const [inspectedRate, setInspectedRate] = useState<MarketRate | null>(null);
+  const [sorting, setSorting] = useState<SortingState>([{ id: 'volume', desc: true }]);
 
-  const ratesList: MarketRate[] = [
+  const isExampleReport = report.dataProvenance?.rates?.isDemonstration ?? false;
+
+  const rates: MarketRate[] = [
     report.rates.demand,
     report.rates.saturation,
     report.rates.profitability,
@@ -65,616 +155,387 @@ export const StrategicAnalysisView: React.FC<StrategicAnalysisViewProps> = ({
     report.rates.virality,
   ].filter(Boolean);
 
-  // Data formatted for the Radar Chart
-  const radarData = ratesList.map((rate) => ({
-    subject: rate.label.replace('Taux de ', '').replace('Taux d\'', ''),
+  const radarData = rates.map((rate) => ({
+    subject: rate.label.replace('Taux de ', '').replace("Taux d'", ''),
     score: rate.score,
-    fullMark: 100,
-    level: rate.level,
   }));
 
-  // Data formatted for search keyword momentum bar chart
-  const searchTrendData = report.searchTrends.map((st) => {
-    // extract numeric volume approx for chart
-    const numericVol = parseInt(st.volume.replace(/[^0-9]/g, ''), 10) || 10000;
-    const growthNum = parseInt(st.growthRate.replace(/[^0-9]/g, ''), 10) || 50;
-    return {
-      keyword: st.keyword.length > 20 ? st.keyword.substring(0, 18) + '...' : st.keyword,
-      volume: numericVol,
-      displayVolume: st.volume,
-      growth: growthNum,
-      displayGrowth: st.growthRate,
-      intent: st.intent,
-      type: st.growthType,
-    };
+  const keywordRows = useMemo<KeywordRow[]>(
+    () =>
+      report.searchTrends.map((trend) => ({
+        keyword: trend.keyword,
+        volumeLabel: trend.volume,
+        volume: parseVolume(trend.volume),
+        growthLabel: trend.growthRate,
+        growth: parseNumber(trend.growthRate),
+        growthType: trend.growthType,
+        intent: trend.intent,
+      })),
+    [report.searchTrends],
+  );
+
+  const volumeChartData = useMemo(
+    () => [...keywordRows].sort((a, b) => b.volume - a.volume).map((row) => ({ keyword: row.keyword, volume: row.volume })),
+    [keywordRows],
+  );
+
+  const table = useReactTable({
+    data: keywordRows,
+    columns: keywordColumns,
+    state: { sorting },
+    onSortingChange: setSorting,
+    getCoreRowModel: getCoreRowModel(),
+    getSortedRowModel: getSortedRowModel(),
   });
 
-  const getVerdictBadge = (verdict: string) => {
-    switch (verdict) {
-      case 'Opportunité Exceptionnelle':
-        return (
-          <span className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-full text-xs font-bold bg-emerald-500 text-white shadow-md shadow-emerald-500/25">
-            <Flame className="w-4 h-4 animate-bounce" />
-            <span>{verdict}</span>
-          </span>
-        );
-      case 'Opportunité Forte':
-        return (
-          <span className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-full text-xs font-bold bg-blue-600 text-white shadow-md shadow-blue-500/25">
-            <Award className="w-4 h-4" />
-            <span>{verdict}</span>
-          </span>
-        );
-      case 'Marché Compétitif':
-        return (
-          <span className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-full text-xs font-bold bg-amber-500 text-white shadow-md shadow-amber-500/25">
-            <Activity className="w-4 h-4" />
-            <span>{verdict}</span>
-          </span>
-        );
-      default:
-        return (
-          <span className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-full text-xs font-bold bg-slate-800 text-white">
-            <Target className="w-4 h-4" />
-            <span>{verdict}</span>
-          </span>
-        );
-    }
-  };
+  const hasSources = (report.groundingSources?.length ?? 0) > 0;
 
   return (
-    <TooltipProvider>
-      <div className="space-y-8 animate-in fade-in duration-200">
-        
-        {/* Top Hero Section: Executive Intelligence Banner */}
-        <motion.section
-          initial={{ opacity: 0, y: 15 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.3 }}
-          className="bg-white rounded-3xl p-6 sm:p-8 border border-slate-200/80 shadow-xs relative overflow-hidden"
-        >
-          {/* Subtle background glow */}
-          <div className="absolute -right-20 -top-20 w-80 h-80 bg-gradient-to-bl from-indigo-100/60 via-sky-50/40 to-transparent rounded-full blur-3xl pointer-events-none" />
-
-          <div className="relative flex flex-col lg:flex-row lg:items-center justify-between gap-6 pb-6 border-b border-slate-100">
-            <div className="space-y-2">
+    <div className="space-y-6">
+      <Card>
+        <CardContent className="space-y-5">
+          <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+            <div className="min-w-0 space-y-2">
               <div className="flex flex-wrap items-center gap-2">
-                <Badge variant="indigo" className="gap-1.5 py-1">
-                  <Compass className="w-3.5 h-3.5 text-indigo-600" />
-                  <span>Veille Stratégique Web & E-Commerce</span>
-                </Badge>
-                <span className="text-xs text-slate-400 font-medium font-mono">
-                  Édition du {report.dateCreated}
-                </span>
+                <span className="text-xs font-semibold tracking-wider text-brand-green-text uppercase">Voir</span>
+                {isExampleReport && <Badge variant="info">Rapport d’exemple</Badge>}
+                <span className="text-xs text-muted-foreground">Édition du {report.dateCreated}</span>
               </div>
-
-              <h1 className="text-2xl sm:text-3xl lg:text-4xl font-black text-slate-900 tracking-tight font-display">
-                {report.nicheName}
-              </h1>
-
-              <div className="flex items-center gap-2 text-xs text-slate-500">
-                <Search className="w-3.5 h-3.5 text-indigo-500" />
-                <span>Requête analysée :</span>
-                <span className="font-semibold text-slate-800 bg-slate-100 px-2 py-0.5 rounded-md font-mono">
-                  « {report.query} »
-                </span>
-              </div>
-            </div>
-
-            {/* Overall Verdict Badge */}
-            <div className="shrink-0 flex flex-col items-start lg:items-end gap-1.5 bg-slate-50/80 p-4 rounded-2xl border border-slate-200/60">
-              <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wider">
-                Verdict de Veille Concurrentielle :
-              </span>
-              {getVerdictBadge(report.overallVerdict)}
-            </div>
-          </div>
-
-          {/* Executive Summary Card */}
-          <div className="mt-6">
-            <h2 className="text-xs font-bold text-slate-700 uppercase tracking-wider mb-2.5 flex items-center gap-2">
-              <Sparkles className="w-3.5 h-3.5 text-amber-500" />
-              <span>Synthèse d'Analyse Concurrentielle & Potentiel de Monétisation</span>
-            </h2>
-            <div className="bg-slate-50/70 p-4 sm:p-5 rounded-2xl border border-slate-200/70 text-slate-800 text-xs sm:text-sm leading-relaxed">
-              {report.executiveSummary}
-            </div>
-          </div>
-
-          {/* Quick Actions Bar */}
-          <div className="mt-6 pt-4 border-t border-slate-100 flex flex-wrap items-center justify-between gap-4">
-            <div className="flex items-center gap-2 text-xs text-slate-600">
-              <CheckCircle2 className="w-4 h-4 text-emerald-500 shrink-0" />
-              <span>Signaux web croisés avec l'algorithme publicitaire Meta et les volumes de recherche</span>
-            </div>
-
-            <div className="flex items-center gap-2">
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={onNavigateToProducts}
-                className="gap-1.5 text-indigo-600 border-indigo-200 hover:bg-indigo-50"
-              >
-                <span>Produits digitaux ({report.digitalProducts.length})</span>
-                <ChevronRight className="w-3.5 h-3.5" />
-              </Button>
-
-              <Button
-                variant="glow"
-                size="sm"
-                onClick={onNavigateToMetaAds}
-                className="gap-1.5"
-              >
-                <span>Vidéos Meta Ads</span>
-                <ChevronRight className="w-3.5 h-3.5" />
-              </Button>
-            </div>
-          </div>
-        </motion.section>
-
-        {/* SECTION 1: Le Système de Notation par Taux (avec Radar Chart Recharts) */}
-        <section className="space-y-4">
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-            <div>
-              <div className="flex items-center gap-2">
-                <h2 className="text-lg sm:text-xl font-bold text-slate-900 font-display flex items-center gap-2">
-                  <BarChart3 className="w-5 h-5 text-indigo-600" />
-                  <span>Système de Notation par Taux Stratégiques</span>
-                </h2>
-                <Badge variant="emerald" className="hidden sm:inline-flex">
-                  5 Indicateurs Validés
-                </Badge>
-              </div>
-              <p className="text-xs text-slate-500 mt-0.5">
-                Évaluation par échelle normalisée : <strong>Faible</strong> • <strong>Moyen</strong> • <strong>Élevé</strong> • <strong>Très élevé</strong>
+              <h1 className="font-display text-2xl font-extrabold tracking-tight sm:text-3xl">{report.nicheName}</h1>
+              <p className="flex flex-wrap items-center gap-1.5 text-sm text-muted-foreground">
+                <Search className="size-4" aria-hidden="true" />
+                Requête analysée : <span className="font-medium text-foreground">« {report.query} »</span>
               </p>
             </div>
-
-            {/* Switch between Card Grid & Radar View */}
-            <div className="flex items-center bg-slate-100 p-1 rounded-xl gap-1 shrink-0 self-start sm:self-auto">
-              <button
-                onClick={() => setActiveAnalysisView('grid')}
-                className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${
-                  activeAnalysisView === 'grid'
-                    ? 'bg-white text-slate-900 shadow-xs'
-                    : 'text-slate-600 hover:text-slate-900'
-                }`}
-              >
-                Grille des Taux
-              </button>
-              <button
-                onClick={() => setActiveAnalysisView('radar')}
-                className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${
-                  activeAnalysisView === 'radar'
-                    ? 'bg-white text-slate-900 shadow-xs'
-                    : 'text-slate-600 hover:text-slate-900'
-                }`}
-              >
-                Radar Stratégique
-              </button>
+            <div className="shrink-0 space-y-1.5 rounded-lg border bg-muted/40 p-4">
+              <p className="text-xs text-muted-foreground">Verdict de l’analyse</p>
+              <Badge variant={VERDICT_VARIANT[report.overallVerdict]} className="px-2.5 py-1 text-sm">
+                {report.overallVerdict}
+              </Badge>
             </div>
           </div>
 
-          {/* Dynamic View: Grid vs Radar Chart */}
-          {activeAnalysisView === 'grid' ? (
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-              {ratesList.map((rate, idx) => {
-                const getRateColor = () => {
-                  switch (rate.level) {
-                    case 'Très élevé':
-                      return 'bg-emerald-500';
-                    case 'Élevé':
-                      return 'bg-blue-500';
-                    case 'Moyen':
-                      return 'bg-amber-500';
-                    case 'Faible':
-                      return 'bg-rose-500';
-                    default:
-                      return 'bg-indigo-500';
-                  }
-                };
+          <p className="max-w-4xl leading-relaxed">{report.executiveSummary}</p>
 
+          <div className="flex flex-wrap gap-2 border-t pt-4">
+            <Button variant="outline" onClick={onNavigateToProducts}>
+              Idées de produits ({report.digitalProducts.length})
+              <ArrowRight />
+            </Button>
+            <Button onClick={onNavigateToMetaAds}>
+              Préparer les créatifs
+              <ArrowRight />
+            </Button>
+          </div>
+        </CardContent>
+      </Card>
+
+      <Tabs defaultValue="taux" className="gap-4">
+        <div className="-mx-1 overflow-x-auto px-1 pb-1">
+          <TabsList>
+            <TabsTrigger value="taux">Les 5 taux</TabsTrigger>
+            <TabsTrigger value="mots-cles">Mots-clés</TabsTrigger>
+            <TabsTrigger value="concurrence">Concurrence</TabsTrigger>
+            <TabsTrigger value="plan">Plan d’action</TabsTrigger>
+            {hasSources && <TabsTrigger value="sources">Sources</TabsTrigger>}
+          </TabsList>
+        </div>
+
+        <TabsContent value="taux" className="space-y-4">
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+            <p className="flex items-start gap-1.5 text-sm text-muted-foreground">
+              <Info className="mt-0.5 size-4 shrink-0" aria-hidden="true" />
+              Seul le taux de saturation porte aujourd’hui une trace de calcul complète. Touchez un niveau pour ouvrir
+              le détail, ou l’explication de son absence.
+            </p>
+            <div className="inline-flex shrink-0 self-start rounded-lg border bg-muted/50 p-1" role="group" aria-label="Affichage des taux">
+              <Button
+                size="sm"
+                variant={rateView === 'grid' ? 'secondary' : 'ghost'}
+                aria-pressed={rateView === 'grid'}
+                onClick={() => setRateView('grid')}
+              >
+                Grille
+              </Button>
+              <Button
+                size="sm"
+                variant={rateView === 'radar' ? 'secondary' : 'ghost'}
+                aria-pressed={rateView === 'radar'}
+                onClick={() => setRateView('radar')}
+              >
+                Radar
+              </Button>
+            </div>
+          </div>
+
+          {rateView === 'grid' ? (
+            <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+              {rates.map((rate) => {
+                const trend = TREND[rate.trend];
+                const TrendIcon = trend.icon;
                 return (
-                  <motion.div
-                    key={rate.key}
-                    initial={{ opacity: 0, y: 12 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    transition={{ duration: 0.25, delay: idx * 0.05 }}
-                    className="bg-white rounded-2xl p-5 border border-slate-200/80 shadow-xs hover:shadow-sm hover:border-indigo-300 transition-all flex flex-col justify-between"
-                  >
-                    <div>
-                      <div className="flex items-start justify-between gap-2 mb-3">
-                        <span className="text-xs font-bold uppercase tracking-wider text-slate-600">
-                          {rate.label}
-                        </span>
-                        <RateBadge
-                          level={rate.level}
-                          size="md"
-                          inspectLabel={rate.label}
-                          onInspect={() => setInspectedRate(rate)}
-                        />
+                  <Card key={rate.key} className="gap-4 py-5">
+                    <CardHeader className="px-5">
+                      <div className="flex items-start justify-between gap-2">
+                        <CardTitle className="text-sm leading-snug">{rate.label}</CardTitle>
+                        <RateBadge level={rate.level} size="sm" inspectLabel={rate.label} onInspect={() => setInspectedRate(rate)} />
                       </div>
-
-                      {/* Score display */}
-                      <div className="my-3 space-y-1.5">
-                        <div className="flex items-baseline justify-between">
-                          <span className="text-2xl sm:text-3xl font-black text-slate-900 font-display">
-                            {rate.score}
-                            <span className="text-xs font-medium text-slate-400"> / 100</span>
-                          </span>
-                          <span className="text-xs font-bold text-slate-600">
-                            Taux {rate.level}
-                          </span>
-                        </div>
-
-                        {/* Progress bar */}
-                        <div className="w-full bg-slate-100 rounded-full h-2 overflow-hidden">
-                          <div
-                            className={`h-2 rounded-full transition-all duration-700 ${getRateColor()}`}
-                            style={{ width: `${rate.score}%` }}
-                          />
-                        </div>
-                      </div>
-
-                      <p className="text-xs text-slate-600 leading-relaxed mt-2.5">
-                        {rate.description}
+                    </CardHeader>
+                    <CardContent className="space-y-3 px-5">
+                      <p className="font-display text-3xl font-extrabold tabular-nums">
+                        {rate.score}
+                        <span className="text-sm font-medium text-muted-foreground"> / 100</span>
                       </p>
-                    </div>
-
-                    <div className="mt-4 pt-3 border-t border-slate-100 flex items-center justify-between text-[11px] text-slate-500">
-                      <span>Orientation :</span>
-                      <span className="font-semibold text-slate-700 flex items-center gap-1 font-mono">
-                        {rate.trend === 'up' && <TrendingUp className="w-3.5 h-3.5 text-emerald-500" />}
-                        {rate.trend === 'stable' && <span className="w-2.5 h-0.5 bg-slate-400 inline-block" />}
-                        {rate.trend === 'up' ? 'En hausse' : rate.trend === 'stable' ? 'Stable' : 'Repli'}
-                      </span>
-                    </div>
-                  </motion.div>
+                      <Progress value={rate.score} indicatorClassName={RATE_BAR[rate.level]} aria-label={`${rate.label} : ${rate.score} sur 100`} />
+                      <p className="text-sm leading-relaxed text-muted-foreground">{rate.description}</p>
+                      <p className="flex items-center justify-between border-t pt-3 text-xs text-muted-foreground">
+                        Orientation
+                        <span className="inline-flex items-center gap-1 font-medium text-foreground">
+                          <TrendIcon className="size-3.5" aria-hidden="true" />
+                          {trend.label}
+                        </span>
+                      </p>
+                    </CardContent>
+                  </Card>
                 );
               })}
             </div>
           ) : (
-            /* Recharts Radar Chart View */
-            <div className="bg-white rounded-2xl p-6 border border-slate-200/80 shadow-xs grid grid-cols-1 lg:grid-cols-12 gap-6 items-center">
-              <div className="lg:col-span-7 h-[320px] w-full">
-                <ResponsiveContainer width="100%" height="100%">
-                  <RadarChart cx="50%" cy="50%" outerRadius="75%" data={radarData}>
-                    <PolarGrid stroke="#e2e8f0" />
-                    <PolarAngleAxis
-                      dataKey="subject"
-                      tick={{ fill: '#334155', fontSize: 12, fontWeight: 600 }}
-                    />
-                    <PolarRadiusAxis angle={30} domain={[0, 100]} stroke="#cbd5e1" />
-                    <Radar
-                      name="Score Stratégique"
-                      dataKey="score"
-                      stroke="#4f46e5"
-                      fill="#6366f1"
-                      fillOpacity={0.4}
-                    />
-                    <RechartsTooltip
-                      content={({ payload }) => {
-                        if (!payload || !payload.length) return null;
-                        const data = payload[0].payload;
-                        return (
-                          <div className="bg-slate-900 text-white p-2.5 rounded-xl text-xs shadow-lg space-y-1">
-                            <span className="font-bold block">{data.subject}</span>
-                            <span className="text-indigo-300 font-mono">Score : {data.score}/100</span>
-                            <span className="text-emerald-400 block font-semibold">Taux : {data.level}</span>
-                          </div>
-                        );
-                      }}
-                    />
-                  </RadarChart>
-                </ResponsiveContainer>
-                <ChartProvenance provenance={report.dataProvenance?.rates} />
-              </div>
-
-              <div className="lg:col-span-5 space-y-3">
-                <h3 className="text-sm font-bold text-slate-900 uppercase tracking-wider">
-                  Interprétation du Radar Décisionnel
-                </h3>
-                <p className="text-xs text-slate-600 leading-relaxed">
-                  Ce diagramme en toile d'araignée cartographie l'équilibre entre la demande brute, la rentabilité numérique et la saturation concurrentielle. Plus l'aire bleue s'étend vers les bords extérieurs, plus le retour sur investissement estimé est élevé.
-                </p>
-
-                <div className="space-y-2 pt-2">
-                  {ratesList.map((r) => (
-                    <div key={r.key} className="flex items-center justify-between text-xs py-1 border-b border-slate-100">
-                      <span className="font-medium text-slate-700">{r.label}</span>
-                      <RateBadge
-                        level={r.level}
-                        size="sm"
-                        inspectLabel={r.label}
-                        onInspect={() => setInspectedRate(r)}
-                      />
-                    </div>
-                  ))}
+            <Card>
+              <CardContent className="grid items-center gap-6 lg:grid-cols-12">
+                <div className="lg:col-span-7">
+                  <ChartContainer config={radarConfig} className="mx-auto aspect-square max-h-80 w-full">
+                    <RadarChart data={radarData} outerRadius="72%">
+                      <PolarGrid />
+                      <PolarAngleAxis dataKey="subject" />
+                      <PolarRadiusAxis angle={30} domain={[0, 100]} tick={false} axisLine={false} />
+                      <ChartTooltip content={<ChartTooltipContent />} />
+                      <Radar dataKey="score" fill="var(--color-score)" fillOpacity={0.3} stroke="var(--color-score)" strokeWidth={2} />
+                    </RadarChart>
+                  </ChartContainer>
                 </div>
-              </div>
-            </div>
-          )}
-        </section>
-
-        {/* SECTION 2: Requêtes & Mots-Clés avec Recharts Momentum Visualizer */}
-        <section className="bg-white rounded-3xl p-6 sm:p-8 border border-slate-200/80 shadow-xs space-y-6">
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-            <div>
-              <h2 className="text-lg sm:text-xl font-bold text-slate-900 font-display flex items-center gap-2">
-                <Search className="w-5 h-5 text-indigo-600" />
-                <span>Volumes de Recherche & Mots-Clés à Forte Intention</span>
-              </h2>
-              <p className="text-xs text-slate-500 mt-0.5">
-                Données de volume mensuel et intentions d'achat détectées sur le web
-              </p>
-            </div>
-            <Badge variant="blue">Volumes Mensuels Estimés</Badge>
-          </div>
-
-          {/* Recharts Bar Chart for Keyword Volumes */}
-          <div className="h-64 w-full pt-2">
-            <ResponsiveContainer width="100%" height="100%">
-              <BarChart data={searchTrendData} margin={{ top: 10, right: 10, left: -20, bottom: 25 }}>
-                <XAxis
-                  dataKey="keyword"
-                  tick={{ fill: '#475569', fontSize: 11, fontWeight: 500 }}
-                  interval={0}
-                  angle={-10}
-                  textAnchor="end"
-                />
-                <YAxis tick={{ fill: '#94a3b8', fontSize: 11 }} />
-                <RechartsTooltip
-                  content={({ payload }) => {
-                    if (!payload || !payload.length) return null;
-                    const item = payload[0].payload;
-                    return (
-                      <div className="bg-slate-900 text-white p-3 rounded-xl text-xs shadow-xl space-y-1">
-                        <p className="font-bold text-slate-100">« {item.keyword} »</p>
-                        <p className="text-emerald-400 font-mono">Volume : {item.displayVolume}</p>
-                        <p className="text-sky-300 font-mono">Croissance : {item.displayGrowth}</p>
-                        <p className="text-slate-400 capitalize">Intention : {item.intent}</p>
-                      </div>
-                    );
-                  }}
-                />
-                <Bar dataKey="volume" radius={[8, 8, 0, 0]}>
-                  {searchTrendData.map((_entry, index) => (
-                    <Cell
-                      key={`cell-${index}`}
-                      fill={index === 0 ? '#4f46e5' : index === 1 ? '#0284c7' : '#059669'}
-                    />
-                  ))}
-                </Bar>
-              </BarChart>
-            </ResponsiveContainer>
-            <ChartProvenance provenance={report.dataProvenance?.searchTrends} />
-          </div>
-
-          {/* Table List of Keywords */}
-          <div className="overflow-x-auto pt-2">
-            <table className="w-full text-left text-xs sm:text-sm">
-              <thead>
-                <tr className="border-b border-slate-200 text-slate-400 text-xs uppercase tracking-wider font-semibold">
-                  <th className="pb-3 pl-2">Mot-clé / Requête d'acheteur</th>
-                  <th className="pb-3">Volume Mensuel</th>
-                  <th className="pb-3">Dynamique de Croissance</th>
-                  <th className="pb-3">Type de Tendance</th>
-                  <th className="pb-3 pr-2 text-right">Intention d'achat</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-100">
-                {report.searchTrends.map((st, idx) => (
-                  <tr key={idx} className="hover:bg-slate-50/80 transition-colors">
-                    <td className="py-3.5 pl-2 font-bold text-slate-900">
-                      <span className="flex items-center gap-2">
-                        <span className="w-1.5 h-1.5 rounded-full bg-indigo-600 shrink-0" />
-                        <span>« {st.keyword} »</span>
-                      </span>
-                    </td>
-                    <td className="py-3.5 text-slate-600 font-mono font-medium">
-                      {st.volume}
-                    </td>
-                    <td className="py-3.5 font-bold text-emerald-600 font-mono">
-                      {st.growthRate}
-                    </td>
-                    <td className="py-3.5">
-                      <span
-                        className={`inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-bold ${
-                          st.growthType === 'explosive'
-                            ? 'bg-rose-50 text-rose-700 border border-rose-200'
-                            : st.growthType === 'steady'
-                            ? 'bg-blue-50 text-blue-700 border border-blue-200'
-                            : 'bg-amber-50 text-amber-700 border border-amber-200'
-                        }`}
-                      >
-                        {st.growthType === 'explosive' && '🔥 Explosion'}
-                        {st.growthType === 'steady' && '📈 Croissance régulière'}
-                        {st.growthType === 'niche' && '🎯 Hyper-ciblé'}
-                      </span>
-                    </td>
-                    <td className="py-3.5 pr-2 text-right font-semibold text-slate-700">
-                      <span className="px-2 py-1 rounded-md bg-slate-100 text-[11px]">
-                        {st.intent === 'transactional' && '💳 Transactionnelle'}
-                        {st.intent === 'commercial' && '🛒 Commerciale'}
-                        {st.intent === 'informational' && 'ℹ️ Informationnelle'}
-                      </span>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        </section>
-
-        {/* SECTION 3: Radar Concurrentiel & Angles d'Attaque Gagnants */}
-        <section className="space-y-4">
-          <div>
-            <h2 className="text-lg sm:text-xl font-bold text-slate-900 font-display flex items-center gap-2">
-              <Users className="w-5 h-5 text-indigo-600" />
-              <span>Benchmark Concurrentiel & Failles Exploitables</span>
-            </h2>
-            <p className="text-xs text-slate-500 mt-0.5">
-              Analyse des points forts et faiblesses des concurrents pour concevoir votre offre différenciante
-            </p>
-          </div>
-
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
-            {report.competitors.map((comp) => (
-              <motion.div
-                key={comp.id}
-                whileHover={{ y: -2 }}
-                className="bg-white rounded-3xl p-6 border border-slate-200/80 shadow-xs flex flex-col justify-between space-y-4"
-              >
-                <div>
-                  <div className="flex items-start justify-between gap-4 pb-3 border-b border-slate-100">
-                    <div>
-                      <h3 className="font-bold text-slate-900 text-base flex items-center gap-2">
-                        <span>{comp.name}</span>
-                        <span className="text-xs font-normal text-slate-400 font-mono">{comp.urlOrHandle}</span>
-                      </h3>
-                      <p className="text-xs text-slate-500 mt-0.5">{comp.positioning}</p>
-                    </div>
-                    <Badge variant="amber" className="shrink-0 font-mono">
-                      {comp.priceRange}
-                    </Badge>
-                  </div>
-
-                  {/* Strengths and Weaknesses */}
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mt-4">
-                    <div className="bg-slate-50/80 p-3.5 rounded-xl border border-slate-100">
-                      <span className="text-xs font-bold text-slate-700 block mb-1.5 flex items-center gap-1.5">
-                        <CheckCircle2 className="w-3.5 h-3.5 text-emerald-500" />
-                        Points forts constatés :
-                      </span>
-                      <ul className="space-y-1 text-xs text-slate-600">
-                        {comp.strengths.map((s, i) => (
-                          <li key={i} className="flex items-center gap-1.5">
-                            <span className="w-1 h-1 rounded-full bg-slate-400" />
-                            <span>{s}</span>
-                          </li>
-                        ))}
-                      </ul>
-                    </div>
-
-                    <div className="bg-rose-50/50 p-3.5 rounded-xl border border-rose-100">
-                      <span className="text-xs font-bold text-rose-700 block mb-1.5 flex items-center gap-1.5">
-                        <AlertCircle className="w-3.5 h-3.5 text-rose-500" />
-                        Frustrations clients :
-                      </span>
-                      <ul className="space-y-1 text-xs text-rose-800">
-                        {comp.weaknesses.map((w, i) => (
-                          <li key={i} className="flex items-center gap-1.5">
-                            <span className="w-1 h-1 rounded-full bg-rose-400" />
-                            <span>{w}</span>
-                          </li>
-                        ))}
-                      </ul>
-                    </div>
-                  </div>
-                </div>
-
-                {/* Winning Angle */}
-                <div className="bg-gradient-to-r from-emerald-50 to-teal-50 p-4 rounded-2xl border border-emerald-200/80">
-                  <span className="text-xs font-black uppercase tracking-wider text-emerald-800 block mb-1 flex items-center gap-1.5">
-                    <Zap className="w-3.5 h-3.5 text-emerald-600" />
-                    Angle d'Attaque Stratégique pour votre produit digital :
-                  </span>
-                  <p className="text-xs sm:text-sm text-emerald-950 font-medium">
-                    {comp.exploitableGaps[0] || 'Proposer une version simplifiée et concrète, prête à l\'emploi en moins de 15 minutes.'}
+                <div className="space-y-3 lg:col-span-5">
+                  <h2 className="font-semibold">Lire le radar</h2>
+                  <p className="text-sm leading-relaxed text-muted-foreground">
+                    Chaque axe va de 0 à 100. Une aire large signale une niche forte sur plusieurs taux à la fois ; elle ne
+                    prédit pas à elle seule un retour sur investissement.
                   </p>
-                </div>
-              </motion.div>
-            ))}
-          </div>
-        </section>
-
-        {/* SECTION 4: Roadmap de Lancement en 3 Phases */}
-        <section className="bg-slate-900 text-white rounded-3xl p-6 sm:p-8 shadow-xl space-y-6 relative overflow-hidden">
-          <div className="absolute right-0 top-0 w-96 h-96 bg-indigo-600/10 rounded-full blur-3xl pointer-events-none" />
-
-          <div>
-            <Badge variant="indigo" className="mb-2">
-              Feuille de Route Exécutive
-            </Badge>
-            <h2 className="text-xl sm:text-2xl font-black tracking-tight font-display text-white">
-              Plan d'Action de Lancement en 3 Phases
-            </h2>
-            <p className="text-xs sm:text-sm text-slate-300 mt-1 max-w-xl">
-              Chronologie recommandée pour valider l'intérêt du marché, acquérir vos premiers acheteurs avec Meta Ads et maximiser la marge.
-            </p>
-          </div>
-
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4 relative z-10">
-            {report.strategicActionPlan.map((plan, idx) => (
-              <div
-                key={idx}
-                className="bg-white/10 backdrop-blur-md rounded-2xl p-5 border border-white/10 flex flex-col justify-between"
-              >
-                <div>
-                  <span className="text-xs font-bold text-indigo-300 block mb-1 font-mono">
-                    {plan.phase}
-                  </span>
-                  <h4 className="font-bold text-base text-white mb-3">
-                    {plan.title}
-                  </h4>
-                  <ul className="space-y-2 text-xs text-slate-200">
-                    {plan.steps.map((step, sIdx) => (
-                      <li key={sIdx} className="flex items-start gap-2">
-                        <span className="w-4 h-4 rounded-full bg-indigo-500/40 text-indigo-200 flex items-center justify-center shrink-0 font-bold text-[10px] mt-0.5">
-                          {sIdx + 1}
-                        </span>
-                        <span className="leading-snug">{step}</span>
+                  <ul className="divide-y">
+                    {rates.map((rate) => (
+                      <li key={rate.key} className="flex items-center justify-between gap-2 py-2 text-sm">
+                        <span>{rate.label}</span>
+                        <RateBadge level={rate.level} size="sm" inspectLabel={rate.label} onInspect={() => setInspectedRate(rate)} />
                       </li>
                     ))}
                   </ul>
                 </div>
-              </div>
+              </CardContent>
+            </Card>
+          )}
+          <ChartProvenance provenance={report.dataProvenance?.rates} />
+        </TabsContent>
+
+        <TabsContent value="mots-cles" className="space-y-4">
+          <Card>
+            <CardHeader>
+              <CardTitle>Volume de recherche par mot-clé</CardTitle>
+              <CardDescription>Recherches mensuelles estimées, du plus recherché au moins recherché.</CardDescription>
+            </CardHeader>
+            <CardContent>
+              <ChartContainer
+                config={volumeConfig}
+                className="w-full"
+                style={{ height: `${Math.max(160, volumeChartData.length * 52 + 40)}px` }}
+              >
+                <BarChart data={volumeChartData} layout="vertical" margin={{ top: 0, right: 16, bottom: 0, left: 0 }}>
+                  <CartesianGrid horizontal={false} />
+                  <XAxis type="number" tickLine={false} axisLine={false} tickFormatter={(value: number) => compact.format(value)} />
+                  <YAxis
+                    type="category"
+                    dataKey="keyword"
+                    width={190}
+                    tickLine={false}
+                    axisLine={false}
+                    tickFormatter={(value: string) => (value.length > 28 ? `${value.slice(0, 27)}…` : value)}
+                  />
+                  <ChartTooltip cursor={false} content={<ChartTooltipContent />} />
+                  <Bar dataKey="volume" fill="var(--color-volume)" radius={4} barSize={24} />
+                </BarChart>
+              </ChartContainer>
+              <ChartProvenance provenance={report.dataProvenance?.searchTrends} />
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader>
+              <CardTitle>Détail des mots-clés</CardTitle>
+              <CardDescription>Triez par volume ou par croissance.</CardDescription>
+            </CardHeader>
+            <CardContent>
+              <Table>
+                <TableHeader>
+                  {table.getHeaderGroups().map((headerGroup) => (
+                    <TableRow key={headerGroup.id}>
+                      {headerGroup.headers.map((header) => (
+                        <TableHead
+                          key={header.id}
+                          aria-sort={
+                            header.column.getIsSorted() === 'asc'
+                              ? 'ascending'
+                              : header.column.getIsSorted() === 'desc'
+                                ? 'descending'
+                                : undefined
+                          }
+                        >
+                          {header.isPlaceholder ? null : flexRender(header.column.columnDef.header, header.getContext())}
+                        </TableHead>
+                      ))}
+                    </TableRow>
+                  ))}
+                </TableHeader>
+                <TableBody>
+                  {table.getRowModel().rows.map((row) => (
+                    <TableRow key={row.id}>
+                      {row.getVisibleCells().map((cell) => (
+                        <TableCell key={cell.id}>{flexRender(cell.column.columnDef.cell, cell.getContext())}</TableCell>
+                      ))}
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        <TabsContent value="concurrence" className="space-y-4">
+          <p className="text-sm text-muted-foreground">
+            Forces et faiblesses des concurrents repérés, pour concevoir une offre qui se distingue.
+          </p>
+          <div className="grid gap-4 lg:grid-cols-2">
+            {report.competitors.map((competitor) => (
+              <Card key={competitor.id}>
+                <CardHeader>
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="min-w-0 space-y-1">
+                      <CardTitle className="text-base">{competitor.name}</CardTitle>
+                      <CardDescription className="break-all">{competitor.urlOrHandle}</CardDescription>
+                    </div>
+                    <Badge variant="outline" className="shrink-0 tabular-nums">
+                      {competitor.priceRange}
+                    </Badge>
+                  </div>
+                  <p className="text-sm text-muted-foreground">{competitor.positioning}</p>
+                </CardHeader>
+                <CardContent className="space-y-3">
+                  <div className="grid gap-3 sm:grid-cols-2">
+                    <div className="rounded-lg border bg-muted/40 p-3.5">
+                      <p className="mb-1.5 flex items-center gap-1.5 text-sm font-semibold">
+                        <CheckCircle2 className="size-4 text-success" aria-hidden="true" />
+                        Points forts
+                      </p>
+                      <ul className="list-disc space-y-1 pl-4 text-sm text-muted-foreground">
+                        {competitor.strengths.map((strength) => (
+                          <li key={strength}>{strength}</li>
+                        ))}
+                      </ul>
+                    </div>
+                    <div className="rounded-lg border border-danger-border bg-danger-soft p-3.5">
+                      <p className="mb-1.5 flex items-center gap-1.5 text-sm font-semibold text-danger">
+                        <AlertCircle className="size-4" aria-hidden="true" />
+                        Frustrations clients
+                      </p>
+                      <ul className="list-disc space-y-1 pl-4 text-sm text-foreground/85">
+                        {competitor.weaknesses.map((weakness) => (
+                          <li key={weakness}>{weakness}</li>
+                        ))}
+                      </ul>
+                    </div>
+                  </div>
+                  {competitor.exploitableGaps[0] && (
+                    <div className="rounded-lg border border-primary/30 bg-accent/60 p-4">
+                      <p className="mb-1 flex items-center gap-1.5 text-sm font-semibold text-accent-foreground">
+                        <Lightbulb className="size-4" aria-hidden="true" />
+                        Angle à exploiter
+                      </p>
+                      <p className="text-sm">{competitor.exploitableGaps[0]}</p>
+                    </div>
+                  )}
+                </CardContent>
+              </Card>
             ))}
           </div>
-        </section>
+        </TabsContent>
 
-        {/* SECTION 5: Sources Web & Citations Réelles (Google Search Grounding) */}
-        {report.groundingSources && report.groundingSources.length > 0 && (
-          <section className="bg-white rounded-3xl p-6 sm:p-8 border border-slate-200/80 shadow-xs space-y-4">
-            <div className="flex items-center gap-2 text-indigo-700">
-              <Globe className="w-5 h-5" />
-              <h3 className="text-base font-bold text-slate-900">
-                Sources Web & Données Réelles Sondées (Google Search Grounding)
-              </h3>
-            </div>
-            <p className="text-xs text-slate-500">
-              Cette analyse a été consolidée en temps réel à partir des signaux du web, des plateformes de vente digitale et des réseaux sociaux suivants :
-            </p>
-            <div className="flex flex-wrap gap-2.5 pt-1">
-              {report.groundingSources.map((src, sIdx) => (
-                <a
-                  key={sIdx}
-                  href={src.url}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-slate-50 hover:bg-indigo-50 border border-slate-200 hover:border-indigo-200 text-xs text-slate-700 hover:text-indigo-700 transition-colors"
-                >
-                  <Globe className="w-3.5 h-3.5 text-indigo-600 shrink-0" />
-                  <span className="font-medium truncate max-w-xs">{src.title}</span>
-                  <ExternalLink className="w-3 h-3 opacity-60 shrink-0" />
-                </a>
-              ))}
-            </div>
-          </section>
+        <TabsContent value="plan" className="space-y-4">
+          <p className="text-sm text-muted-foreground">
+            Chronologie recommandée pour valider l’intérêt du marché, trouver vos premiers acheteurs et protéger votre marge.
+          </p>
+          <div className="grid gap-4 md:grid-cols-3">
+            {report.strategicActionPlan.map((phase, index) => (
+              <Card key={phase.phase}>
+                <CardHeader>
+                  <CardDescription>
+                    Étape {index + 1} · {phase.phase}
+                  </CardDescription>
+                  <CardTitle className="text-base">{phase.title}</CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <ol className="space-y-2.5">
+                    {phase.steps.map((step, stepIndex) => (
+                      <li key={step} className="flex items-start gap-2.5 text-sm">
+                        <span className="mt-0.5 flex size-5 shrink-0 items-center justify-center rounded-full bg-accent text-xs font-semibold text-accent-foreground tabular-nums">
+                          {stepIndex + 1}
+                        </span>
+                        <span className="leading-snug">{step}</span>
+                      </li>
+                    ))}
+                  </ol>
+                </CardContent>
+              </Card>
+            ))}
+          </div>
+        </TabsContent>
+
+        {hasSources && (
+          <TabsContent value="sources">
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <Globe className="size-4 text-brand-green-text" aria-hidden="true" />
+                  Sources citées par l’analyse
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                <ul className="flex flex-wrap gap-2">
+                  {report.groundingSources?.map((source) => (
+                    <li key={source.url}>
+                      <a
+                        href={source.url}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="inline-flex max-w-xs items-center gap-1.5 rounded-md border px-3 py-1.5 text-sm hover:bg-accent"
+                      >
+                        <span className="truncate">{source.title}</span>
+                        <ExternalLink className="size-3.5 shrink-0 text-muted-foreground" aria-hidden="true" />
+                      </a>
+                    </li>
+                  ))}
+                </ul>
+              </CardContent>
+            </Card>
+          </TabsContent>
         )}
+      </Tabs>
 
-        {/* Mention légale obligatoire sur chaque rapport — CdC §9.4. */}
-        <LegalNotice variant="block" />
+      <LegalNotice variant="block" />
 
-        {/* Panneau de traçabilité, ouvert depuis n'importe quel badge de taux. */}
-        <ScoreTracePanel
-          rate={inspectedRate}
-          open={inspectedRate !== null}
-          onOpenChange={(isOpen) => {
-            if (!isOpen) setInspectedRate(null);
-          }}
-        />
-      </div>
-    </TooltipProvider>
+      <ScoreTracePanel
+        rate={inspectedRate}
+        open={inspectedRate !== null}
+        onOpenChange={(isOpen) => {
+          if (!isOpen) setInspectedRate(null);
+        }}
+      />
+    </div>
   );
-};
+}

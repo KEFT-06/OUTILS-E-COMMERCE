@@ -10,6 +10,15 @@ const alertVariants = cva(
         default: "bg-card text-card-foreground",
         destructive:
           "bg-card text-destructive *:data-[slot=alert-description]:text-destructive/90 [&>svg]:text-current",
+        // Variantes Smart Creator : le titre et l'icône prennent la couleur de
+        // l'état, la description reste en texte courant pour la lisibilité.
+        success:
+          "border-success-border bg-success-soft text-success *:data-[slot=alert-description]:text-foreground/85",
+        warning:
+          "border-warning-border bg-warning-soft text-warning *:data-[slot=alert-description]:text-foreground/85",
+        info: "border-info-border bg-info-soft text-info *:data-[slot=alert-description]:text-foreground/85",
+        danger:
+          "border-danger-border bg-danger-soft text-danger *:data-[slot=alert-description]:text-foreground/85",
       },
     },
     defaultVariants: {
@@ -38,7 +47,7 @@ function AlertTitle({ className, ...props }: React.ComponentProps<"div">) {
     <div
       data-slot="alert-title"
       className={cn(
-        "col-start-2 line-clamp-1 min-h-4 font-medium tracking-tight",
+        "col-start-2 min-h-4 font-semibold tracking-tight",
         className
       )}
       {...props}

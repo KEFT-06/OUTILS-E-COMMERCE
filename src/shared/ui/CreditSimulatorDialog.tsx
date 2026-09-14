@@ -1,23 +1,24 @@
-import React from 'react';
 import { AlertTriangle, ArrowRight, Info, Wallet, Zap } from 'lucide-react';
-import { CreditQuote } from '@/shared/types/credits';
+import { cn } from '@/shared/lib/utils';
+import type { CreditQuote } from '@/shared/types/credits';
+import { Alert, AlertDescription, AlertTitle } from '@/shared/ui/alert';
+import { Button } from '@/shared/ui/button';
 import {
   Dialog,
   DialogContent,
   DialogDescription,
+  DialogFooter,
   DialogHeader,
   DialogTitle,
 } from '@/shared/ui/dialog';
 
 /**
- * Simulateur de crédits — module 8 du cahier des charges.
+ * Simulateur de crédits : les quatre informations exigées avant toute action
+ * consommant des points — le coût, son équivalent monétaire, le solde avant et
+ * le solde après.
  *
- * Affiche les quatre informations exigées avant toute action consommant des
- * points : le coût, son équivalent monétaire, le solde avant et le solde après.
- *
- * La validation est un geste explicite. Un solde qui baisse sans confirmation
- * préalable est la première cause de défiance sur ce type d'outil : l'utilisateur
- * doit pouvoir répondre « non » sans avoir déjà payé.
+ * La validation est un geste explicite : l'utilisateur doit pouvoir répondre
+ * « non » sans avoir déjà payé.
  */
 interface CreditSimulatorDialogProps {
   quote: CreditQuote | null;
@@ -28,33 +29,24 @@ interface CreditSimulatorDialogProps {
   onCancel: () => void;
 }
 
-export const CreditSimulatorDialog: React.FC<CreditSimulatorDialogProps> = ({
-  quote,
-  unavailableReason,
-  open,
-  onConfirm,
-  onCancel,
-}) => {
+export function CreditSimulatorDialog({ quote, unavailableReason, open, onConfirm, onCancel }: CreditSimulatorDialogProps) {
+  // Fermer la fenêtre équivaut à refuser : l'action ne part que sur « Confirmer ».
   const handleOpenChange = (isOpen: boolean) => {
-    // Fermer la fenêtre équivaut à refuser : on ne déclenche jamais l'action
-    // sur autre chose qu'un clic explicite sur « Confirmer ».
     if (!isOpen) onCancel();
   };
 
   return (
     <Dialog open={open} onOpenChange={handleOpenChange}>
-      <DialogContent className="max-w-md">
+      <DialogContent className="sm:max-w-md">
         <DialogHeader>
           <div className="flex items-start gap-3 pr-6">
-            <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-amber-200 bg-amber-50 text-amber-600">
-              <Zap className="h-4 w-4" />
+            <span className="flex size-9 shrink-0 items-center justify-center rounded-lg border border-warning-border bg-warning-soft text-warning">
+              <Zap className="size-4" />
             </span>
-            <div>
+            <div className="space-y-1">
               <DialogTitle>Confirmer la dépense</DialogTitle>
               <DialogDescription>
-                {unavailableReason
-                  ? 'Le coût de cette action ne peut pas être calculé.'
-                  : quote?.action.label}
+                {unavailableReason ? 'Le coût de cette action ne peut pas être calculé.' : quote?.action.label}
               </DialogDescription>
             </div>
           </div>
@@ -62,107 +54,82 @@ export const CreditSimulatorDialog: React.FC<CreditSimulatorDialogProps> = ({
 
         {unavailableReason || !quote ? (
           <>
-            <div className="rounded-xl border border-amber-300/70 bg-amber-50 p-4 space-y-2">
-              <div className="flex items-center gap-2 text-amber-900">
-                <AlertTriangle className="h-4 w-4 shrink-0" />
-                <span className="text-sm font-bold">Grille tarifaire indisponible</span>
-              </div>
-              <p className="text-xs leading-relaxed text-amber-900/90">
-                {unavailableReason ?? 'Coût inconnu.'}
-              </p>
-              <p className="text-xs leading-relaxed text-amber-900/90">
-                L'action est annulée. Déclencher une dépense sans pouvoir en annoncer le montant
-                reviendrait à débiter à l'aveugle.
-              </p>
-            </div>
-
-            <button
-              type="button"
-              onClick={onCancel}
-              className="w-full rounded-xl bg-slate-900 py-2.5 text-xs font-bold text-white transition-colors hover:bg-slate-800"
-            >
-              Fermer
-            </button>
+            <Alert variant="warning">
+              <AlertTriangle />
+              <AlertTitle>Grille tarifaire indisponible</AlertTitle>
+              <AlertDescription>
+                <p>{unavailableReason ?? 'Coût inconnu.'}</p>
+                <p>L’action est annulée : lancer une dépense sans pouvoir en annoncer le montant reviendrait à débiter à l’aveugle.</p>
+              </AlertDescription>
+            </Alert>
+            <DialogFooter>
+              <Button onClick={onCancel} className="w-full sm:w-auto">
+                Fermer
+              </Button>
+            </DialogFooter>
           </>
         ) : (
           <>
-            <p className="text-xs leading-relaxed text-slate-600">{quote.action.description}</p>
+            <p className="text-sm leading-relaxed text-muted-foreground">{quote.action.description}</p>
 
-            <div className="rounded-2xl border border-slate-200 bg-slate-50/80 p-4 space-y-3">
-              <div className="flex items-baseline justify-between">
-                <span className="text-xs font-semibold text-slate-500">Coût de l'action</span>
-                <span className="font-display text-2xl font-black text-slate-900">
+            <dl className="divide-y rounded-lg border bg-muted/40 px-4">
+              <div className="flex items-baseline justify-between gap-4 py-3">
+                <dt className="text-sm text-muted-foreground">Coût de l’action</dt>
+                <dd className="font-display text-2xl font-extrabold tabular-nums">
                   {quote.cost}
-                  <span className="ml-1 text-xs font-semibold text-slate-500">pts</span>
-                </span>
+                  <span className="ml-1 text-sm font-medium text-muted-foreground">pts</span>
+                </dd>
               </div>
-
-              <div className="flex items-baseline justify-between border-t border-slate-200 pt-3">
-                <span className="text-xs font-semibold text-slate-500">Équivalent</span>
-                <span className="text-sm font-bold text-slate-900">
+              <div className="flex items-baseline justify-between gap-4 py-3">
+                <dt className="text-sm text-muted-foreground">Équivalent</dt>
+                <dd className="text-sm font-semibold tabular-nums">
                   ≈ {quote.monetaryEquivalent.toLocaleString('fr-FR')} {quote.currency}
-                </span>
+                </dd>
               </div>
-
-              <div className="flex items-center justify-between border-t border-slate-200 pt-3">
-                <span className="inline-flex items-center gap-1.5 text-xs font-semibold text-slate-500">
-                  <Wallet className="h-3.5 w-3.5" />
+              <div className="flex items-center justify-between gap-4 py-3">
+                <dt className="inline-flex items-center gap-1.5 text-sm text-muted-foreground">
+                  <Wallet className="size-3.5" aria-hidden="true" />
                   Solde
-                </span>
-                <span className="inline-flex items-center gap-2 text-sm font-bold">
-                  <span className="text-slate-500">{quote.balanceBefore} pts</span>
-                  <ArrowRight className="h-3.5 w-3.5 text-slate-400" />
-                  <span className={quote.sufficient ? 'text-slate-900' : 'text-rose-600'}>
-                    {quote.balanceAfter} pts
-                  </span>
-                </span>
+                </dt>
+                <dd className="inline-flex items-center gap-2 text-sm font-semibold tabular-nums">
+                  <span className="text-muted-foreground">{quote.balanceBefore} pts</span>
+                  <ArrowRight className="size-3.5 text-muted-foreground" aria-label="après l’action" />
+                  <span className={cn(!quote.sufficient && 'text-danger')}>{quote.balanceAfter} pts</span>
+                </dd>
               </div>
-            </div>
+            </dl>
 
             {!quote.sufficient && (
-              <div className="flex items-start gap-2 rounded-xl border border-rose-300/70 bg-rose-50 px-3 py-2">
-                <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-rose-700" />
-                <p className="text-xs leading-relaxed text-rose-900">
-                  <strong>Solde insuffisant.</strong> Il vous manque{' '}
-                  {quote.cost - quote.balanceBefore} point
-                  {quote.cost - quote.balanceBefore > 1 ? 's' : ''} pour lancer cette action.
-                </p>
-              </div>
+              <Alert variant="danger">
+                <AlertTriangle />
+                <AlertTitle>Solde insuffisant</AlertTitle>
+                <AlertDescription>
+                  Il vous manque {quote.cost - quote.balanceBefore} point{quote.cost - quote.balanceBefore > 1 ? 's' : ''}{' '}
+                  pour lancer cette action.
+                </AlertDescription>
+              </Alert>
             )}
 
             {quote.pointValueStatus && (
-              <div className="flex items-start gap-1.5">
-                <Info className="mt-0.5 h-3 w-3 shrink-0 text-slate-400" />
-                <p className="text-[11px] leading-relaxed text-slate-500">
-                  {quote.pointValueStatus}
-                </p>
-              </div>
+              <p className="flex items-start gap-1.5 text-xs leading-relaxed text-muted-foreground">
+                <Info className="mt-0.5 size-3.5 shrink-0" aria-hidden="true" />
+                {quote.pointValueStatus}
+              </p>
             )}
 
-            <div className="flex gap-2">
-              <button
-                type="button"
-                onClick={onCancel}
-                className="flex-1 rounded-xl border border-slate-200 bg-white py-2.5 text-xs font-bold text-slate-700 transition-colors hover:border-slate-300"
-              >
+            <DialogFooter className="gap-2 sm:gap-2">
+              <Button variant="outline" onClick={onCancel}>
                 Annuler
-              </button>
-              <button
-                type="button"
-                onClick={onConfirm}
-                disabled={!quote.sufficient}
-                className="flex-1 rounded-xl bg-slate-900 py-2.5 text-xs font-bold text-white transition-colors hover:bg-indigo-600 disabled:cursor-not-allowed disabled:bg-slate-300"
-              >
+              </Button>
+              <Button onClick={onConfirm} disabled={!quote.sufficient}>
                 Confirmer — {quote.cost} pts
-              </button>
-            </div>
+              </Button>
+            </DialogFooter>
 
-            <p className="text-center text-[10px] text-slate-400">
-              Grille tarifaire v{quote.tableVersion}
-            </p>
+            <p className="text-center text-xs text-muted-foreground">Grille tarifaire v{quote.tableVersion}</p>
           </>
         )}
       </DialogContent>
     </Dialog>
   );
-};
+}

@@ -1,31 +1,32 @@
-import React, { useEffect, useRef, useState } from 'react';
-import {
-  AlertTriangle,
-  Clapperboard,
-  Download,
-  Image as ImageIcon,
-  Loader2,
-  PenLine,
-  ShieldCheck,
-  Sparkles,
-} from 'lucide-react';
+import { useEffect, useRef, useState } from 'react';
+import { AlertTriangle, Clapperboard, Download, Image as ImageIcon, PenLine, ShieldCheck, Sparkles } from 'lucide-react';
 import { useCreditGate } from '@/app/providers/CreditGateProvider';
 import { ApiError, readApiError, toApiError } from '@/shared/lib/apiError';
-import { MARKETS } from '@/shared/lib/markets';
-import { AwarenessLevel, CreativeFormat, CreativeKind, CreativeStatus } from '@/shared/types/creatives';
 import { AWARENESS_OPTIONS } from '@/shared/lib/awareness';
+import { MARKETS } from '@/shared/lib/markets';
+import { cn } from '@/shared/lib/utils';
+import type { AwarenessLevel, CreativeFormat, CreativeKind, CreativeStatus } from '@/shared/types/creatives';
+import { Alert, AlertDescription, AlertTitle } from '@/shared/ui/alert';
+import { Badge } from '@/shared/ui/badge';
+import { Button } from '@/shared/ui/button';
+import { Card, CardAction, CardContent, CardDescription, CardHeader, CardTitle } from '@/shared/ui/card';
+import { Checkbox } from '@/shared/ui/checkbox';
+import { Field, FieldDescription, FieldLabel } from '@/shared/ui/field';
+import { Input } from '@/shared/ui/input';
+import { Label } from '@/shared/ui/label';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/shared/ui/select';
+import { Spinner } from '@/shared/ui/spinner';
+import { Textarea } from '@/shared/ui/textarea';
 
 /**
- * Génération de visuels et de vidéos publicitaires — feuille de route 4.1, 4.2 et 4.4.
+ * Génération de visuels et de vidéos publicitaires.
  *
  * - Le niveau de conscience du prospect est obligatoire, et rien n'est
- *   présélectionné : une valeur par défaut serait retenue par inadvertance et
- *   orienterait tout le créatif.
+ *   présélectionné : une valeur par défaut serait retenue par inadvertance.
  * - Conformité en deux temps. Le texte du brief est vérifié par le serveur avant
  *   toute génération — c'est un blocage réel. Le contenu visuel, qu'aucun outil
  *   ne relit de façon fiable, doit être regardé puis attesté par l'auteur avant
- *   que le téléchargement soit proposé. Cette seconde étape est volontaire : on
- *   ne peut pas empêcher de copier ce que l'on a le droit de voir.
+ *   que le téléchargement soit proposé.
  */
 
 const POLL_INTERVAL_MS = 5_000;
@@ -41,24 +42,19 @@ const FORMAT_OPTIONS: { value: CreativeFormat; label: string }[] = [
 /** Contrôles que l'auteur atteste avoir faits en regardant le fichier généré. */
 const ATTESTATIONS = [
   "Il n'affiche aucune promesse de gain chiffrée ni garantie de résultat.",
-  "Il ne met en scène ni avant/après trompeur, ni témoignage inventé.",
+  'Il ne met en scène ni avant/après trompeur, ni témoignage inventé.',
   'Tout texte visible est lisible, exact et conforme à mon brief.',
-  "Il ne montre ni logo de marque tierce, ni personne réelle identifiable sans son accord.",
+  'Il ne montre ni logo de marque tierce, ni personne réelle identifiable sans son accord.',
 ];
 
-const wait = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
-
-const fieldClass =
-  'w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm text-slate-900 focus:border-indigo-400 focus:outline-none focus:ring-2 focus:ring-indigo-100';
-
-const labelClass = 'mb-1 block text-[11px] font-bold uppercase tracking-wider text-slate-500';
-
 const PROGRESS_LABELS: Partial<Record<CreativeStatus['status'], string>> = {
-  queued: "En file d'attente chez Higgsfield…",
+  queued: 'En file d’attente chez le fournisseur…',
   in_progress: 'Génération en cours…',
 };
 
-export const CreativeGeneratorPanel: React.FC = () => {
+const wait = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
+
+export function CreativeGeneratorPanel() {
   const { runWithCredits } = useCreditGate();
 
   const [kind, setKind] = useState<CreativeKind>('visual');
@@ -169,259 +165,294 @@ export const CreativeGeneratorPanel: React.FC = () => {
   const fileUrl = (disposition: 'inline' | 'attachment') =>
     result ? `/api/creatives/requests/${encodeURIComponent(result.requestId)}/file?disposition=${disposition}` : '';
 
-  const tabClass = (active: boolean) =>
-    `inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-bold transition-colors ${
-      active ? 'bg-slate-900 text-white' : 'text-slate-600 hover:text-slate-900'
-    }`;
+  const choiceClass = (active: boolean) =>
+    cn('flex-1 whitespace-normal', active && 'border-primary bg-accent text-accent-foreground hover:bg-accent');
 
   return (
-    <section className="space-y-5 rounded-3xl border border-slate-200/80 bg-white p-5 shadow-xs sm:p-6">
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-        <div>
-          <h2 className="text-lg font-black tracking-tight text-slate-900">Générer un créatif</h2>
-          <p className="text-xs text-slate-500">
-            Visuel ou vidéo publicitaire, orienté par le niveau de conscience de votre prospect.
-          </p>
-        </div>
-        <div role="tablist" aria-label="Type de créatif" className="inline-flex self-start rounded-xl border border-slate-200 bg-white p-1">
-          <button type="button" role="tab" aria-selected={kind === 'visual'} onClick={() => setKind('visual')} className={tabClass(kind === 'visual')} disabled={isGenerating}>
-            <ImageIcon className="h-3.5 w-3.5" />
-            Visuel
-          </button>
-          <button type="button" role="tab" aria-selected={kind === 'video'} onClick={() => setKind('video')} className={tabClass(kind === 'video')} disabled={isGenerating}>
-            <Clapperboard className="h-3.5 w-3.5" />
-            Vidéo
-          </button>
-        </div>
-      </div>
-
-      <form onSubmit={handleSubmit} className="space-y-4">
-        <fieldset>
-          <legend className={labelClass}>
-            Niveau de conscience du prospect <span className="text-rose-600">(obligatoire)</span>
-          </legend>
-          <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-5">
-            {AWARENESS_OPTIONS.map((option) => (
-              <label
-                key={option.value}
-                className={`cursor-pointer rounded-xl border p-3 transition-colors ${
-                  awarenessLevel === option.value ? 'border-indigo-500 bg-indigo-50' : 'border-slate-200 hover:border-slate-300'
-                }`}
-              >
-                <input
-                  type="radio"
-                  name="awareness"
-                  value={option.value}
-                  checked={awarenessLevel === option.value}
-                  onChange={() => setAwarenessLevel(option.value)}
-                  className="sr-only"
-                />
-                <span className="block text-xs font-bold text-slate-900">{option.label}</span>
-                <span className="mt-1 block text-[11px] leading-relaxed text-slate-500">{option.hint}</span>
-              </label>
-            ))}
+    <Card>
+      <CardHeader>
+        <CardTitle className="text-lg">Générer un visuel ou une vidéo</CardTitle>
+        <CardDescription>Un créatif publicitaire orienté par le niveau de conscience de votre prospect.</CardDescription>
+        <CardAction>
+          <div className="inline-flex rounded-lg border bg-muted/50 p-1" role="group" aria-label="Type de créatif">
+            <Button
+              size="sm"
+              variant={kind === 'visual' ? 'secondary' : 'ghost'}
+              aria-pressed={kind === 'visual'}
+              onClick={() => setKind('visual')}
+              disabled={isGenerating}
+            >
+              <ImageIcon />
+              Visuel
+            </Button>
+            <Button
+              size="sm"
+              variant={kind === 'video' ? 'secondary' : 'ghost'}
+              aria-pressed={kind === 'video'}
+              onClick={() => setKind('video')}
+              disabled={isGenerating}
+            >
+              <Clapperboard />
+              Vidéo
+            </Button>
           </div>
-        </fieldset>
+        </CardAction>
+      </CardHeader>
 
-        <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
-          <label className="block">
-            <span className={labelClass}>Produit</span>
-            <input value={productName} onChange={(e) => setProductName(e.target.value)} maxLength={120} className={fieldClass} />
-          </label>
-
-          <label className="block">
-            <span className={labelClass}>Marché</span>
-            <select value={market} onChange={(e) => setMarket(e.target.value)} className={fieldClass}>
-              {MARKETS.map((option) => (
-                <option key={option.code} value={option.code}>
-                  {option.label}
-                </option>
-              ))}
-            </select>
-          </label>
-
-          <fieldset>
-            <legend className={labelClass}>Format</legend>
-            <div className="flex gap-1.5">
-              {FORMAT_OPTIONS.map((option) => (
-                <button
-                  key={option.value}
-                  type="button"
-                  aria-pressed={format === option.value}
-                  onClick={() => setFormat(option.value)}
-                  className={`flex-1 rounded-xl border px-2 py-2.5 text-[11px] font-bold transition-colors ${
-                    format === option.value ? 'border-indigo-500 bg-indigo-50 text-indigo-800' : 'border-slate-200 text-slate-600 hover:border-slate-300'
-                  }`}
-                >
-                  {option.label}
-                </button>
-              ))}
+      <CardContent className="space-y-5">
+        <form onSubmit={handleSubmit} className="space-y-5">
+          <fieldset className="space-y-2">
+            <legend className="mb-2 flex items-center gap-2 text-sm font-medium">
+              Niveau de conscience du prospect
+              <Badge variant="outline">obligatoire</Badge>
+            </legend>
+            <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-5">
+              {AWARENESS_OPTIONS.map((option) => {
+                const isActive = awarenessLevel === option.value;
+                return (
+                  <label
+                    key={option.value}
+                    className={cn(
+                      'cursor-pointer rounded-lg border p-3 transition-colors hover:border-primary/50 has-[:focus-visible]:ring-[3px] has-[:focus-visible]:ring-ring/50',
+                      isActive && 'border-primary bg-accent/60',
+                    )}
+                  >
+                    <input
+                      type="radio"
+                      name="awareness"
+                      value={option.value}
+                      checked={isActive}
+                      onChange={() => setAwarenessLevel(option.value)}
+                      className="sr-only"
+                    />
+                    <span className="block text-sm font-semibold">{option.label}</span>
+                    <span className="mt-1 block text-xs leading-relaxed text-muted-foreground">{option.hint}</span>
+                  </label>
+                );
+              })}
             </div>
           </fieldset>
 
-          <label className="block sm:col-span-3">
-            <span className={labelClass}>Scène à représenter</span>
-            <textarea
-              value={sceneDescription}
-              onChange={(e) => setSceneDescription(e.target.value)}
-              rows={3}
-              maxLength={sceneMax}
-              placeholder="ex. une commerçante vérifie ses ventes du jour sur son téléphone, au marché, en fin d'après-midi"
-              className={fieldClass}
-            />
-          </label>
+          <div className="grid gap-4 sm:grid-cols-3">
+            <Field>
+              <FieldLabel htmlFor="creative-product">Produit</FieldLabel>
+              <Input
+                id="creative-product"
+                value={productName}
+                onChange={(event) => setProductName(event.target.value)}
+                maxLength={120}
+              />
+            </Field>
 
-          <label className="block">
-            <span className={labelClass}>Public visé</span>
-            <input value={audience} onChange={(e) => setAudience(e.target.value)} maxLength={300} className={fieldClass} />
-          </label>
+            <Field>
+              <FieldLabel htmlFor="creative-market">Marché</FieldLabel>
+              <Select value={market} onValueChange={setMarket}>
+                <SelectTrigger id="creative-market" className="w-full">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {MARKETS.map((option) => (
+                    <SelectItem key={option.code} value={option.code}>
+                      {option.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </Field>
 
-          <label className="block">
-            <span className={labelClass}>Texte à l'écran</span>
-            <input
-              value={onScreenText}
-              onChange={(e) => setOnScreenText(e.target.value)}
-              maxLength={120}
-              placeholder="facultatif — sinon aucun texte"
-              className={fieldClass}
-            />
-          </label>
-
-          {kind === 'video' ? (
-            <fieldset>
-              <legend className={labelClass}>Durée</legend>
+            <fieldset className="space-y-2">
+              <legend className="mb-2 text-sm font-medium">Format</legend>
               <div className="flex gap-1.5">
-                {([5, 10] as const).map((value) => (
-                  <button
-                    key={value}
+                {FORMAT_OPTIONS.map((option) => (
+                  <Button
+                    key={option.value}
                     type="button"
-                    aria-pressed={duration === value}
-                    onClick={() => setDuration(value)}
-                    className={`flex-1 rounded-xl border px-2 py-2.5 text-xs font-bold ${
-                      duration === value ? 'border-indigo-500 bg-indigo-50 text-indigo-800' : 'border-slate-200 text-slate-600'
-                    }`}
+                    variant="outline"
+                    size="sm"
+                    aria-pressed={format === option.value}
+                    onClick={() => setFormat(option.value)}
+                    className={choiceClass(format === option.value)}
                   >
-                    {value} s
-                  </button>
+                    {option.label}
+                  </Button>
                 ))}
               </div>
             </fieldset>
-          ) : (
-            <label className="block">
-              <span className={labelClass}>Style visuel</span>
-              <input value={visualStyle} onChange={(e) => setVisualStyle(e.target.value)} maxLength={300} className={fieldClass} />
-            </label>
-          )}
-        </div>
 
-        <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-          <p className="text-[11px] leading-relaxed text-slate-400">
-            Le brief passe le vérificateur de conformité avant l'envoi. Le coût en points s'affiche avant
-            validation ; restez sur cet écran pendant la génération.
-          </p>
-          <button
-            type="submit"
-            disabled={!canSubmit}
-            className="inline-flex shrink-0 items-center justify-center gap-2 rounded-xl bg-slate-900 px-4 py-2.5 text-xs font-bold text-white transition-colors hover:bg-indigo-600 disabled:cursor-not-allowed disabled:bg-slate-300"
-          >
-            {isGenerating ? <Loader2 className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4" />}
-            {isGenerating ? 'Génération en cours…' : kind === 'visual' ? 'Générer le visuel' : 'Générer la vidéo'}
-          </button>
-        </div>
-        {!awarenessLevel && (
-          <p className="text-[11px] text-rose-600">Choisissez le niveau de conscience du prospect pour continuer.</p>
-        )}
-      </form>
+            <Field className="sm:col-span-3">
+              <FieldLabel htmlFor="creative-scene">Scène à représenter</FieldLabel>
+              <Textarea
+                id="creative-scene"
+                value={sceneDescription}
+                onChange={(event) => setSceneDescription(event.target.value)}
+                rows={3}
+                maxLength={sceneMax}
+                placeholder="ex. une commerçante vérifie ses ventes du jour sur son téléphone, au marché, en fin d’après-midi"
+              />
+              <FieldDescription className="tabular-nums">
+                {sceneDescription.length} / {sceneMax} caractères
+              </FieldDescription>
+            </Field>
 
-      {isGenerating && progress && (
-        <div role="status" className="flex items-center gap-2 rounded-2xl border border-indigo-200 bg-indigo-50 px-4 py-3">
-          <Loader2 className="h-4 w-4 shrink-0 animate-spin text-indigo-600" />
-          <p className="text-xs text-indigo-900">{PROGRESS_LABELS[progress] ?? 'Génération en cours…'}</p>
-        </div>
-      )}
+            <Field>
+              <FieldLabel htmlFor="creative-audience">Public visé</FieldLabel>
+              <Input
+                id="creative-audience"
+                value={audience}
+                onChange={(event) => setAudience(event.target.value)}
+                maxLength={300}
+              />
+            </Field>
 
-      {error && (
-        <div role="alert" className="space-y-2 rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3">
-          <div className="flex items-start gap-2">
-            <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-rose-600" />
-            <p className="text-xs leading-relaxed text-rose-900">{error.message}</p>
+            <Field>
+              <FieldLabel htmlFor="creative-text">Texte à l’écran</FieldLabel>
+              <Input
+                id="creative-text"
+                value={onScreenText}
+                onChange={(event) => setOnScreenText(event.target.value)}
+                maxLength={120}
+                placeholder="facultatif — sinon aucun texte"
+              />
+            </Field>
+
+            {kind === 'video' ? (
+              <fieldset className="space-y-2">
+                <legend className="mb-2 text-sm font-medium">Durée</legend>
+                <div className="flex gap-1.5">
+                  {([5, 10] as const).map((value) => (
+                    <Button
+                      key={value}
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      aria-pressed={duration === value}
+                      onClick={() => setDuration(value)}
+                      className={choiceClass(duration === value)}
+                    >
+                      {value} s
+                    </Button>
+                  ))}
+                </div>
+              </fieldset>
+            ) : (
+              <Field>
+                <FieldLabel htmlFor="creative-style">Style visuel</FieldLabel>
+                <Input
+                  id="creative-style"
+                  value={visualStyle}
+                  onChange={(event) => setVisualStyle(event.target.value)}
+                  maxLength={300}
+                  placeholder="facultatif"
+                />
+              </Field>
+            )}
           </div>
-          {error.findings.map((finding, index) => (
-            <div key={`${finding.category}-${index}`} className="ml-6 rounded-xl border border-rose-200 bg-white p-3">
-              <p className="text-[11px] font-black uppercase tracking-wider text-rose-700">{finding.category}</p>
-              <p className="mt-1 text-xs font-semibold text-slate-900">« {finding.matched} »</p>
-              <p className="mt-1.5 flex items-start gap-1.5 text-xs text-slate-600">
-                <PenLine className="mt-0.5 h-3.5 w-3.5 shrink-0" />
-                {finding.rewriteHint}
+
+          <div className="flex flex-col gap-3 border-t pt-4 sm:flex-row sm:items-center sm:justify-between">
+            <p className="text-xs leading-relaxed text-muted-foreground">
+              Le brief passe le vérificateur de conformité avant l’envoi. Le coût en points s’affiche avant validation ;
+              restez sur cet écran pendant la génération.
+              {!awarenessLevel && (
+                <span className="mt-1 block text-warning">Choisissez le niveau de conscience du prospect pour continuer.</span>
+              )}
+            </p>
+            <Button type="submit" disabled={!canSubmit} className="shrink-0">
+              {isGenerating ? <Spinner /> : <Sparkles />}
+              {isGenerating ? 'Génération en cours…' : kind === 'visual' ? 'Générer le visuel' : 'Générer la vidéo'}
+            </Button>
+          </div>
+        </form>
+
+        {isGenerating && progress && (
+          <Alert variant="info" role="status">
+            <Spinner />
+            <AlertDescription>{PROGRESS_LABELS[progress] ?? 'Génération en cours…'}</AlertDescription>
+          </Alert>
+        )}
+
+        {error && (
+          <Alert variant="danger">
+            <AlertTriangle />
+            <AlertTitle>La génération n’a pas abouti</AlertTitle>
+            <AlertDescription>
+              <p>{error.message}</p>
+              {error.findings.length > 0 && (
+                <ul className="mt-2 w-full space-y-2">
+                  {error.findings.map((finding, index) => (
+                    <li key={`${finding.category}-${index}`} className="rounded-md border border-danger-border bg-card p-3">
+                      <p className="text-xs font-semibold tracking-wider text-danger uppercase">{finding.category}</p>
+                      <p className="mt-1 font-medium">« {finding.matched} »</p>
+                      <p className="mt-1.5 flex items-start gap-1.5 text-muted-foreground">
+                        <PenLine className="mt-0.5 size-3.5 shrink-0" aria-hidden="true" />
+                        {finding.rewriteHint}
+                      </p>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </AlertDescription>
+          </Alert>
+        )}
+
+        {result && (
+          <div className="grid gap-5 rounded-xl border bg-muted/30 p-4 lg:grid-cols-2">
+            <div className="flex items-center justify-center overflow-hidden rounded-lg bg-muted">
+              {result.mediaType === 'video' ? (
+                <video src={fileUrl('inline')} controls className="max-h-96 w-full object-contain" />
+              ) : (
+                <img src={fileUrl('inline')} alt="Créatif généré" className="max-h-96 w-full object-contain" />
+              )}
+            </div>
+
+            <div className="space-y-3">
+              <h3 className="flex items-center gap-1.5 font-semibold">
+                <ShieldCheck className="size-4 text-brand-green-text" aria-hidden="true" />
+                Contrôle avant téléchargement
+              </h3>
+              <p className="text-sm leading-relaxed text-muted-foreground">
+                Le texte de votre brief a passé la conformité. Le contenu généré, lui, ne peut pas être relu
+                automatiquement : regardez-le, puis confirmez chaque point.
+              </p>
+
+              <ul className="space-y-2.5">
+                {ATTESTATIONS.map((statement, index) => (
+                  <li key={statement} className="flex items-start gap-2.5">
+                    <Checkbox
+                      id={`attestation-${index}`}
+                      checked={attested[index]}
+                      onCheckedChange={(checked) =>
+                        setAttested((previous) => previous.map((value, i) => (i === index ? checked === true : value)))
+                      }
+                      className="mt-0.5"
+                    />
+                    <Label htmlFor={`attestation-${index}`} className="text-sm leading-relaxed font-normal">
+                      {statement}
+                    </Label>
+                  </li>
+                ))}
+              </ul>
+
+              {allAttested ? (
+                <Button asChild>
+                  <a href={fileUrl('attachment')}>
+                    <Download />
+                    Télécharger le fichier
+                  </a>
+                </Button>
+              ) : (
+                <Button disabled>
+                  <Download />
+                  Cochez les quatre points pour télécharger
+                </Button>
+              )}
+
+              <p className="text-xs leading-relaxed text-muted-foreground">
+                Le fournisseur ne conserve le fichier qu’environ sept jours : téléchargez-le pour le garder.
               </p>
             </div>
-          ))}
-        </div>
-      )}
-
-      {result && (
-        <div className="grid grid-cols-1 gap-5 rounded-2xl border border-slate-200 bg-slate-50/60 p-4 lg:grid-cols-2">
-          <div className="flex items-center justify-center overflow-hidden rounded-xl bg-slate-900/5">
-            {result.mediaType === 'video' ? (
-              <video src={fileUrl('inline')} controls className="max-h-96 w-full object-contain" />
-            ) : (
-              <img src={fileUrl('inline')} alt="Créatif généré" className="max-h-96 w-full object-contain" />
-            )}
           </div>
-
-          <div className="space-y-3">
-            <h3 className="flex items-center gap-1.5 text-sm font-bold text-slate-900">
-              <ShieldCheck className="h-4 w-4 text-indigo-600" />
-              Contrôle avant téléchargement
-            </h3>
-            <p className="text-xs leading-relaxed text-slate-600">
-              Le texte de votre brief a passé la conformité. Le contenu généré, lui, ne peut pas être relu
-              automatiquement : regardez-le, puis confirmez chaque point.
-            </p>
-
-            <ul className="space-y-2">
-              {ATTESTATIONS.map((statement, index) => (
-                <li key={statement}>
-                  <label className="flex cursor-pointer items-start gap-2 text-xs leading-relaxed text-slate-700">
-                    <input
-                      type="checkbox"
-                      checked={attested[index]}
-                      onChange={(e) =>
-                        setAttested((previous) => previous.map((value, i) => (i === index ? e.target.checked : value)))
-                      }
-                      className="mt-0.5 h-4 w-4 accent-indigo-600"
-                    />
-                    {statement}
-                  </label>
-                </li>
-              ))}
-            </ul>
-
-            {allAttested ? (
-              <a
-                href={fileUrl('attachment')}
-                className="inline-flex items-center gap-2 rounded-xl bg-slate-900 px-4 py-2.5 text-xs font-bold text-white hover:bg-indigo-600"
-              >
-                <Download className="h-3.5 w-3.5" />
-                Télécharger le fichier
-              </a>
-            ) : (
-              <button
-                type="button"
-                disabled
-                className="inline-flex cursor-not-allowed items-center gap-2 rounded-xl bg-slate-300 px-4 py-2.5 text-xs font-bold text-white"
-              >
-                <Download className="h-3.5 w-3.5" />
-                Cochez les quatre points pour télécharger
-              </button>
-            )}
-
-            <p className="text-[11px] leading-relaxed text-slate-400">
-              Le fournisseur ne conserve le fichier qu'environ sept jours : téléchargez-le pour le garder.
-            </p>
-          </div>
-        </div>
-      )}
-    </section>
+        )}
+      </CardContent>
+    </Card>
   );
-};
+}

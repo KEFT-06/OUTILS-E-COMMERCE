@@ -16,6 +16,7 @@ import { AffiliationView } from '@/modules/m07-affiliation/AffiliationView';
 import { StorybookView } from '@/modules/m08-storybook/StorybookView';
 import { ProductPageBuilderView } from '@/modules/m09-pages/ProductPageBuilderView';
 import { CampaignBlueprintsView } from '@/modules/m11-campagnes/CampaignBlueprintsView';
+import { PageHeader } from '@/shared/components/PageHeader';
 import { PlaceholderModuleView } from '@/shared/ui/PlaceholderModuleView';
 
 /**
@@ -45,6 +46,7 @@ export function RadarPage() {
       onSelectNicheForFullAnalysis={analyzeNiche}
       onNavigateToMetaAds={() => goTo('creatifs')}
       isAnalyzingNiche={isAnalyzing}
+      onOpenExampleReport={() => goTo('analyse')}
     />
   );
 }
@@ -85,7 +87,12 @@ export function StudioPage() {
 export function CreatifsPage() {
   const { currentReport } = useWorkspace();
   return (
-    <div className="space-y-10">
+    <div className="space-y-8">
+      <PageHeader
+        eyebrow="Créer"
+        title="Créatifs publicitaires"
+        description="Générez un visuel ou une vidéo, puis travaillez les scripts vidéo proposés pour la niche active."
+      />
       <CreativeGeneratorPanel />
       <MetaVideoStudioView
         campaigns={currentReport.adCampaigns}

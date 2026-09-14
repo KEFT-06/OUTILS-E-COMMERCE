@@ -1,22 +1,24 @@
-import React, { useEffect, useState } from 'react';
-import { AlertTriangle, Loader2, TrendingUp } from 'lucide-react';
-import { ApiError, readApiError, toApiError } from '@/shared/lib/apiError';
+import { useEffect, useState } from 'react';
+import { AlertTriangle, TrendingUp } from 'lucide-react';
+import { type ApiError, readApiError, toApiError } from '@/shared/lib/apiError';
 import { formatDateFr } from '@/shared/lib/formatDate';
-import { SalesSummaryResponse } from '@/shared/types/marketplaces';
+import type { SalesSummaryResponse } from '@/shared/types/marketplaces';
+import { Alert, AlertDescription } from '@/shared/ui/alert';
 import { ChartProvenance } from '@/shared/ui/ChartProvenance';
 import { NoDataState } from '@/shared/ui/NoDataState';
+import { Skeleton } from '@/shared/ui/skeleton';
 
 /**
- * Ventes encaissées sur les marketplaces connectées — feuille de route 5.2.
+ * Ventes encaissées sur les marketplaces connectées.
  *
- * Remplace l'état vide posé en 1.5, et en garde la règle : soit des ventes
- * réelles, soit l'aveu qu'aucune source n'est branchée. Aucun chiffre estimé,
- * aucun ROI : les dépenses publicitaires ne sont connues d'aucune source.
+ * Soit des ventes réelles, soit l'aveu qu'aucune source n'est branchée. Aucun
+ * chiffre estimé, aucun ROI : les dépenses publicitaires ne sont connues
+ * d'aucune source.
  */
 
 const PERIOD_DAYS = 30;
 
-export const SalesSummaryCard: React.FC = () => {
+export function SalesSummaryCard() {
   const [data, setData] = useState<SalesSummaryResponse | null>(null);
   const [error, setError] = useState<ApiError | null>(null);
   const [isLoading, setIsLoading] = useState(true);
@@ -48,67 +50,69 @@ export const SalesSummaryCard: React.FC = () => {
 
   return (
     <div className="space-y-4">
-      <div className="flex items-center gap-2">
-        <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-emerald-50 text-emerald-600">
-          <TrendingUp className="h-4 w-4" />
-        </div>
+      <div className="flex items-center gap-3">
+        <span className="flex size-9 items-center justify-center rounded-lg bg-accent text-accent-foreground">
+          <TrendingUp className="size-4" aria-hidden="true" />
+        </span>
         <div>
-          <h2 className="text-sm font-bold text-slate-900">Performance des Ventes</h2>
-          <p className="text-[10px] font-semibold uppercase tracking-wider text-slate-500">
+          <h2 className="text-base font-semibold">Ventes encaissées</h2>
+          <p className="text-xs text-muted-foreground">
             {data
               ? `${PERIOD_DAYS} derniers jours · ${data.summaries.map((summary) => summary.source).join(', ')}`
-              : 'Ventes encaissées sur vos marketplaces'}
+              : 'Sur vos marketplaces connectées'}
           </p>
         </div>
       </div>
 
       {isLoading ? (
-        <div className="flex items-center gap-2 text-xs text-slate-500">
-          <Loader2 className="h-4 w-4 animate-spin" />
-          Chargement des ventes…
+        <div className="grid gap-3 sm:grid-cols-3" aria-label="Chargement des ventes">
+          <Skeleton className="h-20" />
+          <Skeleton className="h-20" />
+          <Skeleton className="h-20" />
         </div>
       ) : error ? (
         error.code === 'NO_SALES_SOURCE' ? (
           <NoDataState
-            title="Vos ventes s'afficheront ici"
-            reason="Aucune marketplace capable de remonter des ventes n'est connectée. Une fois la clé API Chariow configurée sur le serveur, ce tableau affichera vos ventes réelles — jamais une estimation."
-            milestone="Lot 5 — connecteur Chariow"
+            title="Vos ventes s’afficheront ici"
+            reason="Aucune marketplace capable de remonter des ventes n’est connectée. Dès que la clé API Chariow est configurée sur le serveur, vos ventes réelles apparaîtront ici, jamais une estimation."
           />
         ) : (
-          <div role="alert" className="flex items-start gap-2 rounded-xl border border-rose-200 bg-rose-50 px-3 py-2">
-            <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-rose-600" />
-            <p className="text-xs leading-relaxed text-rose-900">{error.message}</p>
-          </div>
+          <Alert variant="danger">
+            <AlertTriangle />
+            <AlertDescription>{error.message}</AlertDescription>
+          </Alert>
         )
       ) : (
         data?.summaries.map((summary) => (
           <div key={summary.source} className="space-y-3">
-            <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
-              <div className="rounded-2xl border border-slate-100 bg-slate-50 p-4">
-                <p className="mb-1 text-xs font-semibold text-slate-500">Ventes encaissées</p>
-                <p className="text-2xl font-black tracking-tight text-slate-900">
+            <div className="grid gap-3 sm:grid-cols-3">
+              <div className="rounded-lg border bg-muted/40 p-4">
+                <p className="text-sm text-muted-foreground">Ventes encaissées</p>
+                <p className="mt-1 font-display text-2xl font-extrabold tabular-nums">
                   {summary.completedSales.toLocaleString('fr-FR')}
                   {summary.truncated ? '+' : ''}
                 </p>
               </div>
 
               {summary.totalsByCurrency.length === 0 ? (
-                <div className="rounded-2xl border border-slate-100 bg-slate-50 p-4 sm:col-span-2">
-                  <p className="text-xs text-slate-500">Aucune vente encaissée sur la période.</p>
+                <div className="rounded-lg border bg-muted/40 p-4 sm:col-span-2">
+                  <p className="text-sm text-muted-foreground">Aucune vente encaissée sur la période.</p>
                 </div>
               ) : (
                 summary.totalsByCurrency.map((total) => (
-                  <div key={total.currency} className="rounded-2xl border border-slate-100 bg-slate-50 p-4">
-                    <p className="mb-1 text-xs font-semibold text-slate-500">Chiffre d'affaires ({total.currency})</p>
-                    <p className="text-2xl font-black tracking-tight text-slate-900">{total.formatted}</p>
-                    <p className="text-[11px] text-slate-400">{total.salesCount.toLocaleString('fr-FR')} vente(s)</p>
+                  <div key={total.currency} className="rounded-lg border bg-muted/40 p-4">
+                    <p className="text-sm text-muted-foreground">Chiffre d’affaires ({total.currency})</p>
+                    <p className="mt-1 font-display text-2xl font-extrabold tabular-nums">{total.formatted}</p>
+                    <p className="text-xs text-muted-foreground tabular-nums">
+                      {total.salesCount.toLocaleString('fr-FR')} vente(s)
+                    </p>
                   </div>
                 ))
               )}
             </div>
 
             {summary.truncated && (
-              <p className="text-[11px] text-amber-700">
+              <p className="text-xs text-warning">
                 Volume trop important pour être lu en entier : ces chiffres sont des minima.
               </p>
             )}
@@ -122,13 +126,13 @@ export const SalesSummaryCard: React.FC = () => {
                 isDemonstration: false,
               }}
             />
-            <p className="text-[11px] leading-relaxed text-slate-400">
-              Du {formatDateFr(summary.from)} au {formatDateFr(summary.to)} · ventes payées (statuts
-              « completed » et « settled »). Une ligne par devise : des devises différentes ne s'additionnent pas.
+            <p className="text-xs leading-relaxed text-muted-foreground">
+              Du {formatDateFr(summary.from)} au {formatDateFr(summary.to)} · ventes payées (statuts « completed » et
+              « settled »). Une ligne par devise : des devises différentes ne s’additionnent pas.
             </p>
           </div>
         ))
       )}
     </div>
   );
-};
+}

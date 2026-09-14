@@ -1,256 +1,301 @@
-import React from 'react';
-import {
-  Zap,
-  CreditCard,
-  Target,
-  ArrowUpRight,
-  Layers,
-} from 'lucide-react';
-import { MarketAnalysisReport } from '@/shared/types/analysis';
-import { usePreferences } from '@/app/providers/PreferencesContext';
-import { useAuth } from '@/features/auth/AuthContext';
+import { useEffect, useState } from 'react';
+import { Link } from 'react-router-dom';
+import { ArrowUpRight, CircleCheck, CircleDashed, Layers, Target, Zap } from 'lucide-react';
+import { pathOf, type ModuleId } from '@/app/navigation';
 import { useCreditGate } from '@/app/providers/CreditGateProvider';
+import { useAuth } from '@/features/auth/AuthContext';
+import { PageHeader } from '@/shared/components/PageHeader';
+import { cn } from '@/shared/lib/utils';
+import type { MarketAnalysisReport } from '@/shared/types/analysis';
+import { Badge } from '@/shared/ui/badge';
+import { Button } from '@/shared/ui/button';
+import { Card, CardAction, CardContent, CardDescription, CardHeader, CardTitle } from '@/shared/ui/card';
 import { NoDataState } from '@/shared/ui/NoDataState';
+import { Progress } from '@/shared/ui/progress';
+import { RateBadge } from '@/shared/ui/RateBadge';
 import { SalesSummaryCard } from '@/shared/ui/SalesSummaryCard';
+import { Skeleton } from '@/shared/ui/skeleton';
 
 interface CockpitDashboardProps {
   report: MarketAnalysisReport;
-  onNavigateToModule: (module: 'radar' | 'veille' | 'products' | 'meta_ads' | 'pdf_report') => void;
+  onNavigateToModule: (module: ModuleId) => void;
   onOpenBilling: () => void;
 }
 
-export const CockpitDashboard: React.FC<CockpitDashboardProps> = ({
-  report,
-  onNavigateToModule,
-  onOpenBilling,
-}) => {
-  const { t } = usePreferences();
+/** Libellés des fournisseurs remontés par /api/health. */
+const SERVICE_LABELS: Record<string, string> = {
+  text: 'Analyse et rédaction IA',
+  video: 'Visuels et vidéos',
+  storybook: 'Storybook illustré',
+  adIngestion: 'Collecte publicitaire',
+};
+
+/** Parcours conseillé : c'est une vraie séquence, d'où la numérotation. */
+const GETTING_STARTED: { module: ModuleId; title: string; text: string }[] = [
+  { module: 'analyse', title: 'Lire l’analyse d’exemple', text: 'Les 5 taux, la concurrence et le plan d’action d’une niche.' },
+  { module: 'galerie', title: 'Collecter les publicités d’une niche', text: 'Qui annonce déjà, et depuis combien de temps.' },
+  { module: 'studio', title: 'Structurer votre produit', text: 'Modules, promesse et simulation de rentabilité.' },
+  { module: 'kit-lancement', title: 'Préparer le lancement', text: 'Textes, scripts vidéo et boutons par marché.' },
+];
+
+/**
+ * État réel des fournisseurs, lu sur /api/health. Remplace l'ancienne pastille
+ * « Système en ligne » qui clignotait sans rien mesurer.
+ */
+function useProviderStatus() {
+  const [providers, setProviders] = useState<Record<string, boolean> | null>(null);
+  const [failed, setFailed] = useState(false);
+
+  useEffect(() => {
+    let cancelled = false;
+    fetch('/api/health')
+      .then((response) => (response.ok ? response.json() : Promise.reject(new Error(String(response.status)))))
+      .then((data: { providers?: Record<string, boolean> }) => {
+        if (!cancelled) setProviders(data.providers ?? {});
+      })
+      .catch(() => {
+        if (!cancelled) setFailed(true);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  return { providers, failed };
+}
+
+export function CockpitDashboard({ report, onNavigateToModule, onOpenBilling }: CockpitDashboardProps) {
   const { user } = useAuth();
   const { costTable } = useCreditGate();
+  const { providers, failed } = useProviderStatus();
 
   // Le solde vient du profil, source unique partagée avec la page Compte.
-  // Il était auparavant réécrit en dur ici — les deux écrans s'en trouvaient
-  // contradictoires (38 « restants » au cockpit contre 62 sur le compte).
   const creditsTotal = user?.apiSearchesLimit ?? 0;
   const creditsUsed = user?.apiSearchesUsed ?? 0;
   const creditsRemaining = Math.max(0, creditsTotal - creditsUsed);
   const creditPercentage = creditsTotal > 0 ? (creditsRemaining / creditsTotal) * 100 : 0;
 
-  // Le taux de saturation est le seul des cinq à porter une trace de calcul
-  // vérifiable ; c'est donc le seul qu'on affiche comme indicateur de tension.
+  // Seul le taux de saturation porte une trace de calcul vérifiable : c'est
+  // donc le seul affiché comme indicateur de tension.
   const saturation = report.rates.saturation;
+  const isExampleReport = report.dataProvenance?.rates?.isDemonstration ?? false;
+
+  const serviceEntries = providers ? Object.entries(providers) : [];
+  const connectedCount = serviceEntries.filter(([, connected]) => connected).length;
 
   return (
-    <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
-      
-      {/* Header Dashboard */}
-      <div className="flex flex-col md:flex-row md:items-end justify-between gap-4">
-        <div>
-          <h1 className="text-2xl sm:text-3xl font-black text-slate-900 tracking-tight">
-            Cockpit Créateur
-          </h1>
-          <p className="text-slate-500 mt-1">
-            Vision consolidée de vos performances et ressources.
-          </p>
-        </div>
-        <div className="flex items-center gap-3">
-          <div className="bg-white px-4 py-2 rounded-xl border border-slate-200/80 shadow-sm flex items-center gap-3">
-            <div className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
-            <span className="text-xs font-bold text-slate-700">{t('Système En Ligne', 'System Online')}</span>
-          </div>
-        </div>
-      </div>
+    <div className="space-y-6">
+      <PageHeader
+        eyebrow="Voir"
+        title="Cockpit"
+        description="Votre solde, vos ventes et la niche en cours d’analyse, au même endroit."
+      />
 
-      {/* Bento Grid */}
-      <div className="grid grid-cols-1 md:grid-cols-12 gap-6">
-        
-        {/* Module 1: Simulateur Crédits IA (Section 41) */}
-        <div className="col-span-1 md:col-span-4 bg-white rounded-3xl border border-slate-200/80 shadow-[0_8px_30px_rgb(0,0,0,0.04)] p-6 relative overflow-hidden group">
-          <div className="absolute top-0 right-0 p-6 opacity-10 group-hover:opacity-20 transition-opacity">
-            <Zap className="w-24 h-24 text-amber-500" />
-          </div>
-          
-          <div className="relative z-10">
-            <div className="flex items-center gap-2 mb-4">
-              <div className="w-8 h-8 rounded-lg bg-amber-50 text-amber-600 flex items-center justify-center">
-                <Zap className="w-4 h-4" />
-              </div>
-              <h2 className="text-sm font-bold text-slate-900">Solde IA (Research Points)</h2>
-            </div>
-            
-            <div className="flex items-end gap-2 mb-2">
-              <span className="text-4xl font-black tracking-tighter text-slate-900">{creditsRemaining}</span>
-              <span className="text-sm font-semibold text-slate-500 mb-1">/ {creditsTotal} pts</span>
-            </div>
-            
-            <div className="w-full bg-slate-100 rounded-full h-2.5 mb-2 overflow-hidden">
-              <div 
-                className={`h-2.5 rounded-full transition-all duration-1000 ${
-                  creditPercentage > 50 ? 'bg-emerald-500' : creditPercentage > 20 ? 'bg-amber-500' : 'bg-rose-500'
-                }`}
-                style={{ width: `${creditPercentage}%` }}
-              ></div>
-            </div>
-            
+      <div className="grid gap-6 lg:grid-cols-12">
+        <Card className="lg:col-span-4">
+          <CardHeader>
+            <CardTitle>Points de recherche</CardTitle>
+            <CardDescription>Palier {user?.plan}</CardDescription>
+            <CardAction>
+              <span className="flex size-9 items-center justify-center rounded-lg bg-brand-orange/15 text-brand-orange-text">
+                <Zap className="size-4" aria-hidden="true" />
+              </span>
+            </CardAction>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <p className="flex items-baseline gap-2">
+              <span className="font-display text-4xl font-extrabold tabular-nums">{creditsRemaining}</span>
+              <span className="text-sm text-muted-foreground">/ {creditsTotal} pts restants</span>
+            </p>
+            <Progress value={creditPercentage} aria-label="Points restants" />
             {/*
-              L'équivalent monétaire vient de la grille tarifaire servie par
-              l'API, jamais d'une constante du bundle : un prix figé côté client
-              ne peut pas être corrigé sans redéploiement et finit par diverger
-              de la facturation réelle. Tant que la grille n'est pas chargée,
-              on n'affiche pas de montant plutôt qu'un montant approximatif.
+              L'équivalent monétaire vient de la grille tarifaire servie par l'API,
+              jamais d'une constante du bundle. Sans grille, aucun montant.
             */}
-            <div className="flex items-center justify-between text-[11px] font-semibold mb-6">
-              <span className="text-slate-500">Équivalent estimé :</span>
+            <p className="flex items-center justify-between gap-2 text-sm">
+              <span className="text-muted-foreground">Équivalent estimé</span>
               {costTable ? (
-                <span className="text-slate-900">
-                  ≈ {(creditsRemaining * costTable.pointValue).toLocaleString('fr-FR')}{' '}
-                  {costTable.currency}
+                <span className="font-semibold tabular-nums">
+                  ≈ {(creditsRemaining * costTable.pointValue).toLocaleString('fr-FR')} {costTable.currency}
                 </span>
               ) : (
-                <span className="text-slate-400">grille indisponible</span>
+                <span className="text-muted-foreground">grille indisponible</span>
               )}
-            </div>
-            
-            <button 
-              onClick={onOpenBilling}
-              className="w-full py-2.5 rounded-xl bg-slate-900 hover:bg-indigo-600 text-white text-xs font-bold transition-colors flex items-center justify-center gap-2"
-            >
-              <CreditCard className="w-3.5 h-3.5" />
-              <span>Recharger le solde</span>
-            </button>
-          </div>
-        </div>
+            </p>
+            <Button variant="outline" className="w-full" onClick={onOpenBilling}>
+              Gérer mon compte
+            </Button>
+          </CardContent>
+        </Card>
 
-        {/* Module 2: Boucle de performance — ventes réelles des marketplaces connectées (feuille de route 5.2) */}
-        <div className="col-span-1 md:col-span-8 bg-white rounded-3xl border border-slate-200/80 shadow-[0_8px_30px_rgb(0,0,0,0.04)] p-6">
-          {/*
-            Ce bloc affichait autrefois 485k FCFA de revenus, 124 ventes et un ROI
-            de 3,2x, inventés et attribués à Maketou & Taliopay. Il n'affiche plus
-            que des ventes remontées par un connecteur, ou l'aveu qu'aucun n'est
-            branché. Plus de ROI : aucune source ne fournit les dépenses publicitaires.
-          */}
-          <SalesSummaryCard />
-        </div>
+        {/*
+          Ce bloc affichait autrefois 485k FCFA de revenus, 124 ventes et un ROI de
+          3,2x, inventés. Il n'affiche plus que des ventes remontées par un
+          connecteur, ou l'aveu qu'aucun n'est branché.
+        */}
+        <Card className="lg:col-span-8">
+          <CardContent>
+            <SalesSummaryCard />
+          </CardContent>
+        </Card>
 
-        {/* Module 3: Radar & Marchés Suivis */}
-        <div className="col-span-1 md:col-span-6 bg-white rounded-3xl border border-slate-200/80 shadow-[0_8px_30px_rgb(0,0,0,0.04)] p-6">
-          <div className="flex items-center justify-between mb-5">
-            <div className="flex items-center gap-2">
-              <div className="w-8 h-8 rounded-lg bg-indigo-50 text-indigo-600 flex items-center justify-center">
-                <Target className="w-4 h-4" />
+        <Card className="lg:col-span-6">
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <Target className="size-4 text-brand-green-text" aria-hidden="true" />
+              Niche active
+            </CardTitle>
+            <CardDescription>Niveau de tension concurrentielle mesuré</CardDescription>
+            <CardAction>
+              <Button variant="ghost" size="sm" onClick={() => onNavigateToModule('radar')}>
+                Radar
+                <ArrowUpRight />
+              </Button>
+            </CardAction>
+          </CardHeader>
+          <CardContent className="space-y-3">
+            <div className="rounded-lg border border-primary/30 bg-accent/50 p-4">
+              <div className="flex flex-wrap items-start justify-between gap-2">
+                <p className="font-semibold">{report.nicheName}</p>
+                {isExampleReport && <Badge variant="info">Rapport d’exemple</Badge>}
               </div>
-              <h2 className="text-sm font-bold text-slate-900">Marchés Suivis & Alertes</h2>
-            </div>
-            <button 
-              onClick={() => onNavigateToModule('radar')}
-              className="text-xs font-bold text-indigo-600 hover:text-indigo-700 flex items-center gap-1"
-            >
-              Voir le Radar <ArrowUpRight className="w-3 h-3" />
-            </button>
-          </div>
-
-          {/*
-            Les deux autres « marchés suivis » (Formation No-Code, Investissement
-            Immo CI) et leurs variations (+12 %, +5 %, -2 %) étaient écrits en dur.
-            On n'affiche plus que la niche réellement analysée, avec la tension
-            issue de sa trace de calcul — et les niches que l'utilisateur a
-            lui-même enregistrées, sans leur inventer de score.
-          */}
-          <div className="space-y-3">
-            <div className="p-3 rounded-xl border bg-indigo-50/50 border-indigo-200 flex items-center justify-between">
-              <div className="flex items-center gap-3">
-                <div className="w-2 h-2 rounded-full bg-indigo-500" />
-                <div>
-                  <p className="text-xs font-bold text-slate-900">{report.nicheName}</p>
-                  <p className="text-[10px] text-slate-500 font-medium">
-                    Tension : <span className="font-bold">{saturation.level}</span>
-                    <span className="text-slate-400"> · {saturation.score}/100</span>
-                  </p>
-                </div>
+              <div className="mt-2 flex flex-wrap items-center gap-2 text-sm">
+                <RateBadge level={saturation.level} size="sm" />
+                <span className="text-muted-foreground tabular-nums">{saturation.score} / 100</span>
+                <span className="text-muted-foreground">·</span>
+                {saturation.trace ? (
+                  <span className="text-muted-foreground">méthode v{saturation.trace.methodologyVersion}</span>
+                ) : (
+                  <span className="text-warning">méthode non publiée</span>
+                )}
               </div>
-              {saturation.trace ? (
-                <span className="text-[10px] font-bold text-slate-500">
-                  v{saturation.trace.methodologyVersion}
-                </span>
-              ) : (
-                <span className="text-[10px] font-bold text-amber-600">Méthode non publiée</span>
-              )}
             </div>
 
             {(user?.savedNiches ?? []).slice(0, 3).map((niche) => (
-              <div
-                key={niche}
-                className="p-3 rounded-xl border bg-slate-50 border-slate-100 flex items-center justify-between"
-              >
-                <div className="flex items-center gap-3">
-                  <div className="w-2 h-2 rounded-full bg-slate-300" />
-                  <p className="text-xs font-bold text-slate-900">{niche}</p>
-                </div>
-                <span className="text-[10px] font-semibold text-slate-400">Pas encore analysée</span>
+              <div key={niche} className="flex items-center justify-between gap-3 rounded-lg border px-4 py-3">
+                <p className="text-sm font-medium">{niche}</p>
+                <span className="shrink-0 text-xs text-muted-foreground">Pas encore analysée</span>
               </div>
             ))}
-          </div>
-        </div>
+          </CardContent>
+        </Card>
 
-        {/* Module 4: Plan d'Action en cours */}
-        <div className="col-span-1 md:col-span-6 bg-white rounded-3xl border border-slate-200/80 shadow-[0_8px_30px_rgb(0,0,0,0.04)] p-6">
-          <div className="flex items-center justify-between mb-5">
-            <div className="flex items-center gap-2">
-              <div className="w-8 h-8 rounded-lg bg-sky-50 text-sky-600 flex items-center justify-center">
-                <Layers className="w-4 h-4" />
-              </div>
-              <h2 className="text-sm font-bold text-slate-900">Plan d'Action Recommandé</h2>
-            </div>
-            <button
-              onClick={() => onNavigateToModule('veille')}
-              className="text-xs font-bold text-sky-600 hover:text-sky-700 flex items-center gap-1"
-            >
-              Ouvrir l'audit <ArrowUpRight className="w-3 h-3" />
-            </button>
-          </div>
-
-          {/*
-            La timeline était figée (« Générer le rapport ✓ », « Créer les produits
-            en attente ») et affichait un état d'avancement que rien ne mesure.
-            On rend maintenant le plan réellement porté par le rapport, sans
-            prétendre savoir où l'utilisateur en est.
-          */}
-          {report.strategicActionPlan.length === 0 ? (
-            <NoDataState
-              title="Aucun plan d'action dans ce rapport"
-              reason="Le rapport analysé ne contient pas encore de plan d'action structuré."
-              icon={Layers}
-            />
-          ) : (
-            <div className="relative">
-              <div className="absolute left-3.5 top-2 bottom-2 w-0.5 bg-slate-100" />
-              <div className="space-y-4">
+        <Card className="lg:col-span-6">
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <Layers className="size-4 text-brand-green-text" aria-hidden="true" />
+              Plan d’action recommandé
+            </CardTitle>
+            <CardDescription>Tel que porté par le rapport de la niche active</CardDescription>
+            <CardAction>
+              <Button variant="ghost" size="sm" onClick={() => onNavigateToModule('analyse')}>
+                Analyse
+                <ArrowUpRight />
+              </Button>
+            </CardAction>
+          </CardHeader>
+          <CardContent>
+            {report.strategicActionPlan.length === 0 ? (
+              <NoDataState
+                icon={Layers}
+                title="Aucun plan d’action dans ce rapport"
+                reason="Le rapport analysé ne contient pas encore de plan d’action structuré."
+              />
+            ) : (
+              <ol className="space-y-4">
                 {report.strategicActionPlan.map((phase, index) => (
-                  <div key={phase.phase} className="relative flex gap-3">
-                    <div className="w-7 h-7 rounded-full bg-sky-500 border-4 border-white flex items-center justify-center shrink-0 z-10 shadow-sm">
-                      <span className="text-[10px] font-black text-white">{index + 1}</span>
-                    </div>
-                    <div className="pt-1">
-                      <p className="text-[10px] font-bold uppercase tracking-wider text-slate-400">
-                        {phase.phase}
-                      </p>
-                      <p className="text-xs font-bold text-slate-900 mt-0.5">{phase.title}</p>
-                      <ul className="mt-1 space-y-0.5">
+                  <li key={phase.phase} className="flex gap-3">
+                    <span className="flex size-7 shrink-0 items-center justify-center rounded-full bg-accent text-sm font-semibold text-accent-foreground tabular-nums">
+                      {index + 1}
+                    </span>
+                    <div className="min-w-0 space-y-1">
+                      <p className="text-xs font-medium text-muted-foreground">{phase.phase}</p>
+                      <p className="font-semibold">{phase.title}</p>
+                      <ul className="list-disc space-y-0.5 pl-4 text-sm text-muted-foreground">
                         {phase.steps.map((step) => (
-                          <li key={step} className="text-[10px] text-slate-500 leading-relaxed">
-                            · {step}
-                          </li>
+                          <li key={step}>{step}</li>
                         ))}
                       </ul>
                     </div>
-                  </div>
+                  </li>
                 ))}
-              </div>
-            </div>
-          )}
-        </div>
+              </ol>
+            )}
+          </CardContent>
+        </Card>
 
+        <Card className="lg:col-span-7">
+          <CardHeader>
+            <CardTitle>Par où commencer</CardTitle>
+            <CardDescription>Le parcours conseillé, de la lecture du marché au lancement.</CardDescription>
+          </CardHeader>
+          <CardContent>
+            <ol className="divide-y">
+              {GETTING_STARTED.map((step, index) => (
+                <li key={step.module}>
+                  <Link
+                    to={pathOf(step.module)}
+                    className="group flex items-center gap-4 rounded-md py-3 first:pt-0 last:pb-0"
+                  >
+                    <span className="flex size-8 shrink-0 items-center justify-center rounded-full border text-sm font-semibold tabular-nums group-hover:border-primary group-hover:text-brand-green-text">
+                      {index + 1}
+                    </span>
+                    <span className="min-w-0 flex-1">
+                      <span className="block font-medium group-hover:text-brand-green-text">{step.title}</span>
+                      <span className="block text-sm text-muted-foreground">{step.text}</span>
+                    </span>
+                    <ArrowUpRight className="size-4 shrink-0 text-muted-foreground group-hover:text-brand-green-text" />
+                  </Link>
+                </li>
+              ))}
+            </ol>
+          </CardContent>
+        </Card>
+
+        <Card className="lg:col-span-5">
+          <CardHeader>
+            <CardTitle>Services connectés</CardTitle>
+            <CardDescription>
+              {providers
+                ? `${connectedCount} sur ${serviceEntries.length} configurés sur le serveur`
+                : failed
+                  ? 'État indisponible : le serveur ne répond pas'
+                  : 'Vérification en cours…'}
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            {!providers && !failed ? (
+              <div className="space-y-2">
+                <Skeleton className="h-6" />
+                <Skeleton className="h-6" />
+                <Skeleton className="h-6" />
+              </div>
+            ) : (
+              <ul className="space-y-2.5">
+                {serviceEntries.map(([key, connected]) => (
+                  <li key={key} className="flex items-center justify-between gap-3 text-sm">
+                    <span>{SERVICE_LABELS[key] ?? key}</span>
+                    <span className={cn('inline-flex items-center gap-1.5', connected ? 'text-success' : 'text-muted-foreground')}>
+                      {connected ? (
+                        <CircleCheck className="size-4" aria-hidden="true" />
+                      ) : (
+                        <CircleDashed className="size-4" aria-hidden="true" />
+                      )}
+                      {connected ? 'Connecté' : 'Non configuré'}
+                    </span>
+                  </li>
+                ))}
+              </ul>
+            )}
+            {providers && connectedCount < serviceEntries.length && (
+              <p className="mt-4 text-xs leading-relaxed text-muted-foreground">
+                Les fonctions qui dépendent d’un service non configuré l’indiquent à l’écran au lieu d’afficher un résultat
+                inventé.
+              </p>
+            )}
+          </CardContent>
+        </Card>
       </div>
     </div>
   );
-};
+}

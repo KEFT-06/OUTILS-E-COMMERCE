@@ -1,6 +1,6 @@
-import React from 'react';
 import { AlertTriangle, ShieldOff } from 'lucide-react';
-import { ReportComplianceVerdict } from '@/shared/types/compliance';
+import type { ReportComplianceVerdict } from '@/shared/types/compliance';
+import { Alert, AlertDescription, AlertTitle } from '@/shared/ui/alert';
 import { ComplianceFindingsList } from '@/shared/ui/ComplianceFindingsList';
 import {
   Dialog,
@@ -11,12 +11,11 @@ import {
 } from '@/shared/ui/dialog';
 
 /**
- * Détail d'un export refusé par le vérificateur de conformité (CdC §6.4.1).
+ * Détail d'un export refusé par le vérificateur de conformité.
  *
- * Ce panneau n'offre **aucun** moyen de forcer l'export : c'est délibéré. Un
- * bouton « exporter quand même » transformerait le veto en suggestion, et la
- * promesse du produit avec lui. L'utilisateur repart avec ce qu'il faut
- * corriger, pas avec une porte de sortie.
+ * Ce panneau n'offre **aucun** moyen de forcer l'export : un bouton « exporter
+ * quand même » transformerait le veto en suggestion. L'utilisateur repart avec
+ * ce qu'il faut corriger, pas avec une porte de sortie.
  */
 interface ComplianceBlockDialogProps {
   verdict: ReportComplianceVerdict | null;
@@ -24,24 +23,20 @@ interface ComplianceBlockDialogProps {
   onOpenChange: (open: boolean) => void;
 }
 
-export const ComplianceBlockDialog: React.FC<ComplianceBlockDialogProps> = ({
-  verdict,
-  open,
-  onOpenChange,
-}) => {
+export function ComplianceBlockDialog({ verdict, open, onOpenChange }: ComplianceBlockDialogProps) {
   if (!verdict) return null;
 
   const blockingCount = verdict.findings.filter((finding) => finding.severity === 'block').length;
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-2xl max-h-[85vh] overflow-y-auto">
+      <DialogContent className="max-h-[85vh] overflow-y-auto sm:max-w-2xl">
         <DialogHeader>
           <div className="flex items-start gap-3 pr-6">
-            <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-rose-200 bg-rose-50 text-rose-600">
-              <ShieldOff className="h-4.5 w-4.5" />
+            <span className="flex size-9 shrink-0 items-center justify-center rounded-lg border border-danger-border bg-danger-soft text-danger">
+              <ShieldOff className="size-4" />
             </span>
-            <div>
+            <div className="space-y-1">
               <DialogTitle>Export bloqué</DialogTitle>
               <DialogDescription>
                 {verdict.unavailableReason
@@ -53,27 +48,27 @@ export const ComplianceBlockDialog: React.FC<ComplianceBlockDialogProps> = ({
         </DialogHeader>
 
         {verdict.unavailableReason ? (
-          <div className="space-y-2 rounded-xl border border-amber-300/70 bg-amber-50 p-4">
-            <div className="flex items-center gap-2 text-amber-900">
-              <AlertTriangle className="h-4 w-4 shrink-0" />
-              <span className="text-sm font-bold">Vérification impossible</span>
-            </div>
-            <p className="text-xs leading-relaxed text-amber-900/90">{verdict.unavailableReason}</p>
-            <p className="text-xs leading-relaxed text-amber-900/90">
-              L'export reste bloqué tant que le contrôle n'a pas pu s'exécuter. Autoriser un
-              téléchargement sans verdict reviendrait à n'avoir aucun contrôle du tout.
-            </p>
-          </div>
+          <Alert variant="warning">
+            <AlertTriangle />
+            <AlertTitle>Vérification impossible</AlertTitle>
+            <AlertDescription>
+              <p>{verdict.unavailableReason}</p>
+              <p>
+                L’export reste bloqué tant que le contrôle n’a pas pu s’exécuter : autoriser un téléchargement sans verdict
+                reviendrait à n’avoir aucun contrôle.
+              </p>
+            </AlertDescription>
+          </Alert>
         ) : (
           <div className="space-y-4">
             <ComplianceFindingsList findings={verdict.findings} />
-            <p className="border-t border-slate-200 pt-3 text-[11px] text-slate-500">
-              Table de règles v{verdict.rulesVersion}. Corrigez les formulations signalées dans le
-              rapport, puis relancez l'export.
+            <p className="border-t pt-3 text-xs text-muted-foreground">
+              Table de règles v{verdict.rulesVersion}. Corrigez les formulations signalées dans le rapport, puis relancez
+              l’export.
             </p>
           </div>
         )}
       </DialogContent>
     </Dialog>
   );
-};
+}

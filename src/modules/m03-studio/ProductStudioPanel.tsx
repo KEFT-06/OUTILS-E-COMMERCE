@@ -1,22 +1,26 @@
-import React, { useState } from 'react';
-import { AlertTriangle, FileDown, FileText, Loader2, PenSquare, Sparkles, Video } from 'lucide-react';
+import { useState } from 'react';
+import { AlertTriangle, FileDown, FileText, PenSquare, Sparkles, Video } from 'lucide-react';
 import { ProductExpertEditor } from '@/modules/m03-studio/ProductExpertEditor';
 import {
   ProductExportBlockedError,
-  ProductExportFormat,
-  ProductExportVerdict,
+  type ProductExportFormat,
+  type ProductExportVerdict,
   exportProduct,
 } from '@/shared/lib/productExport';
 import { useProductDrafts } from '@/shared/lib/useProductDrafts';
-import { DigitalProductIdea, MarketAnalysisReport } from '@/shared/types/analysis';
+import type { DigitalProductIdea, MarketAnalysisReport } from '@/shared/types/analysis';
+import { Alert, AlertDescription, AlertTitle } from '@/shared/ui/alert';
+import { Badge } from '@/shared/ui/badge';
+import { Button } from '@/shared/ui/button';
+import { Card, CardContent } from '@/shared/ui/card';
 import { ProductExportGateDialog } from '@/shared/ui/ProductExportGateDialog';
+import { Spinner } from '@/shared/ui/spinner';
 
 /**
- * Barre de production du Studio : modes de création (3.1) et exports contrôlés (3.2, 3.3).
+ * Barre de production du Studio : modes de création et exports contrôlés.
  *
  * Les modes Génératif et Vidéo → Produit sont affichés, désactivés, avec leur
- * raison. Les masquer laisserait croire qu'ils n'ont jamais été prévus ; les
- * activer sans fournisseur produirait un bouton qui échoue à chaque clic.
+ * raison : les masquer laisserait croire qu'ils n'ont jamais été prévus.
  */
 interface ProductStudioPanelProps {
   /** Produit tel qu'issu du rapport, avant toute retouche. */
@@ -24,22 +28,20 @@ interface ProductStudioPanelProps {
   report: MarketAnalysisReport;
 }
 
-const UNAVAILABLE_MODES = {
-  generative: {
+const UNAVAILABLE_MODES = [
+  {
     label: 'Génératif',
     icon: Sparkles,
-    reason:
-      "La génération d'un produit par IA n'est pas encore implémentée ; elle dépend d'un fournisseur de texte.",
+    reason: 'La génération d’un produit par IA dépend d’un fournisseur de texte, pas encore branché.',
   },
-  video: {
+  {
     label: 'Vidéo → Produit',
     icon: Video,
-    reason:
-      "Suppose de transcrire une vidéo puis de la structurer par IA : aucun fournisseur n'est encore branché.",
+    reason: 'Transcrire une vidéo puis la structurer demande un fournisseur d’IA, pas encore branché.',
   },
-} as const;
+] as const;
 
-export const ProductStudioPanel: React.FC<ProductStudioPanelProps> = ({ baseProduct, report }) => {
+export function ProductStudioPanel({ baseProduct, report }: ProductStudioPanelProps) {
   const drafts = useProductDrafts();
   const product = drafts.effective(baseProduct);
   const hasDraft = drafts.hasDraft(baseProduct.id);
@@ -52,7 +54,6 @@ export const ProductStudioPanel: React.FC<ProductStudioPanelProps> = ({ baseProd
   const handleExport = async (format: ProductExportFormat) => {
     setExporting(format);
     setExportError(null);
-
     try {
       await exportProduct(product, report, hasDraft, format);
     } catch (error) {
@@ -66,112 +67,85 @@ export const ProductStudioPanel: React.FC<ProductStudioPanelProps> = ({ baseProd
     }
   };
 
-  const unavailableModeButton = (mode: (typeof UNAVAILABLE_MODES)[keyof typeof UNAVAILABLE_MODES]) => {
-    const Icon = mode.icon;
-    return (
-      <button
-        type="button"
-        disabled
-        title={mode.reason}
-        className="inline-flex cursor-not-allowed items-center gap-1.5 rounded-xl border border-dashed border-slate-200 px-3 py-2 text-xs font-bold text-slate-400"
-      >
-        <Icon className="h-3.5 w-3.5" />
-        {mode.label}
-      </button>
-    );
-  };
-
   return (
-    <section className="space-y-4 rounded-3xl border border-slate-200/80 bg-white p-5 shadow-xs">
-      <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
-        <div className="space-y-2">
-          <p className="text-[11px] font-black uppercase tracking-wider text-slate-500">Mode de création</p>
-          <div className="flex flex-wrap gap-2">
-            {unavailableModeButton(UNAVAILABLE_MODES.generative)}
-            <button
-              type="button"
-              onClick={() => setIsExpertOpen((open) => !open)}
-              aria-expanded={isExpertOpen}
-              className={`inline-flex items-center gap-1.5 rounded-xl px-3 py-2 text-xs font-bold transition-colors ${
-                isExpertOpen
-                  ? 'bg-slate-900 text-white'
-                  : 'border border-slate-200 bg-white text-slate-700 hover:border-indigo-300'
-              }`}
-            >
-              <PenSquare className="h-3.5 w-3.5" />
-              Expert
-            </button>
-            {unavailableModeButton(UNAVAILABLE_MODES.video)}
+    <Card className="py-5">
+      <CardContent className="space-y-4">
+        <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+          <div className="space-y-2">
+            <p className="text-sm font-semibold">Mode de création</p>
+            <div className="flex flex-wrap gap-2">
+              <Button variant="outline" size="sm" disabled title={UNAVAILABLE_MODES[0].reason} className="border-dashed">
+                <Sparkles />
+                Génératif
+              </Button>
+              <Button
+                variant={isExpertOpen ? 'secondary' : 'outline'}
+                size="sm"
+                onClick={() => setIsExpertOpen((open) => !open)}
+                aria-expanded={isExpertOpen}
+              >
+                <PenSquare />
+                Expert
+              </Button>
+              <Button variant="outline" size="sm" disabled title={UNAVAILABLE_MODES[1].reason} className="border-dashed">
+                <Video />
+                Vidéo → Produit
+              </Button>
+            </div>
+            <ul className="space-y-0.5 text-xs leading-relaxed text-muted-foreground">
+              {UNAVAILABLE_MODES.map((mode) => (
+                <li key={mode.label}>
+                  <span className="font-medium text-foreground/80">{mode.label}</span> : {mode.reason}
+                </li>
+              ))}
+            </ul>
           </div>
-          <ul className="space-y-0.5 text-[11px] leading-relaxed text-slate-400">
-            <li>
-              <strong className="font-semibold">{UNAVAILABLE_MODES.generative.label}</strong> —{' '}
-              {UNAVAILABLE_MODES.generative.reason}
-            </li>
-            <li>
-              <strong className="font-semibold">{UNAVAILABLE_MODES.video.label}</strong> —{' '}
-              {UNAVAILABLE_MODES.video.reason}
-            </li>
-          </ul>
+
+          <div className="flex flex-wrap items-center gap-2 lg:justify-end">
+            {hasDraft && <Badge variant="brand">Version retouchée</Badge>}
+            <Button variant="outline" size="sm" onClick={() => handleExport('pdf')} disabled={exporting !== null}>
+              {exporting === 'pdf' ? <Spinner /> : <FileDown />}
+              Export PDF
+            </Button>
+            <Button variant="outline" size="sm" onClick={() => handleExport('docx')} disabled={exporting !== null}>
+              {exporting === 'docx' ? <Spinner /> : <FileText />}
+              Export DOCX
+            </Button>
+          </div>
         </div>
 
-        <div className="flex flex-wrap items-center gap-2 lg:justify-end">
-          {hasDraft && (
-            <span className="rounded-md bg-indigo-100 px-2 py-1 text-[10px] font-bold uppercase tracking-wider text-indigo-700">
-              Version retouchée
-            </span>
-          )}
-          <button
-            type="button"
-            onClick={() => handleExport('pdf')}
-            disabled={exporting !== null}
-            className="inline-flex items-center gap-1.5 rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-bold text-slate-700 hover:border-indigo-300 disabled:cursor-not-allowed disabled:opacity-50"
-          >
-            {exporting === 'pdf' ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <FileDown className="h-3.5 w-3.5" />}
-            Export PDF
-          </button>
-          <button
-            type="button"
-            onClick={() => handleExport('docx')}
-            disabled={exporting !== null}
-            className="inline-flex items-center gap-1.5 rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-bold text-slate-700 hover:border-indigo-300 disabled:cursor-not-allowed disabled:opacity-50"
-          >
-            {exporting === 'docx' ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <FileText className="h-3.5 w-3.5" />}
-            Export DOCX
-          </button>
-        </div>
-      </div>
+        <p className="text-xs leading-relaxed text-muted-foreground">
+          Chaque export passe la conformité publicitaire et le contrôle d’originalité, avec un sommaire cliquable et la
+          liste des sources.
+        </p>
 
-      <p className="text-[11px] leading-relaxed text-slate-400">
-        Chaque export passe la conformité publicitaire et le contrôle d'originalité, et inclut un
-        sommaire cliquable et la liste des sources.
-      </p>
+        {exportError && (
+          <Alert variant="danger">
+            <AlertTriangle />
+            <AlertTitle>L’export a échoué</AlertTitle>
+            <AlertDescription>{exportError}</AlertDescription>
+          </Alert>
+        )}
 
-      {exportError && (
-        <div role="alert" className="flex items-start gap-2 rounded-xl border border-rose-200 bg-rose-50 px-3 py-2">
-          <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-rose-600" />
-          <p className="text-xs leading-relaxed text-rose-900">{exportError}</p>
-        </div>
-      )}
+        {isExpertOpen && (
+          <ProductExpertEditor
+            key={`${baseProduct.id}-${hasDraft}`}
+            product={product}
+            hasDraft={hasDraft}
+            writeFailed={drafts.writeFailed}
+            onSave={drafts.saveDraft}
+            onDiscard={() => drafts.discardDraft(baseProduct.id)}
+          />
+        )}
 
-      {isExpertOpen && (
-        <ProductExpertEditor
-          key={`${baseProduct.id}-${hasDraft}`}
-          product={product}
-          hasDraft={hasDraft}
-          writeFailed={drafts.writeFailed}
-          onSave={drafts.saveDraft}
-          onDiscard={() => drafts.discardDraft(baseProduct.id)}
+        <ProductExportGateDialog
+          verdict={blockedVerdict}
+          open={blockedVerdict !== null}
+          onOpenChange={(isOpen) => {
+            if (!isOpen) setBlockedVerdict(null);
+          }}
         />
-      )}
-
-      <ProductExportGateDialog
-        verdict={blockedVerdict}
-        open={blockedVerdict !== null}
-        onOpenChange={(isOpen) => {
-          if (!isOpen) setBlockedVerdict(null);
-        }}
-      />
-    </section>
+      </CardContent>
+    </Card>
   );
-};
+}

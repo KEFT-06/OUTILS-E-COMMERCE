@@ -13,7 +13,10 @@
    aucun écran ne code plus de couleur en dur, le thème sombre fonctionne par
    construction.
    --------------------------------------------------------------------------- */
-:root {
+/* `.paper` rétablit les couleurs claires dans un aperçu de document imprimable
+   (dossier PDF) : un document A4 reste blanc, même en thème sombre. */
+:root,
+.paper {
   --radius: 0.75rem;
 
   /* Marque — couleurs du logo Smart Creator, inchangées. */

@@ -1,33 +1,19 @@
-import React, { useEffect, useState } from 'react';
-import { DigitalProductIdea, MarketAnalysisReport } from '@/shared/types/analysis';
+import { useEffect, useState } from 'react';
+import { BookOpen, Clapperboard, Clock, FileSpreadsheet, Gift, Layers, Package, Percent, TrendingUp, Video } from 'lucide-react';
+import { Area, AreaChart, CartesianGrid, XAxis, YAxis } from 'recharts';
+import { ProductStudioPanel } from '@/modules/m03-studio/ProductStudioPanel';
+import { PageHeader } from '@/shared/components/PageHeader';
 import { usePricing } from '@/shared/lib/usePricing';
 import { useProductDrafts } from '@/shared/lib/useProductDrafts';
-import { ProductStudioPanel } from '@/modules/m03-studio/ProductStudioPanel';
-import { motion, AnimatePresence } from 'motion/react';
-import {
-  ResponsiveContainer,
-  AreaChart,
-  Area,
-  XAxis,
-  YAxis,
-  Tooltip as RechartsTooltip,
-} from 'recharts';
-import {
-  Layers,
-  BookOpen,
-  FileSpreadsheet,
-  Video,
-  Package,
-  Clock,
-  Sparkles,
-  ChevronDown,
-  ChevronUp,
-  TrendingUp,
-  Percent,
-  Gift,
-} from 'lucide-react';
-import { Button } from '@/shared/ui/button';
+import { cn } from '@/shared/lib/utils';
+import type { DigitalProductIdea, MarketAnalysisReport } from '@/shared/types/analysis';
+import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from '@/shared/ui/accordion';
 import { Badge } from '@/shared/ui/badge';
+import { Button } from '@/shared/ui/button';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/shared/ui/card';
+import { ChartContainer, ChartTooltip, ChartTooltipContent, type ChartConfig } from '@/shared/ui/chart';
+import { NoDataState } from '@/shared/ui/NoDataState';
+import { Skeleton } from '@/shared/ui/skeleton';
 
 interface DigitalProductsViewProps {
   /** Rapport d'origine : sa provenance et ses sources alimentent la bibliographie des exports. */
@@ -36,521 +22,357 @@ interface DigitalProductsViewProps {
   onSelectProductForAd: (product: DigitalProductIdea) => void;
 }
 
-export const DigitalProductsView: React.FC<DigitalProductsViewProps> = ({
-  report,
-  products,
-  onSelectProductForAd,
-}) => {
+const FORMAT_ICONS = {
+  ebook: BookOpen,
+  template: FileSpreadsheet,
+  masterclass: Video,
+} as const;
+
+const PROJECTION_UNITS = [10, 25, 50, 75, 100, 150, 200];
+
+const projectionConfig = { profit: { label: 'Bénéfice estimé', color: 'var(--chart-1)' } } satisfies ChartConfig;
+const compact = new Intl.NumberFormat('fr-FR', { notation: 'compact', maximumFractionDigits: 1 });
+
+export function DigitalProductsView({ report, products, onSelectProductForAd }: DigitalProductsViewProps) {
   const { pricing, isLoading: isPricingLoading, error: pricingError } = usePricing();
   const drafts = useProductDrafts();
 
-  // Produit choisi tel qu'issu du rapport. L'écran affiche sa version retouchée
+  // Produit choisi tel qu'issu du rapport ; l'écran affiche sa version retouchée
   // en mode Expert quand elle existe : on voit ce qui sera exporté.
-  const [baseProduct, setSelectedProduct] = useState<DigitalProductIdea>(products[0] || null);
-  const selectedProduct = baseProduct ? drafts.effective(baseProduct) : baseProduct;
-  const [salesGoal, setSalesGoal] = useState<number>(50);
-  // `null` tant que les bornes ne sont pas connues : on n'invente pas de prix
-  // de départ, il vient du produit ou de la table (CdC §2).
-  const [customPrice, setCustomPrice] = useState<number | null>(
-    baseProduct ? baseProduct.recommendedPrice : null,
-  );
-  const [estimatedMetaCPA, setEstimatedMetaCPA] = useState<number | null>(null);
-  const [expandedModule, setExpandedModule] = useState<number | null>(null);
+  const [baseProduct, setBaseProduct] = useState<DigitalProductIdea | undefined>(products[0]);
+  const selectedProduct = baseProduct ? drafts.effective(baseProduct) : undefined;
+  const [salesGoal, setSalesGoal] = useState(50);
+  // `null` tant que les bornes ne sont pas connues : aucun prix de départ inventé.
+  const [customPrice, setCustomPrice] = useState<number | null>(baseProduct ? baseProduct.recommendedPrice : null);
+  const [adCost, setAdCost] = useState<number | null>(null);
 
-  // Initialisation des curseurs depuis la table, une fois celle-ci disponible.
   useEffect(() => {
     if (!pricing) return;
-    setCustomPrice((prev) => prev ?? pricing.sellingPrice.default);
-    setEstimatedMetaCPA((prev) => prev ?? pricing.adCostPerAcquisition.default);
+    setCustomPrice((previous) => previous ?? pricing.sellingPrice.default);
+    setAdCost((previous) => previous ?? pricing.adCostPerAcquisition.default);
   }, [pricing]);
 
-  const handleSelectProduct = (prod: DigitalProductIdea) => {
-    setSelectedProduct(prod);
-    setCustomPrice(prod.recommendedPrice);
-  };
-
-  const getFormatIcon = (type: string) => {
-    switch (type) {
-      case 'ebook':
-        return BookOpen;
-      case 'template':
-        return FileSpreadsheet;
-      case 'masterclass':
-        return Video;
-      default:
-        return Package;
-    }
-  };
-
-  // Financial calculations — à zéro tant que les bornes ne sont pas chargées,
-  // plutôt que calculées sur des valeurs supposées.
-  const priceValue = customPrice ?? 0;
-  const cpaValue = estimatedMetaCPA ?? 0;
-  const currencySymbol = pricing?.currencySymbol ?? '';
-
-  const grossRevenue = salesGoal * priceValue;
-  const totalAdSpend = salesGoal * cpaValue;
-  const estimatedNetProfit = Math.max(0, grossRevenue - totalAdSpend);
-  const netMarginPercent = grossRevenue > 0 ? Math.round((estimatedNetProfit / grossRevenue) * 100) : 0;
-
-  // Chart data for revenue curve
-  const projectionData = [10, 25, 50, 75, 100, 150, 200].map((units) => {
-    const rev = units * priceValue;
-    const ads = units * cpaValue;
-    const profit = Math.max(0, rev - ads);
-    return {
-      units: `${units} vtes`,
-      ChiffreAffaires: rev,
-      DepenseMetaAds: ads,
-      BeneficeNet: profit,
-    };
-  });
-
-  if (!selectedProduct) {
+  if (!baseProduct || !selectedProduct) {
     return (
-      <div className="bg-white rounded-3xl p-12 text-center border border-slate-200">
-        <Package className="w-12 h-12 text-slate-300 mx-auto mb-3" />
-        <p className="text-slate-600 font-semibold">Aucun produit digital disponible pour cette thématique.</p>
+      <div className="space-y-6">
+        <PageHeader eyebrow="Créer" title="Studio de création" />
+        <NoDataState
+          icon={Package}
+          title="Aucune idée de produit pour cette niche"
+          reason="Le rapport actif ne propose pas de produit digital. Choisissez une autre niche dans l’en-tête."
+        />
       </div>
     );
   }
 
+  // Calculs à zéro tant que les bornes ne sont pas chargées, plutôt que sur des valeurs supposées.
+  const priceValue = customPrice ?? 0;
+  const adCostValue = adCost ?? 0;
+  const currency = pricing?.currencySymbol ?? '';
+
+  const grossRevenue = salesGoal * priceValue;
+  const totalAdSpend = salesGoal * adCostValue;
+  const estimatedProfit = Math.max(0, grossRevenue - totalAdSpend);
+  const profitMarginPercent = grossRevenue > 0 ? Math.round((estimatedProfit / grossRevenue) * 100) : 0;
+
+  const projectionData = PROJECTION_UNITS.map((units) => ({
+    units,
+    profit: Math.max(0, units * priceValue - units * adCostValue),
+  }));
+
+  const selectProduct = (product: DigitalProductIdea) => {
+    setBaseProduct(product);
+    setCustomPrice(product.recommendedPrice);
+  };
+
   return (
-    <div className="space-y-8 animate-in fade-in duration-200">
-      
-      {/* Header Banner */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-        <div>
-          <div className="flex items-center gap-2">
-            <Badge variant="amber" className="gap-1.5 py-1">
-              <Sparkles className="w-3.5 h-3.5 text-amber-600" />
-              <span>Conception de Produits Digitaux à Forte Marge</span>
-            </Badge>
-            <span className="text-xs text-slate-500 font-medium font-mono">
-              Coût de stockage = 0€ · Marge nette &gt; 70%
-            </span>
-          </div>
-          <h1 className="text-2xl sm:text-3xl font-black text-slate-900 tracking-tight font-display mt-1">
-            Studio de Production & Simulateur de Rentabilité
-          </h1>
-          <p className="text-xs sm:text-sm text-slate-500">
-            Concevez, tarifez et simulez la rentabilité de vos e-books, templates Notion et masterclasses avant de lancer vos campagnes Meta Ads.
-          </p>
-        </div>
+    <div className="space-y-6">
+      <PageHeader
+        eyebrow="Créer"
+        title="Studio de création"
+        description="Choisissez une idée de produit, structurez-la et simulez sa rentabilité avant de lancer vos publicités."
+        actions={
+          <Button onClick={() => onSelectProductForAd(selectedProduct)}>
+            <Clapperboard />
+            Préparer les créatifs
+          </Button>
+        }
+      />
 
-        {/* Action Button */}
-        <Button
-          variant="glow"
-          onClick={() => onSelectProductForAd(selectedProduct)}
-          className="gap-2 shrink-0 self-start sm:self-auto"
-        >
-          <Video className="w-4 h-4" />
-          <span>Créer Script Vidéo Meta Ads</span>
-        </Button>
-      </div>
-
-      {/* Product Selection Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-        {products.map((prod) => {
-          const isSelected = selectedProduct.id === prod.id;
-          const IconComp = getFormatIcon(prod.type);
+      <div role="radiogroup" aria-label="Idées de produits" className="grid gap-4 md:grid-cols-3">
+        {products.map((product) => {
+          const isSelected = baseProduct.id === product.id;
+          const Icon = FORMAT_ICONS[product.type as keyof typeof FORMAT_ICONS] ?? Package;
           return (
-            <motion.div
-              key={prod.id}
-              whileHover={{ y: -2 }}
-              onClick={() => handleSelectProduct(prod)}
-              className={`cursor-pointer rounded-2xl p-5 border transition-all text-left flex flex-col justify-between ${
-                isSelected
-                  ? 'bg-white border-indigo-600 ring-2 ring-indigo-500/20 shadow-md'
-                  : 'bg-white/80 hover:bg-white border-slate-200 hover:border-slate-300 shadow-xs'
-              }`}
+            <button
+              key={product.id}
+              type="button"
+              role="radio"
+              aria-checked={isSelected}
+              onClick={() => selectProduct(product)}
+              className={cn(
+                'flex flex-col justify-between gap-4 rounded-xl border bg-card p-5 text-left shadow-xs transition-colors hover:border-primary/50',
+                isSelected && 'border-primary ring-2 ring-primary/25',
+              )}
             >
-              <div>
-                <div className="flex items-center justify-between mb-3">
-                  <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-bold bg-slate-100 text-slate-800">
-                    <IconComp className="w-3.5 h-3.5 text-indigo-600" />
-                    <span>{prod.typeName}</span>
+              <span className="space-y-2">
+                <span className="flex items-center justify-between gap-2">
+                  <Badge variant="secondary">
+                    <Icon />
+                    {product.typeName}
+                  </Badge>
+                  <span className="text-sm font-semibold tabular-nums">
+                    {product.recommendedPrice} {product.currency}
                   </span>
-                  <span className="text-sm font-black text-slate-900 font-mono">
-                    {prod.recommendedPrice} €
-                  </span>
-                </div>
-
-                <h3 className="font-bold text-slate-900 text-base leading-snug line-clamp-2">
-                  {prod.title}
-                </h3>
-                <p className="text-xs text-slate-500 mt-1.5 line-clamp-2">
-                  {prod.subtitle}
-                </p>
-              </div>
-
-              <div className="mt-4 pt-3 border-t border-slate-100 flex items-center justify-between text-xs">
-                <span className="text-emerald-700 font-bold flex items-center gap-1">
-                  <Percent className="w-3.5 h-3.5" />
-                  <span>{prod.estimatedMarginPercent}% de marge</span>
                 </span>
-                <span className="text-slate-400 font-medium flex items-center gap-1">
-                  <Clock className="w-3.5 h-3.5" />
-                  <span>~{prod.estimatedProductionDays} jours</span>
+                <span className="line-clamp-2 block font-semibold leading-snug">{product.title}</span>
+                <span className="line-clamp-2 block text-sm text-muted-foreground">{product.subtitle}</span>
+              </span>
+              <span className="flex items-center justify-between border-t pt-3 text-xs text-muted-foreground">
+                <span className="inline-flex items-center gap-1">
+                  <Percent className="size-3.5" aria-hidden="true" />
+                  Marge estimée {product.estimatedMarginPercent} %
                 </span>
-              </div>
-            </motion.div>
+                <span className="inline-flex items-center gap-1">
+                  <Clock className="size-3.5" aria-hidden="true" />~{product.estimatedProductionDays} jours
+                </span>
+              </span>
+            </button>
           );
         })}
       </div>
 
-      {/* Modes de création et exports contrôlés (feuille de route 3.1 à 3.3) */}
       <ProductStudioPanel baseProduct={baseProduct} report={report} />
 
-      {/* Main Selected Product Workbench (Left: Product Architecture, Right: ROI Simulator) */}
-      <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start">
-        
-        {/* LEFT: Product Content, Modules & Lead Magnet (7 cols) */}
-        <div className="lg:col-span-7 space-y-6">
-          
-          {/* Main Info Card */}
-          <div className="bg-white rounded-3xl p-6 sm:p-8 border border-slate-200/80 shadow-xs space-y-6">
-            <div className="flex items-start justify-between gap-4">
-              <div>
-                <div className="flex items-center gap-2 mb-1.5">
-                  <Badge variant="indigo" className="font-mono">
-                    {selectedProduct.typeName}
-                  </Badge>
-                  <span className="text-xs text-emerald-700 font-bold bg-emerald-50 px-2 py-0.5 rounded-full">
-                    Marge brute : {selectedProduct.estimatedMarginPercent}%
-                  </span>
+      <div className="grid items-start gap-6 lg:grid-cols-12">
+        <Card className="lg:col-span-7">
+          <CardHeader>
+            <div className="flex flex-wrap items-center gap-2">
+              <Badge variant="brand">{selectedProduct.typeName}</Badge>
+              <Badge variant="outline">Marge estimée {selectedProduct.estimatedMarginPercent} %</Badge>
+            </div>
+            <CardTitle className="font-display text-xl font-extrabold tracking-tight sm:text-2xl">
+              {selectedProduct.title}
+            </CardTitle>
+            <CardDescription>{selectedProduct.subtitle}</CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-6">
+            <div className="grid gap-3 sm:grid-cols-2">
+              <div className="rounded-lg border bg-muted/40 p-4">
+                <p className="mb-1 text-sm font-semibold">Public cible</p>
+                <p className="text-sm leading-relaxed text-muted-foreground">{selectedProduct.targetAudience}</p>
+              </div>
+              <div className="rounded-lg border border-primary/30 bg-accent/50 p-4">
+                <p className="mb-1 text-sm font-semibold text-accent-foreground">Promesse de transformation</p>
+                <p className="text-sm leading-relaxed">{selectedProduct.transformationPromise}</p>
+              </div>
+            </div>
+
+            <div className="space-y-2">
+              <h3 className="flex items-center gap-2 font-semibold">
+                <Layers className="size-4 text-brand-green-text" aria-hidden="true" />
+                Modules à produire ({selectedProduct.tableOfContents.length})
+              </h3>
+              <Accordion type="single" collapsible className="rounded-lg border px-4">
+                {selectedProduct.tableOfContents.map((module) => (
+                  <AccordionItem key={module.moduleNumber} value={String(module.moduleNumber)}>
+                    <AccordionTrigger>
+                      <span className="flex items-center gap-3">
+                        <span className="flex size-6 shrink-0 items-center justify-center rounded-md bg-accent text-xs font-semibold text-accent-foreground tabular-nums">
+                          {module.moduleNumber}
+                        </span>
+                        {module.title}
+                      </span>
+                    </AccordionTrigger>
+                    <AccordionContent className="pl-9 text-muted-foreground">{module.details}</AccordionContent>
+                  </AccordionItem>
+                ))}
+              </Accordion>
+            </div>
+
+            <div className="space-y-2 rounded-lg border border-brand-orange/40 bg-brand-orange/10 p-4">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <p className="flex items-center gap-1.5 text-sm font-semibold text-brand-orange-text">
+                  <Gift className="size-4" aria-hidden="true" />
+                  Aimant à prospects gratuit
+                </p>
+                <Badge variant="outline">{selectedProduct.leadMagnet.format}</Badge>
+              </div>
+              <p className="font-semibold">« {selectedProduct.leadMagnet.title} »</p>
+              <p className="text-sm leading-relaxed text-foreground/85">{selectedProduct.leadMagnet.hook}</p>
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card className="lg:sticky lg:top-20 lg:col-span-5">
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <TrendingUp className="size-4 text-brand-green-text" aria-hidden="true" />
+              Simulateur de rentabilité
+            </CardTitle>
+            <CardDescription>Ajustez le prix, l’objectif de ventes et le coût d’acquisition publicitaire.</CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-5">
+            <div className="space-y-4 rounded-lg border bg-muted/30 p-4">
+              <div className="space-y-1.5">
+                <div className="flex items-center justify-between gap-2">
+                  <label htmlFor="sim-sales" className="text-sm font-medium">
+                    Objectif de ventes
+                  </label>
+                  <span className="text-sm font-semibold tabular-nums">{salesGoal} ventes</span>
                 </div>
-                <h2 className="text-xl sm:text-2xl font-black text-slate-900 tracking-tight font-display">
-                  {selectedProduct.title}
-                </h2>
-                <p className="text-xs sm:text-sm text-slate-500 mt-1">
-                  {selectedProduct.subtitle}
-                </p>
+                <input
+                  id="sim-sales"
+                  type="range"
+                  min={5}
+                  max={200}
+                  step={5}
+                  value={salesGoal}
+                  onChange={(event) => setSalesGoal(Number(event.target.value))}
+                  className="w-full cursor-pointer accent-primary"
+                />
+                <div className="flex justify-between text-xs text-muted-foreground">
+                  <span>5</span>
+                  <span>100</span>
+                  <span>200</span>
+                </div>
               </div>
 
-              {/* Direct Action to Meta Ads Video Studio */}
-              <Button
-                variant="glow"
-                size="sm"
-                onClick={() => onSelectProductForAd(selectedProduct)}
-                className="shrink-0 gap-1.5"
-                title="Générer les scripts publicitaires vidéo Meta Ads (AIDA & PAS)"
-              >
-                <Video className="w-4 h-4" />
-                <span>Créer Scripts Ads</span>
-              </Button>
-            </div>
-
-            {/* Value Proposition & Target Audience */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 pt-2">
-              <div className="bg-slate-50 p-4 rounded-2xl border border-slate-200/60">
-                <span className="text-xs font-bold text-slate-600 block mb-1">
-                  Audience cible prioritaire :
-                </span>
-                <p className="text-xs text-slate-800 leading-relaxed font-medium">
-                  {selectedProduct.targetAudience}
-                </p>
-              </div>
-
-              <div className="bg-indigo-50/60 p-4 rounded-2xl border border-indigo-100">
-                <span className="text-xs font-bold text-indigo-900 block mb-1">
-                  Promesse de transformation :
-                </span>
-                <p className="text-xs text-indigo-950 leading-relaxed font-medium">
-                  {selectedProduct.transformationPromise}
-                </p>
-              </div>
-            </div>
-
-            {/* Table of Contents / Syllabus Modules */}
-            <div>
-              <div className="flex items-center justify-between mb-3">
-                <h3 className="font-bold text-slate-900 text-sm flex items-center gap-2">
-                  <Layers className="w-4 h-4 text-indigo-600" />
-                  <span>Architecture & Modules Prêts à Produire ({selectedProduct.tableOfContents.length})</span>
-                </h3>
-                <span className="text-[11px] text-slate-400">
-                  Cliquez sur un module pour afficher les détails
-                </span>
-              </div>
-
-              <div className="space-y-2">
-                {selectedProduct.tableOfContents.map((mod) => {
-                  const isExpanded = expandedModule === mod.moduleNumber;
-                  return (
-                    <div
-                      key={mod.moduleNumber}
-                      onClick={() => setExpandedModule(isExpanded ? null : mod.moduleNumber)}
-                      className="cursor-pointer bg-slate-50/70 hover:bg-slate-50 p-3.5 rounded-xl border border-slate-200/80 transition-all"
-                    >
-                      <div className="flex items-center justify-between">
-                        <div className="flex items-center gap-2.5">
-                          <span className="w-6 h-6 rounded-lg bg-indigo-600 text-white text-xs font-black flex items-center justify-center font-mono">
-                            {mod.moduleNumber}
-                          </span>
-                          <span className="text-xs sm:text-sm font-bold text-slate-900">
-                            {mod.title}
-                          </span>
-                        </div>
-                        {isExpanded ? (
-                          <ChevronUp className="w-4 h-4 text-slate-400" />
-                        ) : (
-                          <ChevronDown className="w-4 h-4 text-slate-400" />
-                        )}
-                      </div>
-
-                      <AnimatePresence>
-                        {isExpanded && (
-                          <motion.div
-                            initial={{ opacity: 0, height: 0 }}
-                            animate={{ opacity: 1, height: 'auto' }}
-                            exit={{ opacity: 0, height: 0 }}
-                            className="mt-2.5 pt-2.5 border-t border-slate-200/60 text-xs text-slate-600 pl-8"
-                          >
-                            {mod.details}
-                          </motion.div>
-                        )}
-                      </AnimatePresence>
+              {/*
+                Les bornes des curseurs de prix viennent de la table servie par l'API :
+                corriger un prix de marché ne demande pas de redéploiement.
+              */}
+              {!pricing ? (
+                isPricingLoading ? (
+                  <div className="space-y-2">
+                    <Skeleton className="h-10" />
+                    <Skeleton className="h-10" />
+                  </div>
+                ) : (
+                  <div className="rounded-md border border-dashed p-3 text-sm">
+                    <p className="font-medium">Fourchettes de prix indisponibles</p>
+                    {pricingError && (
+                      <p className="mt-1 text-xs text-muted-foreground">
+                        {pricingError} Le simulateur reste inactif : une échelle de prix inventée serait pire que rien.
+                      </p>
+                    )}
+                  </div>
+                )
+              ) : (
+                <>
+                  <div className="space-y-1.5">
+                    <div className="flex items-center justify-between gap-2">
+                      <label htmlFor="sim-price" className="text-sm font-medium">
+                        Prix de vente
+                      </label>
+                      <span className="text-sm font-semibold tabular-nums">
+                        {priceValue} {currency}
+                      </span>
                     </div>
-                  );
-                })}
-              </div>
+                    <input
+                      id="sim-price"
+                      type="range"
+                      min={pricing.sellingPrice.min}
+                      max={pricing.sellingPrice.max}
+                      step={pricing.sellingPrice.step}
+                      value={priceValue}
+                      onChange={(event) => setCustomPrice(Number(event.target.value))}
+                      className="w-full cursor-pointer accent-primary"
+                    />
+                    <div className="flex justify-between text-xs text-muted-foreground">
+                      {pricing.sellingPrice.marks.map((mark) => (
+                        <span key={mark.value}>{mark.label}</span>
+                      ))}
+                    </div>
+                  </div>
+
+                  <div className="space-y-1.5">
+                    <div className="flex items-center justify-between gap-2">
+                      <label htmlFor="sim-cpa" className="text-sm font-medium">
+                        Coût d’acquisition par vente
+                      </label>
+                      <span className="text-sm font-semibold text-danger tabular-nums">
+                        {adCostValue} {currency}
+                      </span>
+                    </div>
+                    <input
+                      id="sim-cpa"
+                      type="range"
+                      min={pricing.adCostPerAcquisition.min}
+                      max={pricing.adCostPerAcquisition.max}
+                      step={pricing.adCostPerAcquisition.step}
+                      value={adCostValue}
+                      onChange={(event) => setAdCost(Number(event.target.value))}
+                      className="w-full cursor-pointer accent-primary"
+                    />
+                    <div className="flex justify-between text-xs text-muted-foreground">
+                      {pricing.adCostPerAcquisition.marks.map((mark) => (
+                        <span key={mark.value}>{mark.label}</span>
+                      ))}
+                    </div>
+                  </div>
+
+                  {pricing.valuesStatus && <p className="text-xs leading-relaxed text-warning">{pricing.valuesStatus}</p>}
+                  <p className="text-xs text-muted-foreground">
+                    Fourchettes v{pricing.version} · mises à jour le {pricing.updatedAt}
+                  </p>
+                </>
+              )}
             </div>
 
-            {/* Lead Magnet Box */}
-            <div className="bg-gradient-to-r from-amber-50 to-orange-50 rounded-2xl p-5 border border-amber-200 space-y-2">
-              <div className="flex items-center justify-between">
-                <span className="text-xs font-black uppercase tracking-wider text-amber-800 flex items-center gap-1.5">
-                  <Gift className="w-4 h-4 text-amber-600" />
-                  Lead Magnet d'Acquisition Gratuit (Pour Capter des Prospects)
-                </span>
-                <span className="text-[11px] font-bold text-amber-900 bg-white px-2 py-0.5 rounded border border-amber-200">
-                  {selectedProduct.leadMagnet.format}
-                </span>
+            <dl className="grid grid-cols-2 gap-3">
+              <div className="rounded-lg border p-3">
+                <dt className="text-xs text-muted-foreground">Chiffre d’affaires</dt>
+                <dd className="mt-1 font-display text-xl font-extrabold tabular-nums">
+                  {grossRevenue.toLocaleString('fr-FR')} {currency}
+                </dd>
               </div>
-              <h4 className="font-bold text-slate-900 text-sm">
-                « {selectedProduct.leadMagnet.title} »
-              </h4>
-              <p className="text-xs text-amber-950/90 leading-relaxed">
-                {selectedProduct.leadMagnet.hook}
+              <div className="rounded-lg border p-3">
+                <dt className="text-xs text-muted-foreground">Budget publicitaire</dt>
+                <dd className="mt-1 font-display text-xl font-extrabold text-danger tabular-nums">
+                  {totalAdSpend.toLocaleString('fr-FR')} {currency}
+                </dd>
+              </div>
+            </dl>
+
+            <div className="space-y-1 rounded-xl bg-accent p-5 text-accent-foreground">
+              <div className="flex items-center justify-between gap-2">
+                <span className="text-sm font-semibold">Bénéfice estimé</span>
+                <Badge variant="outline" className="border-accent-foreground/30 text-accent-foreground tabular-nums">
+                  {profitMarginPercent} % du CA
+                </Badge>
+              </div>
+              <p className="font-display text-3xl font-extrabold tabular-nums sm:text-4xl">
+                {estimatedProfit.toLocaleString('fr-FR')} {currency}
+              </p>
+              <p className="text-xs leading-relaxed text-foreground/80">
+                Ventes × (prix − coût d’acquisition). Les frais de marketplace, les taxes et les remboursements ne sont pas
+                déduits.
               </p>
             </div>
 
-          </div>
-
-        </div>
-
-        {/* RIGHT: Financial ROI & Meta Ads Simulator (5 cols) */}
-        <div className="lg:col-span-5 bg-white rounded-3xl p-6 sm:p-8 border border-slate-200/80 shadow-xs space-y-6">
-          <div>
-            <div className="flex items-center gap-2">
-              <TrendingUp className="w-5 h-5 text-emerald-600" />
-              <h3 className="font-bold text-slate-900 text-lg font-display">
-                Simulateur de Rentabilité & Marge Nette
-              </h3>
-            </div>
-            <p className="text-xs text-slate-500 mt-0.5">
-              Ajustez le prix et l'objectif de vente pour calculer le profit net après dépenses Meta Ads.
-            </p>
-          </div>
-
-          {/* Sliders & Controls */}
-          <div className="space-y-4 bg-slate-50/70 p-5 rounded-2xl border border-slate-200/60 text-xs">
-            
-            {/* Sales Volume Slider */}
-            <div>
-              <div className="flex justify-between items-center mb-1.5">
-                <span className="font-bold text-slate-700">Objectif de Ventes :</span>
-                <span className="font-mono font-black text-indigo-600 text-sm bg-white px-2.5 py-0.5 rounded border border-indigo-200">
-                  {salesGoal} clients
-                </span>
-              </div>
-              <input
-                type="range"
-                min="5"
-                max="200"
-                step="5"
-                value={salesGoal}
-                onChange={(e) => setSalesGoal(Number(e.target.value))}
-                className="w-full accent-indigo-600 cursor-pointer"
-              />
-              <div className="flex justify-between text-[10px] text-slate-400 mt-1">
-                <span>5 ventes</span>
-                <span>100 ventes</span>
-                <span>200 ventes</span>
-              </div>
-            </div>
-
-            {/*
-              Les bornes des deux curseurs viennent de la table servie par l'API.
-              Elles étaient auparavant écrites dans les attributs min/max, ce qui
-              imposait un redéploiement pour corriger un prix de marché — ce que
-              le CdC §2 interdit explicitement.
-            */}
-            {!pricing ? (
-              <div className="rounded-xl border border-dashed border-slate-300 bg-white/60 p-4 text-center">
-                <p className="text-xs font-semibold text-slate-600">
-                  {isPricingLoading
-                    ? 'Chargement des fourchettes de prix…'
-                    : 'Fourchettes de prix indisponibles'}
-                </p>
-                {pricingError && (
-                  <p className="mt-1 text-[11px] leading-relaxed text-slate-500">
-                    {pricingError} Le simulateur reste inactif : afficher une échelle de prix
-                    inventée serait pire que de ne rien afficher.
-                  </p>
-                )}
-              </div>
-            ) : (
-              <>
-                {/* Custom Price Slider */}
-                <div>
-                  <div className="flex justify-between items-center mb-1.5">
-                    <span className="font-bold text-slate-700">Prix de Vente Unitaire :</span>
-                    <span className="font-mono font-black text-slate-900 text-sm bg-white px-2.5 py-0.5 rounded border border-slate-200">
-                      {priceValue} {currencySymbol}
-                    </span>
-                  </div>
-                  <input
-                    type="range"
-                    min={pricing.sellingPrice.min}
-                    max={pricing.sellingPrice.max}
-                    step={pricing.sellingPrice.step}
-                    value={priceValue}
-                    onChange={(e) => setCustomPrice(Number(e.target.value))}
-                    className="w-full accent-indigo-600 cursor-pointer"
-                  />
-                  <div className="flex justify-between text-[10px] text-slate-400 mt-1">
-                    {pricing.sellingPrice.marks.map((mark) => (
-                      <span key={mark.value}>{mark.label}</span>
-                    ))}
-                  </div>
-                </div>
-
-                {/* Meta CPA Estimation */}
-                <div>
-                  <div className="flex justify-between items-center mb-1.5">
-                    <span className="font-bold text-slate-700">Coût d'Acquisition Pub (CPA Meta Ads) :</span>
-                    <span className="font-mono font-bold text-rose-600 text-xs bg-white px-2 py-0.5 rounded border border-rose-200">
-                      {cpaValue} {currencySymbol} / vente
-                    </span>
-                  </div>
-                  <input
-                    type="range"
-                    min={pricing.adCostPerAcquisition.min}
-                    max={pricing.adCostPerAcquisition.max}
-                    step={pricing.adCostPerAcquisition.step}
-                    value={cpaValue}
-                    onChange={(e) => setEstimatedMetaCPA(Number(e.target.value))}
-                    className="w-full accent-rose-600 cursor-pointer"
-                  />
-                  <div className="flex justify-between text-[10px] text-slate-400 mt-1">
-                    {pricing.adCostPerAcquisition.marks.map((mark) => (
-                      <span key={mark.value}>{mark.label}</span>
-                    ))}
-                  </div>
-                </div>
-
-                {pricing.valuesStatus && (
-                  <p className="text-[10px] leading-relaxed text-amber-700">
-                    {pricing.valuesStatus}
-                  </p>
-                )}
-
-                <p className="text-[10px] text-slate-400">
-                  Fourchettes v{pricing.version} · mises à jour le {pricing.updatedAt}
-                </p>
-              </>
-            )}
-
-          </div>
-
-          {/* Metric KPI Results */}
-          <div className="grid grid-cols-2 gap-3">
-            <div className="bg-slate-50 p-4 rounded-2xl border border-slate-200/60">
-              <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wider block">
-                Chiffre d'Affaires Brut
-              </span>
-              <span className="text-xl font-black text-slate-900 font-mono mt-1 block">
-                {grossRevenue.toLocaleString('fr-FR')} €
-              </span>
-            </div>
-
-            <div className="bg-rose-50/60 p-4 rounded-2xl border border-rose-100">
-              <span className="text-[11px] font-bold text-rose-700 uppercase tracking-wider block">
-                Budget Pub Meta Ads
-              </span>
-              <span className="text-xl font-black text-rose-700 font-mono mt-1 block">
-                {totalAdSpend.toLocaleString('fr-FR')} €
-              </span>
-            </div>
-          </div>
-
-          {/* Big Net Profit Card */}
-          <div className="bg-gradient-to-br from-emerald-600 to-teal-700 text-white p-6 rounded-3xl shadow-lg space-y-2">
-            <div className="flex items-center justify-between">
-              <span className="text-xs font-bold text-emerald-100 uppercase tracking-wider">
-                Bénéfice Net Estimé
-              </span>
-              <span className="text-xs font-black bg-white/20 px-2 py-0.5 rounded-full font-mono">
-                {netMarginPercent}% de marge nette
-              </span>
-            </div>
-
-            <div className="text-3xl sm:text-4xl font-black tracking-tight font-mono">
-              + {estimatedNetProfit.toLocaleString('fr-FR')} €
-            </div>
-
-            <p className="text-xs text-emerald-100/90 leading-relaxed pt-1">
-              Sur un produit digital, aucun coût d'emballage ni d'expédition physique n'est prélevé. Le bénéfice est quasi-intégralement encaissable.
-            </p>
-          </div>
-
-          {/* Recharts Revenue vs Profit Curve */}
-          <div className="pt-2">
-            <span className="text-xs font-bold text-slate-700 block mb-2">
-              Courbe d'Accélération du Profit Net :
-            </span>
-            <div className="h-44 w-full">
-              <ResponsiveContainer width="100%" height="100%">
-                <AreaChart data={projectionData} margin={{ top: 5, right: 10, left: -20, bottom: 0 }}>
+            <div className="space-y-2">
+              <p className="text-sm font-medium">Bénéfice selon le nombre de ventes</p>
+              <ChartContainer config={projectionConfig} className="h-44 w-full">
+                <AreaChart data={projectionData} margin={{ top: 4, right: 8, bottom: 0, left: 0 }}>
                   <defs>
-                    <linearGradient id="profitColor" x1="0" y1="0" x2="0" y2="1">
-                      <stop offset="5%" stopColor="#10b981" stopOpacity={0.8}/>
-                      <stop offset="95%" stopColor="#10b981" stopOpacity={0}/>
+                    <linearGradient id="studio-profit" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="5%" stopColor="var(--color-profit)" stopOpacity={0.5} />
+                      <stop offset="95%" stopColor="var(--color-profit)" stopOpacity={0.05} />
                     </linearGradient>
                   </defs>
-                  <XAxis dataKey="units" tick={{ fill: '#94a3b8', fontSize: 10 }} />
-                  <YAxis tick={{ fill: '#94a3b8', fontSize: 10 }} />
-                  <RechartsTooltip
-                    content={({ payload }) => {
-                      if (!payload || !payload.length) return null;
-                      const d = payload[0].payload;
-                      return (
-                        <div className="bg-slate-900 text-white p-2.5 rounded-xl text-xs space-y-1">
-                          <p className="font-bold">{d.units}</p>
-                          <p className="text-emerald-400 font-mono">Profit net : {d.BeneficeNet} €</p>
-                          <p className="text-slate-300 font-mono">CA : {d.ChiffreAffaires} €</p>
-                        </div>
-                      );
-                    }}
-                  />
-                  <Area
-                    type="monotone"
-                    dataKey="BeneficeNet"
-                    stroke="#059669"
-                    fillOpacity={1}
-                    fill="url(#profitColor)"
-                  />
+                  <CartesianGrid vertical={false} />
+                  <XAxis dataKey="units" tickLine={false} axisLine={false} tickFormatter={(value: number) => `${value}`} />
+                  <YAxis tickLine={false} axisLine={false} width={44} tickFormatter={(value: number) => compact.format(value)} />
+                  <ChartTooltip content={<ChartTooltipContent labelFormatter={(_label, payload) => `${payload[0]?.payload.units ?? ''} ventes`} />} />
+                  <Area type="monotone" dataKey="profit" stroke="var(--color-profit)" strokeWidth={2} fill="url(#studio-profit)" />
                 </AreaChart>
-              </ResponsiveContainer>
+              </ChartContainer>
+              <p className="text-xs text-muted-foreground">Axe horizontal : nombre de ventes.</p>
             </div>
-          </div>
-
-        </div>
-
+          </CardContent>
+        </Card>
       </div>
-
     </div>
   );
-};
+}

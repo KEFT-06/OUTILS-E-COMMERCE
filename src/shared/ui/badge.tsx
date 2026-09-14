@@ -17,6 +17,12 @@ const badgeVariants = cva(
           "border-border text-foreground [a&]:hover:bg-accent [a&]:hover:text-accent-foreground",
         ghost: "[a&]:hover:bg-accent [a&]:hover:text-accent-foreground",
         link: "text-primary underline-offset-4 [a&]:hover:underline",
+        // Variantes Smart Creator : états de message et marque.
+        brand: "bg-accent text-accent-foreground",
+        success: "border-success-border bg-success-soft text-success",
+        warning: "border-warning-border bg-warning-soft text-warning",
+        info: "border-info-border bg-info-soft text-info",
+        danger: "border-danger-border bg-danger-soft text-danger",
       },
     },
     defaultVariants: {

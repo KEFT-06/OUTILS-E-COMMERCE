@@ -1,62 +1,49 @@
-import React from 'react';
-import { LucideIcon, PlugZap } from 'lucide-react';
+import type { ReactNode } from 'react';
+import type { LucideIcon } from 'lucide-react';
+import { PlugZap } from 'lucide-react';
+import { cn } from '@/shared/lib/utils';
+import { Button } from '@/shared/ui/button';
+import { Empty, EmptyContent, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from '@/shared/ui/empty';
 
 /**
- * État vide explicite pour une carte de tableau de bord.
+ * État vide explicite.
  *
- * Sert à remplacer un bloc qui affichait des chiffres inventés. Le CdC §9.4
- * n'autorise que deux états : la donnée réelle, ou l'aveu qu'elle n'existe pas
- * encore. Un chiffre plausible sous un libellé « réel » est le pire des trois,
- * parce qu'il se lit comme une mesure.
- *
- * Le composant force donc à dire **pourquoi** la donnée manque et **quand**
- * elle arrivera : un état vide sans explication pousse l'utilisateur à croire
- * à un bug plutôt qu'à une étape de la feuille de route.
+ * Seuls deux états sont autorisés : la donnée réelle, ou l'aveu qu'elle n'existe
+ * pas encore. Le composant force donc à dire **pourquoi** la donnée manque, en
+ * mots d'utilisateur : un état vide sans explication fait croire à un bug.
  */
 interface NoDataStateProps {
   /** Ce qui serait affiché ici une fois la source branchée. */
   title: string;
   /** Pourquoi il n'y a rien à montrer — en clair, sans jargon technique. */
-  reason: string;
-  /** Jalon de la feuille de route, ex. « Lot 5 ». Affiché tel quel. */
-  milestone?: string;
+  reason: ReactNode;
   icon?: LucideIcon;
   action?: { label: string; onClick: () => void };
+  /** Contenu complémentaire, par exemple un aperçu du format attendu. */
+  children?: ReactNode;
+  className?: string;
 }
 
-export const NoDataState: React.FC<NoDataStateProps> = ({
-  title,
-  reason,
-  milestone,
-  icon: Icon = PlugZap,
-  action,
-}) => {
+export function NoDataState({ title, reason, icon: Icon = PlugZap, action, children, className }: NoDataStateProps) {
   return (
-    <div className="rounded-2xl border border-dashed border-slate-300 bg-slate-50/60 p-6 text-center">
-      <div className="mx-auto mb-3 flex h-11 w-11 items-center justify-center rounded-xl border border-slate-200 bg-white">
-        <Icon className="h-5 w-5 text-slate-400" />
-      </div>
-
-      <p className="text-sm font-bold text-slate-700">{title}</p>
-      <p className="mx-auto mt-1.5 max-w-md text-xs leading-relaxed text-slate-500">{reason}</p>
-
-      {milestone && (
-        <span className="mt-3 inline-flex items-center rounded-md border border-slate-200 bg-white px-2 py-1 text-[10px] font-bold uppercase tracking-wider text-slate-500">
-          Prévu — {milestone}
-        </span>
+    <Empty className={cn('border border-dashed bg-muted/30 p-6 md:p-8', className)}>
+      <EmptyHeader>
+        <EmptyMedia variant="icon">
+          <Icon />
+        </EmptyMedia>
+        <EmptyTitle className="text-base font-semibold">{title}</EmptyTitle>
+        <EmptyDescription>{reason}</EmptyDescription>
+      </EmptyHeader>
+      {(action || children) && (
+        <EmptyContent className="max-w-none">
+          {action && (
+            <Button variant="outline" size="sm" onClick={action.onClick}>
+              {action.label}
+            </Button>
+          )}
+          {children}
+        </EmptyContent>
       )}
-
-      {action && (
-        <div className="mt-4">
-          <button
-            type="button"
-            onClick={action.onClick}
-            className="rounded-xl border border-slate-200 bg-white px-3 py-1.5 text-xs font-bold text-slate-700 transition-colors hover:border-indigo-300 hover:text-indigo-700 focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500"
-          >
-            {action.label}
-          </button>
-        </div>
-      )}
-    </div>
+    </Empty>
   );
-};
+}
