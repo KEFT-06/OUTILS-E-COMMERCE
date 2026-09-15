@@ -43,6 +43,7 @@ export const AUTH_EVENT_LABELS = {
   security_code_removed: 'Code de sécurité retiré',
   integration_saved: 'Clé API enregistrée',
   integration_removed: 'Clé API supprimée',
+  account_deleted: 'Compte supprimé par son titulaire',
 } as const;
 
 export type AuthEventType = keyof typeof AUTH_EVENT_LABELS;

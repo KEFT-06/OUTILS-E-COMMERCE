@@ -4,7 +4,7 @@ import { Controller, useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 import { toast } from 'sonner';
-import { ArrowRight, Bookmark, Check, History, KeyRound, LogOut, MonitorSmartphone, Pencil, PlugZap, ShieldCheck, TriangleAlert, X, Zap } from 'lucide-react';
+import { ArrowRight, Bookmark, Check, Database, Download, History, KeyRound, LogOut, MonitorSmartphone, Pencil, PlugZap, ShieldCheck, Trash2, TriangleAlert, X, Zap } from 'lucide-react';
 import { useCreditGate } from '@/app/providers/CreditGateProvider';
 import { initialsOf, useAuth } from '@/features/auth/AuthContext';
 import { PASSWORD_MIN_LENGTH, PasswordHints, PasswordInput } from '@/features/auth/PasswordInput';
@@ -15,7 +15,8 @@ import { PlanCards } from '@/shared/components/PlanCards';
 import { findCountry } from '@server/shared/countries';
 import { PageHeader } from '@/shared/components/PageHeader';
 import { apiRequest, passwordProblemsOf } from '@/shared/lib/api';
-import { type ApiError, toApiError } from '@/shared/lib/apiError';
+import { type ApiError, readApiError, toApiError } from '@/shared/lib/apiError';
+import { triggerDownload } from '@/shared/lib/download';
 import { formatDateFr, formatRelativeFr } from '@/shared/lib/formatDate';
 import { CREDIT_REASON_LABELS, labelOf } from '@/shared/lib/labels';
 import { usePlans } from '@/shared/lib/plans';
@@ -1246,6 +1247,172 @@ function ConnectionsCard({ account }: { account: Account }) {
 }
 
 /* -------------------------------------------------------------------------- */
+/*  Données personnelles                                                       */
+/* -------------------------------------------------------------------------- */
+
+const DELETION_WORD = 'SUPPRIMER';
+
+function DeleteAccountDialog({ account }: { account: Account }) {
+  const { setAccount } = useAuth();
+  const navigate = useNavigate();
+  const [open, setOpen] = useState(false);
+  const [password, setPassword] = useState('');
+  const [code, setCode] = useState('');
+  const [confirmation, setConfirmation] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<ApiError | null>(null);
+  const needsCode = account.twoFactor.enabled;
+  const ready = password.length > 0 && (!needsCode || code.trim().length >= 6) && confirmation.trim() === DELETION_WORD;
+
+  const change = (next: boolean) => {
+    setOpen(next);
+    if (!next) {
+      setPassword('');
+      setCode('');
+      setConfirmation('');
+      setError(null);
+    }
+  };
+
+  const submit = async (event: React.FormEvent) => {
+    event.preventDefault();
+    if (!ready) return;
+    setBusy(true);
+    setError(null);
+    try {
+      await apiRequest('/api/account', {
+        method: 'DELETE',
+        body: { password, confirmation: confirmation.trim(), ...(needsCode ? { code: code.trim() } : {}) },
+      });
+      navigate('/', { replace: true });
+      setAccount(null);
+      toast.success('Compte supprimé', { description: 'Vos données ont été effacées. Merci d’avoir utilisé Smart Creator.' });
+    } catch (caught) {
+      setError(toApiError(caught, 'Le compte n’a pas pu être supprimé.'));
+      setBusy(false);
+    }
+  };
+
+  return (
+    <Dialog open={open} onOpenChange={change}>
+      <DialogTrigger asChild>
+        <Button variant="destructive" className="shrink-0">
+          <Trash2 />
+          Supprimer mon compte
+        </Button>
+      </DialogTrigger>
+      <DialogContent className="sm:max-w-md">
+        <form onSubmit={submit} noValidate className="space-y-4">
+          <DialogHeader>
+            <DialogTitle>Supprimer définitivement votre compte</DialogTitle>
+            <DialogDescription>
+              Vos analyses, guides, couvertures, points et historiques sont effacés tout de suite, sans retour possible.
+              Téléchargez d’abord vos données si vous voulez en garder une copie.
+            </DialogDescription>
+          </DialogHeader>
+          <FieldGroup>
+            {error && (
+              <Alert variant="danger" role="alert">
+                <TriangleAlert />
+                <AlertTitle>{error.message}</AlertTitle>
+              </Alert>
+            )}
+            <input type="text" name="username" autoComplete="username" value={account.email} hidden readOnly />
+            <Field>
+              <FieldLabel htmlFor="delete-password">Mot de passe</FieldLabel>
+              <PasswordInput
+                id="delete-password"
+                value={password}
+                onChange={(event) => setPassword(event.target.value)}
+                autoComplete="current-password"
+              />
+            </Field>
+            {needsCode && <CodeField id="delete-code" value={code} onChange={setCode} />}
+            <Field>
+              <FieldLabel htmlFor="delete-confirmation">Saisissez {DELETION_WORD} pour confirmer</FieldLabel>
+              <Input
+                id="delete-confirmation"
+                value={confirmation}
+                onChange={(event) => setConfirmation(event.target.value)}
+                autoComplete="off"
+                autoCapitalize="characters"
+                spellCheck={false}
+              />
+            </Field>
+          </FieldGroup>
+          <DialogFooter className="gap-2 sm:gap-2">
+            <Button type="button" variant="outline" onClick={() => change(false)}>
+              Annuler
+            </Button>
+            <Button type="submit" variant="destructive" disabled={!ready || busy}>
+              {busy && <Spinner />}
+              Supprimer définitivement
+            </Button>
+          </DialogFooter>
+        </form>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+function PersonalDataCard({ account }: { account: Account }) {
+  const [downloading, setDownloading] = useState(false);
+
+  const download = async () => {
+    setDownloading(true);
+    try {
+      const response = await fetch('/api/account/data-export', { credentials: 'same-origin' });
+      if (!response.ok) throw await readApiError(response, 'Vos données n’ont pas pu être préparées.');
+      triggerDownload(await response.blob(), `smart-creator-mes-donnees-${new Date().toISOString().slice(0, 10)}.json`);
+      toast.success('Copie de vos données téléchargée');
+    } catch (caught) {
+      toast.error('Téléchargement impossible', { description: toApiError(caught, 'Réessayez dans un moment.').message });
+    } finally {
+      setDownloading(false);
+    }
+  };
+
+  return (
+    <Card id="donnees" className="scroll-mt-24">
+      <CardHeader>
+        <CardTitle>
+          <h2 className="flex items-center gap-2">
+            <Database className="size-4 text-brand-green-text" aria-hidden="true" />
+            Vos données
+          </h2>
+        </CardTitle>
+        <CardDescription>Une copie de tout ce que Smart Creator conserve sur vous, ou la suppression de votre compte.</CardDescription>
+      </CardHeader>
+      <CardContent className="space-y-4">
+        <div className="flex flex-col gap-3 rounded-lg border p-4 sm:flex-row sm:items-center sm:justify-between">
+          <div className="space-y-1">
+            <p className="font-medium">Télécharger mes données</p>
+            <p className="text-sm text-muted-foreground">
+              Profil, connexions, points, contenus et paiements, dans un fichier JSON. Mot de passe, codes et clés API n’y
+              figurent pas.
+            </p>
+          </div>
+          <Button variant="outline" className="shrink-0" onClick={() => void download()} disabled={downloading}>
+            {downloading ? <Spinner /> : <Download />}
+            Télécharger
+          </Button>
+        </div>
+        <div className="flex flex-col gap-3 rounded-lg border border-danger-border bg-danger-soft p-4 sm:flex-row sm:items-center sm:justify-between">
+          <div className="space-y-1">
+            <p className="font-medium text-danger">Supprimer mon compte</p>
+            <p className="text-sm text-foreground/85">
+              Suppression immédiate et définitive. Seuls vos paiements restent enregistrés, avec votre adresse e-mail, pour
+              la comptabilité.
+            </p>
+          </div>
+          <DeleteAccountDialog account={account} />
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
+/* -------------------------------------------------------------------------- */
 /*  Page                                                                       */
 /* -------------------------------------------------------------------------- */
 
@@ -1262,7 +1429,7 @@ export function AccountView({ onSelectSavedNiche }: AccountViewProps) {
 
   return (
     <div className="space-y-6">
-      <PageHeader title="Mon compte" description="Profil et pays, points, niches, sécurité, connexions et paliers." />
+      <PageHeader title="Mon compte" description="Profil et pays, points, niches, sécurité, connexions, paliers et données personnelles." />
       {!account.country && (
         <Alert variant="warning">
           <TriangleAlert />
@@ -1278,6 +1445,7 @@ export function AccountView({ onSelectSavedNiche }: AccountViewProps) {
       <SecurityCard account={account} />
       <ConnectionsCard account={account} />
       <PlansCard account={account} />
+      <PersonalDataCard account={account} />
     </div>
   );
 }

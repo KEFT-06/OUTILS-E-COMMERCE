@@ -556,6 +556,24 @@ export async function changePassword(
 }
 
 /**
+ * Preuve que la personne devant l'écran est le titulaire du compte, avant une action
+ * irréversible (suppression du compte) : mot de passe, puis second facteur s'il est
+ * activé. Le verrou anti-force brute s'applique comme à la connexion.
+ */
+export async function verifyAccountOwner(user: UserRow, input: { password: string; code?: string }): Promise<void> {
+  const key = emailThrottleKey(user.email);
+  const locked = await lockedFor([key]);
+  if (locked > 0) throw tooManyAttempts(locked, 'Trop de tentatives');
+
+  if (!(await verifyPassword(user.passwordHash, input.password))) {
+    const lock = await registerFailure(key, EMAIL_POLICY);
+    if (lock > 0) throw tooManyAttempts(lock, 'Trop de tentatives');
+    throw new AppError(400, 'Mot de passe incorrect.', 'INVALID_PASSWORD');
+  }
+  if (hasSecondFactor(user)) await verifyStepUp(user, input.code);
+}
+
+/**
  * Lien à usage unique : création du mot de passe d'un compte ouvert par un
  * administrateur, ou réinitialisation. Seule l'empreinte du jeton est stockée ;
  * le jeton voyage dans le fragment de l'adresse (#…), que les navigateurs

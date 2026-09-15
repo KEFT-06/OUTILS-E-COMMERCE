@@ -8,6 +8,7 @@ import { AppError, asyncRoute, countrySchema, routeLimiter, validateBody } from 
 import { requireAuth } from '@server/middleware/auth';
 import { creditSummary, effectiveLimits, loadAccount } from '@server/services/accounts';
 import { accountView } from '@server/services/accounts/view';
+import { accountDeletionSchema, deleteOwnAccount, exportPersonalData } from '@server/services/accounts/personalData';
 import { clientInfo } from '@server/services/audit';
 import {
   beginTotpEnrollment,
@@ -387,5 +388,31 @@ accountRouter.delete(
   '/integrations/chariow',
   asyncRoute(async (req, res) => {
     res.json({ integrations: await removeChariowKey(req.auth!, clientInfo(req)) });
+  }),
+);
+
+/* -------------------------------------------------------------------------- */
+/*  Données personnelles : copie et suppression du compte                      */
+/* -------------------------------------------------------------------------- */
+
+accountRouter.get(
+  '/data-export',
+  routeLimiter(15, 5),
+  asyncRoute(async (req, res) => {
+    const data = await exportPersonalData(req.auth!.account.user.id);
+    res.setHeader('Content-Disposition', `attachment; filename="smart-creator-mes-donnees-${data.generatedAt.slice(0, 10)}.json"`);
+    res.type('application/json').send(JSON.stringify(data, null, 2));
+  }),
+);
+
+accountRouter.delete(
+  '/',
+  routeLimiter(15, 10),
+  validateBody(accountDeletionSchema),
+  asyncRoute(async (req, res) => {
+    const { password, code } = req.body as z.infer<typeof accountDeletionSchema>;
+    await deleteOwnAccount(req.auth!.account.user, { password, code });
+    clearSessionCookie(res);
+    res.status(204).end();
   }),
 );
