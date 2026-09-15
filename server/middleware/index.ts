@@ -40,6 +40,8 @@ export const errorHandler = (
   _next: NextFunction,
 ): void => {
   if (err instanceof AppError) {
+    const retryAfter = (err.details as { retryAfterSeconds?: unknown } | undefined)?.retryAfterSeconds;
+    if (typeof retryAfter === 'number') res.setHeader('Retry-After', String(retryAfter));
     res.status(err.status).json({
       error: { code: err.code, message: err.message, details: err.details },
     });
@@ -110,12 +112,33 @@ const limiterMessage = {
   },
 };
 
+/**
+ * Les limiteurs en mémoire sont des filets de sécurité par adresse IP. Ils sont
+ * coupés pendant les tests automatisés, qui enchaînent des centaines de requêtes
+ * depuis la même adresse ; la protection des connexions, elle, vit en base et
+ * reste testée (server/services/auth/throttle.ts).
+ */
+const skipDuringTests = () => env.NODE_ENV === 'test';
+
+/** Limiteur de route : `limit` requêtes par adresse IP sur `windowMinutes` minutes. */
+export function routeLimiter(windowMinutes: number, limit: number) {
+  return rateLimit({
+    windowMs: windowMinutes * 60_000,
+    limit,
+    standardHeaders: 'draft-7',
+    legacyHeaders: false,
+    skip: skipDuringTests,
+    message: limiterMessage,
+  });
+}
+
 /** Limite générale sur toute l'API. */
 export const apiLimiter = rateLimit({
   windowMs: 60_000,
   limit: 120,
   standardHeaders: 'draft-7',
   legacyHeaders: false,
+  skip: skipDuringTests,
   message: limiterMessage,
 });
 
@@ -128,6 +151,7 @@ export const aiLimiter = rateLimit({
   limit: 10,
   standardHeaders: 'draft-7',
   legacyHeaders: false,
+  skip: skipDuringTests,
   message: limiterMessage,
 });
 

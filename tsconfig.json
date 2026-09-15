@@ -32,6 +32,6 @@
     "exactOptionalPropertyTypes": false,
     "forceConsistentCasingInFileNames": true
   },
-  "include": ["src", "server", "vite.config.ts"],
+  "include": ["src", "server", "vite.config.ts", "drizzle.config.ts"],
   "exclude": ["node_modules", "dist", "_legacy"]
 }

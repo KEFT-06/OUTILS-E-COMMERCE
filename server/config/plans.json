@@ -1,0 +1,44 @@
+{
+  "version": "2026.09.1",
+  "updatedAt": "2026-09-14",
+  "note": "Paliers d'abonnement. Quotas repris de l'ancienne page Compte. Prix NON FIXÉS (null) : à renseigner avant l'ouverture des abonnements. Une fonction absente de « features » est ouverte ; false la ferme pour le palier. Éditable sans redéploiement.",
+  "currency": "FCFA",
+  "plans": [
+    {
+      "id": "free",
+      "label": "Gratuit",
+      "monthlyCredits": 3,
+      "priceMonthlyFcfa": 0,
+      "features": { "video_generation": false, "storybook_generation": false }
+    },
+    {
+      "id": "plus",
+      "label": "Plus",
+      "monthlyCredits": 20,
+      "priceMonthlyFcfa": null,
+      "features": { "video_generation": false }
+    },
+    {
+      "id": "pro",
+      "label": "Pro",
+      "monthlyCredits": 60,
+      "priceMonthlyFcfa": null,
+      "highlight": true,
+      "features": { "video_generation": false }
+    },
+    {
+      "id": "max",
+      "label": "Max",
+      "monthlyCredits": 60,
+      "priceMonthlyFcfa": null,
+      "features": {}
+    },
+    {
+      "id": "elite",
+      "label": "Elite Enterprise",
+      "monthlyCredits": null,
+      "priceMonthlyFcfa": null,
+      "features": {}
+    }
+  ]
+}

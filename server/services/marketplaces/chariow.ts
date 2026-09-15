@@ -105,7 +105,11 @@ function unwrapList(payload: unknown): { items: unknown[]; nextCursor: string | 
 
 function chariowFailure(status: number): AppError {
   if (status === 401 || status === 403) {
-    return new AppError(503, "L'accès à Chariow est refusé : clé API invalide sur le serveur.", 'CHARIOW_ACCESS_DENIED');
+    return new AppError(
+      503,
+      "Chariow refuse la clé API utilisée : vérifiez-la ou remplacez-la dans Mon compte → Connexions.",
+      'CHARIOW_ACCESS_DENIED',
+    );
   }
   if (status === 404) {
     return new AppError(404, 'Ressource introuvable chez Chariow.', 'CHARIOW_NOT_FOUND');
@@ -123,12 +127,16 @@ function chariowFailure(status: number): AppError {
   return new AppError(502, 'Chariow est momentanément indisponible.', 'CHARIOW_UNAVAILABLE');
 }
 
-/** Appel authentifié à l'API Chariow, partagé par le catalogue, les ventes et l'affiliation. */
+/**
+ * Appel authentifié à l'API Chariow, partagé par le catalogue, les ventes et
+ * l'affiliation. La clé est celle du compte qui fait la demande
+ * (server/services/integrations) : jamais une clé choisie par défaut.
+ */
 export async function chariowRequest(
+  apiKey: string | null,
   path: string,
   options: { method?: 'GET' | 'POST'; query?: Record<string, string>; body?: unknown } = {},
 ): Promise<unknown> {
-  const apiKey = env.CHARIOW_API_KEY;
   if (!apiKey) throw providerUnavailable('Chariow');
 
   const url = new URL(`${BASE_URL}${path}`);
@@ -163,12 +171,9 @@ export async function chariowRequest(
   return response.json();
 }
 
-function getPage(path: string, query: Record<string, string>): Promise<unknown> {
-  return chariowRequest(path, { query });
-}
-
 /** Parcourt une liste paginée par curseur, dans la limite de `MAX_PAGES`. */
 async function collect(
+  apiKey: string | null,
   path: string,
   query: Record<string, string>,
 ): Promise<{ items: unknown[]; truncated: boolean }> {
@@ -176,10 +181,12 @@ async function collect(
   let cursor: string | null = null;
 
   for (let page = 0; page < MAX_PAGES; page += 1) {
-    const payload = await getPage(path, {
+    const payload = await chariowRequest(apiKey, path, {
+      query: {
       ...query,
-      per_page: String(PAGE_SIZE),
-      ...(cursor ? { cursor } : {}),
+        per_page: String(PAGE_SIZE),
+        ...(cursor ? { cursor } : {}),
+      },
     });
     const { items: pageItems, nextCursor } = unwrapList(payload);
     items.push(...pageItems);
@@ -215,17 +222,18 @@ export const chariowAdapter: MarketplaceAdapter = {
   label: 'Chariow',
   capabilities: { readProducts: true, publishProducts: false, readSales: true },
 
-  isAvailable() {
-    return env.CHARIOW_API_KEY
+  isAvailable(context) {
+    return context.chariowApiKey
       ? { available: true }
       : {
           available: false,
-          reason: 'Clé API Chariow non configurée sur le serveur (app.chariow.com → Paramètres → Clés API).',
+          reason:
+            'Ajoutez votre clé API Chariow dans Mon compte → Connexions (elle se crée dans app.chariow.com → Paramètres → Clés API).',
         };
   },
 
-  async listProducts() {
-    const { items, truncated } = await collect('/products', {});
+  async listProducts(context) {
+    const { items, truncated } = await collect(context.chariowApiKey, '/products', {});
 
     const products: MarketplaceProduct[] = items.flatMap((item) => {
       const parsed = productSchema.safeParse(item);
@@ -253,8 +261,11 @@ export const chariowAdapter: MarketplaceAdapter = {
     return { products, truncated };
   },
 
-  async salesSummary(range) {
-    const { items, truncated } = await collect('/sales', { start_date: range.from, end_date: range.to });
+  async salesSummary(context, range) {
+    const { items, truncated } = await collect(context.chariowApiKey, '/sales', {
+      start_date: range.from,
+      end_date: range.to,
+    });
 
     const totals = new Map<string, { amountMinor: number; salesCount: number }>();
     let completedSales = 0;

@@ -1,6 +1,6 @@
 import { AppError } from '@server/middleware';
 import { chariowAdapter } from '@server/services/marketplaces/chariow';
-import { MarketplaceAdapter } from '@server/services/marketplaces/types';
+import { MarketplaceAdapter, MarketplaceContext } from '@server/services/marketplaces/types';
 
 export * from '@server/services/marketplaces/types';
 
@@ -39,14 +39,14 @@ export function getMarketplace(id: string): MarketplaceAdapter {
   return adapter;
 }
 
-/** Marketplaces branchées et disponibles, dans l'ordre du registre. */
-export function availableMarketplaces(): MarketplaceAdapter[] {
-  return Object.values(MARKETPLACES).filter((adapter) => adapter.isAvailable().available);
+/** Marketplaces branchées et disponibles pour ce compte, dans l'ordre du registre. */
+export function availableMarketplaces(context: MarketplaceContext): MarketplaceAdapter[] {
+  return Object.values(MARKETPLACES).filter((adapter) => adapter.isAvailable(context).available);
 }
 
-export function listMarketplaces() {
+export function listMarketplaces(context: MarketplaceContext) {
   return Object.values(MARKETPLACES).map((adapter) => {
-    const availability = adapter.isAvailable();
+    const availability = adapter.isAvailable(context);
     return {
       id: adapter.id,
       label: adapter.label,

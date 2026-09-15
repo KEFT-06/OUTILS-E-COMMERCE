@@ -52,11 +52,16 @@ export interface SalesSummary {
   collectedAt: string;
 }
 
+/** Identifiants du compte qui fait la demande : chaque utilisateur branche ses propres boutiques. */
+export interface MarketplaceContext {
+  chariowApiKey: string | null;
+}
+
 export interface MarketplaceAdapter {
   readonly id: string;
   readonly label: string;
   readonly capabilities: MarketplaceCapabilities;
-  isAvailable(): { available: true } | { available: false; reason: string };
-  listProducts(): Promise<{ products: MarketplaceProduct[]; truncated: boolean }>;
-  salesSummary(range: { from: string; to: string }): Promise<SalesSummary>;
+  isAvailable(context: MarketplaceContext): { available: true } | { available: false; reason: string };
+  listProducts(context: MarketplaceContext): Promise<{ products: MarketplaceProduct[]; truncated: boolean }>;
+  salesSummary(context: MarketplaceContext, range: { from: string; to: string }): Promise<SalesSummary>;
 }

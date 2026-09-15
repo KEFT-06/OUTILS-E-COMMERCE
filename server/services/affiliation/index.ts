@@ -79,8 +79,8 @@ function countryLabel(country: unknown): string | undefined {
   return undefined;
 }
 
-export async function getChariowAffiliate(code: string): Promise<AffiliateSummary> {
-  const payload = await chariowRequest(`/affiliates/${encodeURIComponent(code)}`).catch((error: unknown) => {
+export async function getChariowAffiliate(apiKey: string, code: string): Promise<AffiliateSummary> {
+  const payload = await chariowRequest(apiKey, `/affiliates/${encodeURIComponent(code)}`).catch((error: unknown) => {
     if (error instanceof AppError && error.status === 404) {
       throw new AppError(404, 'Aucun affilié ne correspond à ce code chez Chariow.', 'AFFILIATE_NOT_FOUND');
     }
@@ -131,9 +131,11 @@ function collectEmails(value: unknown, found: Set<string> = new Set()): Set<stri
  * (adresses déjà affiliées ou déjà invitées). On compte ce qui est
  * reconnaissable sans supposer davantage sur sa forme exacte.
  */
-export async function sendChariowInvitations(emails: string[]): Promise<InvitationResult> {
+export async function sendChariowInvitations(apiKey: string, emails: string[]): Promise<InvitationResult> {
   const unique = [...new Set(emails)];
-  const body = unwrap(await chariowRequest('/affiliates/invitations', { method: 'POST', body: { emails: unique } }));
+  const body = unwrap(
+    await chariowRequest(apiKey, '/affiliates/invitations', { method: 'POST', body: { emails: unique } }),
+  );
 
   const invitations = isRecord(body) && Array.isArray(body.invitations) ? body.invitations : Array.isArray(body) ? body : [];
   const skipped = isRecord(body) ? body.skipped : undefined;

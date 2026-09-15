@@ -34,6 +34,9 @@ Thumbs.db
 coverage/
 .turbo/
 
+# Base PostgreSQL embarquée du développement (comptes, sessions) — jamais dans Git
+.data/
+
 # Artefacts générés par l'app
 graphify-out/
 uploads/

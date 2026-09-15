@@ -1,6 +1,11 @@
 import 'dotenv/config';
 import { z } from 'zod';
 
+/** Une ligne `NOM=` recopiée de .env.example vaut « non renseigné », pas « chaîne vide ». */
+function emptyAsUndefined<T extends z.ZodTypeAny>(schema: T) {
+  return z.preprocess((value) => (value === '' ? undefined : value), schema);
+}
+
 /**
  * Validation de l'environnement au démarrage.
  *
@@ -47,8 +52,40 @@ const schema = z.object({
   META_APP_SECRET: z.string().optional(),
   META_ACCESS_TOKEN: z.string().optional(),
 
-  DATABASE_URL: z.string().optional(),
+  /**
+   * PostgreSQL (Supabase en production, obligatoire). Absente en développement :
+   * base embarquée dans .data/pglite, exclue de Git. `memory://` : base éphémère
+   * des tests.
+   */
+  DATABASE_URL: emptyAsUndefined(z.string().optional()),
   REDIS_URL: z.string().optional(),
+
+  /**
+   * Clé de chiffrement des secrets stockés en base (double authentification, clés
+   * API Chariow des utilisateurs) : 64 caractères hexadécimaux, soit 256 bits.
+   * Générer avec : openssl rand -hex 32. La perdre rend ces secrets illisibles.
+   */
+  DATA_ENCRYPTION_KEY: emptyAsUndefined(
+    z.string().regex(/^[0-9a-fA-F]{64}$/, '64 caractères hexadécimaux attendus (openssl rand -hex 32).').optional(),
+  ),
+
+  /** Fuseau des statistiques « aujourd'hui, ce mois, cette année » de l'administration. */
+  REPORTING_TIMEZONE: emptyAsUndefined(
+    z
+      .string()
+      .refine((zone) => {
+        try {
+          new Intl.DateTimeFormat('fr-FR', { timeZone: zone });
+          return true;
+        } catch {
+          return false;
+        }
+      }, 'Fuseau horaire inconnu (exemple : Africa/Abidjan).')
+      .default('UTC'),
+  ),
+
+  /** Paliers d'abonnement : quotas, prix et fonctions ouvertes. */
+  PLANS_PATH: emptyAsUndefined(z.string().optional()),
 
   /**
    * Emplacement de la table de règles de conformité.
@@ -93,8 +130,6 @@ const schema = z.object({
    */
   AD_INGESTION_ADAPTER: z.enum(['meta', 'fixture']).optional(),
 
-  SESSION_SECRET: z.string().min(32).optional(),
-  JWT_SECRET: z.string().min(32).optional(),
 });
 
 const parsed = schema.safeParse(process.env);
@@ -122,12 +157,12 @@ export const providers = {
 } as const;
 
 /**
- * Garde-fou de démarrage : en production, les secrets de session sont obligatoires.
- * Les laisser optionnels en développement évite de bloquer un contributeur, mais
- * les laisser optionnels en production serait une faille.
+ * Garde-fou de démarrage : en production, la base distante et la clé de chiffrement
+ * sont obligatoires. Optionnelles en développement pour ne pas bloquer un
+ * contributeur ; optionnelles en production, ce serait une faille.
  */
 if (isProd) {
-  const missing = (['SESSION_SECRET', 'JWT_SECRET'] as const).filter((k) => !env[k]);
+  const missing = (['DATABASE_URL', 'DATA_ENCRYPTION_KEY'] as const).filter((k) => !env[k]);
   if (missing.length > 0) {
     console.error(`\n❌ En production, ces secrets sont obligatoires : ${missing.join(', ')}`);
     console.error('   Générez-les avec : openssl rand -hex 32\n');

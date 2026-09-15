@@ -1,4 +1,4 @@
-import { Router } from 'express';
+import { Router, type Request } from 'express';
 import { z } from 'zod';
 import {
   AppError,
@@ -9,7 +9,11 @@ import {
   providerUnavailable,
   validateBody,
 } from '@server/middleware';
+import { authenticate, requireAuth, requireFeature } from '@server/middleware/auth';
 import { providers } from '@server/env';
+import { accountRouter } from '@server/routes/account';
+import { adminRouter } from '@server/routes/admin';
+import { authRouter } from '@server/routes/auth';
 import {
   METHODOLOGY_VERSION,
   computeCompetitiveScore,
@@ -36,6 +40,7 @@ import {
   storybookBriefSchema,
 } from '@server/services/storybook';
 import {
+  CreativeStatus,
   VideoBrief,
   VisualBrief,
   creativeText,
@@ -48,6 +53,7 @@ import {
 } from '@server/services/creatives';
 import { requestIdSchema } from '@server/services/higgsfield';
 import {
+  MarketplaceContext,
   availableMarketplaces,
   getMarketplace,
   listMarketplaces,
@@ -60,8 +66,23 @@ import {
   invitationSchema,
   sendChariowInvitations,
 } from '@server/services/affiliation';
+import {
+  findOwnedGeneration,
+  runBilledGeneration,
+  settleGeneration,
+  type GenerationState,
+} from '@server/services/generations';
+import { resolveChariowCredentials } from '@server/services/integrations';
+import { FEATURES, PlansUnavailableError, getPlanConfig } from '@server/services/plans';
 
 export const api = Router();
+
+// Attache le compte de la session à chaque requête ; les refus se font route par route.
+api.use(authenticate);
+
+api.use('/auth', authRouter);
+api.use('/account', accountRouter);
+api.use('/admin', adminRouter);
 
 /* -------------------------------------------------------------------------- */
 /*  Santé et capacités                                                         */
@@ -84,6 +105,32 @@ api.get('/health', (_req, res) => {
     },
   });
 });
+
+/* -------------------------------------------------------------------------- */
+/*  Paliers d'abonnement                                                       */
+/* -------------------------------------------------------------------------- */
+
+api.get(
+  '/plans',
+  asyncRoute(async (_req, res) => {
+    try {
+      const config = await getPlanConfig();
+      res.json({
+        version: config.version,
+        updatedAt: config.updatedAt,
+        currency: config.currency,
+        features: FEATURES,
+        plans: config.plans,
+      });
+    } catch (error) {
+      if (error instanceof PlansUnavailableError) {
+        console.error('[paliers] table illisible :', error.configPath, error.cause);
+        throw new AppError(503, error.message, 'PLANS_UNAVAILABLE');
+      }
+      throw error;
+    }
+  }),
+);
 
 /* -------------------------------------------------------------------------- */
 /*  Scoring — différenciateur n°1 : la méthode est publique                    */
@@ -229,11 +276,12 @@ const ingestionSchema = z.object({
  *
  * C'est la chaîne complète du différenciateur n°1 sur données réelles :
  * ingestion → signaux bruts → `computeCompetitiveScore` → trace vérifiable.
- * Le rapport d'analyse rédigé (agent ANALYSTE) vient plus tard et dépend d'un
- * fournisseur de texte ; cette route, elle, ne dépend que de la source d'ads.
+ * Les points sont prélevés par le serveur et rendus si la collecte échoue.
  */
 api.post(
   '/ingestion/scan',
+  requireAuth,
+  requireFeature('ad_gallery_scan'),
   aiLimiter,
   validateBody(ingestionSchema),
   asyncRoute(async (req, res) => {
@@ -245,10 +293,18 @@ api.post(
       throw new AppError(503, availability.reason, 'INGESTION_UNAVAILABLE');
     }
 
-    const ingestion = await adapter.fetchAds({
-      niche,
-      ...(market ? { market } : {}),
-      ...(limit ? { limit } : {}),
+    const { result: ingestion } = await runBilledGeneration({
+      auth: req.auth!,
+      actionId: 'ad_gallery_scan',
+      kind: 'ad_scan',
+      provider: adapter.id,
+      run: () =>
+        adapter.fetchAds({
+          niche,
+          ...(market ? { market } : {}),
+          ...(limit ? { limit } : {}),
+        }),
+      describe: () => ({ providerRef: null, state: 'completed' }),
     });
 
     const score = computeCompetitiveScore(ingestion.signals, new Date(ingestion.collectedAt));
@@ -325,12 +381,14 @@ api.post(
 /**
  * Lance la génération d'un conte.
  *
- * Ordre des contrôles : validation, conformité du brief, puis disponibilité de
- * Gamma. La conformité passe avant le fournisseur pour que l'auteur puisse
- * corriger son brief même sur un serveur sans clé Gamma.
+ * Ordre des contrôles : compte et palier, validation, conformité du brief, puis
+ * disponibilité de Gamma. La conformité passe avant le fournisseur pour que
+ * l'auteur puisse corriger son brief même sur un serveur sans clé Gamma.
  */
 api.post(
   '/storybook/generations',
+  requireAuth,
+  requireFeature('storybook_generation'),
   aiLimiter,
   validateBody(storybookBriefSchema),
   asyncRoute(async (req, res) => {
@@ -343,13 +401,23 @@ api.post(
 
     if (!providers.gamma) throw providerUnavailable('Gamma');
 
-    res.status(202).json(await createStorybookGeneration(brief));
+    const { result } = await runBilledGeneration({
+      auth: req.auth!,
+      actionId: 'storybook_generation',
+      kind: 'storybook',
+      provider: 'gamma',
+      run: () => createStorybookGeneration(brief),
+      describe: (created) => ({ providerRef: created.generationId, state: 'pending', fileFormat: 'lien' }),
+    });
+
+    res.status(202).json(result);
   }),
 );
 
-/** Suivi d'une génération. Hors `aiLimiter` : le client sonde toutes les 5 secondes. */
+/** Suivi d'une génération de son auteur. Hors `aiLimiter` : le client sonde toutes les 5 secondes. */
 api.get(
   '/storybook/generations/:generationId',
+  requireAuth,
   asyncRoute(async (req, res) => {
     const parsed = generationIdSchema.safeParse(req.params.generationId);
     if (!parsed.success) {
@@ -357,7 +425,10 @@ api.get(
     }
     if (!providers.gamma) throw providerUnavailable('Gamma');
 
-    res.json(await getStorybookGeneration(parsed.data));
+    const generation = await findOwnedGeneration(req.auth!, 'gamma', parsed.data);
+    const status = await getStorybookGeneration(parsed.data);
+    await settleGeneration(generation, status.status);
+    res.json(status);
   }),
 );
 
@@ -386,8 +457,23 @@ function parseCreativeRequestId(value: string | undefined): string {
   return parsed.data;
 }
 
+/** Les statuts « nsfw » et « canceled » de Higgsfield ne produisent pas de fichier : ils rendent les points. */
+function creativeState(status: CreativeStatus['status']): GenerationState {
+  if (status === 'completed') return 'completed';
+  if (status === 'failed' || status === 'nsfw' || status === 'canceled') return 'failed';
+  return 'pending';
+}
+
+function creativeFormat(status: CreativeStatus): string | null {
+  if (status.mediaType === 'video') return 'mp4';
+  if (status.mediaType === 'image') return 'png';
+  return null;
+}
+
 api.post(
   '/creatives/visuals',
+  requireAuth,
+  requireFeature('image_generation'),
   aiLimiter,
   validateBody(visualBriefSchema),
   asyncRoute(async (req, res) => {
@@ -398,12 +484,27 @@ api.post(
     );
     if (!providers.higgsfield) throw providerUnavailable('Higgsfield');
 
-    res.status(202).json(await submitVisual(brief));
+    const { result } = await runBilledGeneration({
+      auth: req.auth!,
+      actionId: 'image_generation',
+      kind: 'image',
+      provider: 'higgsfield',
+      run: () => submitVisual(brief),
+      describe: (status) => ({
+        providerRef: status.requestId,
+        state: creativeState(status.status),
+        fileFormat: creativeFormat(status),
+      }),
+    });
+
+    res.status(202).json(result);
   }),
 );
 
 api.post(
   '/creatives/videos',
+  requireAuth,
+  requireFeature('video_generation'),
   aiLimiter,
   validateBody(videoBriefSchema),
   asyncRoute(async (req, res) => {
@@ -414,28 +515,47 @@ api.post(
     );
     if (!providers.higgsfield) throw providerUnavailable('Higgsfield');
 
-    res.status(202).json(await submitVideo(brief));
+    const { result } = await runBilledGeneration({
+      auth: req.auth!,
+      actionId: 'video_generation',
+      kind: 'video',
+      provider: 'higgsfield',
+      run: () => submitVideo(brief),
+      describe: (status) => ({
+        providerRef: status.requestId,
+        state: creativeState(status.status),
+        fileFormat: creativeFormat(status),
+      }),
+    });
+
+    res.status(202).json(result);
   }),
 );
 
-/** Suivi d'une génération. Hors `aiLimiter` : le client sonde toutes les 5 secondes. */
+/** Suivi d'une génération de son auteur. Hors `aiLimiter` : le client sonde toutes les 5 secondes. */
 api.get(
   '/creatives/requests/:requestId',
+  requireAuth,
   asyncRoute(async (req, res) => {
     const requestId = parseCreativeRequestId(req.params.requestId);
     if (!providers.higgsfield) throw providerUnavailable('Higgsfield');
 
-    res.json(await getCreativeStatus(requestId));
+    const generation = await findOwnedGeneration(req.auth!, 'higgsfield', requestId);
+    const status = await getCreativeStatus(requestId);
+    await settleGeneration(generation, creativeState(status.status), creativeFormat(status));
+    res.json(status);
   }),
 );
 
-/** Fichier généré, relayé depuis le fournisseur (aperçu ou téléchargement). */
+/** Fichier généré, relayé depuis le fournisseur, à son seul auteur (aperçu ou téléchargement). */
 api.get(
   '/creatives/requests/:requestId/file',
+  requireAuth,
   asyncRoute(async (req, res) => {
     const requestId = parseCreativeRequestId(req.params.requestId);
     if (!providers.higgsfield) throw providerUnavailable('Higgsfield');
 
+    await findOwnedGeneration(req.auth!, 'higgsfield', requestId);
     const disposition = req.query.disposition === 'attachment' ? 'attachment' : 'inline';
     await streamCreativeFile(requestId, disposition, res);
   }),
@@ -445,10 +565,20 @@ api.get(
 /*  Distribution : connecteurs marketplace (feuille de route 5.2)              */
 /* -------------------------------------------------------------------------- */
 
+/** Boutiques du compte qui fait la demande : sa propre clé Chariow, jamais celle d'un autre. */
+async function marketplaceContext(req: Request): Promise<MarketplaceContext> {
+  const credentials = await resolveChariowCredentials(req.auth);
+  return { chariowApiKey: credentials?.apiKey ?? null };
+}
+
 /** Connecteurs, disponibilité et capacités déclarées — y compris ceux qui ne peuvent pas exister. */
-api.get('/marketplaces', (_req, res) => {
-  res.json({ marketplaces: listMarketplaces() });
-});
+api.get(
+  '/marketplaces',
+  requireAuth,
+  asyncRoute(async (req, res) => {
+    res.json({ marketplaces: listMarketplaces(await marketplaceContext(req)) });
+  }),
+);
 
 const salesPeriodSchema = z.coerce.number().int().min(1).max(365).catch(30);
 
@@ -458,14 +588,16 @@ const salesPeriodSchema = z.coerce.number().int().min(1).max(365).catch(30);
  */
 api.get(
   '/marketplaces/sales-summary',
+  requireAuth,
   asyncRoute(async (req, res) => {
     const days = salesPeriodSchema.parse(req.query.days);
-    const sources = availableMarketplaces().filter((adapter) => adapter.capabilities.readSales);
+    const context = await marketplaceContext(req);
+    const sources = availableMarketplaces(context).filter((adapter) => adapter.capabilities.readSales);
 
     if (sources.length === 0) {
       throw new AppError(
         503,
-        "Aucune marketplace capable de remonter des ventes n'est connectée.",
+        'Aucune boutique connectée à votre compte : ajoutez votre clé API Chariow dans Mon compte → Connexions.',
         'NO_SALES_SOURCE',
       );
     }
@@ -474,17 +606,19 @@ api.get(
     const from = new Date(to.getTime() - (days - 1) * 86_400_000);
     const range = { from: from.toISOString().slice(0, 10), to: to.toISOString().slice(0, 10) };
 
-    const summaries = await Promise.all(sources.map((adapter) => adapter.salesSummary(range)));
+    const summaries = await Promise.all(sources.map((adapter) => adapter.salesSummary(context, range)));
     res.json({ days, range, summaries });
   }),
 );
 
 api.get(
   '/marketplaces/:marketplaceId/products',
+  requireAuth,
   asyncRoute(async (req, res) => {
     const adapter = getMarketplace(req.params.marketplaceId);
+    const context = await marketplaceContext(req);
 
-    const availability = adapter.isAvailable();
+    const availability = adapter.isAvailable(context);
     if (!availability.available) {
       throw new AppError(503, availability.reason, 'MARKETPLACE_NOT_AVAILABLE');
     }
@@ -492,7 +626,7 @@ api.get(
       throw new AppError(501, `${adapter.label} ne permet pas d'importer son catalogue.`, 'MARKETPLACE_CAPABILITY_MISSING');
     }
 
-    res.json({ marketplace: adapter.id, ...(await adapter.listProducts()) });
+    res.json({ marketplace: adapter.id, ...(await adapter.listProducts(context)) });
   }),
 );
 
@@ -538,16 +672,28 @@ api.get(
 /*  Affiliation via Chariow (Lot 6)                                            */
 /* -------------------------------------------------------------------------- */
 
+async function chariowKeyOf(req: Request): Promise<string> {
+  const credentials = await resolveChariowCredentials(req.auth);
+  if (!credentials) {
+    throw new AppError(
+      503,
+      'Ajoutez votre clé API Chariow dans Mon compte → Connexions pour utiliser l’affiliation.',
+      'CHARIOW_NOT_CONNECTED',
+    );
+  }
+  return credentials.apiKey;
+}
+
 api.get(
   '/affiliation/chariow/affiliates/:code',
+  requireAuth,
   asyncRoute(async (req, res) => {
     const parsed = affiliateCodeSchema.safeParse(req.params.code);
     if (!parsed.success) {
       throw new AppError(400, "Code d'affilié invalide.", 'INVALID_AFFILIATE_CODE');
     }
-    if (!providers.chariow) throw providerUnavailable('Chariow');
 
-    res.json(await getChariowAffiliate(parsed.data));
+    res.json(await getChariowAffiliate(await chariowKeyOf(req), parsed.data));
   }),
 );
 
@@ -558,13 +704,14 @@ api.get(
  */
 api.post(
   '/affiliation/chariow/invitations',
+  requireAuth,
+  requireFeature('affiliate_invitations'),
   aiLimiter,
   validateBody(invitationSchema),
   asyncRoute(async (req, res) => {
-    if (!providers.chariow) throw providerUnavailable('Chariow');
-
+    const apiKey = await chariowKeyOf(req);
     const { emails } = req.body as z.infer<typeof invitationSchema>;
-    res.status(201).json(await sendChariowInvitations(emails));
+    res.status(201).json(await sendChariowInvitations(apiKey, emails));
   }),
 );
 
@@ -589,6 +736,8 @@ const radarSchema = z.object({
  */
 api.post(
   '/radar-trends',
+  requireAuth,
+  requireFeature('radar_scan'),
   aiLimiter,
   validateBody(radarSchema),
   asyncRoute(async (_req, _res) => {
@@ -615,6 +764,8 @@ const analyzeSchema = z.object({
 
 api.post(
   '/analyze-niche',
+  requireAuth,
+  requireFeature('niche_analysis'),
   aiLimiter,
   validateBody(analyzeSchema),
   asyncRoute(async (_req, _res) => {

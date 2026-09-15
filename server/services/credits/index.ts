@@ -2,6 +2,7 @@ import { readFile } from 'node:fs/promises';
 import { isAbsolute, join, resolve } from 'node:path';
 import { z } from 'zod';
 import { env } from '@server/env';
+import { AppError } from '@server/middleware';
 
 /**
  * Grille tarifaire des research points — module 8 du cahier des charges.
@@ -74,6 +75,29 @@ async function getConfig(): Promise<CreditConfig> {
 
 export function reloadCreditCosts(): void {
   cache = null;
+}
+
+/**
+ * Coût d'une action pour un débit réel. Grille illisible : 503, et aucune action
+ * facturée ne part — même règle d'échec fermé que pour la conformité.
+ */
+export async function getActionCost(actionId: string): Promise<number> {
+  let config: CreditConfig;
+  try {
+    config = await getConfig();
+  } catch (error) {
+    if (error instanceof CreditConfigUnavailableError) {
+      console.error('[crédits] grille illisible :', error.configPath, error.cause);
+      throw new AppError(503, error.message, 'CREDIT_CONFIG_UNAVAILABLE');
+    }
+    throw error;
+  }
+
+  const action = config.actions.find((candidate) => candidate.id === actionId);
+  if (!action) {
+    throw new AppError(500, `L'action « ${actionId} » ne figure pas dans la grille tarifaire.`, 'CREDIT_ACTION_UNKNOWN');
+  }
+  return action.cost;
 }
 
 /** Grille complète, servie au client pour qu'il puisse simuler sans aller-retour. */
