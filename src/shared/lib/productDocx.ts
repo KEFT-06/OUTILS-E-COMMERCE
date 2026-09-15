@@ -5,6 +5,7 @@ import {
   ExternalHyperlink,
   Footer,
   HeadingLevel,
+  ImageRun,
   InternalHyperlink,
   Packer,
   PageBreak,
@@ -65,14 +66,33 @@ function body(
   });
 }
 
+/** Image de couverture générée, placée en première page. */
+export interface ProductDocxCover {
+  type: 'png' | 'jpg';
+  data: Uint8Array;
+}
+
 /** Construit le document sans le télécharger : séparé pour pouvoir être vérifié hors navigateur. */
-export function buildProductDOCX(productDocument: ProductDocument, stamp: ProductExportStamp): Document {
+export function buildProductDOCX(
+  productDocument: ProductDocument,
+  stamp: ProductExportStamp,
+  coverImage: ProductDocxCover | null = null,
+): Document {
   const notices = [
     ...(productDocument.containsDemonstrationData ? [DEMONSTRATION_COVER_NOTICE] : []),
     ...(productDocument.isEditedVersion ? [EDITED_VERSION_NOTICE] : []),
   ];
 
   const cover = [
+    ...(coverImage
+      ? [
+          new Paragraph({
+            alignment: AlignmentType.CENTER,
+            children: [new ImageRun({ type: coverImage.type, data: coverImage.data, transformation: { width: 420, height: 747 } })],
+          }),
+          new Paragraph({ children: [new PageBreak()] }),
+        ]
+      : []),
     new Paragraph({
       children: [
         new TextRun({ text: productDocument.typeName.toUpperCase(), bold: true, color: LINK_COLOR, size: 18 }),
@@ -169,14 +189,16 @@ export function buildProductDOCX(productDocument: ProductDocument, stamp: Produc
 export async function buildProductDOCXBlob(
   productDocument: ProductDocument,
   stamp: ProductExportStamp,
+  coverImage: ProductDocxCover | null = null,
 ): Promise<Blob> {
-  return Packer.toBlob(buildProductDOCX(productDocument, stamp));
+  return Packer.toBlob(buildProductDOCX(productDocument, stamp, coverImage));
 }
 
 export async function renderProductDOCX(
   productDocument: ProductDocument,
   stamp: ProductExportStamp,
+  coverImage: ProductDocxCover | null = null,
 ): Promise<void> {
-  const blob = await buildProductDOCXBlob(productDocument, stamp);
+  const blob = await buildProductDOCXBlob(productDocument, stamp, coverImage);
   triggerDownload(blob, `${toFileSlug(productDocument.title, 'produit')}.docx`);
 }

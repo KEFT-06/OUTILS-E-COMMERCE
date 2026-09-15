@@ -38,6 +38,9 @@ const schema = z.object({
   // Fournisseurs IA — optionnels : chaque route vérifie la clé dont elle dépend
   // et renvoie 503 avec un message explicite si elle manque.
   GEMINI_API_KEY: z.string().min(1).optional(),
+  GEMINI_API_URL: z.string().url().default('https://generativelanguage.googleapis.com'),
+  /** Modèle de traduction des guides multilingues. */
+  GEMINI_MODEL: z.string().regex(/^[\w.-]+$/).default('gemini-2.5-flash'),
   // Higgsfield authentifie par une paire identifiant + secret, envoyée sous la
   // forme `Authorization: Key ID:SECRET` (docs.higgsfield.ai/docs/authentication).
   // L'ancienne variable unique HIGGSFIELD_API_KEY ne pouvait fonctionner avec

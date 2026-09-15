@@ -37,14 +37,60 @@ const TOC_LINE_HEIGHT = 8;
 const TOC_HEADING_GAP = 14;
 const CHAPTER_MIN_SPACE = 40;
 
+/** Image de couverture générée, intégrée en première page. */
+export interface ProductCoverImage {
+  dataUrl: string;
+  format: 'PNG' | 'JPEG' | 'WEBP';
+}
+
 /** Construit le document sans le télécharger : séparé pour pouvoir être vérifié hors navigateur. */
-export function buildProductPDF(productDocument: ProductDocument, stamp: ProductExportStamp): jsPDF {
+export function buildProductPDF(
+  productDocument: ProductDocument,
+  stamp: ProductExportStamp,
+  cover: ProductCoverImage | null = null,
+): jsPDF {
   const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
   const pageWidth = doc.internal.pageSize.getWidth();
   const pageHeight = doc.internal.pageSize.getHeight();
   const contentWidth = pageWidth - MARGIN * 2;
   const bottomLimit = pageHeight - 26;
   const toc = tableOfContents(productDocument);
+
+  // --- Couverture illustrée : une page de plus, avant le sommaire ---
+  const offset = cover ? 1 : 0;
+  if (cover) {
+    // Image 9:16 en pleine page, recadrée en haut et en bas ; bandeau sombre pour le titre.
+    const imageHeight = pageWidth * (16 / 9);
+    doc.addImage(cover.dataUrl, cover.format, 0, (pageHeight - imageHeight) / 2, pageWidth, imageHeight);
+
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(26);
+    const coverTitle = doc.splitTextToSize(toPdfSafe(productDocument.title), contentWidth) as string[];
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(12);
+    const coverSubtitle = productDocument.subtitle
+      ? (doc.splitTextToSize(toPdfSafe(productDocument.subtitle), contentWidth) as string[])
+      : [];
+
+    const titleY = MARGIN + 16;
+    doc.setFillColor(15, 23, 42);
+    doc.rect(0, 0, pageWidth, titleY + coverTitle.length * 11 + coverSubtitle.length * 6 + 8, 'F');
+
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(9);
+    doc.setTextColor(199, 210, 254);
+    doc.text(toPdfSafe(productDocument.typeName.toUpperCase()), MARGIN, MARGIN + 2);
+    doc.setFontSize(26);
+    doc.setTextColor(255, 255, 255);
+    doc.text(coverTitle, MARGIN, titleY);
+    if (coverSubtitle.length > 0) {
+      doc.setFont('helvetica', 'normal');
+      doc.setFontSize(12);
+      doc.setTextColor(203, 213, 225);
+      doc.text(coverSubtitle, MARGIN, titleY + coverTitle.length * 11);
+    }
+    doc.addPage();
+  }
 
   // --- Couverture : mesurée avant tout rendu, pour dimensionner le sommaire ---
   doc.setFont('helvetica', 'bold');
@@ -83,7 +129,7 @@ export function buildProductPDF(productDocument: ProductDocument, stamp: Product
       : 1 + Math.ceil((toc.length - firstPageCapacity) / nextPageCapacity);
 
   for (let page = 1; page < tocPageCount; page += 1) doc.addPage();
-  doc.outline.add(null, 'Sommaire', { pageNumber: 1 });
+  doc.outline.add(null, 'Sommaire', { pageNumber: 1 + offset });
 
   // --- Contenu ---
   const pageOf: Record<string, number> = {};
@@ -176,7 +222,7 @@ export function buildProductPDF(productDocument: ProductDocument, stamp: Product
   let tocIndex = 0;
 
   for (let page = 1; page <= tocPageCount; page += 1) {
-    doc.setPage(page);
+    doc.setPage(page + offset);
     let tocY: number;
 
     if (page === 1) {
@@ -243,7 +289,8 @@ export function buildProductPDF(productDocument: ProductDocument, stamp: Product
   const disclaimerLines = doc.splitTextToSize(toPdfSafe(stamp.disclaimer), contentWidth) as string[];
   const footerTitle = truncateText(toPdfSafe(productDocument.title), 60);
 
-  for (let page = 1; page <= totalPages; page += 1) {
+  // La couverture illustrée reste sans pied de page.
+  for (let page = 1 + offset; page <= totalPages; page += 1) {
     doc.setPage(page);
 
     doc.setFont('helvetica', 'italic');
@@ -262,6 +309,10 @@ export function buildProductPDF(productDocument: ProductDocument, stamp: Product
   return doc;
 }
 
-export function renderProductPDF(productDocument: ProductDocument, stamp: ProductExportStamp): void {
-  buildProductPDF(productDocument, stamp).save(`${toFileSlug(productDocument.title, 'produit')}.pdf`);
+export function renderProductPDF(
+  productDocument: ProductDocument,
+  stamp: ProductExportStamp,
+  cover: ProductCoverImage | null = null,
+): void {
+  buildProductPDF(productDocument, stamp, cover).save(`${toFileSlug(productDocument.title, 'produit')}.pdf`);
 }

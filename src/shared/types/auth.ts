@@ -9,7 +9,9 @@ export type FeatureId =
   | 'image_generation'
   | 'video_generation'
   | 'storybook_generation'
-  | 'affiliate_invitations';
+  | 'affiliate_invitations'
+  | 'guide_translation'
+  | 'native_review';
 
 export type Permission =
   | 'admin.dashboard.read'
@@ -18,7 +20,8 @@ export type Permission =
   | 'admin.credits.grant'
   | 'admin.revenue.read'
   | 'admin.payments.record'
-  | 'admin.security.read';
+  | 'admin.security.read'
+  | 'guides.review';
 
 export interface CreditBalance {
   /** Points du quota mensuel du palier. */
@@ -37,6 +40,8 @@ export interface PlanLimits {
   savedNiches: number | null;
   /** Méthodes publicitaires ouvertes ; null : toutes. */
   adFrameworks: number | null;
+  /** Langues de traduction par guide ; null : illimité. */
+  guideLanguages: number | null;
 }
 
 export interface SecondFactorMethods {

@@ -14,6 +14,7 @@ import { providers } from '@server/env';
 import { accountRouter } from '@server/routes/account';
 import { adminRouter } from '@server/routes/admin';
 import { authRouter } from '@server/routes/auth';
+import { coversRouter, guidesRouter, reviewsRouter } from '@server/routes/guides';
 import {
   METHODOLOGY_VERSION,
   computeCompetitiveScore,
@@ -87,6 +88,9 @@ api.use(authenticate);
 api.use('/auth', authRouter);
 api.use('/account', accountRouter);
 api.use('/admin', adminRouter);
+api.use('/guides', guidesRouter);
+api.use('/covers', coversRouter);
+api.use('/reviews', reviewsRouter);
 
 /* -------------------------------------------------------------------------- */
 /*  Santé et capacités                                                         */

@@ -8,7 +8,6 @@ import { PageHeader } from '@/shared/components/PageHeader';
 import type { MarketAnalysisReport } from '@/shared/types/analysis';
 import { Button } from '@/shared/ui/button';
 import { Empty, EmptyDescription, EmptyHeader, EmptyTitle } from '@/shared/ui/empty';
-import { PlaceholderModuleView } from '@/shared/ui/PlaceholderModuleView';
 
 /**
  * Un composant par route. Chaque page lit la niche active dans l'espace de
@@ -60,6 +59,22 @@ const ProductPageBuilderView = lazy(() =>
 );
 const CampaignBlueprintsView = lazy(() =>
   import('@/modules/m11-campagnes/CampaignBlueprintsView').then((module) => ({ default: module.CampaignBlueprintsView })),
+);
+const MultilingualGuidesView = lazy(() =>
+  import('@/modules/m10-multilingue/MultilingualGuidesView').then((module) => ({ default: module.MultilingualGuidesView })),
+);
+const GuideWorkspaceView = lazy(() =>
+  import('@/modules/m10-multilingue/GuideWorkspaceView').then((module) => ({ default: module.GuideWorkspaceView })),
+);
+const TranslationEditorView = lazy(() =>
+  import('@/modules/m10-multilingue/TranslationEditorView').then((module) => ({ default: module.TranslationEditorView })),
+);
+const ReviewEditorView = lazy(() =>
+  import('@/modules/m10-multilingue/ReviewEditorView').then((module) => ({ default: module.ReviewEditorView })),
+);
+/** Page d'impression d'un guide, hors de la mise en page de l'espace de travail. */
+export const GuidePrintPage = lazy(() =>
+  import('@/modules/m10-multilingue/GuidePrintView').then((module) => ({ default: module.GuidePrintView })),
 );
 
 function useGoTo() {
@@ -240,14 +255,19 @@ export function AffiliationPage() {
 }
 
 export function MultilinguePage() {
-  return (
-    <PlaceholderModuleView
-      eyebrow="Créer"
-      title="Guides multilingues"
-      description="Prévu : des guides traduits en plusieurs langues, relus par des locuteurs natifs selon trois niveaux (Tier A, B et C)."
-      blocker="Les niveaux A, B et C ne sont pas encore définis (langues couvertes, degré de relecture, prix), et le réseau de relecteurs suppose des comptes et des paiements qui n’existent pas encore. Aucune traduction n’est proposée ni simulée en attendant."
-    />
-  );
+  return <MultilingualGuidesView />;
+}
+
+export function GuidePage() {
+  return <GuideWorkspaceView />;
+}
+
+export function GuideTranslationPage() {
+  return <TranslationEditorView />;
+}
+
+export function GuideReviewPage() {
+  return <ReviewEditorView />;
 }
 
 export function AccountPage() {

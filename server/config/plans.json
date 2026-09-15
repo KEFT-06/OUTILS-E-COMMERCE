@@ -1,7 +1,7 @@
 {
-  "version": "2026.09.2",
+  "version": "2026.09.3",
   "updatedAt": "2026-09-15",
-  "note": "Paliers d'abonnement, éditables sans redéploiement. « prices » : prix mensuel par devise ; une devise absente est convertie depuis la devise de base puis arrondie. null : prix pas encore fixé. « limits » : null = illimité. Une fonction absente de « features » est ouverte ; false la ferme pour le palier.",
+  "note": "Paliers d'abonnement, éditables sans redéploiement. « prices » : prix mensuel par devise ; une devise absente est convertie depuis la devise de base puis arrondie. null : prix pas encore fixé. « limits » : null = illimité. « guideLanguages » : langues de traduction par guide. Une fonction absente de « features » est ouverte ; false la ferme pour le palier.",
   "pricing": {
     "baseCurrency": "EUR",
     "yearlyMonthsCharged": 10,
@@ -14,8 +14,8 @@
       "tagline": "Pour découvrir l’outil",
       "monthlyCredits": 3,
       "prices": { "EUR": 0 },
-      "limits": { "savedNiches": 3, "adFrameworks": 2 },
-      "features": { "video_generation": false, "storybook_generation": false }
+      "limits": { "savedNiches": 3, "adFrameworks": 2, "guideLanguages": 1 },
+      "features": { "video_generation": false, "storybook_generation": false, "native_review": false }
     },
     {
       "id": "plus",
@@ -23,8 +23,8 @@
       "tagline": "Pour lancer un premier produit",
       "monthlyCredits": 20,
       "prices": { "EUR": 7.99, "XAF": 4900, "XOF": 4900 },
-      "limits": { "savedNiches": 15, "adFrameworks": 4 },
-      "features": {}
+      "limits": { "savedNiches": 15, "adFrameworks": 4, "guideLanguages": 3 },
+      "features": { "native_review": false }
     },
     {
       "id": "pro",
@@ -33,7 +33,7 @@
       "monthlyCredits": 60,
       "prices": { "EUR": 14.99, "XAF": 9900, "XOF": 9900 },
       "highlight": true,
-      "limits": { "savedNiches": 50, "adFrameworks": 7 },
+      "limits": { "savedNiches": 50, "adFrameworks": 7, "guideLanguages": 5 },
       "features": {}
     },
     {
@@ -42,7 +42,7 @@
       "tagline": "Pour plusieurs produits et marchés",
       "monthlyCredits": 150,
       "prices": { "EUR": 29.99, "XAF": 19900, "XOF": 19900 },
-      "limits": { "savedNiches": 150, "adFrameworks": 10 },
+      "limits": { "savedNiches": 150, "adFrameworks": 10, "guideLanguages": 10 },
       "features": {}
     },
     {
@@ -51,7 +51,7 @@
       "tagline": "Pour les agences et les équipes",
       "monthlyCredits": null,
       "prices": { "EUR": 74.99, "XAF": 49900, "XOF": 49900 },
-      "limits": { "savedNiches": null, "adFrameworks": null },
+      "limits": { "savedNiches": null, "adFrameworks": null, "guideLanguages": null },
       "features": {}
     }
   ]

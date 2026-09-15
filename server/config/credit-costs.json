@@ -53,6 +53,24 @@
       "label": "Génération d'un visuel",
       "cost": 1,
       "description": "Visuel unique au format demandé."
+    },
+    {
+      "id": "cover_generation",
+      "label": "Image de couverture d'un guide ou d'un ebook",
+      "cost": 1,
+      "description": "Illustration de couverture générée pour l'export PDF, conservée sur votre compte. Points rendus si la génération échoue."
+    },
+    {
+      "id": "guide_translation",
+      "label": "Traduction d'un guide (par langue)",
+      "cost": 2,
+      "description": "Traduction automatique contrôlée (niveau C) d'un guide dans une langue. Points rendus si la traduction échoue."
+    },
+    {
+      "id": "native_review",
+      "label": "Relecture par un locuteur natif (par langue)",
+      "cost": 10,
+      "description": "Relecture humaine de niveau A. Points rendus si vous annulez la demande avant qu'un relecteur la prenne en charge."
     }
   ]
 }

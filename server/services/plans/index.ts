@@ -22,6 +22,8 @@ export const FEATURES = {
   video_generation: 'Vidéos publicitaires',
   storybook_generation: 'Storybook illustré',
   affiliate_invitations: 'Invitations d’affiliés',
+  guide_translation: 'Guides multilingues',
+  native_review: 'Relecture par un locuteur natif',
 } as const;
 
 export type FeatureId = keyof typeof FEATURES;
@@ -39,6 +41,8 @@ const limitsSchema = z.object({
   savedNiches: z.number().int().min(0).nullable(),
   /** Méthodes publicitaires ouvertes, dans l'ordre de server/shared/adFrameworks.ts ; null : toutes. */
   adFrameworks: z.number().int().min(0).max(AD_FRAMEWORKS.length).nullable(),
+  /** Langues de traduction par guide ; null : illimité. */
+  guideLanguages: z.number().int().min(0).nullable(),
 });
 
 const planSchema = z.object({
@@ -78,7 +82,7 @@ export type PlanDefinition = z.infer<typeof planSchema>;
 export type PlanLimits = z.infer<typeof limitsSchema>;
 export type PlanConfig = z.infer<typeof configSchema>;
 
-export const UNLIMITED: PlanLimits = { savedNiches: null, adFrameworks: null };
+export const UNLIMITED: PlanLimits = { savedNiches: null, adFrameworks: null, guideLanguages: null };
 
 export class PlansUnavailableError extends Error {
   constructor(

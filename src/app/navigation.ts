@@ -206,9 +206,9 @@ export const MODULES: readonly ModuleEntry[] = [
     path: '/app/multilingue',
     group: 'creer',
     label: { fr: 'Guides multilingues', en: 'Multilingual guides' },
-    description: { fr: 'Guides relus par des locuteurs natifs', en: 'Guides reviewed by native speakers' },
+    description: { fr: 'Traduire, relire et exporter vos guides', en: 'Translate, review and export your guides' },
     icon: Languages,
-    ready: false,
+    ready: true,
   },
 ];
 

@@ -352,7 +352,7 @@ accountRouter.get(
 );
 
 const exportSchema = z.discriminatedUnion('kind', [
-  z.object({ kind: z.literal('ebook'), format: z.enum(['pdf', 'docx']) }),
+  z.object({ kind: z.literal('ebook'), format: z.enum(['pdf', 'docx', 'html']) }),
   z.object({ kind: z.literal('product_page'), format: z.literal('html') }),
   z.object({ kind: z.literal('report_pdf'), format: z.literal('pdf') }),
   z.object({ kind: z.literal('swipe_file'), format: z.enum(['csv', 'pdf']) }),

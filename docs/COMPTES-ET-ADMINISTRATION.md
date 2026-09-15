@@ -95,15 +95,16 @@ Les paliers sont décrits dans `server/config/plans.json`, modifiable sans redé
 - `limits.savedNiches` : niches qu'un compte peut enregistrer (`null` = illimité) ;
 - `limits.adFrameworks` : méthodes publicitaires ouvertes, dans l'ordre de
   `server/shared/adFrameworks.ts` (`null` = toutes) ;
+- `limits.guideLanguages` : langues de traduction par guide (`null` = illimité) ;
 - `features` : une fonction à `false` est fermée pour le palier.
 
-| Palier | Prix provisoire | Points / mois | Niches | Méthodes pub | Vidéos |
-| --- | --- | --- | --- | --- | --- |
-| Gratuit | 0 | 3 | 3 | 2 | non |
-| Plus | 4 900 FCFA · 7,99 € | 20 | 15 | 4 | oui |
-| Pro | 9 900 FCFA · 14,99 € | 60 | 50 | 7 | oui |
-| Max | 19 900 FCFA · 29,99 € | 150 | 150 | 10 | oui |
-| Elite Enterprise | 49 900 FCFA · 74,99 € | illimités | illimitées | 12 | oui |
+| Palier | Prix provisoire | Points / mois | Niches | Méthodes pub | Vidéos | Langues par guide | Relecture native |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| Gratuit | 0 | 3 | 3 | 2 | non | 1 | non |
+| Plus | 4 900 FCFA · 7,99 € | 20 | 15 | 4 | oui | 3 | non |
+| Pro | 9 900 FCFA · 14,99 € | 60 | 50 | 7 | oui | 5 | oui |
+| Max | 19 900 FCFA · 29,99 € | 150 | 150 | 10 | oui | 10 | oui |
+| Elite Enterprise | 49 900 FCFA · 74,99 € | illimités | illimitées | 12 | oui | illimitées | oui |
 
 > ⚠️ Prix **provisoires**, proposés en attendant la grille définitive du propriétaire.
 
@@ -130,6 +131,33 @@ palier sont affichées verrouillées, avec le palier qui les ouvre, et refusées
 Les consignes restent compatibles avec la conformité : pas de fausse urgence, pas de témoignage
 inventé, pas de résultat garanti.
 
+## Guides multilingues
+
+Un guide s'écrit une fois (texte collé, découpé en sections par les titres `#`, ou produit du
+Studio), puis se traduit langue par langue. Les **10 langues les plus parlées au monde** passent en
+tête (Ethnologue 2025), suivies de 20 autres, dont plusieurs langues africaines
+(`server/shared/languages.ts`).
+
+| Niveau | Ce qui est fait | Qui |
+| --- | --- | --- |
+| C | Traduction automatique, puis contrôles : section manquante ou vide, titre, chiffres et prix (y compris écrits en chiffres arabes-indiens ou bengalis), liens, noms à garder tels quels | Gemini, puis le serveur |
+| B | Relecture côte à côte avec l'original, corrections, validation | L'auteur |
+| A | Relecture native : tournures, ton, références culturelles | Un relecteur du réseau |
+
+- **Coûts** (`server/config/credit-costs.json`) : 2 points par langue, rendus si la traduction échoue ;
+  10 points par relecture native, rendus si la demande est annulée avant d'être prise en charge.
+- **Relecteurs** : privilège *Relire des guides*, attribué par un administrateur. Le relecteur
+  déclare ses langues maternelles, voit les demandes sans leur texte, découvre le texte en prenant
+  une demande et n'y a plus accès après l'avoir rendue. Second facteur obligatoire, comme pour
+  l'équipe.
+- **Exports** : PDF par la fenêtre d'impression du navigateur (seul rendu qui affiche toutes les
+  écritures, arabe de droite à gauche compris), Word et HTML. Chaque export indique son niveau.
+- **Couverture** : image générée par Higgsfield, **sans texte** (le titre est posé dans la langue de
+  l'export), 1 point. Elle est recopiée en base dès qu'elle est prête : le fournisseur efface ses
+  fichiers après environ sept jours. La même couverture sert au PDF et au DOCX des ebooks du Studio.
+- **Clé** : `GEMINI_API_KEY` dans `.env`, côté serveur uniquement, envoyée en en-tête et jamais
+  journalisée. Sans elle, l'écran l'annonce et la traduction reste fermée.
+
 ## Privilèges délégués
 
 Un **administrateur** a tous les accès. Un utilisateur peut recevoir des privilèges un par un :
@@ -138,14 +166,40 @@ Un **administrateur** a tous les accès. Un utilisateur peut recevoir des privil
 | --- | --- |
 | Voir le tableau de bord | Vue d'ensemble, en ligne, contenus créés |
 | Consulter les utilisateurs | Liste et fiches des comptes |
-| Gérer les utilisateurs | Palier, suspension, fonctions accordées ou retirées, déconnexion, lien de mot de passe |
+| Gérer les utilisateurs | Palier, blocage, fonctions accordées ou retirées, déconnexion, lien de mot de passe |
 | Recharger des crédits | Ajouter ou retirer des points bonus |
 | Voir les revenus | Revenus par jour, mois, année et paiements |
 | Enregistrer des paiements | Saisir ou rembourser un paiement |
 | Voir la sécurité et le journal | Connexions, verrous, journal d'audit |
+| Relire des guides | Demandes de relecture native dans ses langues maternelles |
 
 Changer un rôle et attribuer des privilèges ne se délèguent pas. Un membre de l'équipe n'agit ni sur
 un administrateur ni sur son propre compte.
+
+Un accès accordé ou retiré (fonction, palier, points) vaut dès la requête suivante, sans
+reconnexion ; l'écran de la personne se met à jour en deux minutes au plus. Attribuer des
+privilèges, en revanche, ferme ses sessions : elle se reconnecte avec son second facteur.
+
+## Connexions et activité
+
+*Administration → Connexions* (privilège *Consulter les utilisateurs*) liste chaque visite :
+
+| Colonne | Contenu |
+| --- | --- |
+| Connexion | Date et heure d'ouverture de la session |
+| Déconnexion | Date et heure de fin, avec la raison : déconnexion, blocage, inactivité, durée maximale, mot de passe changé, second facteur modifié, déconnexion par l'équipe… |
+| Durée | Temps passé connecté |
+| Appareil | Navigateur et système, adresse IP tronquée |
+
+Un site ne voit pas un onglet se fermer : sans déconnexion volontaire, la session est close à la
+**dernière activité** (balayage toutes les 5 minutes). En tête de page : utilisateurs en ligne,
+actifs du jour, sur 7 et 30 jours, durée moyenne. La fiche d'un utilisateur montre ses 50 dernières
+connexions et ses points **restants** et **utilisés** (mois en cours, 30 jours, depuis
+l'inscription). L'historique (`session_history`) est conservé 12 mois après la déconnexion, sans
+jeton ni adresse IP complète.
+
+**Bloquer un compte** (*fiche → Bloquer*, raison obligatoire) le déconnecte immédiatement de tous ses
+appareils et refuse toute connexion ; rien n'est supprimé, *Débloquer* rend l'accès.
 
 ## Paiements et revenus
 
@@ -176,9 +230,12 @@ swipe files, kits de lancement), **déclarés** par l'appareil. Les fichiers son
 npm test
 ```
 
-47 tests : vecteurs de la RFC 6238, politique de mot de passe, verrou anti-force brute, absence
+55 tests : vecteurs de la RFC 6238, politique de mot de passe, verrou anti-force brute, absence
 d'énumération, double authentification et code de sécurité (connexion, confirmation, verrou),
 liens à usage unique, privilèges délégués, niches limitées par palier, prix par pays, paiements en
 devise étrangère et revenus, méthodes publicitaires verrouillées, facturation et remboursement des
-générations, isolation des clés Chariow. Les fournisseurs sont simulés : aucun test n'appelle
-Higgsfield, Gamma, Chariow ni le service de taux.
+générations, isolation des clés Chariow, historique des connexions (déconnexion, blocage,
+inactivité), accès donné sans reconnexion, points utilisés, guides multilingues (limite de langues,
+contrôles, niveaux B et A, relecteur qui ne voit le texte qu'après prise en charge), couverture
+conservée et privée. Les fournisseurs sont simulés : aucun test n'appelle Gemini, Higgsfield, Gamma,
+Chariow ni le service de taux.

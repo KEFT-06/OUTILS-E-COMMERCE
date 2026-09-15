@@ -1,6 +1,8 @@
 import { useState } from 'react';
 import { AlertTriangle, FileDown, FileText, PenSquare, Sparkles, Video } from 'lucide-react';
 import { ProductExpertEditor } from '@/modules/m03-studio/ProductExpertEditor';
+import { CoverGenerator } from '@/shared/components/CoverGenerator';
+import type { CoverView } from '@/shared/lib/covers';
 import {
   ProductExportBlockedError,
   type ProductExportFormat,
@@ -50,12 +52,13 @@ export function ProductStudioPanel({ baseProduct, report }: ProductStudioPanelPr
   const [exporting, setExporting] = useState<ProductExportFormat | null>(null);
   const [exportError, setExportError] = useState<string | null>(null);
   const [blockedVerdict, setBlockedVerdict] = useState<ProductExportVerdict | null>(null);
+  const [cover, setCover] = useState<CoverView | null>(null);
 
   const handleExport = async (format: ProductExportFormat) => {
     setExporting(format);
     setExportError(null);
     try {
-      await exportProduct(product, report, hasDraft, format);
+      await exportProduct(product, report, hasDraft, format, cover?.status === 'ready' ? cover.id : null);
     } catch (error) {
       if (error instanceof ProductExportBlockedError) {
         setBlockedVerdict(error.verdict);
@@ -116,8 +119,20 @@ export function ProductStudioPanel({ baseProduct, report }: ProductStudioPanelPr
 
         <p className="text-xs leading-relaxed text-muted-foreground">
           Chaque export passe la conformité publicitaire et le contrôle d’originalité, avec un sommaire cliquable et la
-          liste des sources.
+          liste des sources. Une couverture générée ouvre le document.
         </p>
+
+        <div className="space-y-3 border-t pt-4">
+          <p className="text-sm font-semibold">Couverture du PDF</p>
+          <CoverGenerator
+            key={baseProduct.id}
+            subject="product"
+            subjectId={baseProduct.id}
+            title={product.title}
+            subtitle={product.subtitle}
+            onChange={setCover}
+          />
+        </div>
 
         {exportError && (
           <Alert variant="danger">

@@ -1,4 +1,5 @@
 import { checkSectionsCompliance } from '@/shared/lib/complianceGate';
+import { coversApi } from '@/shared/lib/covers';
 import { fetchRequiredDisclaimer } from '@/shared/lib/legal';
 import {
   ProductDocument,
@@ -125,6 +126,8 @@ export async function exportProduct(
   report: MarketAnalysisReport,
   isEditedVersion: boolean,
   format: ProductExportFormat,
+  /** Couverture générée prête, placée en première page. */
+  coverId: string | null = null,
 ): Promise<ProductExportVerdict> {
   const productDocument = buildProductDocument(product, report, isEditedVersion);
   const verdict = await checkProductExport(productDocument);
@@ -150,12 +153,17 @@ export async function exportProduct(
     disclaimer: verdict.compliance.requiredDisclaimer || (await fetchRequiredDisclaimer()),
   };
 
+  // Une couverture illisible ne prive pas de l'export : le document part sans elle.
+  const image = coverId ? await coversApi.image(coverId).catch(() => null) : null;
+
   if (format === 'pdf') {
-    renderProductPDF(productDocument, stamp);
+    const pdfFormat = image ? ({ 'image/png': 'PNG', 'image/jpeg': 'JPEG', 'image/webp': 'WEBP' } as const)[image.mimeType as 'image/png'] : undefined;
+    renderProductPDF(productDocument, stamp, image && pdfFormat ? { dataUrl: image.dataUrl, format: pdfFormat } : null);
   } else {
     // Chargé à la demande : la bibliothèque DOCX est lourde et ne sert qu'à cet export.
     const { renderProductDOCX } = await import('@/shared/lib/productDocx');
-    await renderProductDOCX(productDocument, stamp);
+    const docxType = image?.mimeType === 'image/png' ? 'png' : image?.mimeType === 'image/jpeg' ? 'jpg' : null;
+    await renderProductDOCX(productDocument, stamp, image && docxType ? { type: docxType, data: image.bytes } : null);
   }
 
   recordExport('ebook', format);

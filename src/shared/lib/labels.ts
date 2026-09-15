@@ -22,6 +22,8 @@ export const GENERATION_KIND_LABELS: Record<string, string> = {
   swipe_file: 'Swipe files',
   launch_kit: 'Kits de lancement',
   ad_scan: 'Collectes de publicités',
+  guide_translation: 'Traductions de guides',
+  cover: 'Couvertures',
 };
 
 export const FILE_FORMAT_LABELS: Record<string, string> = {

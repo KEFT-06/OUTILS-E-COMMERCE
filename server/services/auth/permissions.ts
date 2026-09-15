@@ -39,6 +39,11 @@ export const PERMISSIONS = {
     label: 'Voir la sécurité et le journal',
     description: 'Tentatives de connexion, verrous et journal des actions d’administration.',
   },
+  'guides.review': {
+    label: 'Relire des guides (réseau de relecteurs)',
+    description:
+      'Prendre en charge les demandes de relecture native dans ses langues maternelles, et corriger les traductions confiées. Le relecteur ne voit un guide qu’après l’avoir pris en charge.',
+  },
 } as const;
 
 export type Permission = keyof typeof PERMISSIONS;

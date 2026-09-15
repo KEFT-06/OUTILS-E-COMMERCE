@@ -41,6 +41,8 @@ export const GENERATION_KINDS = [
   'swipe_file',
   'launch_kit',
   'ad_scan',
+  'guide_translation',
+  'cover',
 ] as const;
 
 export const PAYMENT_METHODS = ['mobile_money', 'card', 'bank_transfer', 'cash', 'chariow', 'other'] as const;
@@ -92,6 +94,8 @@ export const users = pgTable(
     /** Pays choisi par l'utilisateur (ISO 3166-1 alpha-2) : il fixe la devise d'affichage des prix. */
     country: text('country'),
     savedNiches: jsonb('saved_niches').$type<string[]>().notNull().default(sql`'[]'::jsonb`),
+    /** Langues maternelles déclarées par un relecteur de guides (codes BCP 47). */
+    reviewerLanguages: jsonb('reviewer_languages').$type<string[]>().notNull().default(sql`'[]'::jsonb`),
     lastLoginAt: moment('last_login_at'),
     passwordChangedAt: moment('password_changed_at'),
     createdAt: createdAt(),
@@ -149,6 +153,102 @@ export const sessionHistory = pgTable(
     index('session_history_started_idx').on(table.startedAt),
     index('session_history_last_seen_idx').on(table.lastSeenAt),
   ],
+).enableRLS();
+
+type GuideSectionRow = { id: string; heading: string; body: string };
+
+/** Guide rédigé par l'utilisateur, source de ses traductions. */
+export const guides = pgTable(
+  'guides',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    userId: uuid('user_id')
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
+    title: text('title').notNull(),
+    /** Code BCP 47 de la langue d'origine (server/shared/languages.ts). */
+    sourceLanguage: text('source_language').notNull(),
+    sections: jsonb('sections').$type<GuideSectionRow[]>().notNull(),
+    /** Noms à garder tels quels dans toutes les langues : marque, produit, personne. */
+    terms: jsonb('terms').$type<string[]>().notNull().default(sql`'[]'::jsonb`),
+    /** Augmente à chaque modification du texte : une traduction plus ancienne est signalée. */
+    revision: integer('revision').notNull().default(1),
+    coverId: uuid('cover_id'),
+    createdAt: createdAt(),
+    updatedAt: moment('updated_at').notNull().defaultNow(),
+  },
+  (table) => [index('guides_user_idx').on(table.userId, table.updatedAt)],
+).enableRLS();
+
+export const guideTranslations = pgTable(
+  'guide_translations',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    guideId: uuid('guide_id')
+      .notNull()
+      .references(() => guides.id, { onDelete: 'cascade' }),
+    /** Auteur du guide, recopié : les listes se filtrent sans jointure. */
+    userId: uuid('user_id')
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
+    language: text('language').notNull(),
+    title: text('title').notNull(),
+    sections: jsonb('sections').$type<GuideSectionRow[]>().notNull(),
+    checks: jsonb('checks')
+      .$type<{ severity: 'error' | 'warning'; code: string; message: string; sectionId?: string }[]>()
+      .notNull()
+      .default(sql`'[]'::jsonb`),
+    /** Révision du guide traduite. */
+    sourceRevision: integer('source_revision').notNull(),
+    /** ready · review_requested · in_review */
+    status: text('status').notNull().default('ready'),
+    /** Niveau B : relue et validée par l'auteur. */
+    authorValidatedAt: moment('author_validated_at'),
+    reviewRequestedAt: moment('review_requested_at'),
+    reviewNote: text('review_note'),
+    /** Débit de la relecture, rendu si la demande est annulée avant d'être prise en charge. */
+    reviewDebitId: uuid('review_debit_id'),
+    reviewerId: uuid('reviewer_id').references(() => users.id, { onDelete: 'set null' }),
+    reviewClaimedAt: moment('review_claimed_at'),
+    /** Niveau A : relue par un locuteur natif. */
+    reviewedAt: moment('reviewed_at'),
+    reviewerComment: text('reviewer_comment'),
+    createdAt: createdAt(),
+    updatedAt: moment('updated_at').notNull().defaultNow(),
+  },
+  (table) => [
+    uniqueIndex('guide_translations_language_unique').on(table.guideId, table.language),
+    index('guide_translations_queue_idx').on(table.status, table.language),
+    index('guide_translations_reviewer_idx').on(table.reviewerId),
+  ],
+).enableRLS();
+
+/**
+ * Images de couverture générées (guides, ebooks du Studio). L'image est gardée
+ * ici : le fournisseur efface ses fichiers après quelques jours, et une
+ * couverture doit rester disponible à chaque nouvel export.
+ */
+export const covers = pgTable(
+  'covers',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    userId: uuid('user_id')
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
+    /** guide · product */
+    subject: text('subject').notNull(),
+    subjectId: text('subject_id').notNull(),
+    prompt: text('prompt').notNull(),
+    /** pending · ready · failed */
+    status: text('status').notNull(),
+    providerRef: text('provider_ref'),
+    mimeType: text('mime_type'),
+    /** Image encodée en base64. */
+    data: text('data'),
+    createdAt: createdAt(),
+    updatedAt: moment('updated_at').notNull().defaultNow(),
+  },
+  (table) => [index('covers_subject_idx').on(table.userId, table.subject, table.subjectId)],
 ).enableRLS();
 
 /** Connexion en attente du code de double authentification. */

@@ -171,7 +171,8 @@ describe('Administration : privilèges délégués', () => {
       .send({ role: 'admin', confirmationCode: await admin.device.next() })
       .expect(200);
     assert.equal(promoted.body.user.role, 'admin');
-    assert.equal(promoted.body.permissions.effective.length, 7);
+    const { PERMISSION_IDS } = await import('@server/services/auth/permissions');
+    assert.equal(promoted.body.permissions.effective.length, PERMISSION_IDS.length, 'un administrateur détient tous les privilèges');
 
     const self = await admin.agent
       .patch(`/api/admin/users/${admin.user.id}/role`)

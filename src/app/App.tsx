@@ -1,3 +1,4 @@
+import { Suspense } from 'react';
 import { BrowserRouter, Navigate, Route, Routes } from 'react-router-dom';
 import { AuthProvider } from '@/features/auth/AuthContext';
 import { LoginPage } from '@/features/auth/LoginPage';
@@ -18,6 +19,10 @@ import {
   DistributionPage,
   DossierPdfPage,
   GaleriePage,
+  GuidePage,
+  GuidePrintPage,
+  GuideReviewPage,
+  GuideTranslationPage,
   KitLancementPage,
   MultilinguePage,
   NichesPage,
@@ -74,6 +79,9 @@ export default function App() {
                     <Route path="storybook" element={<StorybookPage />} />
                     <Route path="pages-produits" element={<PagesProduitsPage />} />
                     <Route path="multilingue" element={<MultilinguePage />} />
+                    <Route path="multilingue/relectures/:translationId" element={<GuideReviewPage />} />
+                    <Route path="multilingue/:guideId" element={<GuidePage />} />
+                    <Route path="multilingue/:guideId/:language" element={<GuideTranslationPage />} />
                     <Route path="kit-lancement" element={<KitLancementPage />} />
                     <Route path="campagnes" element={<CampagnesPage />} />
                     <Route path="distribution" element={<DistributionPage />} />
@@ -90,6 +98,17 @@ export default function App() {
                     </Route>
                     <Route path="*" element={<Navigate to="cockpit" replace />} />
                   </Route>
+                </Route>
+
+                <Route path="/imprimer" element={<RequireAuth />}>
+                  <Route
+                    path="guide/:guideId/:language"
+                    element={
+                      <Suspense fallback={null}>
+                        <GuidePrintPage />
+                      </Suspense>
+                    }
+                  />
                 </Route>
 
                 <Route path="*" element={<NotFoundPage />} />

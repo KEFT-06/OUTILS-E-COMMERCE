@@ -492,11 +492,21 @@ c'est la **traçabilité**. Ce lot livre les différenciateurs 1, 2 et 3 du cahi
   > par vendeur ni le consentement en base. La règle n'est branchée à aucune route tant que la
   > collecte n'existe pas.
 
-- **Module 10 — Multilingue Tier A/B/C et réseau de relecteurs ⛔ non commencé**
-  > ⛔ Le cahier des charges n'est pas dans le dépôt : aucune définition des tiers A, B et C
-  > (langues, niveau de relecture, prix) n'y figure. Le réseau de relecteurs natifs suppose des
-  > comptes, des paiements et une file de relecture, donc une base de données et une
-  > authentification. Le module reste affiché « bientôt » ; rien n'est simulé.
+- **Module 10 — Guides multilingues et réseau de relecteurs ✅ (septembre 2026)**
+  - Langues : les 10 langues les plus parlées au monde en tête, dans l'ordre d'Ethnologue 2025
+    (anglais, chinois mandarin, hindi, espagnol, arabe, français, bengali, portugais, russe,
+    indonésien), puis 20 autres, dont swahili, haoussa, yoruba, igbo, amharique, lingala, wolof et peul.
+  - Niveaux définis : **C** traduit par l'IA (Gemini) puis contrôlé automatiquement (sections, titre,
+    chiffres y compris en chiffres arabes-indiens, liens, noms gardés tels quels) ; **B** relu et
+    validé par l'auteur, original et traduction côte à côte ; **A** relu par un locuteur natif.
+  - Réseau de relecteurs : privilège « Relire des guides », langues maternelles déclarées, file sans
+    texte avant prise en charge, accès retiré une fois la relecture rendue, second facteur obligatoire.
+  - Limites : 1/3/5/10/illimité langues par guide ; relecture native dès Pro ; 2 points par langue,
+    10 points par relecture, rendus si la demande est annulée avant d'être prise en charge.
+  - Exports : PDF par la fenêtre d'impression (toutes les écritures, arabe de droite à gauche), Word
+    et HTML, avec la couverture générée et le niveau de relecture.
+  > ⛔ **Bloqué sur toi :** clé Gemini (sans elle, la traduction reste fermée) ; rémunération et
+  > recrutement des premiers relecteurs natifs.
 
 ## Refonte UI/UX — septembre 2026 ✅
 
@@ -571,6 +581,19 @@ Détail dans `docs/COMPTES-ET-ADMINISTRATION.md`.
   anti-inflammatoire ») ; les écrans attendent une vraie analyse.
 - **Vérifié** : 47 tests serveur, `tsc`, build, audit de 32 écrans (0 violation axe, 0 débordement).
   > ⛔ **Bloqué sur toi :** prix définitifs ; Supabase ; paiement en ligne ; e-mails transactionnels.
+
+## Connexions, guides multilingues et couvertures — septembre 2026 ✅
+
+- **Historique des connexions** : heure de connexion, de déconnexion et durée de chaque visite, avec
+  la raison de la fin (déconnexion, blocage, inactivité, mot de passe changé…). Page
+  *Administration → Connexions* et onglet de la fiche utilisateur ; conservé 12 mois, sans jeton ni
+  adresse IP complète. Un onglet fermé sans déconnexion est clos à sa dernière activité.
+- **Activité et points** : utilisateurs actifs du jour, sur 7 et 30 jours, durée moyenne ; points
+  utilisés par compte (mois en cours, 30 jours, depuis l'inscription) ; « Bloquer / Débloquer ».
+- **Guides multilingues** : module 10 livré (voir plus haut).
+- **Couvertures générées** pour le PDF des guides et des ebooks du Studio : image sans texte
+  (Higgsfield), titre posé par la mise en page, image conservée en base car le fournisseur l'efface.
+- **Vérifié** : 55 tests serveur (connexions, traduction, relecture native, couverture), `tsc`, build.
 
 ## Ordre de bataille recommandé
 
