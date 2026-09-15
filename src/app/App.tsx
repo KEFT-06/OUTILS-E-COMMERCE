@@ -42,6 +42,7 @@ import {
   AdminUsersPage,
 } from '@/app/routes/AdminPages';
 import { NotFoundPage } from '@/app/routes/NotFoundPage';
+import { ErrorBoundary } from '@/shared/components/ErrorBoundary';
 import { Toaster } from '@/shared/ui/sonner';
 import { TooltipProvider } from '@/shared/ui/tooltip';
 
@@ -57,6 +58,7 @@ export default function App() {
         <AuthProvider>
           <CreditGateProvider>
             <TooltipProvider delayDuration={200}>
+              <ErrorBoundary>
               <Routes>
                 <Route path="/" element={<LandingPage />} />
                 <Route path="/connexion" element={<LoginPage />} />
@@ -113,6 +115,7 @@ export default function App() {
 
                 <Route path="*" element={<NotFoundPage />} />
               </Routes>
+              </ErrorBoundary>
               <Toaster position="bottom-right" mobileOffset={{ bottom: 88 }} closeButton />
             </TooltipProvider>
           </CreditGateProvider>

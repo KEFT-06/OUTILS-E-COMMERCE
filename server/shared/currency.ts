@@ -52,7 +52,7 @@ export function formatMoney(amount: number, currency: string): string {
       maximumFractionDigits: digits,
     })
       .format(amount)
-      .replace(/ /g, ' ');
+      .replace(/\u202f/g, '\u00a0');
   } catch {
     return `${amount.toLocaleString('fr-FR')} ${currency}`;
   }

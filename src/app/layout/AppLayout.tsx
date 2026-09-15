@@ -1,6 +1,7 @@
 import { Suspense, useEffect } from 'react';
 import { Outlet, useLocation } from 'react-router-dom';
 import { WorkspaceProvider } from '@/app/providers/WorkspaceProvider';
+import { ErrorBoundary } from '@/shared/components/ErrorBoundary';
 import { SidebarInset, SidebarProvider } from '@/shared/ui/sidebar';
 import { Skeleton } from '@/shared/ui/skeleton';
 import { AppHeader } from './AppHeader';
@@ -55,9 +56,11 @@ export function AppLayout() {
           <div id="contenu" tabIndex={-1} className="min-w-0 flex-1 px-4 pt-6 pb-28 outline-none sm:px-6 md:pb-12 lg:px-8">
             <div className="mx-auto w-full max-w-6xl">
               {/* La clé relance le squelette à chaque écran chargé à la demande. */}
-              <Suspense key={pathname} fallback={<PageSkeleton />}>
-                <Outlet />
-              </Suspense>
+              <ErrorBoundary variant="inline" resetKey={pathname}>
+                <Suspense key={pathname} fallback={<PageSkeleton />}>
+                  <Outlet />
+                </Suspense>
+              </ErrorBoundary>
             </div>
           </div>
         </SidebarInset>

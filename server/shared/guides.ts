@@ -127,7 +127,7 @@ function asciiDigits(text: string): string {
  * chiffres, pour ne pas fusionner une liste « 1, 2, 3 ».
  */
 function numbersOf(text: string): string[] {
-  const matches = asciiDigits(text).match(/\d{1,3}(?:[   .,٬]\d{3})+(?:[.,٫]\d+)?|\d+(?:[.,٫]\d+)?/g) ?? [];
+  const matches = asciiDigits(text).match(/\d{1,3}(?:[ \u00a0\u202f.,\u066c]\d{3})+(?:[.,\u066b]\d+)?|\d+(?:[.,\u066b]\d+)?/g) ?? [];
   return matches.map((match) => match.replace(/\D/g, ''));
 }
 
