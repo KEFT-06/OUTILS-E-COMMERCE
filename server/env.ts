@@ -68,6 +68,15 @@ const schema = z.object({
   EMAIL_FROM: emptyAsUndefined(z.string().min(3).optional()),
   /** Surchargeable pour tester contre un serveur factice. */
   EMAIL_API_URL: emptyAsUndefined(z.string().url().optional()),
+  /**
+   * Paiement en ligne des paliers (Stripe Checkout). STRIPE_API_KEY : clé secrète (sk_test_… en
+   * mode test, sk_live_… en réel). STRIPE_WEBHOOK_SECRET : secret de signature du webhook
+   * /api/billing/webhook (whsec_…), recommandé pour ne manquer aucun paiement.
+   */
+  STRIPE_API_KEY: emptyAsUndefined(z.string().min(1).optional()),
+  STRIPE_WEBHOOK_SECRET: emptyAsUndefined(z.string().min(1).optional()),
+  STRIPE_API_URL: emptyAsUndefined(z.string().url().default('https://api.stripe.com')),
+
   /** Facultatif : boîte qui reçoit une copie de chaque message de la page Contact. */
   CONTACT_INBOX_EMAIL: emptyAsUndefined(z.string().email().optional()),
 
@@ -186,6 +195,7 @@ export const providers = {
   gemini: Boolean(env.GEMINI_API_KEY),
   webSearch: Boolean(env.BRAVE_SEARCH_API_KEY),
   email: Boolean(env.EMAIL_PROVIDER && env.EMAIL_API_KEY && env.EMAIL_FROM),
+  payments: Boolean(env.STRIPE_API_KEY && !env.STRIPE_API_KEY.trim().startsWith('pk_')),
   higgsfield: Boolean(env.HIGGSFIELD_API_KEY_ID && env.HIGGSFIELD_API_KEY_SECRET),
   gamma: Boolean(env.GAMMA_API_KEY),
   meta: Boolean(env.META_ACCESS_TOKEN),

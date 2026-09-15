@@ -62,7 +62,11 @@ export function createApp() {
   // Exception unique : les brouillons de produits entièrement rédigés, jusqu'à 4 Mo.
   const workspaceJson = express.json({ limit: '5mb' });
   const defaultJson = express.json({ limit: '1mb' });
-  app.use((req, res, next) => (req.path.startsWith('/api/workspace/') ? workspaceJson : defaultJson)(req, res, next));
+  // Webhook Stripe : corps brut, la signature porte sur les octets exacts reçus.
+  const webhookBody = express.raw({ type: 'application/json', limit: '1mb' });
+  app.use((req, res, next) =>
+    (req.path === '/api/billing/webhook' ? webhookBody : req.path.startsWith('/api/workspace/') ? workspaceJson : defaultJson)(req, res, next),
+  );
   app.use(express.urlencoded({ extended: false, limit: '1mb' }));
 
   /* ------------------------------------------------------------------------ */

@@ -1,10 +1,10 @@
-import { useCallback, useEffect, useState } from 'react';
-import { Link, useLocation, useNavigate } from 'react-router-dom';
+import { useCallback, useEffect, useRef, useState } from 'react';
+import { Link, useLocation, useNavigate, useSearchParams } from 'react-router-dom';
 import { Controller, useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 import { toast } from 'sonner';
-import { ArrowRight, Bookmark, Check, Database, Download, History, KeyRound, LogOut, MonitorSmartphone, Pencil, PlugZap, ShieldCheck, Trash2, TriangleAlert, X, Zap } from 'lucide-react';
+import { ArrowRight, Bookmark, Check, CreditCard, FlaskConical, Database, Download, History, KeyRound, LogOut, MonitorSmartphone, Pencil, PlugZap, ShieldCheck, Trash2, TriangleAlert, X, Zap } from 'lucide-react';
 import { useCreditGate } from '@/app/providers/CreditGateProvider';
 import { initialsOf, useAuth } from '@/features/auth/AuthContext';
 import { PASSWORD_MIN_LENGTH, PasswordHints, PasswordInput } from '@/features/auth/PasswordInput';
@@ -20,8 +20,9 @@ import { triggerDownload } from '@/shared/lib/download';
 import { formatDateFr, formatRelativeFr } from '@/shared/lib/formatDate';
 import { CREDIT_REASON_LABELS, labelOf } from '@/shared/lib/labels';
 import { usePlans } from '@/shared/lib/plans';
+import { useProviders } from '@/shared/lib/useProviders';
 import { cn } from '@/shared/lib/utils';
-import type { Account } from '@/shared/types/auth';
+import type { Account, PlanDefinition } from '@/shared/types/auth';
 import { Alert, AlertDescription, AlertTitle } from '@/shared/ui/alert';
 import { Avatar, AvatarFallback } from '@/shared/ui/avatar';
 import { Badge } from '@/shared/ui/badge';
@@ -461,8 +462,40 @@ function SavedNichesCard({ account, onSelect }: { account: Account; onSelect: (n
   );
 }
 
+/** Paiement d'un palier par carte : la page de paiement est celle de Stripe, le montant est fixé par le serveur. */
+function CheckoutButtons({ plan }: { plan: PlanDefinition }) {
+  const [busy, setBusy] = useState<'month' | 'year' | null>(null);
+
+  const pay = async (period: 'month' | 'year') => {
+    setBusy(period);
+    try {
+      const { url } = await apiRequest<{ url: string }>('/api/billing/checkout', { method: 'POST', body: { plan: plan.id, period } });
+      if (new URL(url).protocol !== 'https:') throw new Error('Adresse de paiement invalide.');
+      window.location.assign(url);
+    } catch (caught) {
+      toast.error('Le paiement n’a pas pu démarrer', { description: toApiError(caught, 'Réessayez dans un moment.').message });
+      setBusy(null);
+    }
+  };
+
+  return (
+    <div className="grid gap-2">
+      <Button className="w-full" onClick={() => void pay('month')} disabled={busy !== null}>
+        {busy === 'month' ? <Spinner /> : <CreditCard />}
+        Payer 1 mois
+      </Button>
+      <Button variant="outline" className="w-full" onClick={() => void pay('year')} disabled={busy !== null}>
+        {busy === 'year' && <Spinner />}
+        Payer 1 an
+      </Button>
+    </div>
+  );
+}
+
 function PlansCard({ account }: { account: Account }) {
   const { catalog, error } = usePlans(account.country);
+  const providers = useProviders();
+  const online = providers?.payments ?? false;
 
   return (
     <Card id="paliers" className="scroll-mt-24">
@@ -473,9 +506,20 @@ function PlansCard({ account }: { account: Account }) {
         <CardDescription>
           Prix en {catalog?.currency ?? account.currency}, selon votre pays. Chaque forfait fixe vos points, vos niches
           enregistrées et vos méthodes publicitaires.
+          {online && ' Paiement sécurisé par carte bancaire sur la page de Stripe : Smart Creator ne voit jamais votre carte.'}
         </CardDescription>
       </CardHeader>
-      <CardContent>
+      <CardContent className="space-y-4">
+        {providers?.paymentMode === 'test' && (
+          <Alert variant="info">
+            <FlaskConical />
+            <AlertTitle>Paiement en mode test</AlertTitle>
+            <AlertDescription>
+              Aucune carte réelle n’est débitée. Pour essayer : carte 4242 4242 4242 4242, une date d’expiration future et
+              n’importe quel code.
+            </AlertDescription>
+          </Alert>
+        )}
         {error ? (
           <Alert variant="danger">
             <TriangleAlert />
@@ -485,18 +529,31 @@ function PlansCard({ account }: { account: Account }) {
           <PlanCards
             catalog={catalog}
             currentPlanId={account.plan.id}
-            renderAction={(plan, isCurrent) =>
-              isCurrent ? (
+            renderAction={(plan, isCurrent) => {
+              const payable = Boolean(plan.price && plan.price.monthly > 0);
+              const current = (
                 <Button variant="outline" className="w-full" disabled>
                   <Check />
                   Palier actuel
                 </Button>
-              ) : plan.price?.monthly === 0 ? null : (
+              );
+              if (!payable) return isCurrent ? current : null;
+              if (online) {
+                return (
+                  <div className="space-y-2">
+                    {isCurrent && <p className="text-center text-sm font-medium text-brand-green-text">Palier actuel : prolongez-le</p>}
+                    <CheckoutButtons plan={plan} />
+                  </div>
+                );
+              }
+              return isCurrent ? (
+                current
+              ) : (
                 <p className="text-xs leading-relaxed text-muted-foreground">
                   Paiement en ligne bientôt disponible. En attendant, l’administrateur active ce palier après votre paiement.
                 </p>
-              )
-            }
+              );
+            }}
           />
         )}
       </CardContent>
@@ -1448,9 +1505,60 @@ function PersonalDataCard({ account }: { account: Account }) {
 /*  Page                                                                       */
 /* -------------------------------------------------------------------------- */
 
+/** Retour de la page de paiement Stripe : confirmation auprès du serveur, puis nettoyage de l'adresse. */
+function usePaymentReturn() {
+  const { refresh } = useAuth();
+  const [params, setParams] = useSearchParams();
+  const handled = useRef(false);
+  const outcome = params.get('paiement');
+  const sessionId = params.get('session');
+
+  useEffect(() => {
+    if (!outcome || handled.current) return;
+    handled.current = true;
+    const clear = () =>
+      setParams(
+        (previous) => {
+          const next = new URLSearchParams(previous);
+          next.delete('paiement');
+          next.delete('session');
+          return next;
+        },
+        { replace: true },
+      );
+
+    if (outcome !== 'reussi' || !sessionId) {
+      toast.info('Paiement annulé', { description: 'Aucun montant n’a été débité.' });
+      clear();
+      return;
+    }
+
+    apiRequest<{ status: 'paid' | 'pending' | 'expired'; expiresAt: string | null }>('/api/billing/confirm', { method: 'POST', body: { sessionId } })
+      .then(async (result) => {
+        await refresh();
+        if (result.status === 'paid') {
+          toast.success('Paiement reçu', {
+            description: result.expiresAt ? `Votre palier est actif jusqu’au ${formatDateFr(result.expiresAt)}.` : 'Votre palier est actif.',
+          });
+        } else if (result.status === 'pending') {
+          toast.info('Paiement en cours de validation', {
+            description: 'Votre palier s’activera dès que Stripe confirmera le paiement : rechargez la page dans quelques minutes.',
+          });
+        } else {
+          toast.error('Session de paiement expirée', { description: 'Aucun montant n’a été débité. Relancez le paiement.' });
+        }
+      })
+      .catch((caught: unknown) => {
+        toast.error('Le paiement n’a pas pu être vérifié', { description: toApiError(caught, 'Réessayez dans un moment.').message });
+      })
+      .finally(clear);
+  }, [outcome, sessionId, refresh, setParams]);
+}
+
 export function AccountView({ onSelectSavedNiche }: AccountViewProps) {
   const { account } = useAuth();
   const location = useLocation();
+  usePaymentReturn();
 
   useEffect(() => {
     if (!location.hash) return;

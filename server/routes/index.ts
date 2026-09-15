@@ -15,6 +15,7 @@ import { accountRouter } from '@server/routes/account';
 import { adminRouter } from '@server/routes/admin';
 import { authRouter } from '@server/routes/auth';
 import { coversRouter, guidesRouter, reviewsRouter } from '@server/routes/guides';
+import { billingRouter } from '@server/routes/billing';
 import { publicRouter } from '@server/routes/public';
 import { reportsRouter } from '@server/routes/reports';
 import { workspaceRouter } from '@server/routes/workspace';
@@ -80,6 +81,7 @@ import {
 } from '@server/services/generations';
 import { resolveChariowCredentials } from '@server/services/integrations';
 import { effectiveLimits } from '@server/services/accounts';
+import { stripeMode } from '@server/services/billing/stripe';
 import { currencyForCountry, getRates, isSupportedCurrency } from '@server/services/currency';
 import { FEATURES, PlansUnavailableError, getPlanConfig, planPrice } from '@server/services/plans';
 import { AD_FRAMEWORKS, findAdFramework, isAdFrameworkAvailable } from '@server/shared/adFrameworks';
@@ -99,6 +101,7 @@ api.use('/reviews', reviewsRouter);
 api.use('/reports', reportsRouter);
 api.use('/workspace', workspaceRouter);
 api.use('/writing', writingRouter);
+api.use('/billing', billingRouter);
 api.use(publicRouter);
 
 /* -------------------------------------------------------------------------- */
@@ -121,7 +124,10 @@ api.get('/health', (_req, res) => {
       adIngestion: providers.meta,
       webSearch: providers.webSearch,
       email: providers.email,
+      payments: providers.payments,
     },
+    /** test : aucune carte réelle débitée. */
+    paymentMode: stripeMode(),
   });
 });
 

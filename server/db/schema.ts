@@ -493,6 +493,31 @@ export const passwordTokens = pgTable(
   (table) => [index('password_tokens_user_idx').on(table.userId)],
 ).enableRLS();
 
+/**
+ * Demandes de paiement en ligne (sessions Stripe Checkout). Le montant est fixé par le
+ * serveur ; le palier n'est activé qu'une fois la session confirmée payée par Stripe.
+ */
+export const paymentCheckouts = pgTable(
+  'payment_checkouts',
+  {
+    /** Identifiant de la session chez Stripe. */
+    id: text('id').primaryKey(),
+    userId: uuid('user_id')
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
+    plan: planId('plan').notNull(),
+    periodMonths: integer('period_months').notNull(),
+    currency: text('currency').notNull(),
+    amountMinor: integer('amount_minor').notNull(),
+    /** open · paid · expired */
+    status: text('status').notNull().default('open'),
+    paymentId: uuid('payment_id'),
+    createdAt: createdAt(),
+    completedAt: moment('completed_at'),
+  },
+  (table) => [index('payment_checkouts_user_idx').on(table.userId, table.createdAt)],
+).enableRLS();
+
 /** Messages envoyés depuis la page Contact, conservés 12 mois. */
 export const contactMessages = pgTable(
   'contact_messages',

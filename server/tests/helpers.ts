@@ -30,6 +30,9 @@ export async function createTestApp(overrides: Record<string, string> = {}): Pro
     EMAIL_API_KEY: '',
     EMAIL_FROM: '',
     EMAIL_API_URL: '',
+    STRIPE_API_KEY: '',
+    STRIPE_WEBHOOK_SECRET: '',
+    STRIPE_API_URL: 'http://127.0.0.1:9',
     EXCHANGE_RATES_URL: 'off',
     ...overrides,
   });

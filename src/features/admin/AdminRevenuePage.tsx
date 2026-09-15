@@ -19,6 +19,7 @@ import { PageHeader } from '@/shared/components/PageHeader';
 import { formatDateFr } from '@/shared/lib/formatDate';
 import { PAYMENT_METHOD_LABELS, labelOf } from '@/shared/lib/labels';
 import { formatFcfa } from '@/shared/lib/plans';
+import { useProviders } from '@/shared/lib/useProviders';
 import { formatPaymentAmount } from '@/features/admin/format';
 import { Alert, AlertDescription, AlertTitle } from '@/shared/ui/alert';
 import { Badge } from '@/shared/ui/badge';
@@ -31,6 +32,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 const revenueConfig = { amount: { label: 'Encaissé (FCFA)', color: 'var(--chart-1)' } } satisfies ChartConfig;
 
 export function AdminRevenuePage() {
+  const providers = useProviders();
   const { account } = useAuth();
   const meta = useAdminMeta();
   const [granularity, setGranularity] = useState<Granularity>('month');
@@ -64,8 +66,10 @@ export function AdminRevenuePage() {
 
       <Alert variant="info">
         <Info />
-        <AlertTitle>Le paiement en ligne n’est pas encore branché</AlertTitle>
+        <AlertTitle>{providers?.payments ? 'Paiements par carte enregistrés automatiquement' : 'Le paiement en ligne n’est pas encore branché'}</AlertTitle>
         <AlertDescription>
+          {providers?.payments &&
+            `Un palier payé par carte (Stripe${providers.paymentMode === 'test' ? ', mode test : aucun encaissement réel' : ''}) apparaît ici tout seul. `}
           Un abonnement réglé par Mobile Money, virement ou espèces s’enregistre ici : le montant compte dans les revenus et le palier du
           compte s’active pour la durée payée.
         </AlertDescription>
