@@ -24,6 +24,7 @@ import { AppError } from '@server/middleware';
 import { AUTH_EVENT_LABELS, recordAuthEvent } from '@server/services/audit';
 import { passwordInputSchema, verifyAccountOwner } from '@server/services/auth';
 import { hasAuthenticatorApp, hasSecurityCode } from '@server/services/auth/factors';
+import { listWorkspaceDocuments } from '@server/services/workspace';
 import { sessionEndLabel } from '@server/shared/sessions';
 
 /**
@@ -83,6 +84,7 @@ export async function exportPersonalData(userId: string) {
       db.select().from(featureOverrides).where(eq(featureOverrides.userId, userId)),
       db.select().from(reports).where(eq(reports.userId, userId)).orderBy(desc(reports.createdAt)),
     ]);
+  const workspace = await listWorkspaceDocuments(userId);
 
   return {
     format: 'smart-creator/donnees-personnelles',
@@ -193,6 +195,7 @@ export async function exportPersonalData(userId: string) {
       createdAt: iso(entry.createdAt),
       report: entry.report,
     })),
+    workspace: workspace.map((entry) => ({ kind: entry.kind, updatedAt: iso(entry.updatedAt), data: entry.data })),
     reviewsAsReviewer: reviewed.map((entry) => ({
       translationId: entry.id,
       language: entry.language,

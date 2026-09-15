@@ -1,5 +1,6 @@
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react';
 import { SESSION_EXPIRED_EVENT, apiRequest } from '@/shared/lib/api';
+import { bindAccountStores, flushAccountStores } from '@/shared/lib/persistentStore';
 import type { Account, SecondFactorMethods } from '@/shared/types/auth';
 
 /**
@@ -57,6 +58,12 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   }, [refresh]);
 
   const accountId = account?.id;
+
+  // Brouillons de l'espace de travail : ceux du compte connecté, et de lui seul.
+  useEffect(() => {
+    bindAccountStores(accountId ?? null);
+  }, [accountId]);
+
   useEffect(() => {
     if (!accountId) return;
     const refreshIfVisible = () => {
@@ -101,6 +108,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const logout = useCallback(async () => {
     try {
+      await flushAccountStores().catch(() => undefined);
       await apiRequest('/api/auth/logout', { method: 'POST' });
     } finally {
       setAccount(null);
@@ -109,6 +117,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const logoutEverywhere = useCallback(async () => {
     try {
+      await flushAccountStores().catch(() => undefined);
       await apiRequest('/api/auth/logout-all', { method: 'POST' });
     } finally {
       setAccount(null);

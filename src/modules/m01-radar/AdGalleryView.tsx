@@ -534,7 +534,7 @@ export function AdGalleryView() {
                 {swipe.entries.length.toLocaleString('fr-FR')} publicité(s) sauvegardée(s)
               </p>
               <p className="text-sm text-muted-foreground">
-                Enregistré dans ce navigateur uniquement, en attendant la synchronisation avec votre compte.
+                Enregistré sur votre compte : vous le retrouvez sur tous vos appareils.
               </p>
             </div>
 
@@ -576,8 +576,8 @@ export function AdGalleryView() {
             <AlertTriangle />
             <AlertTitle>Enregistrement impossible</AlertTitle>
             <AlertDescription>
-              Ce navigateur refuse l’enregistrement (stockage plein ou navigation privée). Votre swipe file sera perdu à la
-              fermeture de l’onglet : exportez-le.
+              Votre swipe file n’a pas pu être enregistré sur votre compte (connexion interrompue ?). Il reste affiché dans
+              cet onglet : réessayez dans un instant, ou exportez-le avant de fermer.
             </AlertDescription>
           </Alert>
         )}
@@ -646,7 +646,7 @@ export function AdGalleryView() {
           <DialogHeader>
             <DialogTitle>Vider le swipe file ?</DialogTitle>
             <DialogDescription>
-              Les {swipe.entries.length} publicités sauvegardées et vos notes seront supprimées de ce navigateur. Exportez
+              Les {swipe.entries.length} publicités sauvegardées et vos notes seront supprimées de votre compte. Exportez
               d’abord si vous voulez les garder.
             </DialogDescription>
           </DialogHeader>

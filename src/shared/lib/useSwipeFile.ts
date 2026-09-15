@@ -5,8 +5,8 @@ import { GalleryAd } from '@/shared/types/ingestion';
 /**
  * Swipe file personnel — feuille de route 2.3.
  *
- * Stocké dans le navigateur en attendant la base de données. Chaque entrée
- * relue est validée : un octet corrompu coûte une entrée, pas l'écran entier.
+ * Conservé sur le compte. Chaque entrée relue est validée : une entrée corrompue
+ * coûte une entrée, pas l'écran entier.
  */
 
 /** Contexte de collecte, conservé avec l'annonce pour qu'elle reste interprétable. */
@@ -61,11 +61,13 @@ function isSwipeEntry(value: unknown): value is SwipeEntry {
   );
 }
 
-const store = createPersistentStore<SwipeEntry[]>(
-  'smartcreator_swipe_file_v1',
-  (raw) => (Array.isArray(raw) ? raw.filter(isSwipeEntry) : []),
-  [],
-);
+const store = createPersistentStore<SwipeEntry[]>({
+  kind: 'swipe_file',
+  legacyKey: 'smartcreator_swipe_file_v1',
+  parse: (raw) => (Array.isArray(raw) ? raw.filter(isSwipeEntry) : []),
+  empty: [],
+  merge: (account, legacy) => [...account, ...legacy.filter((entry) => !account.some((kept) => kept.key === entry.key))],
+});
 
 /** Lecture hors composant React : exports et vérification d'originalité. */
 export function getSwipeEntries(): SwipeEntry[] {

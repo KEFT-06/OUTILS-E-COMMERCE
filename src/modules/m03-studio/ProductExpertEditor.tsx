@@ -97,8 +97,8 @@ export function ProductExpertEditor({ product, hasDraft, writeFailed, onSave, on
         <Alert variant="warning">
           <AlertTriangle />
           <AlertDescription>
-            Ce navigateur refuse l’enregistrement : le brouillon sera perdu à la fermeture de l’onglet. Exportez le produit
-            avant de quitter.
+            Le brouillon n’a pas pu être enregistré sur votre compte (connexion interrompue ?). Réessayez dans un instant ;
+            en cas de doute, exportez le produit avant de quitter.
           </AlertDescription>
         </Alert>
       )}

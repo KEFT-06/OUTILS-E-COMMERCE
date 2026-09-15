@@ -72,7 +72,7 @@ const FAQ = [
   {
     question: 'Où sont stockées mes données ?',
     answer:
-      'Votre compte, votre solde de points et vos paiements sont enregistrés sur nos serveurs, dans une base protégée : mot de passe haché, jamais stocké en clair, et clés API chiffrées. Vos brouillons de travail restent pour l’instant dans votre navigateur. La politique de confidentialité détaille ce qui est transmis aux services tiers.',
+      'Votre compte, votre solde de points et vos paiements sont enregistrés sur nos serveurs, dans une base protégée : mot de passe haché, jamais stocké en clair, et clés API chiffrées. Vos rapports et vos brouillons de travail sont enregistrés sur votre compte, et vous pouvez en télécharger une copie ou tout supprimer depuis Mon compte. La politique de confidentialité détaille ce qui est transmis aux services tiers.',
     link: { to: '/confidentialite', label: 'Politique de confidentialité' },
   },
   {

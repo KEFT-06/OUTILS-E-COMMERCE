@@ -274,6 +274,24 @@ export const reports = pgTable(
   (table) => [index('reports_user_idx').on(table.userId, table.createdAt)],
 ).enableRLS();
 
+/**
+ * Brouillons de l'espace de travail, un document par type et par compte : retouches
+ * des produits, swipe file, kits de lancement, pages produits. Voir
+ * server/services/workspace.
+ */
+export const workspaceDocuments = pgTable(
+  'workspace_documents',
+  {
+    userId: uuid('user_id')
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
+    kind: text('kind').notNull(),
+    data: jsonb('data').$type<unknown>().notNull(),
+    updatedAt: moment('updated_at').notNull().defaultNow(),
+  },
+  (table) => [primaryKey({ columns: [table.userId, table.kind] })],
+).enableRLS();
+
 /** Connexion en attente du code de double authentification. */
 export const mfaChallenges = pgTable(
   'mfa_challenges',

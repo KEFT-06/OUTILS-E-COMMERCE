@@ -1,8 +1,8 @@
 import { useSyncExternalStore } from 'react';
-import { createPersistentStore, isRecord } from '@/shared/lib/persistentStore';
+import { createPersistentStore, isRecord, mergeRecords } from '@/shared/lib/persistentStore';
 import { FaqItem, ProductPageDraft, SectionRole } from '@/shared/types/productPage';
 
-/** Saisies du générateur de pages, par produit, conservées dans le navigateur. */
+/** Saisies du générateur de pages, par produit, conservées sur le compte. */
 
 const ROLES: readonly string[] = ['hero', 'problem', 'solution', 'content', 'audience', 'offer', 'faq_cta'] satisfies readonly SectionRole[];
 
@@ -39,16 +39,18 @@ function isPageDraft(value: unknown): value is ProductPageDraft {
 
 type PageDrafts = Record<string, ProductPageDraft>;
 
-const store = createPersistentStore<PageDrafts>(
-  'smartcreator_product_pages_v1',
-  (raw) =>
+const store = createPersistentStore<PageDrafts>({
+  kind: 'product_pages',
+  legacyKey: 'smartcreator_product_pages_v1',
+  parse: (raw) =>
     isRecord(raw)
       ? (Object.fromEntries(
           Object.entries(raw).filter(([id, draft]) => isPageDraft(draft) && draft.productId === id),
         ) as PageDrafts)
       : {},
-  {},
-);
+  empty: {},
+  merge: mergeRecords,
+});
 
 export function useProductPageDrafts() {
   const snapshot = useSyncExternalStore(store.subscribe, store.getState);

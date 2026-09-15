@@ -17,7 +17,7 @@
     "start": "node dist/server.js",
     "preview": "vite preview",
     "typecheck": "tsc --noEmit",
-    "test": "tsx --test \"server/tests/**/*.test.ts\"",
+    "test": "tsx --test \"server/tests/**/*.test.ts\" \"src/**/*.test.ts\"",
     "db:generate": "drizzle-kit generate",
     "admin:create": "tsx server/scripts/create-admin.ts",
     "lint": "eslint . --max-warnings 0",

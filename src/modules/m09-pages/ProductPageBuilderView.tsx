@@ -284,7 +284,8 @@ export function ProductPageBuilderView({ report }: { report: MarketAnalysisRepor
         <Alert variant="warning">
           <AlertTriangle />
           <AlertDescription>
-            Ce navigateur refuse l’enregistrement : vos saisies seront perdues à la fermeture de l’onglet.
+            Vos saisies n’ont pas pu être enregistrées sur votre compte (connexion interrompue ?). Réessayez dans un
+            instant ; en cas de doute, exportez la page avant de fermer l’onglet.
           </AlertDescription>
         </Alert>
       )}

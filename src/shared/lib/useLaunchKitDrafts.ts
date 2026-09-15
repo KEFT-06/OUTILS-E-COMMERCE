@@ -1,8 +1,8 @@
 import { useSyncExternalStore } from 'react';
-import { createPersistentStore, isRecord } from '@/shared/lib/persistentStore';
+import { createPersistentStore, isRecord, mergeRecords } from '@/shared/lib/persistentStore';
 import { AdCopyVariant, BeatText, KitObjective, LaunchKitDraft } from '@/shared/types/launchKit';
 
-/** Saisies du kit de lancement, par produit, conservées dans le navigateur. */
+/** Saisies du kit de lancement, par produit, conservées sur le compte. */
 
 const OBJECTIVES: readonly string[] = ['sales', 'leads', 'traffic'] satisfies readonly KitObjective[];
 
@@ -51,16 +51,18 @@ function isKitDraft(value: unknown): value is LaunchKitDraft {
 
 type KitDrafts = Record<string, LaunchKitDraft>;
 
-const store = createPersistentStore<KitDrafts>(
-  'smartcreator_launch_kits_v1',
-  (raw) =>
+const store = createPersistentStore<KitDrafts>({
+  kind: 'launch_kits',
+  legacyKey: 'smartcreator_launch_kits_v1',
+  parse: (raw) =>
     isRecord(raw)
       ? (Object.fromEntries(
           Object.entries(raw).filter(([id, draft]) => isKitDraft(draft) && draft.productId === id),
         ) as KitDrafts)
       : {},
-  {},
-);
+  empty: {},
+  merge: mergeRecords,
+});
 
 export function useLaunchKitDrafts() {
   const snapshot = useSyncExternalStore(store.subscribe, store.getState);

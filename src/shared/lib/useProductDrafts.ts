@@ -1,5 +1,5 @@
 import { useSyncExternalStore } from 'react';
-import { createPersistentStore, isRecord } from '@/shared/lib/persistentStore';
+import { createPersistentStore, isRecord, mergeRecords } from '@/shared/lib/persistentStore';
 import { DigitalProductIdea } from '@/shared/types/analysis';
 
 /**
@@ -62,9 +62,12 @@ function isProduct(value: unknown): value is DigitalProductIdea {
   );
 }
 
-const store = createPersistentStore<ProductDrafts>(
-  'smartcreator_product_drafts_v1',
-  (raw) => {
+const store = createPersistentStore<ProductDrafts>({
+  kind: 'product_drafts',
+  legacyKey: 'smartcreator_product_drafts_v1',
+  merge: mergeRecords,
+  empty: {},
+  parse: (raw) => {
     if (!isRecord(raw)) return {};
     // Une clé qui ne correspond pas à l'identifiant du produit stocké signale
     // une donnée altérée : on l'écarte plutôt que d'afficher le mauvais produit.
@@ -72,8 +75,7 @@ const store = createPersistentStore<ProductDrafts>(
       Object.entries(raw).filter(([id, product]) => isProduct(product) && product.id === id),
     ) as ProductDrafts;
   },
-  {},
-);
+});
 
 export function useProductDrafts() {
   const snapshot = useSyncExternalStore(store.subscribe, store.getState);

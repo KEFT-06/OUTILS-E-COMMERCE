@@ -513,13 +513,14 @@ export function LaunchKitView({ report }: { report: MarketAnalysisReport }) {
             <Alert variant="warning">
               <AlertTriangle />
               <AlertDescription>
-                Ce navigateur refuse l’enregistrement : exportez le kit avant de fermer l’onglet.
+                Le kit n’a pas pu être enregistré sur votre compte (connexion interrompue ?). Réessayez dans un instant ; en
+                cas de doute, exportez-le avant de fermer l’onglet.
               </AlertDescription>
             </Alert>
           )}
           <p className="text-xs leading-relaxed text-muted-foreground">
             Tous les textes et scripts passent le vérificateur de conformité avant le téléchargement. Vos saisies sont
-            conservées dans ce navigateur.
+            enregistrées sur votre compte.
           </p>
         </CardContent>
       </Card>
