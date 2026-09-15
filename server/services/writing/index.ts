@@ -41,7 +41,8 @@ const clean = (value: string, max: number) =>
     .trim()
     .slice(0, max);
 
-async function findingsOf(sections: { label: string; text: string }[]): Promise<WritingFinding[]> {
+/** Formulations relevées par le vérificateur de conformité, section par section. */
+export async function findingsOf(sections: { label: string; text: string }[]): Promise<WritingFinding[]> {
   try {
     const verdicts = await Promise.all(
       sections.filter((section) => section.text.trim()).map(async (section) => ({ section, verdict: await checkText(section.text) })),

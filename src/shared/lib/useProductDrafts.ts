@@ -34,7 +34,14 @@ function isModule(value: unknown): boolean {
   );
 }
 
-function isProduct(value: unknown): value is DigitalProductIdea {
+function isOrigin(value: unknown): boolean {
+  if (!isRecord(value)) return false;
+  if (value.kind === 'manual') return true;
+  return value.kind === 'video' && typeof value.label === 'string' && (value.url === undefined || typeof value.url === 'string');
+}
+
+/** Produit relu depuis le compte : validé champ par champ. */
+export function isProduct(value: unknown): value is DigitalProductIdea {
   if (!isRecord(value)) return false;
 
   const leadMagnet = value.leadMagnet;
@@ -52,6 +59,7 @@ function isProduct(value: unknown): value is DigitalProductIdea {
     isNumberOrNull(value.estimatedProductionDays) &&
     isNumberOrNull(value.estimatedMarginPercent) &&
     (value.pricingNote === undefined || typeof value.pricingNote === 'string') &&
+    (value.origin === undefined || isOrigin(value.origin)) &&
     typeof value.targetAudience === 'string' &&
     typeof value.transformationPromise === 'string' &&
     typeof value.imageUrl === 'string' &&

@@ -15,7 +15,7 @@ import { PageIncompleteError, exportProductPage } from '@/shared/lib/productPage
 import { safeHttpsUrl } from '@/shared/lib/safeUrl';
 import { useProductDrafts } from '@/shared/lib/useProductDrafts';
 import { useProductPageDrafts } from '@/shared/lib/useProductPageDrafts';
-import type { MarketAnalysisReport } from '@/shared/types/analysis';
+import type { DigitalProductIdea } from '@/shared/types/analysis';
 import type { ReportComplianceVerdict } from '@/shared/types/compliance';
 import type { ProductPageDraft, SectionRole } from '@/shared/types/productPage';
 import { Alert, AlertDescription } from '@/shared/ui/alert';
@@ -47,17 +47,17 @@ function hostname(url: string): string {
 
 const sectionAnchor = (role: SectionRole) => `page-section-${role}`;
 
-export function ProductPageBuilderView({ report }: { report: MarketAnalysisReport }) {
+export function ProductPageBuilderView({ products }: { products: DigitalProductIdea[] }) {
   const productDrafts = useProductDrafts();
   const pageDrafts = useProductPageDrafts();
 
-  const [productId, setProductId] = useState(report.digitalProducts[0]?.id ?? '');
+  const [productId, setProductId] = useState(products[0]?.id ?? '');
   const [previewVariant, setPreviewVariant] = useState<PageVariant>('A');
   const [exporting, setExporting] = useState<PageVariant | null>(null);
   const [exportError, setExportError] = useState<string | null>(null);
   const [blockedVerdict, setBlockedVerdict] = useState<ReportComplianceVerdict | null>(null);
 
-  const baseProduct = report.digitalProducts.find((candidate) => candidate.id === productId) ?? report.digitalProducts[0];
+  const baseProduct = products.find((candidate) => candidate.id === productId) ?? products[0];
 
   if (!baseProduct) {
     return (
@@ -260,7 +260,7 @@ export function ProductPageBuilderView({ report }: { report: MarketAnalysisRepor
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
-                {report.digitalProducts.map((candidate) => (
+                {products.map((candidate) => (
                   <SelectItem key={candidate.id} value={candidate.id}>
                     {productDrafts.effective(candidate).title}
                   </SelectItem>

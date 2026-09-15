@@ -12,6 +12,7 @@ import { type Guide, type GuideSummary, guidesApi } from '@/modules/m10-multilin
 import { PageHeader } from '@/shared/components/PageHeader';
 import { ApiError, toApiError } from '@/shared/lib/apiError';
 import { formatDateFr } from '@/shared/lib/formatDate';
+import { useCustomProducts } from '@/shared/lib/useCustomProducts';
 import { useProductDrafts } from '@/shared/lib/useProductDrafts';
 import type { DigitalProductIdea } from '@/shared/types/analysis';
 import { Alert, AlertDescription } from '@/shared/ui/alert';
@@ -53,7 +54,8 @@ function firstIssue(error: ApiError): string {
 function CreateGuideDialog({ onCreated }: { onCreated: (guide: Guide) => void }) {
   const { currentReport } = useWorkspace();
   const drafts = useProductDrafts();
-  const products = (currentReport?.digitalProducts ?? []).map((product) => drafts.effective(product));
+  const custom = useCustomProducts();
+  const products = [...(currentReport?.digitalProducts ?? []), ...custom.products].map((product) => drafts.effective(product));
 
   const [open, setOpen] = useState(false);
   const [mode, setMode] = useState<'text' | 'product'>('text');
@@ -117,7 +119,9 @@ function CreateGuideDialog({ onCreated }: { onCreated: (guide: Guide) => void })
             </ToggleGroupItem>
           </ToggleGroup>
           {products.length === 0 && (
-            <p className="text-xs text-muted-foreground">Pour partir d’un produit du Studio, analysez d’abord une niche.</p>
+            <p className="text-xs text-muted-foreground">
+              Pour partir d’un produit, analysez une niche ou créez votre produit dans le Studio.
+            </p>
           )}
 
           <div className="grid gap-4 sm:grid-cols-2">

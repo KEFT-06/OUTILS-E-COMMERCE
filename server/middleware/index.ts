@@ -40,6 +40,17 @@ export const errorHandler = (
   res: Response,
   _next: NextFunction,
 ): void => {
+  // Erreurs de lecture du corps de la requête : réponses claires plutôt qu'une erreur interne.
+  const bodyError = typeof err === 'object' && err !== null ? (err as { type?: unknown }).type : undefined;
+  if (bodyError === 'entity.too.large') {
+    res.status(413).json({ error: { code: 'PAYLOAD_TOO_LARGE', message: 'Envoi trop volumineux.' } });
+    return;
+  }
+  if (bodyError === 'entity.parse.failed') {
+    res.status(400).json({ error: { code: 'INVALID_JSON', message: 'Requête illisible.' } });
+    return;
+  }
+
   if (err instanceof AppError) {
     const retryAfter = (err.details as { retryAfterSeconds?: unknown } | undefined)?.retryAfterSeconds;
     if (typeof retryAfter === 'number') res.setHeader('Retry-After', String(retryAfter));

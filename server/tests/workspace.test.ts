@@ -56,7 +56,16 @@ describe('Brouillons de l’espace de travail', () => {
     await agent.put('/api/workspace/product_drafts').send({ data: ['pas', 'un objet'] }).expect(400);
 
     const huge = { p1: { details: 'x'.repeat(600_000) } };
-    const tooLarge = await agent.put('/api/workspace/product_drafts').send({ data: huge }).expect(413);
+    const tooLarge = await agent.put('/api/workspace/launch_kits').send({ data: huge }).expect(413);
     assert.equal(tooLarge.body.error.code, 'WORKSPACE_TOO_LARGE');
+
+    // Les produits rédigés en entier ont plus de place : 600 Ko passent, 4,5 Mo non.
+    await agent.put('/api/workspace/product_drafts').send({ data: huge }).expect(200);
+    await agent.put('/api/workspace/custom_products').send({ data: [{ details: 'x'.repeat(600_000) }] }).expect(200);
+    const tooLargeProducts = await agent.put('/api/workspace/custom_products').send({ data: [{ details: 'x'.repeat(4_500_000) }] }).expect(413);
+    assert.equal(tooLargeProducts.body.error.code, 'WORKSPACE_TOO_LARGE');
+
+    const beyondParser = await agent.put('/api/workspace/swipe_file').send({ data: ['x'.repeat(6_000_000)] }).expect(413);
+    assert.equal(beyondParser.body.error.code, 'PAYLOAD_TOO_LARGE');
   });
 });

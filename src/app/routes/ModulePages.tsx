@@ -1,11 +1,12 @@
 import { lazy, type ReactNode } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { Compass, Sparkles } from 'lucide-react';
+import { Compass, PenSquare, Sparkles } from 'lucide-react';
 import { ACCOUNT_PATH, pathOf, type ModuleId } from '@/app/navigation';
 import { useWorkspace } from '@/app/providers/WorkspaceProvider';
 import { AccountView } from '@/features/account/AccountView';
 import { PageHeader } from '@/shared/components/PageHeader';
-import type { MarketAnalysisReport } from '@/shared/types/analysis';
+import { useCustomProducts } from '@/shared/lib/useCustomProducts';
+import type { DigitalProductIdea, MarketAnalysisReport } from '@/shared/types/analysis';
 import { Button } from '@/shared/ui/button';
 import { Empty, EmptyDescription, EmptyHeader, EmptyTitle } from '@/shared/ui/empty';
 import { Skeleton } from '@/shared/ui/skeleton';
@@ -83,6 +84,67 @@ function useGoTo() {
   return (id: ModuleId) => navigate(pathOf(id));
 }
 
+function LoadingWorkspace() {
+  return (
+    <div className="space-y-6" role="status" aria-label="Chargement">
+      <Skeleton className="h-8 w-64" />
+      <Skeleton className="h-48 rounded-xl" />
+      <Skeleton className="h-64 rounded-xl" />
+    </div>
+  );
+}
+
+/**
+ * Écrans construits sur un produit : ceux de la niche analysée et ceux créés dans
+ * le Studio (à la main ou depuis une vidéo). Sans aucun produit, ils le disent et
+ * proposent d'en obtenir un.
+ */
+function RequireProducts({
+  eyebrow,
+  title,
+  description,
+  children,
+}: {
+  eyebrow: string;
+  title: string;
+  description: string;
+  children: (products: DigitalProductIdea[], report: MarketAnalysisReport | null) => ReactNode;
+}) {
+  const { currentReport, isLoadingReport, setAnalysisDialogOpen } = useWorkspace();
+  const custom = useCustomProducts();
+  const products = [...(currentReport?.digitalProducts ?? []), ...custom.products];
+
+  if (products.length > 0) return <>{children(products, currentReport)}</>;
+  if (isLoadingReport || custom.status === 'loading') return <LoadingWorkspace />;
+
+  return (
+    <div className="space-y-6">
+      <PageHeader eyebrow={eyebrow} title={title} description={description} />
+      <Empty className="border border-dashed py-12">
+        <EmptyHeader>
+          <EmptyTitle>Aucun produit pour l’instant</EmptyTitle>
+          <EmptyDescription>
+            Cet écran part d’un produit : analysez une niche, ou créez votre produit dans le Studio, à la main ou depuis une
+            vidéo.
+          </EmptyDescription>
+        </EmptyHeader>
+        <div className="flex flex-wrap justify-center gap-2">
+          <Button asChild>
+            <Link to={pathOf('studio')}>
+              <PenSquare />
+              Ouvrir le Studio
+            </Link>
+          </Button>
+          <Button variant="outline" onClick={() => setAnalysisDialogOpen(true)}>
+            <Sparkles />
+            Analyser une niche
+          </Button>
+        </div>
+      </Empty>
+    </div>
+  );
+}
+
 /**
  * Écrans construits sur le rapport d'une niche. Sans rapport, ils le disent et
  * proposent d'en obtenir un : aucun rapport d'exemple n'est affiché à la place.
@@ -100,15 +162,7 @@ function RequireReport({
 }) {
   const { currentReport, isLoadingReport, setAnalysisDialogOpen } = useWorkspace();
   if (currentReport) return <>{children(currentReport)}</>;
-  if (isLoadingReport) {
-    return (
-      <div className="space-y-6" role="status" aria-label="Chargement du rapport">
-        <Skeleton className="h-8 w-64" />
-        <Skeleton className="h-48 rounded-xl" />
-        <Skeleton className="h-64 rounded-xl" />
-      </div>
-    );
-  }
+  if (isLoadingReport) return <LoadingWorkspace />;
 
   return (
     <div className="space-y-6">
@@ -199,16 +253,14 @@ export function DossierPdfPage() {
 
 export function StudioPage() {
   const goTo = useGoTo();
+  const { currentReport, isLoadingReport, setAnalysisDialogOpen } = useWorkspace();
+  if (isLoadingReport && !currentReport) return <LoadingWorkspace />;
   return (
-    <RequireReport
-      eyebrow="Créer"
-      title="Studio de création"
-      description="Ebooks, templates et rentabilité des produits de la niche analysée."
-    >
-      {(report) => (
-        <DigitalProductsView report={report} products={report.digitalProducts} onSelectProductForAd={() => goTo('creatifs')} />
-      )}
-    </RequireReport>
+    <DigitalProductsView
+      report={currentReport}
+      onSelectProductForAd={() => goTo('creatifs')}
+      onAnalyzeNiche={() => setAnalysisDialogOpen(true)}
+    />
   );
 }
 
@@ -236,21 +288,21 @@ export function StorybookPage() {
 
 export function PagesProduitsPage() {
   return (
-    <RequireReport eyebrow="Créer" title="Pages produits" description="Pages de vente en 7 sections, à partir de la niche analysée.">
-      {(report) => <ProductPageBuilderView report={report} />}
-    </RequireReport>
+    <RequireProducts eyebrow="Créer" title="Pages produits" description="Pages de vente en 7 sections, à partir de vos produits.">
+      {(products) => <ProductPageBuilderView products={products} />}
+    </RequireProducts>
   );
 }
 
 export function KitLancementPage() {
   return (
-    <RequireReport
+    <RequireProducts
       eyebrow="Vendre"
       title="Kit de lancement"
-      description="Textes publicitaires, scripts et boutons d’appel à l’action par marché, pour un produit de la niche analysée."
+      description="Textes publicitaires, scripts et boutons d’appel à l’action par marché, pour l’un de vos produits."
     >
-      {(report) => <LaunchKitView report={report} />}
-    </RequireReport>
+      {(products, report) => <LaunchKitView products={products} market={report?.market ?? null} />}
+    </RequireProducts>
   );
 }
 

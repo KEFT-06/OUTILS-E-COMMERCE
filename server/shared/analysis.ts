@@ -64,8 +64,13 @@ export interface CompetitorInsight {
   sourceIds?: number[];
 }
 
+/** Produit créé hors d'une analyse de niche : tiré d'une vidéo, ou saisi à la main. */
+export type ProductOrigin = { kind: 'video'; label: string; url?: string } | { kind: 'manual' };
+
 export interface DigitalProductIdea {
   id: string;
+  /** Absent : produit proposé par une analyse de niche. */
+  origin?: ProductOrigin;
   title: string;
   subtitle: string;
   type: 'ebook' | 'template' | 'masterclass' | 'bundle' | 'micro_tool';

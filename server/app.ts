@@ -59,7 +59,10 @@ export function createApp() {
 
   // Plafond de charge utile : sans limite, un corps de requête volumineux
   // suffit à saturer la mémoire du processus.
-  app.use(express.json({ limit: '1mb' }));
+  // Exception unique : les brouillons de produits entièrement rédigés, jusqu'à 4 Mo.
+  const workspaceJson = express.json({ limit: '5mb' });
+  const defaultJson = express.json({ limit: '1mb' });
+  app.use((req, res, next) => (req.path.startsWith('/api/workspace/') ? workspaceJson : defaultJson)(req, res, next));
   app.use(express.urlencoded({ extended: false, limit: '1mb' }));
 
   /* ------------------------------------------------------------------------ */

@@ -1,6 +1,13 @@
-import { Router } from 'express';
-import { aiLimiter, asyncRoute, validateBody } from '@server/middleware';
+import express, { Router, type Request } from 'express';
+import { AppError, aiLimiter, asyncRoute, validateBody } from '@server/middleware';
 import { requireAuth, requireFeature } from '@server/middleware/auth';
+import {
+  VIDEO_FILE_MAX_BYTES,
+  VIDEO_MIME_TYPES,
+  videoLinkSchema,
+  videoToProduct,
+  youtubeWatchUrl,
+} from '@server/services/writing/video';
 import {
   type LaunchKitWritingRequest,
   type ProductWritingRequest,
@@ -22,6 +29,56 @@ writingRouter.post(
   validateBody(productWritingSchema),
   asyncRoute(async (req, res) => {
     res.json(await writeProduct(req.auth!, req.body as ProductWritingRequest));
+  }),
+);
+
+/* -------------------------------------------------------------------------- */
+/*  Vidéo → Produit                                                            */
+/* -------------------------------------------------------------------------- */
+
+writingRouter.post(
+  '/video-link',
+  requireAuth,
+  requireFeature('ai_writing'),
+  aiLimiter,
+  validateBody(videoLinkSchema),
+  asyncRoute(async (req, res) => {
+    const url = youtubeWatchUrl((req.body as { url: string }).url);
+    if (!url) {
+      throw new AppError(400, 'Collez le lien d’une vidéo YouTube publique (https://www.youtube.com/watch?v=…).', 'VIDEO_LINK_INVALID');
+    }
+    res.json(await videoToProduct(req.auth!, { kind: 'youtube', url }));
+  }),
+);
+
+const mediaTypeOf = (req: Request) => String(req.headers['content-type'] ?? '').split(';')[0]!.trim().toLowerCase();
+
+/** Corps brut, lu seulement pour un compte connecté et un type vidéo ou audio, 14 Mo au plus. */
+const videoBody = express.raw({ type: (req) => VIDEO_MIME_TYPES.includes(mediaTypeOf(req as Request)), limit: VIDEO_FILE_MAX_BYTES });
+
+function fileNameOf(req: Request): string {
+  try {
+    return decodeURIComponent(String(req.headers['x-file-name'] ?? ''))
+      .replace(/\p{Cc}/gu, '')
+      .trim()
+      .slice(0, 120);
+  } catch {
+    return '';
+  }
+}
+
+writingRouter.post(
+  '/video-file',
+  requireAuth,
+  requireFeature('ai_writing'),
+  aiLimiter,
+  videoBody,
+  asyncRoute(async (req, res) => {
+    const mimeType = mediaTypeOf(req);
+    if (!VIDEO_MIME_TYPES.includes(mimeType) || !Buffer.isBuffer(req.body) || req.body.length === 0) {
+      throw new AppError(415, 'Envoyez un fichier vidéo ou audio (MP4, MOV, WebM, MP3, M4A, WAV…).', 'VIDEO_TYPE_UNSUPPORTED');
+    }
+    res.json(await videoToProduct(req.auth!, { kind: 'file', mimeType, data: req.body, fileName: fileNameOf(req) }));
   }),
 );
 

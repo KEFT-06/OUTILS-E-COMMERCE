@@ -105,9 +105,13 @@ function provenanceEntry(blockLabel: string, provenance: DataProvenance): Biblio
   };
 }
 
+/**
+ * @param report rapport de la niche dont vient le produit ; null pour un produit créé
+ *        hors analyse (à la main, ou depuis une vidéo citée dans la bibliographie).
+ */
 export function buildProductDocument(
   product: DigitalProductIdea,
-  report: MarketAnalysisReport,
+  report: MarketAnalysisReport | null,
   isEditedVersion: boolean,
 ): ProductDocument {
   const chapters: DocumentChapter[] = [
@@ -136,17 +140,23 @@ export function buildProductDocument(
     },
   ];
 
-  const webSources: BibliographyEntry[] = (report.groundingSources ?? []).map((source) => {
+  const originUrl = product.origin?.kind === 'video' ? safeHttpUrl(product.origin.url) : null;
+  const origin: BibliographyEntry[] =
+    product.origin?.kind === 'video'
+      ? [{ kind: 'Vidéo source', label: product.origin.label, ...(originUrl ? { url: originUrl } : {}) }]
+      : [];
+
+  const webSources: BibliographyEntry[] = (report?.groundingSources ?? []).map((source) => {
     const url = safeHttpUrl(source.url);
     return { kind: 'Source web', label: source.title, ...(url ? { url } : {}) };
   });
 
   const dataSources: BibliographyEntry[] = PROVENANCE_BLOCKS.flatMap(({ key, label }) => {
-    const provenance = report.dataProvenance?.[key];
+    const provenance = report?.dataProvenance?.[key];
     return provenance ? [provenanceEntry(label, provenance)] : [];
   });
 
-  const competitors: BibliographyEntry[] = report.competitors.map((competitor) => ({
+  const competitors: BibliographyEntry[] = (report?.competitors ?? []).map((competitor) => ({
     kind: 'Concurrent analysé',
     label: competitor.name,
     ...(competitor.urlOrHandle ? { detail: competitor.urlOrHandle } : {}),
@@ -157,9 +167,9 @@ export function buildProductDocument(
     subtitle: product.subtitle,
     typeName: product.typeName,
     chapters,
-    bibliography: [...webSources, ...dataSources, ...competitors],
+    bibliography: [...origin, ...webSources, ...dataSources, ...competitors],
     containsDemonstrationData: PROVENANCE_BLOCKS.some(
-      ({ key }) => report.dataProvenance?.[key]?.isDemonstration === true,
+      ({ key }) => report?.dataProvenance?.[key]?.isDemonstration === true,
     ),
     isEditedVersion,
   };

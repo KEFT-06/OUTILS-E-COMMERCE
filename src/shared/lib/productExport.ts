@@ -123,7 +123,8 @@ export async function checkProductExport(productDocument: ProductDocument): Prom
  */
 export async function exportProduct(
   product: DigitalProductIdea,
-  report: MarketAnalysisReport,
+  /** null : produit créé hors analyse. */
+  report: MarketAnalysisReport | null,
   isEditedVersion: boolean,
   format: ProductExportFormat,
   /** Couverture générée prête, placée en première page. */

@@ -26,7 +26,7 @@ import { safeHttpUrl } from '@/shared/lib/safeUrl';
 import { MAX_COPY_VARIANTS, emptyKitDraft, useLaunchKitDrafts } from '@/shared/lib/useLaunchKitDrafts';
 import { useProductDrafts } from '@/shared/lib/useProductDrafts';
 import { cn } from '@/shared/lib/utils';
-import type { MarketAnalysisReport } from '@/shared/types/analysis';
+import type { DigitalProductIdea } from '@/shared/types/analysis';
 import type { ReportComplianceVerdict } from '@/shared/types/compliance';
 import type { AdCopyVariant, BeatText, KitObjective, LaunchKitConfig, LaunchKitDraft } from '@/shared/types/launchKit';
 import { Alert, AlertDescription, AlertTitle } from '@/shared/ui/alert';
@@ -67,13 +67,13 @@ function wordCount(text: string): number {
   return text.trim() ? text.trim().split(/\s+/).length : 0;
 }
 
-export function LaunchKitView({ report }: { report: MarketAnalysisReport }) {
+export function LaunchKitView({ products, market }: { products: DigitalProductIdea[]; market: string | null }) {
   const productDrafts = useProductDrafts();
   const kitDrafts = useLaunchKitDrafts();
 
   const [config, setConfig] = useState<LaunchKitConfig | null>(null);
   const [loadError, setLoadError] = useState<ApiError | null>(null);
-  const [productId, setProductId] = useState(report.digitalProducts[0]?.id ?? '');
+  const [productId, setProductId] = useState(products[0]?.id ?? '');
   const [duration, setDuration] = useState<number | null>(null);
   const [isExporting, setIsExporting] = useState(false);
   const [exportError, setExportError] = useState<string | null>(null);
@@ -104,7 +104,7 @@ export function LaunchKitView({ report }: { report: MarketAnalysisReport }) {
     };
   }, []);
 
-  const baseProduct = report.digitalProducts.find((candidate) => candidate.id === productId) ?? report.digitalProducts[0];
+  const baseProduct = products.find((candidate) => candidate.id === productId) ?? products[0];
 
   if (!baseProduct) {
     return (
@@ -195,7 +195,7 @@ export function LaunchKitView({ report }: { report: MarketAnalysisReport }) {
             modules: product.tableOfContents.map((module) => module.title).filter(Boolean),
           },
           objective: draft.objective,
-          market: report.market ?? null,
+          market,
         }),
       );
       if (!result) return;
@@ -231,7 +231,7 @@ export function LaunchKitView({ report }: { report: MarketAnalysisReport }) {
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
-                {report.digitalProducts.map((candidate) => (
+                {products.map((candidate) => (
                   <SelectItem key={candidate.id} value={candidate.id}>
                     {productDrafts.effective(candidate).title}
                   </SelectItem>

@@ -19,6 +19,9 @@ export interface GeminiService {
   log: string;
 }
 
+/** Média joint à la consigne : fichier encodé, ou vidéo publique désignée par son adresse (YouTube). */
+export type GeminiMedia = { inlineData: { mimeType: string; data: string } } | { fileData: { fileUri: string } };
+
 interface GeminiPayload {
   candidates?: { content?: { parts?: { text?: string; thought?: boolean }[] } }[];
 }
@@ -26,6 +29,8 @@ interface GeminiPayload {
 export async function generateJson<T>(input: {
   service: GeminiService;
   prompt: string;
+  /** Vidéo ou audio à lire avant la consigne. */
+  media?: GeminiMedia;
   /** Schéma de réponse au format OpenAPI de Gemini. */
   responseSchema: Record<string, unknown>;
   /** Valide la réponse ; une exception la rend « illisible ». */
@@ -42,7 +47,7 @@ export async function generateJson<T>(input: {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'x-goog-api-key': env.GEMINI_API_KEY },
       body: JSON.stringify({
-        contents: [{ role: 'user', parts: [{ text: input.prompt }] }],
+        contents: [{ role: 'user', parts: [...(input.media ? [input.media] : []), { text: input.prompt }] }],
         // Température laissée par défaut : les modèles Gemini 3 se dégradent quand on la baisse.
         generationConfig: { responseMimeType: 'application/json', responseSchema: input.responseSchema },
       }),

@@ -76,14 +76,14 @@ export function ProductExpertEditor({ product, hasDraft, writeFailed, onSave, on
     <div className="space-y-5 rounded-xl border border-primary/25 bg-accent/30 p-5">
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <p className="text-sm leading-relaxed text-muted-foreground">
-          Vos retouches sont enregistrées comme un brouillon, à côté de la version du rapport. Les exports utilisent la
+          Vos retouches sont enregistrées comme un brouillon, à côté de la version d’origine. Les exports utilisent la
           version affichée.
         </p>
         <div className="flex shrink-0 flex-wrap gap-2">
           {hasDraft && (
             <Button variant="outline" size="sm" onClick={() => setConfirmDiscardOpen(true)}>
               <RotateCcw />
-              Version du rapport
+              Version d’origine
             </Button>
           )}
           <Button size="sm" onClick={() => onSave(form)} disabled={!isDirty || titleMissing}>
@@ -233,7 +233,7 @@ export function ProductExpertEditor({ product, hasDraft, writeFailed, onSave, on
           <DialogHeader>
             <DialogTitle>Abandonner vos retouches ?</DialogTitle>
             <DialogDescription>
-              Le brouillon sera supprimé et le produit reviendra à la version issue du rapport.
+              Le brouillon sera supprimé et le produit reviendra à sa version d’origine (rapport, vidéo ou création).
             </DialogDescription>
           </DialogHeader>
           <DialogFooter>
@@ -247,7 +247,7 @@ export function ProductExpertEditor({ product, hasDraft, writeFailed, onSave, on
                 onDiscard();
               }}
             >
-              Revenir à la version du rapport
+              Revenir à la version d’origine
             </Button>
           </DialogFooter>
         </DialogContent>

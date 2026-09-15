@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { toast } from 'sonner';
-import { AlertTriangle, FileDown, FileText, PenSquare, Sparkles, Video } from 'lucide-react';
+import { AlertTriangle, FileDown, FileText, PenSquare, Sparkles } from 'lucide-react';
 import { useCreditGate } from '@/app/providers/CreditGateProvider';
 import { ProductExpertEditor } from '@/modules/m03-studio/ProductExpertEditor';
 import { CoverGenerator } from '@/shared/components/CoverGenerator';
@@ -38,24 +38,25 @@ import { Spinner } from '@/shared/ui/spinner';
  *
  * Mode Génératif : l'IA rédige le contenu de chaque module ; le résultat devient
  * un brouillon à relire dans le mode Expert, jamais une version définitive.
- * Le mode Vidéo → Produit reste affiché, désactivé, avec sa raison.
+ * Le mode Vidéo → Produit crée un nouveau produit : il se lance depuis l'en-tête du Studio.
  */
 interface ProductStudioPanelProps {
-  /** Produit tel qu'issu du rapport, avant toute retouche. */
+  /** Produit dans sa version d'origine, avant toute retouche. */
   baseProduct: DigitalProductIdea;
-  report: MarketAnalysisReport;
+  /** Rapport dont vient le produit ; null pour un produit créé hors analyse. */
+  report: MarketAnalysisReport | null;
+  /** Ouvre le mode Expert dès l'affichage (produit qui vient d'être créé). */
+  initialExpertOpen?: boolean;
 }
 
-const VIDEO_MODE_REASON = 'Transformer une vidéo en produit arrive dans une prochaine version du Studio.';
-
-export function ProductStudioPanel({ baseProduct, report }: ProductStudioPanelProps) {
+export function ProductStudioPanel({ baseProduct, report, initialExpertOpen = false }: ProductStudioPanelProps) {
   const drafts = useProductDrafts();
   const providers = useProviders();
   const { runWithCredits } = useCreditGate();
   const product = drafts.effective(baseProduct);
   const hasDraft = drafts.hasDraft(baseProduct.id);
 
-  const [isExpertOpen, setIsExpertOpen] = useState(false);
+  const [isExpertOpen, setIsExpertOpen] = useState(initialExpertOpen);
   /** Change après une rédaction : l'éditeur repart du nouveau brouillon. */
   const [editorRevision, setEditorRevision] = useState(0);
   const [exporting, setExporting] = useState<ProductExportFormat | null>(null);
@@ -99,7 +100,7 @@ export function ProductStudioPanel({ baseProduct, report }: ProductStudioPanelPr
             transformationPromise: product.transformationPromise,
             modules: product.tableOfContents.map((module) => ({ title: module.title || `Module ${module.moduleNumber}`, details: module.details })),
           },
-          market: report.market ?? null,
+          market: report?.market ?? null,
         }),
       );
       if (!result) return;
@@ -151,10 +152,6 @@ export function ProductStudioPanel({ baseProduct, report }: ProductStudioPanelPr
                 <PenSquare />
                 Expert
               </Button>
-              <Button variant="outline" size="sm" disabled title={VIDEO_MODE_REASON} className="border-dashed">
-                <Video />
-                Vidéo → Produit
-              </Button>
             </div>
             <ul className="space-y-0.5 text-xs leading-relaxed text-muted-foreground">
               <li>
@@ -162,7 +159,8 @@ export function ProductStudioPanel({ baseProduct, report }: ProductStudioPanelPr
                 {generativeReason ?? 'l’IA rédige chaque module à partir du titre, de la promesse et du sommaire, en brouillon à relire.'}
               </li>
               <li>
-                <span className="font-medium text-foreground/80">Vidéo → Produit</span> : {VIDEO_MODE_REASON}
+                <span className="font-medium text-foreground/80">Vidéo → Produit</span> : bouton « Depuis une vidéo », en haut du
+                Studio.
               </li>
             </ul>
           </div>
@@ -224,8 +222,8 @@ export function ProductStudioPanel({ baseProduct, report }: ProductStudioPanelPr
               <DialogTitle>Rédiger le contenu du produit</DialogTitle>
               <DialogDescription>
                 L’IA rédige les {product.tableOfContents.length} modules de « {product.title} » à partir du titre, de la
-                promesse et de vos notes. Le texte actuel des modules est remplacé dans votre brouillon ; la version du
-                rapport reste disponible.
+                promesse et de vos notes. Le texte actuel des modules est remplacé dans votre brouillon ; la version
+                d’origine reste disponible.
               </DialogDescription>
             </DialogHeader>
             <p className="text-sm text-muted-foreground">
