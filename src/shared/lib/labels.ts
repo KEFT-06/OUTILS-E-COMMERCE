@@ -24,6 +24,7 @@ export const GENERATION_KIND_LABELS: Record<string, string> = {
   ad_scan: 'Collectes de publicités',
   guide_translation: 'Traductions de guides',
   cover: 'Couvertures',
+  niche_analysis: 'Analyses de niche',
 };
 
 export const FILE_FORMAT_LABELS: Record<string, string> = {

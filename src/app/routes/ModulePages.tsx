@@ -8,6 +8,7 @@ import { PageHeader } from '@/shared/components/PageHeader';
 import type { MarketAnalysisReport } from '@/shared/types/analysis';
 import { Button } from '@/shared/ui/button';
 import { Empty, EmptyDescription, EmptyHeader, EmptyTitle } from '@/shared/ui/empty';
+import { Skeleton } from '@/shared/ui/skeleton';
 
 /**
  * Un composant par route. Chaque page lit la niche active dans l'espace de
@@ -97,8 +98,17 @@ function RequireReport({
   description: string;
   children: (report: MarketAnalysisReport) => ReactNode;
 }) {
-  const { currentReport, setAnalysisDialogOpen } = useWorkspace();
+  const { currentReport, isLoadingReport, setAnalysisDialogOpen } = useWorkspace();
   if (currentReport) return <>{children(currentReport)}</>;
+  if (isLoadingReport) {
+    return (
+      <div className="space-y-6" role="status" aria-label="Chargement du rapport">
+        <Skeleton className="h-8 w-64" />
+        <Skeleton className="h-48 rounded-xl" />
+        <Skeleton className="h-64 rounded-xl" />
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-6">
@@ -160,6 +170,7 @@ export function GaleriePage() {
 
 export function AnalysePage() {
   const goTo = useGoTo();
+  const { deleteReport } = useWorkspace();
   return (
     <RequireReport
       eyebrow="Voir"
@@ -171,6 +182,7 @@ export function AnalysePage() {
           report={report}
           onNavigateToProducts={() => goTo('studio')}
           onNavigateToMetaAds={() => goTo('creatifs')}
+          onDelete={() => deleteReport(report.id)}
         />
       )}
     </RequireReport>

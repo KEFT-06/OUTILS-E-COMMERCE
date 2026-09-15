@@ -27,6 +27,8 @@ export interface ProductPageDraft {
   problem: string;
   notFor: string;
   offerConditions: string;
+  /** Prix affiché, saisi par l'auteur ; vide : celui du produit, s'il en a un. */
+  price?: string;
   faq: FaqItem[];
   images: Partial<Record<SectionRole, string>>;
 }

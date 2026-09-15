@@ -1,8 +1,9 @@
 import { useState } from 'react';
 import { toast } from 'sonner';
-import { BarChart3, BookOpen, Download, Image as ImageIcon, Printer, Sparkles, Video } from 'lucide-react';
+import { BarChart3, BookOpen, Download, Globe, Image as ImageIcon, Printer, Sparkles, Users, Video } from 'lucide-react';
 import { PageHeader } from '@/shared/components/PageHeader';
 import { ComplianceBlockedError, checkReportCompliance, exportReportPDF } from '@/shared/lib/complianceGate';
+import { safeHttpUrl } from '@/shared/lib/safeUrl';
 import type { MarketAnalysisReport, MarketRate } from '@/shared/types/analysis';
 import type { ReportComplianceVerdict } from '@/shared/types/compliance';
 import { Badge } from '@/shared/ui/badge';
@@ -11,6 +12,7 @@ import { Button } from '@/shared/ui/button';
 import { ComplianceBlockDialog } from '@/shared/ui/ComplianceBlockDialog';
 import { LegalNotice } from '@/shared/ui/LegalNotice';
 import { RateBadge } from '@/shared/ui/RateBadge';
+import { SourceRefs } from '@/shared/ui/SourceRefs';
 import { Spinner } from '@/shared/ui/spinner';
 
 interface ReportPDFViewProps {
@@ -19,11 +21,19 @@ interface ReportPDFViewProps {
 
 const sectionTitle = 'flex items-center gap-2 border-b pb-2 text-sm font-bold tracking-wide uppercase';
 
+function rateValue(rate: MarketRate): string {
+  if (rate.score !== null) return `${rate.score} / 100`;
+  if (rate.basis === 'assessment') return 'Appréciation sourcée';
+  return 'Non évalué';
+}
+
 export function ReportPDFView({ report }: ReportPDFViewProps) {
   const [isDownloading, setIsDownloading] = useState(false);
   const [blockedVerdict, setBlockedVerdict] = useState<ReportComplianceVerdict | null>(null);
 
   const isExampleReport = report.dataProvenance?.rates?.isDemonstration ?? false;
+  const sources = report.groundingSources ?? [];
+  const limitations = report.limitations ?? [];
   const rates: MarketRate[] = [
     report.rates.demand,
     report.rates.saturation,
@@ -31,6 +41,10 @@ export function ReportPDFView({ report }: ReportPDFViewProps) {
     report.rates.opportunity,
     report.rates.virality,
   ].filter(Boolean);
+
+  // Numérotation continue : une section absente ne laisse pas de trou.
+  let sectionNumber = 0;
+  const numbered = (title: string) => `${(sectionNumber += 1)}. ${title}`;
 
   const handleDownloadPDF = async () => {
     setIsDownloading(true);
@@ -95,7 +109,7 @@ export function ReportPDFView({ report }: ReportPDFViewProps) {
             <span className="font-medium">Niche : {report.nicheName}</span>
             <span className="flex flex-wrap items-center gap-2">
               {isExampleReport && <Badge variant="info">Rapport d’exemple</Badge>}
-              <Badge variant="default">Verdict : {report.overallVerdict}</Badge>
+              <Badge variant="default">Verdict : {report.overallVerdict ?? 'non établi'}</Badge>
             </span>
           </div>
         </header>
@@ -103,15 +117,19 @@ export function ReportPDFView({ report }: ReportPDFViewProps) {
         <section className="space-y-3">
           <h3 className={sectionTitle}>
             <Sparkles className="size-4 text-brand-orange-text" aria-hidden="true" />
-            1. Synthèse
+            {numbered('Synthèse')}
           </h3>
-          <p className="rounded-lg border bg-muted/50 p-4 text-sm leading-relaxed">{report.executiveSummary}</p>
+          <div className="space-y-2 rounded-lg border bg-muted/50 p-4">
+            <p className="text-sm leading-relaxed">{report.executiveSummary}</p>
+            {report.verdictRationale && <p className="text-xs text-muted-foreground">{report.verdictRationale}</p>}
+            <SourceRefs ids={report.summarySourceIds} sources={sources} />
+          </div>
         </section>
 
         <section className="space-y-3">
           <h3 className={sectionTitle}>
             <BarChart3 className="size-4 text-brand-green-text" aria-hidden="true" />
-            2. Les cinq taux
+            {numbered('Les cinq taux')}
           </h3>
           <div className="grid gap-3 sm:grid-cols-2">
             {rates.map((rate) => (
@@ -120,8 +138,11 @@ export function ReportPDFView({ report }: ReportPDFViewProps) {
                   <span className="text-sm font-semibold">{rate.label}</span>
                   <RateBadge level={rate.level} size="sm" />
                 </div>
-                <span className="font-display text-lg font-extrabold tabular-nums">{rate.score} / 100</span>
-                <p className="line-clamp-2 text-xs text-muted-foreground">{rate.description}</p>
+                <span className={rate.score !== null ? 'font-display text-lg font-extrabold tabular-nums' : 'text-xs font-medium text-muted-foreground'}>
+                  {rateValue(rate)}
+                </span>
+                <p className="line-clamp-3 text-xs text-muted-foreground">{rate.description}</p>
+                <SourceRefs ids={rate.sourceIds} sources={sources} />
               </div>
             ))}
           </div>
@@ -131,18 +152,12 @@ export function ReportPDFView({ report }: ReportPDFViewProps) {
           <section className="space-y-3">
             <h3 className={sectionTitle}>
               <ImageIcon className="size-4 text-brand-green-text" aria-hidden="true" />
-              3. Visuels d’illustration
+              {numbered('Visuels d’illustration')}
             </h3>
             <div className="grid gap-4 sm:grid-cols-2">
               {report.illustrativeImages.map((image) => (
                 <figure key={image.url} className="overflow-hidden rounded-lg border bg-muted/40">
-                  <img
-                    src={image.url}
-                    alt={image.title}
-                    referrerPolicy="no-referrer"
-                    className="h-44 w-full object-cover"
-                    loading="lazy"
-                  />
+                  <img src={image.url} alt={image.title} referrerPolicy="no-referrer" className="h-44 w-full object-cover" loading="lazy" />
                   <figcaption className="p-3">
                     <span className="block text-sm font-semibold">{image.title}</span>
                     <span className="mt-0.5 block text-xs text-muted-foreground">{image.caption}</span>
@@ -153,23 +168,53 @@ export function ReportPDFView({ report }: ReportPDFViewProps) {
           </section>
         )}
 
+        {report.competitors.length > 0 && (
+          <section className="space-y-3">
+            <h3 className={sectionTitle}>
+              <Users className="size-4 text-brand-orange-text" aria-hidden="true" />
+              {numbered('Concurrents repérés')}
+            </h3>
+            <div className="space-y-3">
+              {report.competitors.map((competitor) => (
+                <div key={competitor.id} className="space-y-1.5 rounded-lg border p-4 text-sm">
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <h4 className="font-semibold">{competitor.name}</h4>
+                    <span className="text-xs text-muted-foreground">{competitor.priceRange}</span>
+                  </div>
+                  <p className="text-muted-foreground">{competitor.positioning}</p>
+                  {competitor.exploitableGaps[0] && (
+                    <p>
+                      Angle à exploiter : <span className="font-medium">{competitor.exploitableGaps[0]}</span>
+                    </p>
+                  )}
+                  <SourceRefs ids={competitor.sourceIds} sources={sources} />
+                </div>
+              ))}
+            </div>
+          </section>
+        )}
+
         <section className="space-y-3">
           <h3 className={sectionTitle}>
             <BookOpen className="size-4 text-brand-orange-text" aria-hidden="true" />
-            4. Idées de produits digitaux
+            {numbered('Idées de produits digitaux')}
           </h3>
           <div className="space-y-3">
             {report.digitalProducts.map((product) => (
               <div key={product.id} className="space-y-2 rounded-lg border p-4">
                 <div className="flex flex-wrap items-center justify-between gap-2">
                   <h4 className="font-semibold">{product.title}</h4>
-                  <span className="rounded-md border bg-muted/50 px-2.5 py-1 text-sm font-semibold tabular-nums">
-                    {product.recommendedPrice} {product.currency} · marge estimée {product.estimatedMarginPercent} %
-                  </span>
+                  {product.recommendedPrice !== null && (
+                    <span className="rounded-md border bg-muted/50 px-2.5 py-1 text-sm font-semibold tabular-nums">
+                      {product.recommendedPrice} {product.currency}
+                      {product.estimatedMarginPercent !== null && ` · marge estimée ${product.estimatedMarginPercent} %`}
+                    </span>
+                  )}
                 </div>
                 <p className="text-sm text-muted-foreground">
                   Promesse : <span className="font-medium text-foreground">{product.transformationPromise}</span>
                 </p>
+                {product.pricingNote && <p className="text-xs text-muted-foreground">Repères de prix : {product.pricingNote}</p>}
                 <div className="flex flex-wrap gap-2 text-xs">
                   <Badge variant="outline">Format : {product.typeName}</Badge>
                   <Badge variant="outline">Aimant à prospects : {product.leadMagnet.title}</Badge>
@@ -182,7 +227,7 @@ export function ReportPDFView({ report }: ReportPDFViewProps) {
         <section className="space-y-3">
           <h3 className={sectionTitle}>
             <Video className="size-4 text-brand-green-text" aria-hidden="true" />
-            5. Scripts vidéo publicitaires
+            {numbered('Scripts vidéo publicitaires')}
           </h3>
           <div className="space-y-3">
             {report.adCampaigns.map((ad) => (
@@ -208,11 +253,45 @@ export function ReportPDFView({ report }: ReportPDFViewProps) {
           </div>
         </section>
 
+        {(sources.length > 0 || limitations.length > 0) && (
+          <section className="space-y-3">
+            <h3 className={sectionTitle}>
+              <Globe className="size-4 text-brand-green-text" aria-hidden="true" />
+              {numbered('Sources et limites')}
+            </h3>
+            {sources.length > 0 && (
+              <ol className="space-y-1.5 text-xs">
+                {sources.map((source, index) => {
+                  const url = safeHttpUrl(source.url);
+                  return (
+                    <li key={`${source.id ?? index}-${source.url}`} className="break-words">
+                      <span className="font-semibold tabular-nums">[{source.id ?? index + 1}]</span> {source.title}
+                      {url && (
+                        <>
+                          {' — '}
+                          <a href={url} target="_blank" rel="noopener noreferrer" className="text-muted-foreground underline-offset-4 hover:underline">
+                            {url}
+                          </a>
+                        </>
+                      )}
+                    </li>
+                  );
+                })}
+              </ol>
+            )}
+            {limitations.length > 0 && (
+              <ul className="list-disc space-y-1 pl-4 text-xs text-muted-foreground">
+                {limitations.map((limitation) => (
+                  <li key={limitation}>{limitation}</li>
+                ))}
+              </ul>
+            )}
+          </section>
+        )}
+
         <footer className="space-y-3 border-t pt-6">
           <LegalNotice variant="block" />
-          <p className="text-center text-xs text-muted-foreground">
-            Smart Creator — Veille stratégique &amp; production e-commerce
-          </p>
+          <p className="text-center text-xs text-muted-foreground">Smart Creator — Veille stratégique &amp; production e-commerce</p>
         </footer>
       </article>
 

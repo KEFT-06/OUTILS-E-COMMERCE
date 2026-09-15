@@ -20,6 +20,11 @@ const PRODUCT_TYPES: readonly DigitalProductIdea['type'][] = [
   'micro_tool',
 ];
 
+/** Les analyses n'avancent ni prix, ni marge, ni délai sans source : ces champs peuvent être nuls. */
+function isNumberOrNull(value: unknown): boolean {
+  return value === null || typeof value === 'number';
+}
+
 function isModule(value: unknown): boolean {
   return (
     isRecord(value) &&
@@ -42,10 +47,11 @@ function isProduct(value: unknown): value is DigitalProductIdea {
     typeof value.subtitle === 'string' &&
     PRODUCT_TYPES.includes(value.type as DigitalProductIdea['type']) &&
     typeof value.typeName === 'string' &&
-    typeof value.recommendedPrice === 'number' &&
+    isNumberOrNull(value.recommendedPrice) &&
     typeof value.currency === 'string' &&
-    typeof value.estimatedProductionDays === 'number' &&
-    typeof value.estimatedMarginPercent === 'number' &&
+    isNumberOrNull(value.estimatedProductionDays) &&
+    isNumberOrNull(value.estimatedMarginPercent) &&
+    (value.pricingNote === undefined || typeof value.pricingNote === 'string') &&
     typeof value.targetAudience === 'string' &&
     typeof value.transformationPromise === 'string' &&
     typeof value.imageUrl === 'string' &&

@@ -175,10 +175,22 @@ export function ProductPageBuilderView({ report }: { report: MarketAnalysisRepor
     ),
     offer: (
       <div className="space-y-3">
-        <p className="text-sm text-muted-foreground">
-          Prix repris du produit : <strong className="text-foreground">{model.price}</strong>
-          {product.leadMagnet.title ? <> · bonus : « {product.leadMagnet.title} »</> : null}
-        </p>
+        <Field>
+          <FieldLabel htmlFor="page-price">Prix affiché</FieldLabel>
+          <Input
+            id="page-price"
+            value={draft.price ?? ''}
+            onChange={(event) => update({ price: event.target.value })}
+            maxLength={60}
+            placeholder={product.recommendedPrice !== null ? model.price : 'ex. 5 000 FCFA'}
+          />
+          <p className="text-xs text-muted-foreground">
+            {product.recommendedPrice !== null
+              ? 'Vide : le prix du produit est repris.'
+              : 'Le produit n’a pas de prix : indiquez le vôtre, ou laissez vide pour ne pas en afficher.'}
+            {product.leadMagnet.title ? <> Bonus repris : « {product.leadMagnet.title} ».</> : null}
+          </p>
+        </Field>
         <Field>
           <FieldLabel htmlFor="page-conditions">Conditions (remboursement, accès…) — facultatif</FieldLabel>
           <Textarea

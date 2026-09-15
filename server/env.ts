@@ -39,8 +39,16 @@ const schema = z.object({
   // et renvoie 503 avec un message explicite si elle manque.
   GEMINI_API_KEY: z.string().min(1).optional(),
   GEMINI_API_URL: z.string().url().default('https://generativelanguage.googleapis.com'),
-  /** Modèle de traduction des guides multilingues. */
-  GEMINI_MODEL: z.string().regex(/^[\w.-]+$/).default('gemini-2.5-flash'),
+  /** Modèle Gemini des analyses de niche, des rédactions et des traductions. */
+  GEMINI_MODEL: emptyAsUndefined(z.string().regex(/^[\w.-]+$/).default('gemini-3.5-flash')),
+  /**
+   * Recherche web des analyses de niche (Brave Search API). La recherche Google
+   * intégrée à Gemini interdit de conserver ou d'exporter ses résultats : il faut un
+   * moteur dont l'offre autorise le stockage. Sans clé, l'analyse le dit et
+   * n'avance aucun fait de marché.
+   */
+  BRAVE_SEARCH_API_KEY: emptyAsUndefined(z.string().min(1).optional()),
+  BRAVE_SEARCH_API_URL: emptyAsUndefined(z.string().url().default('https://api.search.brave.com')),
   // Higgsfield authentifie par une paire identifiant + secret, envoyée sous la
   // forme `Authorization: Key ID:SECRET` (docs.higgsfield.ai/docs/authentication).
   // L'ancienne variable unique HIGGSFIELD_API_KEY ne pouvait fonctionner avec
@@ -163,6 +171,7 @@ export const listenHost = env.HOST || (isProd ? '0.0.0.0' : '127.0.0.1');
 /** Vrai si la clé du fournisseur est présente. Aucune route ne doit la lire directement. */
 export const providers = {
   gemini: Boolean(env.GEMINI_API_KEY),
+  webSearch: Boolean(env.BRAVE_SEARCH_API_KEY),
   higgsfield: Boolean(env.HIGGSFIELD_API_KEY_ID && env.HIGGSFIELD_API_KEY_SECRET),
   gamma: Boolean(env.GAMMA_API_KEY),
   meta: Boolean(env.META_ACCESS_TOKEN),

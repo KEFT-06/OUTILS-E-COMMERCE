@@ -52,7 +52,7 @@ export function collectReportSections(report: MarketAnalysisReport): ComplianceS
     if (text.trim()) sections.push({ label, text: text.slice(0, MAX_SECTION_CHARS) });
   };
 
-  push('Synthèse du rapport', [report.executiveSummary, report.overallVerdict]);
+  push('Synthèse du rapport', [report.executiveSummary, report.overallVerdict ?? undefined, report.verdictRationale]);
 
   push(
     'Indicateurs de marché',

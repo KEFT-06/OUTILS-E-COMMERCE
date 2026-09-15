@@ -15,6 +15,8 @@ import { accountRouter } from '@server/routes/account';
 import { adminRouter } from '@server/routes/admin';
 import { authRouter } from '@server/routes/auth';
 import { coversRouter, guidesRouter, reviewsRouter } from '@server/routes/guides';
+import { reportsRouter } from '@server/routes/reports';
+import { type AnalysisRequest, analysisRequestSchema, analyzeNiche } from '@server/services/analysis';
 import {
   METHODOLOGY_VERSION,
   computeCompetitiveScore,
@@ -91,6 +93,7 @@ api.use('/admin', adminRouter);
 api.use('/guides', guidesRouter);
 api.use('/covers', coversRouter);
 api.use('/reviews', reviewsRouter);
+api.use('/reports', reportsRouter);
 
 /* -------------------------------------------------------------------------- */
 /*  Santé et capacités                                                         */
@@ -110,6 +113,7 @@ api.get('/health', (_req, res) => {
       video: providers.higgsfield,
       storybook: providers.gamma,
       adIngestion: providers.meta,
+      webSearch: providers.webSearch,
     },
   });
 });
@@ -790,10 +794,10 @@ api.post(
     if (!providers.meta) throw providerUnavailable('Meta Ad Library');
     if (!providers.gemini) throw providerUnavailable('Gemini');
 
-    // TODO(Lot 2) : agent SCOUT → ingestion → computeCompetitiveScore → agent ANALYSTE.
+    // À construire sur la bibliothèque publicitaire Meta : ingestion → score → synthèse.
     throw new AppError(
       501,
-      'Le scan de marché en direct n’est pas encore disponible. Consultez le rapport d’exemple en attendant.',
+      'Le scan de marché en direct n’est pas encore disponible : il attend l’accès à la bibliothèque publicitaire Meta. Analysez une niche précise en attendant.',
       'NOT_IMPLEMENTED',
     );
   }),
@@ -803,25 +807,17 @@ api.post(
 /*  Module 2 — Analyse Stratégique IA                                          */
 /* -------------------------------------------------------------------------- */
 
-const analyzeSchema = z.object({
-  query: nicheQuerySchema,
-  market: marketSchema.optional(),
-});
-
+/**
+ * Analyse d'une niche : faits de marché sourcés, propositions de l'IA dites comme
+ * telles, rapport conservé sur le compte (server/services/analysis).
+ */
 api.post(
   '/analyze-niche',
   requireAuth,
   requireFeature('niche_analysis'),
   aiLimiter,
-  validateBody(analyzeSchema),
-  asyncRoute(async (_req, _res) => {
-    if (!providers.gemini) throw providerUnavailable('Gemini');
-
-    // TODO(Lot 2) : rapport 6 blocs, chaque affirmation portant sa source.
-    throw new AppError(
-      501,
-      'L’analyse en direct n’est pas encore disponible. Consultez le rapport d’exemple en attendant.',
-      'NOT_IMPLEMENTED',
-    );
+  validateBody(analysisRequestSchema),
+  asyncRoute(async (req, res) => {
+    res.status(201).json(await analyzeNiche(req.auth!, req.body as AnalysisRequest));
   }),
 );

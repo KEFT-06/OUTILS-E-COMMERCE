@@ -11,6 +11,7 @@ import {
   guideTranslations,
   guides,
   payments,
+  reports,
   sessionHistory,
   userIntegrations,
   userPermissions,
@@ -47,7 +48,7 @@ export async function exportPersonalData(userId: string) {
   const [user] = await db.select().from(users).where(eq(users.id, userId)).limit(1);
   if (!user) throw new AppError(404, 'Compte introuvable.', 'ACCOUNT_NOT_FOUND');
 
-  const [history, events, transactions, created, paid, ownGuides, translations, reviewed, coverRows, integrations, privileges, overrides] =
+  const [history, events, transactions, created, paid, ownGuides, translations, reviewed, coverRows, integrations, privileges, overrides, analyses] =
     await Promise.all([
       db.select().from(sessionHistory).where(eq(sessionHistory.userId, userId)).orderBy(desc(sessionHistory.startedAt)),
       db.select().from(authEvents).where(eq(authEvents.userId, userId)).orderBy(desc(authEvents.createdAt)),
@@ -80,6 +81,7 @@ export async function exportPersonalData(userId: string) {
       db.select().from(userIntegrations).where(eq(userIntegrations.userId, userId)),
       db.select().from(userPermissions).where(eq(userPermissions.userId, userId)),
       db.select().from(featureOverrides).where(eq(featureOverrides.userId, userId)),
+      db.select().from(reports).where(eq(reports.userId, userId)).orderBy(desc(reports.createdAt)),
     ]);
 
   return {
@@ -182,6 +184,14 @@ export async function exportPersonalData(userId: string) {
           reviewerComment: translation.reviewerComment,
           updatedAt: iso(translation.updatedAt),
         })),
+    })),
+    nicheAnalyses: analyses.map((entry) => ({
+      id: entry.id,
+      query: entry.query,
+      nicheName: entry.nicheName,
+      market: entry.market,
+      createdAt: iso(entry.createdAt),
+      report: entry.report,
     })),
     reviewsAsReviewer: reviewed.map((entry) => ({
       translationId: entry.id,

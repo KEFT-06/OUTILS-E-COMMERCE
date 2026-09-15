@@ -92,6 +92,7 @@ export function emptyPageDraft(product: DigitalProductIdea): ProductPageDraft {
     problem: '',
     notFor: '',
     offerConditions: '',
+    price: '',
     faq: [],
     images: {},
   };
@@ -132,7 +133,9 @@ export interface PageModel {
   images: Partial<Record<SectionRole, string>>;
 }
 
+/** Chaîne vide quand le produit n'a pas de prix : aucun prix n'est inventé à la place de l'auteur. */
 function formatPrice(product: DigitalProductIdea): string {
+  if (product.recommendedPrice === null) return '';
   try {
     return new Intl.NumberFormat('fr-FR', { style: 'currency', currency: product.currency }).format(
       product.recommendedPrice,
@@ -170,7 +173,7 @@ export function buildPageModel(
       title: module.title,
       details: module.details,
     })),
-    price: formatPrice(product),
+    price: draft.price?.trim() || formatPrice(product),
     leadMagnet: { ...product.leadMagnet },
     offerConditions: draft.offerConditions.trim(),
     faq: draft.faq.filter((item) => item.question.trim() && item.answer.trim()),

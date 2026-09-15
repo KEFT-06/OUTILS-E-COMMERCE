@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { AlertTriangle, FlaskConical, Info, Scale } from 'lucide-react';
 import { FALLBACK_DISCLAIMER } from '@/shared/lib/legal';
-import type { MarketRate } from '@/shared/types/analysis';
+import type { MarketRate, WebGroundingSource } from '@/shared/types/analysis';
 import type { MethodologyDoc } from '@/shared/types/scoring';
 import { Alert, AlertDescription, AlertTitle } from '@/shared/ui/alert';
 import {
@@ -12,6 +12,7 @@ import {
   DialogTitle,
 } from '@/shared/ui/dialog';
 import { RateBadge } from '@/shared/ui/RateBadge';
+import { SourceRefs } from '@/shared/ui/SourceRefs';
 import {
   Table,
   TableBody,
@@ -37,6 +38,8 @@ let methodologyCache: MethodologyDoc | null = null;
 
 interface ScoreTracePanelProps {
   rate: MarketRate | null;
+  /** Sources du rapport, pour les renvois d'un taux apprécié à partir de pages web. */
+  sources?: readonly WebGroundingSource[];
   open: boolean;
   onOpenChange: (open: boolean) => void;
 }
@@ -53,7 +56,7 @@ function formatMeasuredAt(iso: string): string {
   });
 }
 
-export function ScoreTracePanel({ rate, open, onOpenChange }: ScoreTracePanelProps) {
+export function ScoreTracePanel({ rate, sources, open, onOpenChange }: ScoreTracePanelProps) {
   const [methodology, setMethodology] = useState<MethodologyDoc | null>(methodologyCache);
 
   useEffect(() => {
@@ -97,13 +100,38 @@ export function ScoreTracePanel({ rate, open, onOpenChange }: ScoreTracePanelPro
           <div className="flex items-start justify-between gap-3 pr-6">
             <div className="space-y-1">
               <DialogTitle>{rate.label}</DialogTitle>
-              <DialogDescription>Détail du calcul, critère par critère.</DialogDescription>
+              <DialogDescription>{trace ? 'Détail du calcul, critère par critère.' : 'Sur quoi repose ce niveau.'}</DialogDescription>
             </div>
             <RateBadge level={rate.level} size="md" />
           </div>
         </DialogHeader>
 
-        {!trace ? (
+        {!trace && rate.basis === 'assessment' ? (
+          <div className="space-y-4">
+            <Alert variant="info">
+              <Info />
+              <AlertTitle>Appréciation de l’IA, fondée sur des sources</AlertTitle>
+              <AlertDescription>
+                <p>{rate.description}</p>
+                <p>
+                  Ce niveau n’est pas un calcul : il résume ce que disent les pages citées. Seul le{' '}
+                  <strong>taux de saturation concurrentielle</strong> est calculé par le moteur de scoring, sur une collecte
+                  publicitaire.
+                </p>
+              </AlertDescription>
+            </Alert>
+            <SourceRefs ids={rate.sourceIds} sources={sources} className="text-sm" />
+          </div>
+        ) : !trace && rate.basis === 'unavailable' ? (
+          <Alert variant="warning">
+            <AlertTriangle />
+            <AlertTitle>Non évalué</AlertTitle>
+            <AlertDescription>
+              <p>{rate.description}</p>
+              <p>Aucun niveau n’est affiché plutôt qu’un niveau deviné.</p>
+            </AlertDescription>
+          </Alert>
+        ) : !trace ? (
           <Alert variant="warning">
             <AlertTriangle />
             <AlertTitle>Méthodologie pas encore publiée</AlertTitle>

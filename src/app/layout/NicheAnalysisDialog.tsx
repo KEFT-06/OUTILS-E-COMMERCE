@@ -6,6 +6,7 @@ import { Compass, Sparkles } from 'lucide-react';
 import { pathOf } from '@/app/navigation';
 import { useWorkspace } from '@/app/providers/WorkspaceProvider';
 import { useAuth } from '@/features/auth/AuthContext';
+import { CountryCombobox } from '@/shared/components/CountryCombobox';
 import { Button } from '@/shared/ui/button';
 import {
   Dialog,
@@ -26,6 +27,7 @@ const schema = z.object({
     .trim()
     .min(2, 'Indiquez au moins 2 caractères.')
     .max(200, 'La requête ne peut pas dépasser 200 caractères.'),
+  market: z.string().nullable(),
 });
 
 type FormValues = z.infer<typeof schema>;
@@ -44,14 +46,14 @@ export function NicheAnalysisDialog() {
 
   const form = useForm<FormValues>({
     resolver: zodResolver(schema),
-    defaultValues: { query: '' },
+    values: { query: '', market: account?.country ?? null },
   });
 
-  const onSubmit = form.handleSubmit(async ({ query }) => {
+  const onSubmit = form.handleSubmit(async ({ query, market }) => {
     // La fenêtre se ferme d'abord : le simulateur de crédits prend le relais.
     setAnalysisDialogOpen(false);
     form.reset();
-    await analyzeNiche(query);
+    await analyzeNiche(query, market);
   });
 
   return (
@@ -60,8 +62,8 @@ export function NicheAnalysisDialog() {
         <DialogHeader>
           <DialogTitle>Analyser une niche</DialogTitle>
           <DialogDescription>
-            Demande, concurrence et rentabilité : Smart Creator évalue la niche et produit un rapport dont chaque chiffre
-            porte sa source. Le coût en points s’affiche avant le lancement.
+            Smart Creator cherche des sources sur la niche, puis rédige un rapport : chaque fait de marché renvoie à ses
+            sources, et les propositions de l’IA sont signalées comme telles. Le coût en points s’affiche avant le lancement.
           </DialogDescription>
         </DialogHeader>
 
@@ -90,24 +92,46 @@ export function NicheAnalysisDialog() {
               )}
             />
 
+            <Controller
+              name="market"
+              control={form.control}
+              render={({ field }) => (
+                <Field>
+                  <FieldLabel htmlFor="niche-market">Marché visé</FieldLabel>
+                  <CountryCombobox id="niche-market" value={field.value} onChange={field.onChange} placeholder="Tous marchés francophones" />
+                  <FieldDescription>
+                    Oriente la recherche des sources et la devise des produits proposés.
+                    {field.value && (
+                      <>
+                        {' '}
+                        <Button type="button" variant="link" className="h-auto p-0 text-xs" onClick={() => field.onChange(null)}>
+                          Analyser pour tous les marchés
+                        </Button>
+                      </>
+                    )}
+                  </FieldDescription>
+                </Field>
+              )}
+            />
+
             {suggestions.length > 0 && (
-            <div className="space-y-2">
-              <p className="text-sm font-medium">Vos niches enregistrées</p>
-              <div className="flex flex-wrap gap-2">
-                {suggestions.map((suggestion) => (
-                  <Button
-                    key={suggestion}
-                    type="button"
-                    variant="outline"
-                    size="sm"
-                    className="h-auto py-1.5 font-normal whitespace-normal"
-                    onClick={() => form.setValue('query', suggestion, { shouldValidate: true })}
-                  >
-                    {suggestion}
-                  </Button>
-                ))}
+              <div className="space-y-2">
+                <p className="text-sm font-medium">Vos niches enregistrées</p>
+                <div className="flex flex-wrap gap-2">
+                  {suggestions.map((suggestion) => (
+                    <Button
+                      key={suggestion}
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      className="h-auto py-1.5 font-normal whitespace-normal"
+                      onClick={() => form.setValue('query', suggestion, { shouldValidate: true })}
+                    >
+                      {suggestion}
+                    </Button>
+                  ))}
+                </div>
               </div>
-            </div>
             )}
 
             <Button variant="link" asChild className="h-auto justify-start p-0">

@@ -23,6 +23,9 @@ export async function createTestApp(overrides: Record<string, string> = {}): Pro
     CHARIOW_API_URL: 'http://127.0.0.1:9',
     GEMINI_API_KEY: 'cle-gemini-de-test',
     GEMINI_API_URL: 'http://127.0.0.1:9',
+    BRAVE_SEARCH_API_KEY: '',
+    BRAVE_SEARCH_API_URL: 'http://127.0.0.1:9',
+    META_ACCESS_TOKEN: '',
     EXCHANGE_RATES_URL: 'off',
     ...overrides,
   });

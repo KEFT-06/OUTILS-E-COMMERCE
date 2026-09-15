@@ -31,6 +31,7 @@ function isPageDraft(value: unknown): value is ProductPageDraft {
   return (
     typeof value.productId === 'string' &&
     TEXT_FIELDS.every((field) => typeof value[field] === 'string') &&
+    (value.price === undefined || typeof value.price === 'string') &&
     faq.every(isFaqItem) &&
     Object.entries(images).every(([role, url]) => ROLES.includes(role) && typeof url === 'string')
   );

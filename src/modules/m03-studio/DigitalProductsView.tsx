@@ -82,7 +82,8 @@ export function DigitalProductsView({ report, products, onSelectProductForAd }: 
 
   const selectProduct = (product: DigitalProductIdea) => {
     setBaseProduct(product);
-    setCustomPrice(product.recommendedPrice);
+    // Sans prix avancé par le rapport, le curseur repart de la valeur par défaut de la table des prix.
+    setCustomPrice(product.recommendedPrice ?? pricing?.sellingPrice.default ?? null);
   };
 
   return (
@@ -122,20 +123,29 @@ export function DigitalProductsView({ report, products, onSelectProductForAd }: 
                     {product.typeName}
                   </Badge>
                   <span className="text-sm font-semibold tabular-nums">
-                    {product.recommendedPrice} {product.currency}
+                    {product.recommendedPrice !== null ? `${product.recommendedPrice} ${product.currency}` : 'Prix à fixer'}
                   </span>
                 </span>
                 <span className="line-clamp-2 block font-semibold leading-snug">{product.title}</span>
                 <span className="line-clamp-2 block text-sm text-muted-foreground">{product.subtitle}</span>
               </span>
-              <span className="flex items-center justify-between border-t pt-3 text-xs text-muted-foreground">
-                <span className="inline-flex items-center gap-1">
-                  <Percent className="size-3.5" aria-hidden="true" />
-                  Marge estimée {product.estimatedMarginPercent} %
-                </span>
-                <span className="inline-flex items-center gap-1">
-                  <Clock className="size-3.5" aria-hidden="true" />~{product.estimatedProductionDays} jours
-                </span>
+              <span className="flex items-center justify-between gap-2 border-t pt-3 text-xs text-muted-foreground">
+                {product.estimatedMarginPercent !== null ? (
+                  <span className="inline-flex items-center gap-1">
+                    <Percent className="size-3.5" aria-hidden="true" />
+                    Marge estimée {product.estimatedMarginPercent} %
+                  </span>
+                ) : (
+                  <span className="inline-flex items-center gap-1">
+                    <Layers className="size-3.5" aria-hidden="true" />
+                    {product.tableOfContents.length} modules
+                  </span>
+                )}
+                {product.estimatedProductionDays !== null && (
+                  <span className="inline-flex items-center gap-1">
+                    <Clock className="size-3.5" aria-hidden="true" />~{product.estimatedProductionDays} jours
+                  </span>
+                )}
               </span>
             </button>
           );
@@ -149,7 +159,9 @@ export function DigitalProductsView({ report, products, onSelectProductForAd }: 
           <CardHeader>
             <div className="flex flex-wrap items-center gap-2">
               <Badge variant="brand">{selectedProduct.typeName}</Badge>
-              <Badge variant="outline">Marge estimée {selectedProduct.estimatedMarginPercent} %</Badge>
+              {selectedProduct.estimatedMarginPercent !== null && (
+                <Badge variant="outline">Marge estimée {selectedProduct.estimatedMarginPercent} %</Badge>
+              )}
             </div>
             <CardTitle>
               <h2 className="font-display text-xl leading-tight font-extrabold tracking-tight sm:text-2xl">
@@ -169,6 +181,13 @@ export function DigitalProductsView({ report, products, onSelectProductForAd }: 
                 <p className="text-sm leading-relaxed">{selectedProduct.transformationPromise}</p>
               </div>
             </div>
+
+            {selectedProduct.pricingNote && (
+              <div className="rounded-lg border p-4">
+                <p className="mb-1 text-sm font-semibold">Repères de prix</p>
+                <p className="text-sm leading-relaxed text-muted-foreground">{selectedProduct.pricingNote}</p>
+              </div>
+            )}
 
             <div className="space-y-2">
               <h3 className="flex items-center gap-2 font-semibold">

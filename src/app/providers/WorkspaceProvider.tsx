@@ -1,25 +1,30 @@
-import React, { createContext, useCallback, useContext, useMemo, useState } from 'react';
+import React, { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { toast } from 'sonner';
-import type { MarketAnalysisReport } from '@/shared/types/analysis';
-import type { ReportComplianceVerdict } from '@/shared/types/compliance';
-import { ComplianceBlockedError, exportReportPDF } from '@/shared/lib/complianceGate';
-import { ComplianceBlockDialog } from '@/shared/ui/ComplianceBlockDialog';
-import { useCreditGate } from '@/app/providers/CreditGateProvider';
 import { pathOf } from '@/app/navigation';
+import { useCreditGate } from '@/app/providers/CreditGateProvider';
+import { useAuth } from '@/features/auth/AuthContext';
+import { apiRequest } from '@/shared/lib/api';
+import { toApiError } from '@/shared/lib/apiError';
+import { ComplianceBlockedError, exportReportPDF } from '@/shared/lib/complianceGate';
+import type { MarketAnalysisReport, ReportSummary } from '@/shared/types/analysis';
+import type { ReportComplianceVerdict } from '@/shared/types/compliance';
+import { ComplianceBlockDialog } from '@/shared/ui/ComplianceBlockDialog';
 
 /**
- * État de l'espace de travail partagé par tous les écrans : rapports analysés (aucun
- * rapport d'exemple : l'espace démarre vide),
- * niche active, analyse et export PDF, fenêtres ouvertes depuis l'en-tête ou la
- * palette ⌘K.
+ * État de l'espace de travail partagé par tous les écrans : rapports du compte
+ * (conservés sur le serveur, jamais d'exemple fabriqué), niche active, analyse et
+ * export PDF, fenêtres ouvertes depuis l'en-tête ou la palette ⌘K.
  */
 interface WorkspaceContextType {
-  reports: MarketAnalysisReport[];
+  reports: ReportSummary[];
   currentReport: MarketAnalysisReport | null;
+  /** Vrai pendant le chargement des rapports ou l'ouverture de l'un d'eux. */
+  isLoadingReport: boolean;
   selectReport: (id: string) => void;
+  deleteReport: (id: string) => Promise<void>;
   isAnalyzing: boolean;
-  analyzeNiche: (query: string) => Promise<void>;
+  analyzeNiche: (query: string, market?: string | null) => Promise<void>;
   isExportingPdf: boolean;
   exportPdf: () => Promise<void>;
   analysisDialogOpen: boolean;
@@ -30,67 +35,150 @@ interface WorkspaceContextType {
 
 const WorkspaceContext = createContext<WorkspaceContextType | undefined>(undefined);
 
+/** Seul l'identifiant du dernier rapport ouvert reste dans le navigateur : le rapport, lui, est sur le compte. */
+const activeReportKey = (accountId: string) => `smartcreator_rapport_actif_${accountId}`;
+
+function rememberActiveReport(accountId: string, reportId: string | null) {
+  try {
+    if (reportId) localStorage.setItem(activeReportKey(accountId), reportId);
+    else localStorage.removeItem(activeReportKey(accountId));
+  } catch {
+    // Stockage bloqué : on rouvrira simplement le rapport le plus récent.
+  }
+}
+
+function rememberedActiveReport(accountId: string): string | null {
+  try {
+    return localStorage.getItem(activeReportKey(accountId));
+  } catch {
+    return null;
+  }
+}
+
+const summaryOf = (report: MarketAnalysisReport): ReportSummary => ({
+  id: report.id,
+  query: report.query,
+  nicheName: report.nicheName,
+  market: report.market ?? null,
+  createdAt: report.generator?.generatedAt ?? new Date().toISOString(),
+});
+
+const fetchReport = (id: string) => apiRequest<{ report: MarketAnalysisReport }>(`/api/reports/${encodeURIComponent(id)}`);
+
 export const WorkspaceProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const navigate = useNavigate();
   const { runWithCredits } = useCreditGate();
+  const { account } = useAuth();
+  const accountId = account?.id;
 
-  const [reports, setReports] = useState<MarketAnalysisReport[]>([]);
+  const [reports, setReports] = useState<ReportSummary[]>([]);
   const [currentReport, setCurrentReport] = useState<MarketAnalysisReport | null>(null);
+  const [isLoadingReport, setIsLoadingReport] = useState(true);
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [isExportingPdf, setIsExportingPdf] = useState(false);
   const [analysisDialogOpen, setAnalysisDialogOpen] = useState(false);
   const [commandOpen, setCommandOpen] = useState(false);
   const [blockedVerdict, setBlockedVerdict] = useState<ReportComplianceVerdict | null>(null);
 
+  useEffect(() => {
+    if (!accountId) return;
+    let cancelled = false;
+    setIsLoadingReport(true);
+    (async () => {
+      const { reports: list } = await apiRequest<{ reports: ReportSummary[] }>('/api/reports');
+      if (cancelled) return;
+      setReports(list);
+      const remembered = rememberedActiveReport(accountId);
+      const target = list.find((entry) => entry.id === remembered) ?? list[0];
+      if (!target) return;
+      const { report } = await fetchReport(target.id);
+      if (!cancelled) setCurrentReport(report);
+    })()
+      .catch((error: unknown) => {
+        if (!cancelled) toast.error('Vos rapports n’ont pas pu être chargés', { description: toApiError(error, 'Réessayez dans un moment.').message });
+      })
+      .finally(() => {
+        if (!cancelled) setIsLoadingReport(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [accountId]);
+
+  const openReport = useCallback(
+    async (id: string) => {
+      setIsLoadingReport(true);
+      try {
+        const { report } = await fetchReport(id);
+        setCurrentReport(report);
+        if (accountId) rememberActiveReport(accountId, report.id);
+      } catch (error) {
+        toast.error('Le rapport n’a pas pu être ouvert', { description: toApiError(error, 'Réessayez dans un moment.').message });
+      } finally {
+        setIsLoadingReport(false);
+      }
+    },
+    [accountId],
+  );
+
   const selectReport = useCallback(
     (id: string) => {
-      const found = reports.find((report) => report.id === id);
-      if (found) setCurrentReport(found);
+      if (currentReport?.id === id) return;
+      void openReport(id);
     },
-    [reports],
+    [currentReport?.id, openReport],
+  );
+
+  const deleteReport = useCallback(
+    async (id: string) => {
+      try {
+        await apiRequest(`/api/reports/${encodeURIComponent(id)}`, { method: 'DELETE' });
+      } catch (error) {
+        toast.error('Le rapport n’a pas pu être supprimé', { description: toApiError(error, 'Réessayez dans un moment.').message });
+        return;
+      }
+      const remaining = reports.filter((entry) => entry.id !== id);
+      setReports(remaining);
+      if (currentReport?.id === id) {
+        setCurrentReport(null);
+        if (accountId) rememberActiveReport(accountId, null);
+        if (remaining[0]) void openReport(remaining[0].id);
+      }
+      toast.success('Rapport supprimé');
+    },
+    [accountId, currentReport?.id, openReport, reports],
   );
 
   /**
    * Analyse d'une nouvelle niche, derrière la porte de crédits : le coût
-   * s'affiche avant l'appel et les points ne sont débités qu'en cas de succès.
+   * s'affiche avant l'appel et les points sont rendus si l'analyse échoue.
    * Aucun rapport de repli n'est fabriqué : l'erreur du serveur est montrée telle
-   * quelle, elle dit ce qui manque (clé absente, analyse pas encore livrée).
+   * quelle, elle dit ce qui manque.
    */
   const analyzeNiche = useCallback(
-    async (query: string) => {
+    async (query: string, market?: string | null) => {
       try {
         await runWithCredits('niche_analysis', async () => {
           setIsAnalyzing(true);
           try {
-            const response = await fetch('/api/analyze-niche', {
+            const report = await apiRequest<MarketAnalysisReport>('/api/analyze-niche', {
               method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ query }),
+              body: { query, ...(market ? { market } : {}) },
             });
-
-            if (!response.ok) {
-              const payload = (await response.json().catch(() => null)) as
-                | { error?: { message?: string } }
-                | null;
-              throw new Error(payload?.error?.message ?? "L'analyse n'a pas pu être lancée. Réessayez dans un moment.");
-            }
-
-            const data = (await response.json()) as MarketAnalysisReport;
-            setReports((previous) => [data, ...previous]);
-            setCurrentReport(data);
+            setReports((previous) => [summaryOf(report), ...previous.filter((entry) => entry.id !== report.id)]);
+            setCurrentReport(report);
+            if (accountId) rememberActiveReport(accountId, report.id);
             navigate(pathOf('analyse'));
-            toast.success(`Analyse terminée pour « ${data.nicheName} »`);
+            toast.success(`Analyse terminée pour « ${report.nicheName} »`);
           } finally {
             setIsAnalyzing(false);
           }
         });
       } catch (error) {
-        toast.error("L'analyse n'a pas abouti", {
-          description: error instanceof Error ? error.message : 'Erreur inconnue.',
-        });
+        toast.error('L’analyse n’a pas abouti', { description: toApiError(error, 'Erreur inconnue.').message });
       }
     },
-    [navigate, runWithCredits],
+    [accountId, navigate, runWithCredits],
   );
 
   // Export PDF : passe obligatoirement par la porte de conformité.
@@ -126,7 +214,9 @@ export const WorkspaceProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     () => ({
       reports,
       currentReport,
+      isLoadingReport,
       selectReport,
+      deleteReport,
       isAnalyzing,
       analyzeNiche,
       isExportingPdf,
@@ -136,7 +226,19 @@ export const WorkspaceProvider: React.FC<{ children: React.ReactNode }> = ({ chi
       commandOpen,
       setCommandOpen,
     }),
-    [reports, currentReport, selectReport, isAnalyzing, analyzeNiche, isExportingPdf, exportPdf, analysisDialogOpen, commandOpen],
+    [
+      reports,
+      currentReport,
+      isLoadingReport,
+      selectReport,
+      deleteReport,
+      isAnalyzing,
+      analyzeNiche,
+      isExportingPdf,
+      exportPdf,
+      analysisDialogOpen,
+      commandOpen,
+    ],
   );
 
   return (

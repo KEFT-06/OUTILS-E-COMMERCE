@@ -8,7 +8,8 @@ import type { TauxLevel } from '@/shared/types/analysis';
  * aussi porté par une icône et un libellé, jamais par la couleur seule.
  */
 interface RateBadgeProps {
-  level: TauxLevel;
+  /** null : taux non évalué, faute de mesure ou de source. */
+  level: TauxLevel | null;
   size?: 'sm' | 'md' | 'lg';
   showIcon?: boolean;
   /**
@@ -50,12 +51,13 @@ const SIZES = {
 } as const;
 
 export function RateBadge({ level, size = 'md', showIcon = true, onInspect, inspectLabel }: RateBadgeProps) {
-  const config = LEVELS[level as keyof typeof LEVELS] ?? {
+  const config = (level && LEVELS[level as keyof typeof LEVELS]) || {
     tone: 'border-border bg-muted text-muted-foreground',
     dot: 'bg-muted-foreground',
     icon: Minus,
   };
   const Icon = config.icon;
+  const label = level ?? 'Non évalué';
 
   const classes = cn(
     'inline-flex shrink-0 items-center rounded-full border whitespace-nowrap transition-colors',
@@ -67,7 +69,7 @@ export function RateBadge({ level, size = 'md', showIcon = true, onInspect, insp
     <>
       <span className={cn('size-1.5 rounded-full', config.dot)} aria-hidden="true" />
       {showIcon && <Icon className="size-3.5 shrink-0" aria-hidden="true" />}
-      <span>{level}</span>
+      <span>{label}</span>
     </>
   );
 
@@ -79,8 +81,8 @@ export function RateBadge({ level, size = 'md', showIcon = true, onInspect, insp
     <button
       type="button"
       onClick={onInspect}
-      aria-label={`Voir le détail du calcul : ${inspectLabel ?? level}`}
-      title="Voir le détail du calcul"
+      aria-label={`Voir le détail : ${inspectLabel ?? label}`}
+      title="Voir le détail"
       className={cn(classes, 'cursor-pointer hover:brightness-95 focus-visible:ring-[3px] focus-visible:ring-ring/50 focus-visible:outline-none')}
     >
       {content}

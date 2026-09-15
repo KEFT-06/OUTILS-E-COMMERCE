@@ -1,5 +1,5 @@
 {
-  "version": "2026.09.3",
+  "version": "2026.09.4",
   "updatedAt": "2026-09-13",
   "note": "Grille tarifaire des research points (CdC §8). Table de configuration éditable sans déploiement, au même titre que la table de conformité. À migrer en base lors du Lot 2, avec un historique de versions : un coût qui change doit rester traçable pour les factures déjà émises.",
   "currency": "FCFA",
@@ -10,7 +10,7 @@
       "id": "niche_analysis",
       "label": "Analyse stratégique d'une niche",
       "cost": 5,
-      "description": "Rapport complet : indicateurs de marché, concurrents, produits digitaux et plan d'action."
+      "description": "Rapport d'une niche, conservé sur votre compte : faits de marché tirés de sources web citées, idées de produits, scripts publicitaires et plan d'action proposés par l'IA. Points rendus si l'analyse échoue."
     },
     {
       "id": "radar_scan",

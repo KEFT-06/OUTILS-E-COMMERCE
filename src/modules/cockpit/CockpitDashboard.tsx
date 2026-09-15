@@ -28,6 +28,7 @@ const SERVICE_LABELS: Record<string, string> = {
   video: 'Visuels et vidéos',
   storybook: 'Storybook illustré',
   adIngestion: 'Collecte publicitaire',
+  webSearch: 'Recherche web des analyses',
 };
 
 /** Parcours conseillé : c'est une vraie séquence, d'où la numérotation. */
@@ -172,10 +173,16 @@ export function CockpitDashboard({ report, onNavigateToModule, onOpenBilling }: 
               </div>
               <div className="mt-2 flex flex-wrap items-center gap-2 text-sm">
                 <RateBadge level={saturation.level} size="sm" />
-                <span className="text-muted-foreground tabular-nums">{saturation.score} / 100</span>
-                <span className="text-muted-foreground">·</span>
+                {saturation.score !== null && (
+                  <>
+                    <span className="text-muted-foreground tabular-nums">{saturation.score} / 100</span>
+                    <span className="text-muted-foreground">·</span>
+                  </>
+                )}
                 {saturation.trace ? (
                   <span className="text-muted-foreground">méthode v{saturation.trace.methodologyVersion}</span>
+                ) : saturation.basis === 'unavailable' ? (
+                  <span className="text-muted-foreground">collecte publicitaire non branchée</span>
                 ) : (
                   <span className="text-warning">méthode non publiée</span>
                 )}

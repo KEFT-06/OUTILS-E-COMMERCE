@@ -1,20 +1,20 @@
 import { z } from 'zod';
-import { env } from '@server/env';
-import { AppError, providerUnavailable } from '@server/middleware';
+import { generateJson } from '@server/services/ai/gemini';
 import type { GuideSection } from '@server/shared/guides';
 import { findLanguage } from '@server/shared/languages';
 
 /**
- * Traduction des guides par Gemini (API REST generateContent).
+ * Traduction des guides par Gemini.
  *
- * La clé ne quitte jamais le serveur et ne figure dans aucun journal. Le guide est
- * envoyé par lots de sections, avec leurs identifiants : la réponse, en JSON
- * structuré, se recolle section par section, et une section oubliée par le modèle
- * reste vide, donc signalée par les contrôles automatiques.
+ * Le guide est envoyé par lots de sections, avec leurs identifiants : la réponse,
+ * en JSON structuré, se recolle section par section, et une section oubliée par le
+ * modèle reste vide, donc signalée par les contrôles automatiques.
  */
 
 const TIMEOUT_MS = 180_000;
 const BATCH_CHARACTERS = 12_000;
+
+const SERVICE = { name: 'service de traduction', code: 'TRANSLATION', log: 'traduction' };
 
 const RESPONSE_SCHEMA = {
   type: 'OBJECT',
@@ -73,46 +73,6 @@ export function translationInstructions(input: { from: string; to: string; terms
   ].join('\n');
 }
 
-async function generate(prompt: string): Promise<z.infer<typeof responseSchema>> {
-  const url = `${env.GEMINI_API_URL.replace(/\/+$/, '')}/v1beta/models/${encodeURIComponent(env.GEMINI_MODEL)}:generateContent`;
-
-  let response: Response;
-  try {
-    response = await fetch(url, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'x-goog-api-key': env.GEMINI_API_KEY! },
-      body: JSON.stringify({
-        contents: [{ role: 'user', parts: [{ text: prompt }] }],
-        generationConfig: { temperature: 0.2, responseMimeType: 'application/json', responseSchema: RESPONSE_SCHEMA },
-      }),
-      signal: AbortSignal.timeout(TIMEOUT_MS),
-    });
-  } catch {
-    throw new AppError(504, 'Le service de traduction n’a pas répondu à temps. Réessayez : vos points ont été rendus.', 'TRANSLATION_TIMEOUT');
-  }
-
-  if (!response.ok) {
-    console.error('[traduction] le fournisseur a répondu', response.status);
-    if (response.status === 401 || response.status === 403) {
-      throw new AppError(503, 'L’accès au service de traduction est refusé : clé API invalide sur le serveur.', 'TRANSLATION_ACCESS_DENIED');
-    }
-    if (response.status === 429) {
-      throw new AppError(429, 'Le service de traduction est saturé. Réessayez dans une minute : vos points ont été rendus.', 'TRANSLATION_RATE_LIMITED');
-    }
-    throw new AppError(502, 'Le service de traduction a refusé la demande. Réessayez : vos points ont été rendus.', 'TRANSLATION_FAILED');
-  }
-
-  const payload = (await response.json().catch(() => null)) as {
-    candidates?: { content?: { parts?: { text?: string }[] } }[];
-  } | null;
-  const text = payload?.candidates?.[0]?.content?.parts?.map((part) => part.text ?? '').join('') ?? '';
-  try {
-    return responseSchema.parse(JSON.parse(text));
-  } catch {
-    throw new AppError(502, 'Réponse illisible du service de traduction. Réessayez : vos points ont été rendus.', 'TRANSLATION_UNREADABLE');
-  }
-}
-
 export async function translateGuide(input: {
   title: string;
   sections: readonly GuideSection[];
@@ -120,17 +80,19 @@ export async function translateGuide(input: {
   to: string;
   terms: readonly string[];
 }): Promise<{ title: string; sections: GuideSection[] }> {
-  if (!env.GEMINI_API_KEY) throw providerUnavailable('Gemini');
-
   let title = '';
   const translated = new Map<string, GuideSection>();
 
   for (const [index, batch] of batchesOf(input.sections).entries()) {
     const withTitle = index === 0;
     const source = { ...(withTitle ? { title: input.title } : {}), sections: batch };
-    const result = await generate(
-      `${translationInstructions({ from: input.from, to: input.to, terms: input.terms, withTitle })}\n\nSOURCE (JSON):\n${JSON.stringify(source)}`,
-    );
+    const result = await generateJson({
+      service: SERVICE,
+      prompt: `${translationInstructions({ from: input.from, to: input.to, terms: input.terms, withTitle })}\n\nSOURCE (JSON):\n${JSON.stringify(source)}`,
+      responseSchema: RESPONSE_SCHEMA,
+      parse: (value) => responseSchema.parse(value),
+      timeoutMs: TIMEOUT_MS,
+    });
     if (withTitle) title = result.title?.trim() ?? '';
     const expected = new Set(batch.map((section) => section.id));
     for (const section of result.sections) {

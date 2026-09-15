@@ -43,6 +43,7 @@ export const GENERATION_KINDS = [
   'ad_scan',
   'guide_translation',
   'cover',
+  'niche_analysis',
 ] as const;
 
 export const PAYMENT_METHODS = ['mobile_money', 'card', 'bank_transfer', 'cash', 'chariow', 'other'] as const;
@@ -249,6 +250,28 @@ export const covers = pgTable(
     updatedAt: moment('updated_at').notNull().defaultNow(),
   },
   (table) => [index('covers_subject_idx').on(table.userId, table.subject, table.subjectId)],
+).enableRLS();
+
+/**
+ * Rapports d'analyse de niche, tels qu'ils ont été produits et facturés. Le rapport
+ * complet est gardé en JSON : il ne se recalcule pas, ses sources et sa trace de
+ * calcul restent celles du jour de l'analyse.
+ */
+export const reports = pgTable(
+  'reports',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    userId: uuid('user_id')
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
+    query: text('query').notNull(),
+    nicheName: text('niche_name').notNull(),
+    /** Pays visé (ISO 3166-1 alpha-2) ; null : tous marchés. */
+    market: text('market'),
+    report: jsonb('report').$type<Record<string, unknown>>().notNull(),
+    createdAt: createdAt(),
+  },
+  (table) => [index('reports_user_idx').on(table.userId, table.createdAt)],
 ).enableRLS();
 
 /** Connexion en attente du code de double authentification. */
