@@ -21,6 +21,8 @@ import {
   Telescope,
   Users,
   UsersRound,
+  ChartLine,
+  Mail,
 } from 'lucide-react';
 import type { Permission } from '@/shared/types/auth';
 
@@ -220,7 +222,7 @@ export const ACCOUNT_PATH = '/app/compte';
  * fermée.
  */
 export interface AdminSection {
-  id: 'overview' | 'users' | 'connections' | 'revenue' | 'content' | 'security';
+  id: 'overview' | 'users' | 'connections' | 'messages' | 'audience' | 'revenue' | 'content' | 'security';
   path: `/app/admin${string}`;
   label: string;
   description: string;
@@ -254,6 +256,22 @@ export const ADMIN_SECTIONS: readonly AdminSection[] = [
     description: 'Heures de connexion et de déconnexion de chaque utilisateur',
     icon: History,
     permission: 'admin.users.read',
+  },
+  {
+    id: 'messages',
+    path: '/app/admin/messages',
+    label: 'Messages',
+    description: 'Messages reçus par la page Contact',
+    icon: Mail,
+    permission: 'admin.users.read',
+  },
+  {
+    id: 'audience',
+    path: '/app/admin/audience',
+    label: 'Audience',
+    description: 'Visiteurs du site, pages vues et inscriptions, sans cookie',
+    icon: ChartLine,
+    permission: 'admin.dashboard.read',
   },
   {
     id: 'revenue',

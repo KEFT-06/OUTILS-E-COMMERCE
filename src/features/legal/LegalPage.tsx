@@ -1,5 +1,6 @@
 import { useEffect, type ReactNode } from 'react';
 import { Link } from 'react-router-dom';
+import { useTrackVisit } from '@/shared/lib/audience';
 import { AlertTriangle, ArrowLeft } from 'lucide-react';
 import { Alert, AlertDescription, AlertTitle } from '@/shared/ui/alert';
 import { BrandLogo } from '@/shared/ui/BrandLogo';
@@ -176,6 +177,7 @@ const CONTENT: Record<LegalKind, () => ReactNode> = {
 };
 
 export function LegalPage({ kind }: { kind: LegalKind }) {
+  useTrackVisit(`/${kind}`);
   const title = TITLES[kind];
   const Content = CONTENT[kind];
 
@@ -227,6 +229,9 @@ export function LegalPage({ kind }: { kind: LegalKind }) {
           </Link>
           <Link to="/conditions" className="hover:text-foreground">
             Conditions d’utilisation
+          </Link>
+          <Link to="/contact" className="hover:text-foreground">
+            Contact
           </Link>
         </nav>
       </footer>

@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
+import { useTrackVisit } from '@/shared/lib/audience';
 import { Controller, useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
@@ -26,6 +27,7 @@ import { Spinner } from '@/shared/ui/spinner';
 const schema = z.object({ email: z.string().trim().min(1, 'Indiquez votre adresse e-mail.').email('Adresse e-mail invalide.') });
 
 export function ForgotPasswordPage() {
+  useTrackVisit('/mot-de-passe-oublie');
   const providers = useProviders();
   const [sentTo, setSentTo] = useState<string | null>(null);
   const [error, setError] = useState<ApiError | null>(null);

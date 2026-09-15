@@ -15,6 +15,7 @@ import { accountRouter } from '@server/routes/account';
 import { adminRouter } from '@server/routes/admin';
 import { authRouter } from '@server/routes/auth';
 import { coversRouter, guidesRouter, reviewsRouter } from '@server/routes/guides';
+import { publicRouter } from '@server/routes/public';
 import { reportsRouter } from '@server/routes/reports';
 import { workspaceRouter } from '@server/routes/workspace';
 import { writingRouter } from '@server/routes/writing';
@@ -98,6 +99,7 @@ api.use('/reviews', reviewsRouter);
 api.use('/reports', reportsRouter);
 api.use('/workspace', workspaceRouter);
 api.use('/writing', writingRouter);
+api.use(publicRouter);
 
 /* -------------------------------------------------------------------------- */
 /*  Santé et capacités                                                         */

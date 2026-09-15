@@ -6,6 +6,7 @@ import { ForgotPasswordPage } from '@/features/auth/ForgotPasswordPage';
 import { PasswordTokenPage } from '@/features/auth/PasswordTokenPage';
 import { VerifyEmailPage } from '@/features/auth/VerifyEmailPage';
 import { LandingPage } from '@/features/landing/LandingPage';
+import { ContactPage } from '@/features/contact/ContactPage';
 import { LegalPage } from '@/features/legal/LegalPage';
 import { AppLayout } from '@/app/layout/AppLayout';
 import { RequireAuth } from '@/app/layout/RequireAuth';
@@ -35,8 +36,10 @@ import {
 } from '@/app/routes/ModulePages';
 import {
   AdminConnectionsPage,
+  AdminAudiencePage,
   AdminContentPage,
   AdminLayout,
+  AdminMessagesPage,
   AdminOverviewPage,
   AdminRevenuePage,
   AdminSecurityPage,
@@ -70,6 +73,7 @@ export default function App() {
                 <Route path="/mentions-legales" element={<LegalPage kind="mentions-legales" />} />
                 <Route path="/confidentialite" element={<LegalPage kind="confidentialite" />} />
                 <Route path="/conditions" element={<LegalPage kind="conditions" />} />
+                <Route path="/contact" element={<ContactPage />} />
 
                 <Route path="/app" element={<RequireAuth />}>
                   <Route element={<AppLayout />}>
@@ -98,6 +102,8 @@ export default function App() {
                       <Route path="utilisateurs" element={<AdminUsersPage />} />
                       <Route path="utilisateurs/:userId" element={<AdminUserDetailPage />} />
                       <Route path="connexions" element={<AdminConnectionsPage />} />
+                      <Route path="messages" element={<AdminMessagesPage />} />
+                      <Route path="audience" element={<AdminAudiencePage />} />
                       <Route path="revenus" element={<AdminRevenuePage />} />
                       <Route path="contenus" element={<AdminContentPage />} />
                       <Route path="securite" element={<AdminSecurityPage />} />

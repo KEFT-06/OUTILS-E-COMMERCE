@@ -351,3 +351,34 @@ export function useAdminMeta(): AdminMeta | null {
 
   return meta;
 }
+
+export interface ContactMessageEntry {
+  id: string;
+  userId: string | null;
+  name: string;
+  email: string;
+  topic: string;
+  topicLabel: string;
+  message: string;
+  status: 'new' | 'read' | 'archived';
+  createdAt: string;
+}
+
+export interface ContactMessagePage {
+  page: number;
+  pageSize: number;
+  total: number;
+  counts: Record<'new' | 'read' | 'archived', number>;
+  topics: Record<string, string>;
+  entries: ContactMessageEntry[];
+}
+
+export interface AudienceSummary {
+  days: number;
+  timezone: string;
+  totals: { visits: number; uniques: number; signups: number; conversionPercent: number | null };
+  daily: { day: string; visits: number; uniques: number; signups: number }[];
+  pages: { path: string; label: string; visits: number }[];
+  /** host null : accès direct ou navigation depuis le site. */
+  referrers: { host: string | null; visits: number }[];
+}

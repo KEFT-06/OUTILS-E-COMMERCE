@@ -47,6 +47,8 @@ import { PERMISSIONS, PERMISSION_IDS, isPermission } from '@server/services/auth
 import { revokeUserSessions } from '@server/services/auth/sessions';
 import { convertAmount, getRates, toMinorUnits } from '@server/services/currency';
 import { FEATURES, getPlan, getPlanConfig, isFeature } from '@server/services/plans';
+import { audienceSummary } from '@server/services/audience';
+import { contactListQuerySchema, contactStatusSchema, listContactMessages, setContactMessageStatus } from '@server/services/contact';
 import { formatMoney } from '@server/shared/currency';
 
 /**
@@ -840,5 +842,35 @@ adminRouter.post(
     });
 
     res.status(204).end();
+  }),
+);
+
+/* -------------------------------------------------------------------------- */
+/*  Messages de la page Contact et audience du site                            */
+/* -------------------------------------------------------------------------- */
+
+adminRouter.get(
+  '/messages',
+  requirePermission('admin.users.read'),
+  asyncRoute(async (req, res) => {
+    res.json(await listContactMessages(contactListQuerySchema.parse(req.query)));
+  }),
+);
+
+adminRouter.post(
+  '/messages/:messageId/status',
+  requirePermission('admin.users.read'),
+  validateBody(contactStatusSchema),
+  asyncRoute(async (req, res) => {
+    await setContactMessageStatus(req.params.messageId, (req.body as z.infer<typeof contactStatusSchema>).status);
+    res.status(204).end();
+  }),
+);
+
+adminRouter.get(
+  '/audience',
+  requirePermission('admin.dashboard.read'),
+  asyncRoute(async (_req, res) => {
+    res.json(await audienceSummary(30));
   }),
 );

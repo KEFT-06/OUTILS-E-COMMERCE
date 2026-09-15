@@ -493,6 +493,60 @@ export const passwordTokens = pgTable(
   (table) => [index('password_tokens_user_idx').on(table.userId)],
 ).enableRLS();
 
+/** Messages envoyés depuis la page Contact, conservés 12 mois. */
+export const contactMessages = pgTable(
+  'contact_messages',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    /** Compte de l'expéditeur s'il était connecté. */
+    userId: uuid('user_id').references(() => users.id, { onDelete: 'set null' }),
+    name: text('name').notNull(),
+    email: text('email').notNull(),
+    /** question · bug · partnership · data · other */
+    topic: text('topic').notNull(),
+    message: text('message').notNull(),
+    /** new · read · archived */
+    status: text('status').notNull().default('new'),
+    createdAt: createdAt(),
+  },
+  (table) => [index('contact_messages_status_idx').on(table.status, table.createdAt), index('contact_messages_created_idx').on(table.createdAt)],
+).enableRLS();
+
+/**
+ * Mesure d'audience sans cookie, par jour : un sel aléatoire propre au jour (effacé
+ * ensuite) et le nombre de visiteurs uniques. Voir server/services/audience.
+ */
+export const siteDaily = pgTable('site_daily', {
+  /** AAAA-MM-JJ, dans le fuseau des statistiques. */
+  day: text('day').primaryKey(),
+  /** Null une fois le jour passé : les empreintes de ce jour ne peuvent plus être recalculées. */
+  salt: text('salt'),
+  uniques: integer('uniques').notNull().default(0),
+}).enableRLS();
+
+/** Visites agrégées par jour, page publique et site d'origine (domaine seulement). */
+export const siteVisits = pgTable(
+  'site_visits',
+  {
+    day: text('day').notNull(),
+    path: text('path').notNull(),
+    /** Domaine d'origine ; chaîne vide : accès direct ou depuis le site lui-même. */
+    referrer: text('referrer').notNull(),
+    visits: integer('visits').notNull().default(0),
+  },
+  (table) => [primaryKey({ columns: [table.day, table.path, table.referrer] })],
+).enableRLS();
+
+/** Empreintes des visiteurs du jour (HMAC de l'adresse IP et du navigateur), effacées le lendemain. */
+export const siteVisitors = pgTable(
+  'site_visitors',
+  {
+    day: text('day').notNull(),
+    visitor: text('visitor').notNull(),
+  },
+  (table) => [primaryKey({ columns: [table.day, table.visitor] })],
+).enableRLS();
+
 /** Liens de confirmation d'adresse e-mail. Seule l'empreinte du jeton est gardée. */
 export const emailVerificationTokens = pgTable(
   'email_verification_tokens',

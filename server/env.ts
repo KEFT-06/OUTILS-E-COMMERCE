@@ -68,6 +68,8 @@ const schema = z.object({
   EMAIL_FROM: emptyAsUndefined(z.string().min(3).optional()),
   /** Surchargeable pour tester contre un serveur factice. */
   EMAIL_API_URL: emptyAsUndefined(z.string().url().optional()),
+  /** Facultatif : boîte qui reçoit une copie de chaque message de la page Contact. */
+  CONTACT_INBOX_EMAIL: emptyAsUndefined(z.string().email().optional()),
 
   // Ingestion publicitaire (module 1)
   META_APP_ID: z.string().optional(),

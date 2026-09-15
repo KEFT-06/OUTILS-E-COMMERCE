@@ -1,5 +1,6 @@
 import { Suspense, lazy, useEffect, useState, type ReactNode } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
+import { useTrackVisit } from '@/shared/lib/audience';
 import { ArrowRight, ExternalLink, Moon, Scale, ShieldCheck, Sun, Wallet } from 'lucide-react';
 import { MODULES, MODULE_GROUPS, type ModuleGroup } from '@/app/navigation';
 import { usePreferences } from '@/app/providers/PreferencesContext';
@@ -116,6 +117,7 @@ function SectionHeading({ eyebrow, title, description }: { eyebrow: string; titl
 }
 
 export function LandingPage() {
+  useTrackVisit('/');
   const { isAuthenticated, account } = useAuth();
   const [priceCountry, setPriceCountry] = useState(() => account?.country ?? guessCountryCode() ?? 'US');
   const { theme, toggleTheme } = usePreferences();
@@ -458,6 +460,9 @@ export function LandingPage() {
             </Link>
             <Link to="/conditions" className="hover:text-foreground">
               Conditions d’utilisation
+            </Link>
+            <Link to="/contact" className="hover:text-foreground">
+              Contact
             </Link>
           </nav>
         </div>

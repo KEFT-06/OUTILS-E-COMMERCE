@@ -25,3 +25,9 @@ export const AdminContentPage = lazy(() =>
 export const AdminSecurityPage = lazy(() =>
   import('@/features/admin/AdminSecurityPage').then((module) => ({ default: module.AdminSecurityPage })),
 );
+export const AdminMessagesPage = lazy(() =>
+  import('@/features/admin/AdminMessagesPage').then((module) => ({ default: module.AdminMessagesPage })),
+);
+export const AdminAudiencePage = lazy(() =>
+  import('@/features/admin/AdminAudiencePage').then((module) => ({ default: module.AdminAudiencePage })),
+);

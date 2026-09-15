@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { Link, Navigate, useLocation, useSearchParams } from 'react-router-dom';
+import { useTrackVisit } from '@/shared/lib/audience';
 import { Controller, useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
@@ -358,6 +359,7 @@ const SECURITY = [
 ];
 
 export function LoginPage() {
+  useTrackVisit('/connexion');
   const { status, isAuthenticated } = useAuth();
   const location = useLocation();
   const [params] = useSearchParams();

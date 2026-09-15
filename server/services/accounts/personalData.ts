@@ -4,6 +4,7 @@ import { getDb } from '@server/db/client';
 import {
   auditLogs,
   authEvents,
+  contactMessages,
   covers,
   creditTransactions,
   featureOverrides,
@@ -85,6 +86,7 @@ export async function exportPersonalData(userId: string) {
       db.select().from(reports).where(eq(reports.userId, userId)).orderBy(desc(reports.createdAt)),
     ]);
   const workspace = await listWorkspaceDocuments(userId);
+  const messages = await db.select().from(contactMessages).where(eq(contactMessages.userId, userId)).orderBy(desc(contactMessages.createdAt));
 
   return {
     format: 'smart-creator/donnees-personnelles',
@@ -196,6 +198,7 @@ export async function exportPersonalData(userId: string) {
       createdAt: iso(entry.createdAt),
       report: entry.report,
     })),
+    contactMessages: messages.map((entry) => ({ topic: entry.topic, message: entry.message, email: entry.email, status: entry.status, createdAt: iso(entry.createdAt) })),
     workspace: workspace.map((entry) => ({ kind: entry.kind, updatedAt: iso(entry.updatedAt), data: entry.data })),
     reviewsAsReviewer: reviewed.map((entry) => ({
       translationId: entry.id,
