@@ -98,6 +98,37 @@ function CountryField({ account }: { account: Account }) {
   );
 }
 
+/** Adresse pas encore confirmée : proposé seulement quand l'envoi d'e-mails est configuré. */
+function EmailVerificationNotice({ account }: { account: Account }) {
+  const [state, setState] = useState<'idle' | 'sending' | 'sent'>('idle');
+  if (account.emailVerification.verified || !account.emailVerification.available) return null;
+
+  const send = async () => {
+    setState('sending');
+    try {
+      await apiRequest('/api/account/verify-email/send', { method: 'POST' });
+      setState('sent');
+    } catch (caught) {
+      setState('idle');
+      toast.error('L’e-mail n’a pas pu partir', { description: toApiError(caught, 'Réessayez dans un moment.').message });
+    }
+  };
+
+  return (
+    <p className="flex flex-wrap items-center gap-2 text-sm">
+      <Badge variant="warning">Adresse non confirmée</Badge>
+      {state === 'sent' ? (
+        <span className="text-muted-foreground">E-mail envoyé : ouvrez le lien qu’il contient.</span>
+      ) : (
+        <Button variant="link" className="h-auto p-0" onClick={() => void send()} disabled={state === 'sending'}>
+          {state === 'sending' && <Spinner />}
+          Recevoir l’e-mail de confirmation
+        </Button>
+      )}
+    </p>
+  );
+}
+
 function ProfileCard({ account }: { account: Account }) {
   const { logout, updateProfile } = useAuth();
   const navigate = useNavigate();
@@ -176,6 +207,7 @@ function ProfileCard({ account }: { account: Account }) {
           )}
 
           <p className="text-sm text-muted-foreground">{account.email}</p>
+          <EmailVerificationNotice account={account} />
           <CountryField account={account} />
 
           <div className="flex flex-wrap items-center gap-2">

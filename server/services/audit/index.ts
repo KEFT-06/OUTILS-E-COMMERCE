@@ -44,6 +44,8 @@ export const AUTH_EVENT_LABELS = {
   integration_saved: 'Clé API enregistrée',
   integration_removed: 'Clé API supprimée',
   account_deleted: 'Compte supprimé par son titulaire',
+  password_reset_requested: 'Lien de mot de passe envoyé par e-mail',
+  email_verified: 'Adresse e-mail confirmée',
 } as const;
 
 export type AuthEventType = keyof typeof AUTH_EVENT_LABELS;

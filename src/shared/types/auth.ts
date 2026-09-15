@@ -56,6 +56,11 @@ export interface Account {
   id: string;
   name: string;
   email: string;
+  emailVerification: {
+    verified: boolean;
+    /** L'envoi d'e-mails est configuré : la confirmation est possible. */
+    available: boolean;
+  };
   role: 'user' | 'admin';
   status: 'active' | 'suspended';
   /** Code ISO du pays ; null tant qu'il n'est pas choisi. */

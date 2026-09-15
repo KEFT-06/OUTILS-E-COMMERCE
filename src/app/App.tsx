@@ -2,7 +2,9 @@ import { Suspense } from 'react';
 import { BrowserRouter, Navigate, Route, Routes } from 'react-router-dom';
 import { AuthProvider } from '@/features/auth/AuthContext';
 import { LoginPage } from '@/features/auth/LoginPage';
+import { ForgotPasswordPage } from '@/features/auth/ForgotPasswordPage';
 import { PasswordTokenPage } from '@/features/auth/PasswordTokenPage';
+import { VerifyEmailPage } from '@/features/auth/VerifyEmailPage';
 import { LandingPage } from '@/features/landing/LandingPage';
 import { LegalPage } from '@/features/legal/LegalPage';
 import { AppLayout } from '@/app/layout/AppLayout';
@@ -63,6 +65,8 @@ export default function App() {
                 <Route path="/" element={<LandingPage />} />
                 <Route path="/connexion" element={<LoginPage />} />
                 <Route path="/mot-de-passe" element={<PasswordTokenPage />} />
+                <Route path="/mot-de-passe-oublie" element={<ForgotPasswordPage />} />
+                <Route path="/verifier-email" element={<VerifyEmailPage />} />
                 <Route path="/mentions-legales" element={<LegalPage kind="mentions-legales" />} />
                 <Route path="/confidentialite" element={<LegalPage kind="confidentialite" />} />
                 <Route path="/conditions" element={<LegalPage kind="conditions" />} />

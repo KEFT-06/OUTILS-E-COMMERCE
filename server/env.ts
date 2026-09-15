@@ -58,6 +58,17 @@ const schema = z.object({
   HIGGSFIELD_API_URL: z.string().url().default('https://api.higgsfield.ai'),
   GAMMA_API_KEY: z.string().min(1).optional(),
 
+  /**
+   * E-mails transactionnels (mot de passe oublié, confirmation d'adresse, alertes de
+   * sécurité) : Brevo ou Resend. EMAIL_FROM : « Nom <adresse> » d'un domaine vérifié
+   * chez le fournisseur. Sans eux, le mot de passe oublié passe par l'administrateur.
+   */
+  EMAIL_PROVIDER: emptyAsUndefined(z.enum(['brevo', 'resend']).optional()),
+  EMAIL_API_KEY: emptyAsUndefined(z.string().min(1).optional()),
+  EMAIL_FROM: emptyAsUndefined(z.string().min(3).optional()),
+  /** Surchargeable pour tester contre un serveur factice. */
+  EMAIL_API_URL: emptyAsUndefined(z.string().url().optional()),
+
   // Ingestion publicitaire (module 1)
   META_APP_ID: z.string().optional(),
   META_APP_SECRET: z.string().optional(),
@@ -172,6 +183,7 @@ export const listenHost = env.HOST || (isProd ? '0.0.0.0' : '127.0.0.1');
 export const providers = {
   gemini: Boolean(env.GEMINI_API_KEY),
   webSearch: Boolean(env.BRAVE_SEARCH_API_KEY),
+  email: Boolean(env.EMAIL_PROVIDER && env.EMAIL_API_KEY && env.EMAIL_FROM),
   higgsfield: Boolean(env.HIGGSFIELD_API_KEY_ID && env.HIGGSFIELD_API_KEY_SECRET),
   gamma: Boolean(env.GAMMA_API_KEY),
   meta: Boolean(env.META_ACCESS_TOKEN),

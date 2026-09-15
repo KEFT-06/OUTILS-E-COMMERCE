@@ -19,6 +19,8 @@ import {
   openSession,
   passwordInputSchema,
   registerUser,
+  requestPasswordReset,
+  verifyEmailToken,
   type OpenedSession,
 } from '@server/services/auth';
 import {
@@ -178,6 +180,33 @@ authRouter.post(
     const { token, password } = req.body as z.infer<typeof consumeSchema>;
     await consumePasswordToken({ token, password, client: clientInfo(req) });
     clearSessionCookie(res);
+    res.status(204).end();
+  }),
+);
+
+/* -------------------------------------------------------------------------- */
+/*  E-mails : mot de passe oublié et confirmation d'adresse                    */
+/* -------------------------------------------------------------------------- */
+
+const resetRequestSchema = z.object({ email: emailSchema });
+
+/** Même réponse qu'un compte existe ou non : la route ne révèle aucune adresse inscrite. */
+authRouter.post(
+  '/password-reset',
+  routeLimiter(15, 5),
+  validateBody(resetRequestSchema),
+  asyncRoute(async (req, res) => {
+    await requestPasswordReset((req.body as z.infer<typeof resetRequestSchema>).email, clientInfo(req));
+    res.status(202).json({ message: 'Si un compte existe pour cette adresse, un e-mail vient de partir.' });
+  }),
+);
+
+authRouter.post(
+  '/verify-email',
+  routeLimiter(15, 20),
+  validateBody(tokenSchema),
+  asyncRoute(async (req, res) => {
+    await verifyEmailToken((req.body as z.infer<typeof tokenSchema>).token, clientInfo(req));
     res.status(204).end();
   }),
 );

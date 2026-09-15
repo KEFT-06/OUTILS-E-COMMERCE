@@ -95,6 +95,7 @@ export async function exportPersonalData(userId: string) {
       id: user.id,
       name: user.name,
       email: user.email,
+      emailVerifiedAt: iso(user.emailVerifiedAt),
       country: user.country,
       role: user.role,
       status: user.status,

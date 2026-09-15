@@ -7,6 +7,8 @@ export interface ServerProviders {
   images: boolean;
   /** Recherche web des analyses de niche. */
   webSearch: boolean;
+  /** Envoi des e-mails (mot de passe oublié, confirmation d'adresse). */
+  email: boolean;
 }
 
 /** Fournisseurs configurés sur le serveur, lus sur /api/health, sans jamais voir de clé. null : pas encore connu. */
@@ -23,6 +25,7 @@ export function useProviders(): ServerProviders | null {
             text: Boolean(data.providers.text),
             images: Boolean(data.providers.video),
             webSearch: Boolean(data.providers.webSearch),
+            email: Boolean(data.providers.email),
           });
         }
       })

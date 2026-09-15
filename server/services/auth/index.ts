@@ -1,9 +1,22 @@
 import QRCode from 'qrcode';
-import { and, eq, gt, isNull, lt, or, sql } from 'drizzle-orm';
+import { and, count, eq, gt, isNull, lt, or, sql } from 'drizzle-orm';
 import { z } from 'zod';
 import { getDb, type Transaction } from '@server/db/client';
-import { mfaChallenges, passwordTokens, recoveryCodes, sessions, userPermissions, users, type UserRow } from '@server/db/schema';
-import { env } from '@server/env';
+import {
+  authEvents,
+  emailVerificationTokens,
+  mfaChallenges,
+  passwordTokens,
+  recoveryCodes,
+  sessions,
+  userPermissions,
+  users,
+  type UserRow,
+} from '@server/db/schema';
+import { env, providers } from '@server/env';
+import { describeDevice } from '@server/lib/device';
+import { emailNotConfigured, sendEmailInBackground } from '@server/services/email';
+import { emailVerificationEmail, passwordChangedEmail, passwordResetEmail } from '@server/services/email/templates';
 import { decryptSecret, encryptSecret, randomToken, sha256 } from '@server/lib/crypto';
 import { AppError } from '@server/middleware';
 import { createUserRecord } from '@server/services/accounts';
@@ -156,6 +169,11 @@ export async function registerUser(input: {
     country: input.country ?? null,
   });
   await recordAuthEvent('signup', { userId: user.id, email: user.email, client: input.client });
+  if (providers.email) {
+    await sendEmailVerification(user).catch((error: unknown) => {
+      console.error('[e-mails] confirmation d’adresse non préparée :', error instanceof AppError ? error.code : 'erreur inconnue');
+    });
+  }
   return user;
 }
 
@@ -553,7 +571,22 @@ export async function changePassword(
   // Un mot de passe changé parce qu'il a fuité ne doit laisser aucune autre session ouverte.
   await revokeUserSessions(user.id, { exceptSessionId: input.sessionId, reason: 'password_changed' });
   await recordAuthEvent('password_changed', { userId: user.id, email: user.email, client: input.client });
+  if (providers.email) {
+    sendEmailInBackground(
+      passwordChangedEmail(
+        { email: user.email, name: user.name },
+        {
+          at: new Date().toLocaleString('fr-FR', { dateStyle: 'long', timeStyle: 'short', timeZone: env.REPORTING_TIMEZONE }),
+          device: describeDevice(input.client.userAgent),
+          resetUrl: `${appUrl()}/mot-de-passe-oublie`,
+        },
+      ),
+      'alerte de mot de passe',
+    );
+  }
 }
+
+const appUrl = () => env.APP_URL.replace(/\/$/, '');
 
 /**
  * Preuve que la personne devant l'écran est le titulaire du compte, avant une action
@@ -623,7 +656,9 @@ export async function inspectPasswordToken(token: string) {
 }
 
 export async function consumePasswordToken(input: { token: string; password: string; client: ClientInfo }): Promise<void> {
-  const { user } = await findUsableToken(input.token);
+  const { token: tokenRow, user } = await findUsableToken(input.token);
+  // Un lien demandé soi-même arrive par e-mail : s'en servir prouve que l'adresse est la bonne.
+  const provesEmail = tokenRow.createdBy === null && !user.emailVerifiedAt;
   const problems = passwordProblems(input.password, { email: user.email, name: user.name });
   if (problems.length > 0) throw weakPassword(problems);
 
@@ -639,11 +674,109 @@ export async function consumePasswordToken(input: { token: string; password: str
       .returning({ id: passwordTokens.id });
     if (claimed.length === 0) throw tokenInvalid();
 
-    await tx.update(users).set({ passwordHash, passwordChangedAt: now, updatedAt: now }).where(eq(users.id, user.id));
+    await tx
+      .update(users)
+      .set({ passwordHash, passwordChangedAt: now, updatedAt: now, ...(provesEmail ? { emailVerifiedAt: now } : {}) })
+      .where(eq(users.id, user.id));
     await revokeUserSessions(user.id, { reason: 'password_reset' }, tx);
     await tx.delete(mfaChallenges).where(eq(mfaChallenges.userId, user.id));
   });
 
   await clearFailures(emailThrottleKey(user.email));
   await recordAuthEvent('password_reset', { userId: user.id, email: user.email, client: input.client });
+}
+
+/* -------------------------------------------------------------------------- */
+/*  E-mails : mot de passe oublié et confirmation d'adresse                    */
+/* -------------------------------------------------------------------------- */
+
+export const PASSWORD_RESET_EMAIL_TTL_MS = 60 * 60_000;
+export const EMAIL_VERIFICATION_TTL_MS = 48 * 3_600_000;
+const RESET_EMAILS_PER_HOUR = 3;
+
+/**
+ * Mot de passe oublié. Ne dit jamais si l'adresse est inscrite : l'appelant répond
+ * la même chose dans tous les cas. Trois e-mails par heure au plus par compte, pour
+ * qu'on ne puisse pas s'en servir pour inonder une boîte de réception.
+ */
+export async function requestPasswordReset(email: string, client: ClientInfo): Promise<void> {
+  if (!providers.email) throw emailNotConfigured();
+
+  const db = getDb();
+  const [user] = await db.select().from(users).where(eq(users.email, email)).limit(1);
+  if (!user || user.status !== 'active') return;
+
+  const [recent] = await db
+    .select({ total: count() })
+    .from(authEvents)
+    .where(
+      and(
+        eq(authEvents.userId, user.id),
+        eq(authEvents.type, 'password_reset_requested'),
+        gt(authEvents.createdAt, new Date(Date.now() - 3_600_000)),
+      ),
+    );
+  if ((recent?.total ?? 0) >= RESET_EMAILS_PER_HOUR) return;
+
+  const link = await issuePasswordToken({
+    userId: user.id,
+    purpose: user.passwordHash ? 'reset' : 'setup',
+    createdBy: null,
+    ttlMs: PASSWORD_RESET_EMAIL_TTL_MS,
+  });
+  await recordAuthEvent('password_reset_requested', { userId: user.id, email: user.email, client });
+  sendEmailInBackground(
+    passwordResetEmail({ email: user.email, name: user.name }, link.url, PASSWORD_RESET_EMAIL_TTL_MS / 60_000),
+    'mot de passe oublié',
+  );
+}
+
+export async function sendEmailVerification(user: UserRow): Promise<void> {
+  if (!providers.email) throw emailNotConfigured();
+  if (user.emailVerifiedAt) throw new AppError(409, 'Votre adresse est déjà confirmée.', 'EMAIL_ALREADY_VERIFIED');
+
+  const token = randomToken();
+  const db = getDb();
+  await db
+    .delete(emailVerificationTokens)
+    .where(and(eq(emailVerificationTokens.userId, user.id), isNull(emailVerificationTokens.usedAt)));
+  await db.insert(emailVerificationTokens).values({
+    id: sha256(token),
+    userId: user.id,
+    email: user.email,
+    expiresAt: new Date(Date.now() + EMAIL_VERIFICATION_TTL_MS),
+  });
+  sendEmailInBackground(
+    emailVerificationEmail({ email: user.email, name: user.name }, `${appUrl()}/verifier-email#${token}`),
+    'confirmation d’adresse',
+  );
+}
+
+export async function verifyEmailToken(token: string, client: ClientInfo): Promise<void> {
+  if (token.length < 20 || token.length > 100) throw tokenInvalid();
+  const now = new Date();
+
+  await getDb().transaction(async (tx) => {
+    const [claimed] = await tx
+      .update(emailVerificationTokens)
+      .set({ usedAt: now })
+      .where(
+        and(
+          eq(emailVerificationTokens.id, sha256(token)),
+          isNull(emailVerificationTokens.usedAt),
+          gt(emailVerificationTokens.expiresAt, now),
+        ),
+      )
+      .returning();
+    if (!claimed) throw tokenInvalid();
+
+    const [user] = await tx
+      .update(users)
+      .set({ emailVerifiedAt: now, updatedAt: now })
+      .where(and(eq(users.id, claimed.userId), eq(users.email, claimed.email)))
+      .returning({ id: users.id, email: users.email });
+    if (!user) throw tokenInvalid();
+
+    await recordAuthEvent('email_verified', { userId: user.id, email: user.email, client }, tx);
+  });
 }

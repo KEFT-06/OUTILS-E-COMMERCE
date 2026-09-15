@@ -1,3 +1,4 @@
+import { providers } from '@server/env';
 import type { RequestAuth } from '@server/middleware/auth';
 import { creditSummary, effectiveLimits } from '@server/services/accounts';
 import { hasSecondFactor, secondFactorMethods } from '@server/services/auth/factors';
@@ -17,6 +18,7 @@ export async function accountView(auth: RequestAuth) {
     id: user.id,
     name: user.name,
     email: user.email,
+    emailVerification: { verified: Boolean(user.emailVerifiedAt), available: providers.email },
     role: user.role,
     status: user.status,
     /** Null tant que l'utilisateur n'a pas choisi son pays. */

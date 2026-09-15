@@ -136,8 +136,10 @@ function LoginForm({
           {form.formState.isSubmitting && <Spinner />}
           Se connecter
         </Button>
-        <p className="text-center text-xs leading-relaxed text-muted-foreground">
-          Mot de passe oublié ? Demandez un lien de réinitialisation à l’administrateur de Smart Creator.
+        <p className="text-center text-sm">
+          <Link to="/mot-de-passe-oublie" className="font-medium text-brand-green-text underline-offset-4 hover:underline">
+            Mot de passe oublié ?
+          </Link>
         </p>
       </FieldGroup>
     </form>

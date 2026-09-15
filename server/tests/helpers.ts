@@ -26,6 +26,10 @@ export async function createTestApp(overrides: Record<string, string> = {}): Pro
     BRAVE_SEARCH_API_KEY: '',
     BRAVE_SEARCH_API_URL: 'http://127.0.0.1:9',
     META_ACCESS_TOKEN: '',
+    EMAIL_PROVIDER: '',
+    EMAIL_API_KEY: '',
+    EMAIL_FROM: '',
+    EMAIL_API_URL: '',
     EXCHANGE_RATES_URL: 'off',
     ...overrides,
   });

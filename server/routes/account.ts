@@ -21,6 +21,7 @@ import {
   regenerateRecoveryCodes,
   removeSecurityCode,
   securityCodeInputSchema,
+  sendEmailVerification,
   setSecurityCode,
 } from '@server/services/auth';
 import {
@@ -414,5 +415,15 @@ accountRouter.delete(
     await deleteOwnAccount(req.auth!.account.user, { password, code });
     clearSessionCookie(res);
     res.status(204).end();
+  }),
+);
+
+/** Nouvel e-mail de confirmation d'adresse : trois par heure au plus. */
+accountRouter.post(
+  '/verify-email/send',
+  routeLimiter(60, 3),
+  asyncRoute(async (req, res) => {
+    await sendEmailVerification(req.auth!.account.user);
+    res.status(202).json({ message: 'E-mail de confirmation envoyé.' });
   }),
 );

@@ -100,6 +100,8 @@ export const users = pgTable(
     /** Langues maternelles déclarées par un relecteur de guides (codes BCP 47). */
     reviewerLanguages: jsonb('reviewer_languages').$type<string[]>().notNull().default(sql`'[]'::jsonb`),
     lastLoginAt: moment('last_login_at'),
+    /** Null tant que l'adresse n'a pas été confirmée par un lien reçu par e-mail. */
+    emailVerifiedAt: moment('email_verified_at'),
     passwordChangedAt: moment('password_changed_at'),
     createdAt: createdAt(),
     updatedAt: moment('updated_at').notNull().defaultNow(),
@@ -489,6 +491,23 @@ export const passwordTokens = pgTable(
     createdAt: createdAt(),
   },
   (table) => [index('password_tokens_user_idx').on(table.userId)],
+).enableRLS();
+
+/** Liens de confirmation d'adresse e-mail. Seule l'empreinte du jeton est gardée. */
+export const emailVerificationTokens = pgTable(
+  'email_verification_tokens',
+  {
+    id: text('id').primaryKey(),
+    userId: uuid('user_id')
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
+    /** Adresse confirmée par ce lien : un lien reçu avant un changement d'adresse ne confirme pas la nouvelle. */
+    email: text('email').notNull(),
+    expiresAt: moment('expires_at').notNull(),
+    usedAt: moment('used_at'),
+    createdAt: createdAt(),
+  },
+  (table) => [index('email_verification_tokens_user_idx').on(table.userId)],
 ).enableRLS();
 
 /** Clés API personnelles (Chariow…), chiffrées. Le serveur ne les renvoie jamais au navigateur. */

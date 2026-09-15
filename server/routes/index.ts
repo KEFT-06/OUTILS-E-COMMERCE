@@ -118,6 +118,7 @@ api.get('/health', (_req, res) => {
       storybook: providers.gamma,
       adIngestion: providers.meta,
       webSearch: providers.webSearch,
+      email: providers.email,
     },
   });
 });
