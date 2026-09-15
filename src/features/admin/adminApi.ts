@@ -63,7 +63,8 @@ export interface AdminOverview {
   generatedAt: string;
   timezone: string;
   users: { total: number; newToday: number; new7d: number; new30d: number; suspended: number; admins: number; withTwoFactor: number };
-  online: { users: number; sessions: number; activeToday: number };
+  /** Actifs : au moins une requête sur la période, d'après l'historique des connexions. */
+  online: { users: number; sessions: number; activeToday: number; active7d: number; active30d: number };
   plans: { id: PlanId; label: string; users: number }[];
   content: GenerationTotals;
   credits: { consumed30d: number; granted30d: number };
@@ -104,6 +105,8 @@ export interface AdminUserRow {
   plan: { id: PlanId; label: string };
   planExpiresAt: string | null;
   credits: { plan: number; bonus: number; total: number };
+  /** Points dépensés sur 30 jours, remboursements déduits. */
+  creditsUsed30d: number;
   createdAt: string;
   lastLoginAt: string | null;
   lastSeenAt: string | null;
@@ -170,6 +173,10 @@ export interface AdminUserDetail {
     isStaff: boolean;
   };
   credits: CreditBalance;
+  /** Points dépensés (remboursements déduits) : cycle mensuel en cours, 30 jours, depuis l'inscription. */
+  creditsUsed: { cycle: number; last30d: number; total: number; actions: number };
+  /** Les 50 dernières connexions. */
+  connections: ConnectionEntry[];
   features: { id: FeatureId; label: string; planDefault: boolean; override: 'granted' | 'revoked' | null; effective: boolean }[];
   permissions: { effective: Permission[]; granted: string[] };
   sessions: { id: string; device: string; ip: string | null; createdAt: string; lastSeenAt: string; online: boolean; mfaVerified: boolean }[];
@@ -227,6 +234,40 @@ export interface ThrottleEntry {
   failures: number;
   lockedUntil: string | null;
   lastFailureAt: string;
+}
+
+export interface ConnectionEntry {
+  id: string;
+  device: string;
+  ip: string | null;
+  startedAt: string;
+  lastSeenAt: string;
+  /** Null tant que la session est ouverte. */
+  endedAt: string | null;
+  endReason: string | null;
+  endLabel: string;
+  open: boolean;
+  online: boolean;
+  durationSeconds: number;
+}
+
+export interface ActivitySummary {
+  online: number;
+  activeToday: number;
+  active7d: number;
+  active30d: number;
+  connectionsToday: number;
+  /** Durée moyenne d'une connexion close sur 30 jours. */
+  averageSeconds: number;
+}
+
+export interface ConnectionPage {
+  page: number;
+  pageSize: number;
+  total: number;
+  filterUser: { id: string; name: string; email: string } | null;
+  summary: ActivitySummary;
+  entries: (ConnectionEntry & { user: { id: string; name: string; email: string; country: string | null } })[];
 }
 
 export interface AuditPage {

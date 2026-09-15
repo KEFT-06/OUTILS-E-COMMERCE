@@ -114,13 +114,13 @@ export function AdminOverviewPage() {
               value={data.online.users}
               icon={Wifi}
               tone="success"
-              hint={`${data.online.activeToday} compte${data.online.activeToday > 1 ? 's' : ''} actif${data.online.activeToday > 1 ? 's' : ''} aujourd’hui · activité des 5 dernières minutes`}
+              hint={`Utilisateurs actifs : ${data.online.activeToday} aujourd’hui · ${data.online.active7d} sur 7 jours · ${data.online.active30d} sur 30 jours`}
             />
             <KpiCard
               label="Comptes enregistrés"
               value={data.users.total.toLocaleString('fr-FR')}
               icon={UsersRound}
-              hint={`+${data.users.new7d} en 7 jours · ${data.users.newToday} aujourd’hui${data.users.suspended ? ` · ${data.users.suspended} suspendu(s)` : ''}`}
+              hint={`+${data.users.new7d} en 7 jours · ${data.users.newToday} aujourd’hui${data.users.suspended ? ` · ${data.users.suspended} bloqué(s)` : ''}`}
             />
             <KpiCard
               label="Contenus créés sur 30 jours"

@@ -922,7 +922,7 @@ export function SuspendDialog({ detail, onDone }: { detail: AdminUserDetail; onD
         method: 'POST',
         body: suspended ? { status: 'active' } : { status: 'suspended', reason: reason.trim() },
       });
-      toast.success(suspended ? 'Compte réactivé' : 'Compte suspendu');
+      toast.success(suspended ? 'Compte débloqué' : 'Compte bloqué');
       onDone(result);
       state.setOpen(false);
       setReason('');
@@ -934,17 +934,17 @@ export function SuspendDialog({ detail, onDone }: { detail: AdminUserDetail; onD
       <DialogTrigger asChild>
         <Button variant={suspended ? 'outline' : 'ghost'} size="sm" className={cn(!suspended && 'text-danger hover:text-danger')}>
           <Ban />
-          {suspended ? 'Réactiver' : 'Suspendre'}
+          {suspended ? 'Débloquer' : 'Bloquer'}
         </Button>
       </DialogTrigger>
       <DialogContent className="sm:max-w-md">
         <form onSubmit={submit} className="space-y-4">
           <DialogHeader>
-            <DialogTitle>{suspended ? `Réactiver ${detail.user.name}` : `Suspendre ${detail.user.name}`}</DialogTitle>
+            <DialogTitle>{suspended ? `Débloquer ${detail.user.name}` : `Bloquer ${detail.user.name}`}</DialogTitle>
             <DialogDescription>
               {suspended
                 ? 'La personne pourra de nouveau se connecter. Ses données, son solde et son palier sont intacts.'
-                : 'Ses sessions sont fermées immédiatement et toute connexion est refusée. Rien n’est supprimé : vous pourrez réactiver le compte.'}
+                : 'La personne est déconnectée immédiatement, sur tous ses appareils, et toute connexion est refusée. Rien n’est supprimé : vous pourrez débloquer le compte.'}
             </DialogDescription>
           </DialogHeader>
           {!suspended && (
@@ -964,7 +964,7 @@ export function SuspendDialog({ detail, onDone }: { detail: AdminUserDetail; onD
               disabled={state.busy || (!suspended && reason.trim().length < 3)}
             >
               {state.busy && <Spinner />}
-              {suspended ? 'Réactiver' : 'Suspendre'}
+              {suspended ? 'Débloquer' : 'Bloquer'}
             </Button>
           </DialogFooter>
         </form>

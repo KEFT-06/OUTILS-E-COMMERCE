@@ -21,6 +21,34 @@ export function formatPeriod(period: string, granularity: Granularity): string {
   });
 }
 
+/** « Aujourd’hui à 14:32 », « Hier à 09:10 », « 3 sept. à 18:05 » : heure de l'appareil qui affiche. */
+export function formatClock(iso: string, now = new Date()): string {
+  const date = new Date(iso);
+  if (Number.isNaN(date.getTime())) return iso;
+  const time = date.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' });
+  const dayKey = (value: Date) => value.toDateString();
+  const yesterday = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 1);
+  if (dayKey(date) === dayKey(now)) return `Aujourd’hui à ${time}`;
+  if (dayKey(date) === dayKey(yesterday)) return `Hier à ${time}`;
+  const day = date.toLocaleDateString('fr-FR', {
+    day: 'numeric',
+    month: 'short',
+    ...(date.getFullYear() === now.getFullYear() ? {} : { year: 'numeric' }),
+  });
+  return `${day} à ${time}`;
+}
+
+/** « 45 s », « 12 min », « 2 h 05 », « 3 j 4 h ». */
+export function formatDuration(seconds: number): string {
+  const total = Math.max(0, Math.round(seconds));
+  if (total < 60) return `${total} s`;
+  const minutes = Math.floor(total / 60);
+  if (minutes < 60) return `${minutes} min`;
+  const hours = Math.floor(minutes / 60);
+  if (hours < 24) return `${hours} h ${String(minutes % 60).padStart(2, '0')}`;
+  return `${Math.floor(hours / 24)} j ${hours % 24} h`;
+}
+
 export function compactNumber(value: number): string {
   return new Intl.NumberFormat('fr-FR', { notation: 'compact', maximumFractionDigits: 1 }).format(value);
 }

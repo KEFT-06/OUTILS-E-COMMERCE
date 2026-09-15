@@ -1,4 +1,4 @@
-import { and, desc, eq, exists, gt, gte, ilike, isNotNull, or, sql, type SQL } from 'drizzle-orm';
+import { and, desc, eq, exists, gt, gte, ilike, isNotNull, isNull, or, sql, type SQL } from 'drizzle-orm';
 import { alias } from 'drizzle-orm/pg-core';
 import { z } from 'zod';
 import { getDb, queryRows } from '@server/db/client';
@@ -11,6 +11,7 @@ import {
   creditTransactions,
   generations,
   payments,
+  sessionHistory,
   sessions,
   userPermissions,
   users,
@@ -18,13 +19,14 @@ import {
 import { env } from '@server/env';
 import { describeDevice, maskIp } from '@server/lib/device';
 import { AppError } from '@server/middleware';
-import { creditSummary, loadAccount } from '@server/services/accounts';
+import { addMonths, creditSummary, loadAccount } from '@server/services/accounts';
 import { AUTH_EVENT_LABELS } from '@server/services/audit';
 import { hasSecondFactor, secondFactorMethods } from '@server/services/auth/factors';
 import { ONLINE_WINDOW_MS } from '@server/services/auth/sessions';
 import { fromMinorUnits } from '@server/services/currency';
 import { integrationsOverview } from '@server/services/integrations';
 import { FEATURES, FEATURE_IDS, getPlanConfig } from '@server/services/plans';
+import { sessionEndLabel } from '@server/shared/sessions';
 
 /**
  * Statistiques de l'administration.
@@ -186,10 +188,7 @@ export async function adminOverview(options: { includeRevenue: boolean; includeS
     .from(sessions)
     .where(and(gte(sessions.lastSeenAt, onlineSince), gt(sessions.expiresAt, now)));
 
-  const [activeToday] = await db
-    .select({ users: num(sql`count(distinct ${sessions.userId})`) })
-    .from(sessions)
-    .where(sql`${sessions.lastSeenAt} >= ${startOf('day')}`);
+  const activity = await activitySummary(now);
 
   const [credits] = await db
     .select({
@@ -209,7 +208,13 @@ export async function adminOverview(options: { includeRevenue: boolean; includeS
     generatedAt: now.toISOString(),
     timezone: env.REPORTING_TIMEZONE,
     users: userStats!,
-    online: { users: online?.users ?? 0, sessions: online?.sessions ?? 0, activeToday: activeToday?.users ?? 0 },
+    online: {
+      users: online?.users ?? 0,
+      sessions: online?.sessions ?? 0,
+      activeToday: activity.activeToday,
+      active7d: activity.active7d,
+      active30d: activity.active30d,
+    },
     plans: PLAN_IDS.map((id) => ({ id, label: labels[id] ?? id, users: planRows.find((row) => row.plan === id)?.users ?? 0 })),
     content: await generationTotals(),
     credits: credits!,
@@ -388,7 +393,9 @@ export async function listUsers(query: UserListQuery) {
   if (query.online) conditions.push(isOnline);
   const where = conditions.length > 0 ? and(...conditions) : undefined;
 
-  const lastSeen = sql`(select max(${sessions.lastSeenAt}) from ${sessions} where ${sessions.userId} = ${users.id} and ${sessions.expiresAt} > now())`;
+  // Dernière activité connue, session ouverte ou close : l'historique des connexions la garde.
+  const lastSeen = sql`(select max(${sessionHistory.lastSeenAt}) from ${sessionHistory} where ${sessionHistory.userId} = ${users.id})`;
+  const since30d = new Date(now.getTime() - 30 * DAY_MS);
   const orderBy = {
     created_desc: [desc(users.createdAt)],
     created_asc: [users.createdAt],
@@ -416,6 +423,10 @@ export async function listUsers(query: UserListQuery) {
       lastSeenAt: sql<Date | null>`${lastSeen}`.mapWith(optionalDate),
       generations: num(sql`(select count(*) from ${generations} where ${generations.userId} = ${users.id})`),
       permissionCount: num(sql`(select count(*) from ${userPermissions} where ${userPermissions.userId} = ${users.id})`),
+      online: sql<boolean>`${isOnline}`.mapWith(Boolean),
+      creditsUsed30d: num(
+        sql`(select coalesce(-sum(${creditTransactions.planDelta} + ${creditTransactions.bonusDelta}), 0) from ${creditTransactions} where ${creditTransactions.userId} = ${users.id} and ${creditTransactions.reason} in ('usage', 'refund') and ${creditTransactions.createdAt} >= ${at(since30d)})`,
+      ),
     })
     .from(users)
     .where(where)
@@ -439,10 +450,11 @@ export async function listUsers(query: UserListQuery) {
       plan: { id: row.plan, label: labels[row.plan] ?? row.plan },
       planExpiresAt: row.planExpiresAt?.toISOString() ?? null,
       credits: { plan: row.planCredits, bonus: row.bonusCredits, total: row.planCredits + row.bonusCredits },
+      creditsUsed30d: Math.max(0, row.creditsUsed30d),
       createdAt: row.createdAt.toISOString(),
       lastLoginAt: row.lastLoginAt?.toISOString() ?? null,
       lastSeenAt: row.lastSeenAt?.toISOString() ?? null,
-      online: Boolean(row.lastSeenAt && row.lastSeenAt >= onlineSince),
+      online: row.online,
       generations: row.generations,
       isStaff: row.role === 'admin' || row.permissionCount > 0,
       twoFactorEnabled: Boolean(row.twoFactorEnabledAt) || row.hasSecurityCode,
@@ -516,8 +528,33 @@ export async function adminUserDetail(userId: string) {
     .from(userPermissions)
     .where(eq(userPermissions.userId, userId));
 
+  const connectionRows = await db
+    .select()
+    .from(sessionHistory)
+    .where(eq(sessionHistory.userId, userId))
+    .orderBy(desc(sessionHistory.startedAt))
+    .limit(50);
+
+  const [lastActivity] = await db
+    .select({ at: sql<Date | null>`max(${sessionHistory.lastSeenAt})`.mapWith(optionalDate) })
+    .from(sessionHistory)
+    .where(eq(sessionHistory.userId, userId));
+
+  // Points dépensés : débits d'usage, nets des remboursements.
+  const spent = sql`${creditTransactions.planDelta} + ${creditTransactions.bonusDelta}`;
+  const isUsage = sql`${creditTransactions.reason} in ('usage', 'refund')`;
+  const [used] = await db
+    .select({
+      cycle: num(sql`coalesce(-(sum(${spent}) filter (where ${isUsage} and ${creditTransactions.createdAt} >= ${at(addMonths(user.creditsCycleEndsAt, -1))})), 0)`),
+      last30d: num(sql`coalesce(-(sum(${spent}) filter (where ${isUsage} and ${creditTransactions.createdAt} >= ${at(new Date(now.getTime() - 30 * DAY_MS))})), 0)`),
+      total: num(sql`coalesce(-(sum(${spent}) filter (where ${isUsage})), 0)`),
+      actions: num(sql`count(*) filter (where ${creditTransactions.reason} = 'usage')`),
+    })
+    .from(creditTransactions)
+    .where(eq(creditTransactions.userId, userId));
+
   const integrations = await integrationsOverview(user);
-  const lastSeenAt = sessionRows[0]?.lastSeenAt ?? null;
+  const lastSeenAt = lastActivity?.at ?? null;
 
   return {
     user: {
@@ -532,7 +569,7 @@ export async function adminUserDetail(userId: string) {
       createdAt: user.createdAt.toISOString(),
       lastLoginAt: user.lastLoginAt?.toISOString() ?? null,
       lastSeenAt: lastSeenAt?.toISOString() ?? null,
-      online: Boolean(lastSeenAt && lastSeenAt >= onlineSince),
+      online: sessionRows.some((session) => session.lastSeenAt >= onlineSince),
       passwordSet: Boolean(user.passwordHash),
       twoFactorEnabled: hasSecondFactor(user),
       twoFactorMethods: secondFactorMethods(user),
@@ -540,6 +577,13 @@ export async function adminUserDetail(userId: string) {
       isStaff: snapshot.isStaff,
     },
     credits: creditSummary(snapshot),
+    creditsUsed: {
+      cycle: Math.max(0, used?.cycle ?? 0),
+      last30d: Math.max(0, used?.last30d ?? 0),
+      total: Math.max(0, used?.total ?? 0),
+      actions: used?.actions ?? 0,
+    },
+    connections: connectionRows.map((row) => serializeConnection(row, now)),
     features: FEATURE_IDS.map((id) => ({
       id,
       label: FEATURES[id],
@@ -608,6 +652,114 @@ export async function adminUserDetail(userId: string) {
 /* -------------------------------------------------------------------------- */
 /*  En ligne, paiements, sécurité, journal                                     */
 /* -------------------------------------------------------------------------- */
+
+/* -------------------------------------------------------------------------- */
+/*  Connexions                                                                 */
+/* -------------------------------------------------------------------------- */
+
+/** Personnes actives (au moins une requête) aujourd'hui, sur 7 et 30 jours, et durée moyenne d'une connexion. */
+export async function activitySummary(now = new Date()) {
+  const [row] = await getDb()
+    .select({
+      online: num(
+        sql`count(distinct ${sessionHistory.userId}) filter (where ${sessionHistory.endedAt} is null and ${sessionHistory.lastSeenAt} >= ${at(new Date(now.getTime() - ONLINE_WINDOW_MS))})`,
+      ),
+      activeToday: num(sql`count(distinct ${sessionHistory.userId}) filter (where ${sessionHistory.lastSeenAt} >= ${startOf('day')})`),
+      active7d: num(
+        sql`count(distinct ${sessionHistory.userId}) filter (where ${sessionHistory.lastSeenAt} >= ${at(new Date(now.getTime() - 7 * DAY_MS))})`,
+      ),
+      active30d: num(sql`count(distinct ${sessionHistory.userId})`),
+      connectionsToday: num(sql`count(*) filter (where ${sessionHistory.startedAt} >= ${startOf('day')})`),
+      averageSeconds: num(
+        sql`coalesce(round(avg(extract(epoch from (${sessionHistory.endedAt} - ${sessionHistory.startedAt}))) filter (where ${sessionHistory.endedAt} is not null)), 0)`,
+      ),
+    })
+    .from(sessionHistory)
+    .where(gte(sessionHistory.lastSeenAt, new Date(now.getTime() - 30 * DAY_MS)));
+
+  return {
+    online: row?.online ?? 0,
+    activeToday: row?.activeToday ?? 0,
+    active7d: row?.active7d ?? 0,
+    active30d: row?.active30d ?? 0,
+    connectionsToday: row?.connectionsToday ?? 0,
+    averageSeconds: row?.averageSeconds ?? 0,
+  };
+}
+
+export const connectionQuerySchema = z.object({
+  page: z.coerce.number().int().min(1).max(10_000).catch(1),
+  pageSize: z.coerce.number().int().min(5).max(100).catch(25),
+  search: z.string().trim().min(1).max(120).optional().catch(undefined),
+  userId: z.string().uuid().optional().catch(undefined),
+  state: z.enum(['all', 'open', 'closed']).catch('all'),
+});
+
+export type ConnectionQuery = z.infer<typeof connectionQuerySchema>;
+
+function serializeConnection(entry: typeof sessionHistory.$inferSelect, now: Date) {
+  const open = entry.endedAt === null;
+  const online = open && now.getTime() - entry.lastSeenAt.getTime() <= ONLINE_WINDOW_MS;
+  // Session encore ouverte : durée jusqu'à maintenant si la personne est là, sinon jusqu'à sa dernière activité.
+  const end = entry.endedAt ?? (online ? now : entry.lastSeenAt);
+  return {
+    id: entry.id,
+    device: entry.device,
+    ip: entry.ipMasked,
+    startedAt: entry.startedAt.toISOString(),
+    lastSeenAt: entry.lastSeenAt.toISOString(),
+    endedAt: entry.endedAt?.toISOString() ?? null,
+    endReason: entry.endReason,
+    endLabel: sessionEndLabel(entry.endReason),
+    open,
+    online,
+    durationSeconds: Math.max(0, Math.round((end.getTime() - entry.startedAt.getTime()) / 1000)),
+  };
+}
+
+/** Historique des connexions de tous les comptes (ou d'un seul), du plus récent au plus ancien. */
+export async function connectionHistory(query: ConnectionQuery) {
+  const db = getDb();
+  const now = new Date();
+
+  const conditions: SQL[] = [];
+  if (query.userId) conditions.push(eq(sessionHistory.userId, query.userId));
+  if (query.search) {
+    const pattern = `%${query.search.replace(/[\\%_]/g, (match) => `\\${match}`)}%`;
+    conditions.push(or(ilike(users.email, pattern), ilike(users.name, pattern))!);
+  }
+  if (query.state === 'open') conditions.push(isNull(sessionHistory.endedAt));
+  if (query.state === 'closed') conditions.push(isNotNull(sessionHistory.endedAt));
+  const where = conditions.length > 0 ? and(...conditions) : undefined;
+
+  const rows = await db
+    .select({ entry: sessionHistory, user: { id: users.id, name: users.name, email: users.email, country: users.country } })
+    .from(sessionHistory)
+    .innerJoin(users, eq(users.id, sessionHistory.userId))
+    .where(where)
+    .orderBy(desc(sessionHistory.startedAt))
+    .limit(query.pageSize)
+    .offset((query.page - 1) * query.pageSize);
+
+  const [total] = await db
+    .select({ value: num(sql`count(*)`) })
+    .from(sessionHistory)
+    .innerJoin(users, eq(users.id, sessionHistory.userId))
+    .where(where);
+
+  const [filterUser] = query.userId
+    ? await db.select({ id: users.id, name: users.name, email: users.email }).from(users).where(eq(users.id, query.userId)).limit(1)
+    : [];
+
+  return {
+    page: query.page,
+    pageSize: query.pageSize,
+    total: total?.value ?? 0,
+    filterUser: filterUser ?? null,
+    summary: await activitySummary(now),
+    entries: rows.map(({ entry, user }) => ({ ...serializeConnection(entry, now), user })),
+  };
+}
 
 export async function onlineUsers() {
   const db = getDb();

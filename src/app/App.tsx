@@ -27,6 +27,7 @@ import {
   StudioPage,
 } from '@/app/routes/ModulePages';
 import {
+  AdminConnectionsPage,
   AdminContentPage,
   AdminLayout,
   AdminOverviewPage,
@@ -82,6 +83,7 @@ export default function App() {
                       <Route index element={<AdminOverviewPage />} />
                       <Route path="utilisateurs" element={<AdminUsersPage />} />
                       <Route path="utilisateurs/:userId" element={<AdminUserDetailPage />} />
+                      <Route path="connexions" element={<AdminConnectionsPage />} />
                       <Route path="revenus" element={<AdminRevenuePage />} />
                       <Route path="contenus" element={<AdminContentPage />} />
                       <Route path="securite" element={<AdminSecurityPage />} />

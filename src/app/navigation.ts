@@ -7,6 +7,7 @@ import {
   FileText,
   Film,
   Gauge,
+  History,
   Languages,
   LayoutDashboard,
   LayoutGrid,
@@ -219,7 +220,7 @@ export const ACCOUNT_PATH = '/app/compte';
  * fermée.
  */
 export interface AdminSection {
-  id: 'overview' | 'users' | 'revenue' | 'content' | 'security';
+  id: 'overview' | 'users' | 'connections' | 'revenue' | 'content' | 'security';
   path: `/app/admin${string}`;
   label: string;
   description: string;
@@ -244,6 +245,14 @@ export const ADMIN_SECTIONS: readonly AdminSection[] = [
     label: 'Utilisateurs',
     description: 'Comptes, paliers, crédits et privilèges',
     icon: UsersRound,
+    permission: 'admin.users.read',
+  },
+  {
+    id: 'connections',
+    path: '/app/admin/connexions',
+    label: 'Connexions',
+    description: 'Heures de connexion et de déconnexion de chaque utilisateur',
+    icon: History,
     permission: 'admin.users.read',
   },
   {

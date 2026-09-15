@@ -13,6 +13,9 @@ export const AdminUsersPage = lazy(() => import('@/features/admin/AdminUsersPage
 export const AdminUserDetailPage = lazy(() =>
   import('@/features/admin/AdminUserDetailPage').then((module) => ({ default: module.AdminUserDetailPage })),
 );
+export const AdminConnectionsPage = lazy(() =>
+  import('@/features/admin/AdminConnectionsPage').then((module) => ({ default: module.AdminConnectionsPage })),
+);
 export const AdminRevenuePage = lazy(() =>
   import('@/features/admin/AdminRevenuePage').then((module) => ({ default: module.AdminRevenuePage })),
 );

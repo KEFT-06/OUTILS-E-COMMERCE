@@ -127,7 +127,7 @@ accountRouter.post(
   '/sessions/revoke-others',
   asyncRoute(async (req, res) => {
     const auth = req.auth!;
-    const revoked = await revokeUserSessions(auth.account.user.id, { exceptSessionId: auth.sessionId });
+    const revoked = await revokeUserSessions(auth.account.user.id, { exceptSessionId: auth.sessionId, reason: 'revoked_by_user' });
     res.json({ revoked });
   }),
 );
@@ -146,7 +146,7 @@ accountRouter.post(
       .limit(1);
     if (!target) throw new AppError(404, 'Session introuvable.', 'SESSION_NOT_FOUND');
 
-    await revokeSession(target.id);
+    await revokeSession(target.id, target.id === auth.sessionId ? 'logout' : 'revoked_by_user');
     if (target.id === auth.sessionId) clearSessionCookie(res);
     res.status(204).end();
   }),

@@ -3,7 +3,8 @@ import { CountryFlag } from '@/shared/components/CountryFlag';
 import { useEffect, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import { toast } from 'sonner';
-import { ArrowLeft, Info, KeyRound, ShieldOff, TriangleAlert, UserCog } from 'lucide-react';
+import { ArrowLeft, History, Info, KeyRound, ShieldOff, TriangleAlert, UserCog } from 'lucide-react';
+import { ConnectionTable } from '@/features/admin/AdminConnectionsPage';
 import { useCreditGate } from '@/app/providers/CreditGateProvider';
 import { type AdminMeta, type AdminUserDetail, useAdminMeta, useAdminResource } from '@/features/admin/adminApi';
 import {
@@ -38,7 +39,7 @@ import { Alert, AlertDescription, AlertTitle } from '@/shared/ui/alert';
 import { Avatar, AvatarFallback } from '@/shared/ui/avatar';
 import { Badge } from '@/shared/ui/badge';
 import { Button } from '@/shared/ui/button';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/shared/ui/card';
+import { Card, CardAction, CardContent, CardDescription, CardHeader, CardTitle } from '@/shared/ui/card';
 import { Checkbox } from '@/shared/ui/checkbox';
 import { Label } from '@/shared/ui/label';
 import { NoDataState } from '@/shared/ui/NoDataState';
@@ -141,7 +142,7 @@ export function AdminUserDetailPage() {
               ) : data.user.isStaff ? (
                 <Badge variant="outline">Équipe</Badge>
               ) : null}
-              {data.user.status === 'suspended' && <Badge variant="danger">Suspendu</Badge>}
+              {data.user.status === 'suspended' && <Badge variant="danger">Bloqué</Badge>}
               {data.user.twoFactorEnabled ? (
                 <Badge variant="success">
                   {data.user.twoFactorMethods.code && !data.user.twoFactorMethods.app ? 'Code de sécurité' : 'Second facteur actif'}
@@ -170,7 +171,7 @@ export function AdminUserDetailPage() {
       {data.user.status === 'suspended' && (
         <Alert variant="danger">
           <TriangleAlert />
-          <AlertTitle>Compte suspendu</AlertTitle>
+          <AlertTitle>Compte bloqué</AlertTitle>
           <AlertDescription>{data.user.suspendedReason ?? 'Aucune raison indiquée.'}</AlertDescription>
         </Alert>
       )}
@@ -196,7 +197,7 @@ export function AdminUserDetailPage() {
             <TabsTrigger value="acces">Accès et privilèges</TabsTrigger>
             <TabsTrigger value="activite">Activité</TabsTrigger>
             <TabsTrigger value="paiements">Paiements ({data.payments.length})</TabsTrigger>
-            <TabsTrigger value="securite">Sessions et sécurité</TabsTrigger>
+            <TabsTrigger value="securite">Connexions et sécurité</TabsTrigger>
           </TabsList>
         </div>
 
@@ -246,7 +247,10 @@ function OverviewTab({
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
-          <p className="font-display text-4xl font-extrabold tabular-nums">{credits.unlimited ? '∞' : credits.total}</p>
+          <p className="flex items-baseline gap-2">
+            <span className="font-display text-4xl font-extrabold tabular-nums">{credits.unlimited ? '∞' : credits.total}</span>
+            <span className="text-sm text-muted-foreground">{credits.unlimited ? 'illimités' : `restant${credits.total > 1 ? 's' : ''}`}</span>
+          </p>
           <Progress value={pct} aria-label="Quota mensuel restant" />
           <dl className="grid grid-cols-2 gap-3 text-sm">
             <div className="rounded-lg bg-muted/50 p-3">
@@ -258,6 +262,19 @@ function OverviewTab({
             <div className="rounded-lg bg-muted/50 p-3">
               <dt className="text-xs text-muted-foreground">Points bonus</dt>
               <dd className="font-semibold tabular-nums">{credits.bonus}</dd>
+            </div>
+            <div className="rounded-lg bg-muted/50 p-3">
+              <dt className="text-xs text-muted-foreground">Utilisés ce mois-ci</dt>
+              <dd className="font-semibold tabular-nums">{data.creditsUsed.cycle}</dd>
+            </div>
+            <div className="rounded-lg bg-muted/50 p-3">
+              <dt className="text-xs text-muted-foreground">Utilisés depuis l’inscription</dt>
+              <dd className="font-semibold tabular-nums">
+                {data.creditsUsed.total}
+                <span className="block text-xs font-normal text-muted-foreground">
+                  {data.creditsUsed.actions} action{data.creditsUsed.actions > 1 ? 's' : ''} facturée{data.creditsUsed.actions > 1 ? 's' : ''}
+                </span>
+              </dd>
             </div>
           </dl>
           {canCredits && <RefillPlanCreditsDialog detail={data} onDone={onUpdate} />}
@@ -713,6 +730,32 @@ function SecurityTab({ data, meta }: { data: AdminUserDetail; meta: AdminMeta | 
 
   return (
     <div className="grid gap-6 lg:grid-cols-2">
+      <Card className="lg:col-span-2">
+        <CardHeader>
+          <CardTitle>
+            <h2 className="flex items-center gap-2">
+              <History className="size-4 text-brand-green-text" aria-hidden="true" />
+              Historique des connexions
+            </h2>
+          </CardTitle>
+          <CardDescription>
+            Les 50 dernières. Sans déconnexion volontaire (onglet fermé), l’heure retenue est celle de la dernière activité.
+          </CardDescription>
+          <CardAction>
+            <Button variant="outline" size="sm" asChild>
+              <Link to={`/app/admin/connexions?utilisateur=${data.user.id}`}>Tout voir</Link>
+            </Button>
+          </CardAction>
+        </CardHeader>
+        <CardContent>
+          {data.connections.length === 0 ? (
+            <p className="text-sm text-muted-foreground">Aucune connexion enregistrée.</p>
+          ) : (
+            <ConnectionTable entries={data.connections} showUser={false} />
+          )}
+        </CardContent>
+      </Card>
+
       <Card>
         <CardHeader>
           <CardTitle>

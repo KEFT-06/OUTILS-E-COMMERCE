@@ -118,7 +118,7 @@ export function AdminUsersPage() {
               <SelectContent>
                 <SelectItem value="all">Tous statuts</SelectItem>
                 <SelectItem value="active">Actifs</SelectItem>
-                <SelectItem value="suspended">Suspendus</SelectItem>
+                <SelectItem value="suspended">Bloqués</SelectItem>
               </SelectContent>
             </Select>
             <Select value={role} onValueChange={(value) => setParam('role', value)}>
@@ -211,7 +211,7 @@ export function AdminUsersPage() {
                           ) : user.isStaff ? (
                             <Badge variant="outline">Équipe</Badge>
                           ) : null}
-                          {user.status === 'suspended' && <Badge variant="danger">Suspendu</Badge>}
+                          {user.status === 'suspended' && <Badge variant="danger">Bloqué</Badge>}
                         </div>
                         {user.planExpiresAt && (
                           <span className="mt-1 block text-xs text-muted-foreground">jusqu’au {formatDateFr(user.planExpiresAt)}</span>
@@ -220,6 +220,7 @@ export function AdminUsersPage() {
                       <TableCell className="text-right tabular-nums">
                         <span className="font-semibold">{unlimitedPlans.has(user.plan.id) ? '∞' : user.credits.total}</span>
                         {user.credits.bonus > 0 && <span className="block text-xs text-muted-foreground">dont {user.credits.bonus} bonus</span>}
+                        <span className="block text-xs whitespace-nowrap text-muted-foreground">{user.creditsUsed30d} utilisé{user.creditsUsed30d > 1 ? 's' : ''} sur 30 j</span>
                       </TableCell>
                       <TableCell>
                         <PresenceLabel online={user.online} lastSeenAt={user.lastSeenAt} />

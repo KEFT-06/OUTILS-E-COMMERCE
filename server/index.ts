@@ -2,6 +2,7 @@ import { env, listenHost, providers } from '@server/env';
 import { closeDatabase, databaseKind, initDatabase } from '@server/db/client';
 import { createApp } from '@server/app';
 import { startExchangeRateRefresher, stopExchangeRateRefresher } from '@server/services/currency';
+import { startSessionSweeper } from '@server/services/auth/sessions';
 import { startGenerationSweeper } from '@server/services/generations/sweeper';
 
 /* -------------------------------------------------------------------------- */
@@ -45,6 +46,9 @@ const server = app.listen(env.PORT, listenHost, () => {
 // Reprend le suivi des générations dont l'écran a été fermé avant la fin.
 const stopSweeper = startGenerationSweeper();
 
+// Clôt dans l'historique les sessions abandonnées (onglet fermé sans déconnexion).
+const stopSessionSweeper = startSessionSweeper();
+
 // Taux de change du jour, pour afficher les prix dans la devise de chaque pays.
 startExchangeRateRefresher();
 
@@ -53,6 +57,7 @@ for (const signal of ['SIGTERM', 'SIGINT'] as const) {
   process.on(signal, () => {
     console.log(`\n  ${signal} reçu, arrêt en cours…`);
     stopSweeper();
+    stopSessionSweeper();
     stopExchangeRateRefresher();
     server.close(() => {
       void closeDatabase().finally(() => process.exit(0));

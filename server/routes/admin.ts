@@ -9,7 +9,6 @@ import {
   featureOverrides,
   payments,
   recoveryCodes,
-  sessions,
   userPermissions,
   users,
   type UserRow,
@@ -29,6 +28,8 @@ import {
   adminOverview,
   adminUserDetail,
   auditEntries,
+  connectionHistory,
+  connectionQuerySchema,
   contentStats,
   listPayments,
   listUsers,
@@ -203,6 +204,15 @@ adminRouter.get(
   }),
 );
 
+/** Heures de connexion et de déconnexion : tous les comptes, ou un seul (`userId`). */
+adminRouter.get(
+  '/connections',
+  requirePermission('admin.users.read'),
+  asyncRoute(async (req, res) => {
+    res.json(await connectionHistory(connectionQuerySchema.parse(req.query)));
+  }),
+);
+
 adminRouter.get(
   '/security/events',
   requirePermission('admin.security.read'),
@@ -328,7 +338,7 @@ const statusSchema = z
     reason: z.string().trim().max(300).optional(),
   })
   .refine((value) => value.status === 'active' || (value.reason?.length ?? 0) >= 3, {
-    message: 'Indiquez la raison de la suspension.',
+    message: 'Indiquez la raison du blocage.',
     path: ['reason'],
   });
 
@@ -340,11 +350,11 @@ adminRouter.post(
     const auth = authOf(req);
     const target = await loadTarget(req.params.userId);
     assertCanManage(auth, target);
-    assertNotSelf(auth, target, 'Vous ne pouvez pas suspendre votre propre compte.');
+    assertNotSelf(auth, target, 'Vous ne pouvez pas bloquer votre propre compte.');
     const { status, reason } = req.body as z.infer<typeof statusSchema>;
 
     if (status === 'suspended' && target.role === 'admin' && target.status === 'active' && (await activeAdminCount()) <= 1) {
-      throw new AppError(409, 'Impossible de suspendre le dernier administrateur actif.', 'LAST_ADMIN');
+      throw new AppError(409, 'Impossible de bloquer le dernier administrateur actif.', 'LAST_ADMIN');
     }
 
     await getDb().transaction(async (tx) => {
@@ -352,7 +362,7 @@ adminRouter.post(
         .update(users)
         .set({ status, suspendedReason: status === 'suspended' ? reason! : null, updatedAt: new Date() })
         .where(eq(users.id, target.id));
-      if (status === 'suspended') await revokeUserSessions(target.id, {}, tx);
+      if (status === 'suspended') await revokeUserSessions(target.id, { reason: 'suspended' }, tx);
       await recordAudit(
         {
           actor: actorOf(auth),
@@ -532,7 +542,7 @@ adminRouter.put(
             .values(next.map((permission) => ({ userId: target.id, permission, grantedBy: auth.account.user.id })));
         }
         // Reconnexion imposée : la nouvelle session suit la règle des comptes d'équipe (double authentification, durée courte).
-        await revokeUserSessions(target.id, {}, tx);
+        await revokeUserSessions(target.id, { reason: 'privileges_changed' }, tx);
         await recordAudit(
           { actor: actorOf(auth), action: 'permissions.updated', target, details: { added, removed }, client: clientInfo(req) },
           tx,
@@ -567,7 +577,7 @@ adminRouter.patch(
         await tx.update(users).set({ role: body.role, updatedAt: new Date() }).where(eq(users.id, target.id));
         // Un administrateur détient tout : les privilèges individuels deviennent sans objet.
         if (body.role === 'admin') await tx.delete(userPermissions).where(eq(userPermissions.userId, target.id));
-        await revokeUserSessions(target.id, {}, tx);
+        await revokeUserSessions(target.id, { reason: 'role_changed' }, tx);
         await recordAudit(
           { actor: actorOf(auth), action: 'role.changed', target, details: { from: target.role, to: body.role }, client: clientInfo(req) },
           tx,
@@ -589,7 +599,7 @@ adminRouter.post(
     assertNotSelf(auth, target, 'Pour vos propres sessions, passez par Mon compte.');
 
     const revoked = await getDb().transaction(async (tx) => {
-      const total = await revokeUserSessions(target.id, {}, tx);
+      const total = await revokeUserSessions(target.id, { reason: 'revoked_by_staff' }, tx);
       await recordAudit(
         { actor: actorOf(auth), action: 'sessions.revoked', target, details: { sessions: total }, client: clientInfo(req) },
         tx,
@@ -652,7 +662,7 @@ adminRouter.post(
         })
         .where(eq(users.id, target.id));
       await tx.delete(recoveryCodes).where(eq(recoveryCodes.userId, target.id));
-      await tx.delete(sessions).where(eq(sessions.userId, target.id));
+      await revokeUserSessions(target.id, { reason: 'second_factor_reset' }, tx);
       await recordAudit({ actor: actorOf(auth), action: 'two_factor.reset', target, client: clientInfo(req) }, tx);
     });
 

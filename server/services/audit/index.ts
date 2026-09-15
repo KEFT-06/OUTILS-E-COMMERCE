@@ -27,7 +27,7 @@ export const AUTH_EVENT_LABELS = {
   login_success: 'Connexion réussie',
   login_failure: 'Mot de passe incorrect',
   login_locked: 'Tentative pendant un verrou',
-  login_suspended: 'Connexion d’un compte suspendu',
+  login_suspended: 'Connexion d’un compte bloqué',
   mfa_challenge: 'Code de vérification demandé',
   mfa_failure: 'Code de vérification incorrect',
   recovery_code_used: 'Code de secours utilisé',

@@ -100,7 +100,7 @@ async function main(): Promise<void> {
       .set({ role: 'admin', status: 'active', suspendedReason: null, updatedAt: new Date() })
       .where(eq(users.id, user.id));
     await db.delete(userPermissions).where(eq(userPermissions.userId, user.id));
-    await revokeUserSessions(user.id);
+    await revokeUserSessions(user.id, { reason: 'role_changed' });
     await recordAudit({ actor, action: 'admin.bootstrap_promoted', target: user, details: { previousRole: user.role }, client });
     console.log(`\n✅ ${user.email} est désormais administrateur.`);
   } else {
@@ -126,7 +126,7 @@ async function main(): Promise<void> {
       })
       .where(eq(users.id, user.id));
     await db.delete(recoveryCodes).where(eq(recoveryCodes.userId, user.id));
-    await revokeUserSessions(user.id);
+    await revokeUserSessions(user.id, { reason: 'second_factor_reset' });
     await recordAudit({ actor, action: 'two_factor.reset', target: user, client });
     console.log('\n   Second facteur retiré : définissez un nouveau code de sécurité dans Mon compte → Sécurité.');
   }

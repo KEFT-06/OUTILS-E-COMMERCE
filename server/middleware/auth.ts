@@ -36,7 +36,7 @@ export const authenticate: RequestHandler = asyncRoute(async (req, _res, next) =
     const resolved = await resolveSession(token);
     if (resolved) {
       if (resolved.user.status !== 'active') {
-        await revokeSession(resolved.session.id);
+        await revokeSession(resolved.session.id, 'suspended');
       } else {
         const account = await loadAccount(resolved.user.id);
         if (account) {

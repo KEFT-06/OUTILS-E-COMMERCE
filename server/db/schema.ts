@@ -118,6 +118,39 @@ export const sessions = pgTable(
   (table) => [index('sessions_user_idx').on(table.userId), index('sessions_last_seen_idx').on(table.lastSeenAt)],
 ).enableRLS();
 
+/**
+ * Historique des connexions : une ligne par session, conservée après sa fin.
+ *
+ * `sessions` ne garde que les sessions valides ; cette table dit quand chaque
+ * personne s'est connectée et déconnectée, et pourquoi. Ni jeton, ni adresse IP
+ * complète, ni navigateur détaillé : l'appareil lisible et l'IP tronquée suffisent.
+ */
+export const sessionHistory = pgTable(
+  'session_history',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    /** Empreinte de la session (`sessions.id`) : relie la ligne à la session tant qu'elle vit. */
+    sessionId: text('session_id').notNull(),
+    userId: uuid('user_id')
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
+    device: text('device').notNull(),
+    ipMasked: text('ip_masked'),
+    startedAt: moment('started_at').notNull(),
+    lastSeenAt: moment('last_seen_at').notNull(),
+    /** Null tant que la session est ouverte. */
+    endedAt: moment('ended_at'),
+    /** Voir server/shared/sessions.ts. */
+    endReason: text('end_reason'),
+  },
+  (table) => [
+    uniqueIndex('session_history_session_unique').on(table.sessionId),
+    index('session_history_user_idx').on(table.userId, table.startedAt),
+    index('session_history_started_idx').on(table.startedAt),
+    index('session_history_last_seen_idx').on(table.lastSeenAt),
+  ],
+).enableRLS();
+
 /** Connexion en attente du code de double authentification. */
 export const mfaChallenges = pgTable(
   'mfa_challenges',

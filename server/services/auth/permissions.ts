@@ -21,7 +21,7 @@ export const PERMISSIONS = {
   },
   'admin.users.manage': {
     label: 'Gérer les utilisateurs',
-    description: 'Changer le palier, suspendre, ouvrir ou retirer une fonction, déconnecter, créer un lien de réinitialisation.',
+    description: 'Changer le palier, bloquer, ouvrir ou retirer une fonction, déconnecter, créer un lien de réinitialisation.',
   },
   'admin.credits.grant': {
     label: 'Recharger des crédits',

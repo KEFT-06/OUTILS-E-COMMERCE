@@ -46,7 +46,7 @@ authRouter.use((_req, res, next) => {
 /** Ouvre la session dans le navigateur et renvoie le compte. L'ancienne session éventuelle est révoquée. */
 async function respondWithSession(req: Request, res: Response, opened: OpenedSession, status = 200) {
   const previous = readCookie(req, SESSION_COOKIE);
-  if (previous) await revokeSession(sha256(previous));
+  if (previous) await revokeSession(sha256(previous), 'replaced');
 
   setSessionCookie(res, opened.token, opened.expiresAt);
   const account = await loadAccount(opened.user.id);
@@ -125,7 +125,7 @@ authRouter.post(
   '/logout',
   asyncRoute(async (req, res) => {
     if (req.auth) {
-      await revokeSession(req.auth.sessionId);
+      await revokeSession(req.auth.sessionId, 'logout');
       await recordAuthEvent('logout', {
         userId: req.auth.account.user.id,
         email: req.auth.account.user.email,
@@ -142,7 +142,7 @@ authRouter.post(
   requireAuth,
   asyncRoute(async (req, res) => {
     const { user } = req.auth!.account;
-    const count = await revokeUserSessions(user.id);
+    const count = await revokeUserSessions(user.id, { reason: 'logout_all' });
     await recordAuthEvent('logout_all', { userId: user.id, email: user.email, client: clientInfo(req), details: { sessions: count } });
     clearSessionCookie(res);
     res.status(204).end();
