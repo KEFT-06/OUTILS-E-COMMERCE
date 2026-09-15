@@ -10,7 +10,7 @@ import { useAuth } from '@/features/auth/AuthContext';
 import { ExportMenu, LevelBadge, StatusBadge } from '@/modules/m10-multilingue/GuideBadges';
 import { LanguageMultiPicker, LanguageName, LanguageSelect } from '@/modules/m10-multilingue/LanguagePicker';
 import { type Guide, guidesApi } from '@/modules/m10-multilingue/guidesApi';
-import { useProviders } from '@/modules/m10-multilingue/useProviders';
+import { useProviders } from '@/shared/lib/useProviders';
 import { CoverGenerator } from '@/shared/components/CoverGenerator';
 import { PageHeader } from '@/shared/components/PageHeader';
 import { type ApiError, toApiError } from '@/shared/lib/apiError';

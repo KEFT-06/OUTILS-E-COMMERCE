@@ -44,6 +44,8 @@ export const GENERATION_KINDS = [
   'guide_translation',
   'cover',
   'niche_analysis',
+  'product_writing',
+  'launch_kit_writing',
 ] as const;
 
 export const PAYMENT_METHODS = ['mobile_money', 'card', 'bank_transfer', 'cash', 'chariow', 'other'] as const;

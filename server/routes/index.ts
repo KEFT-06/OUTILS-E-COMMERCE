@@ -17,6 +17,7 @@ import { authRouter } from '@server/routes/auth';
 import { coversRouter, guidesRouter, reviewsRouter } from '@server/routes/guides';
 import { reportsRouter } from '@server/routes/reports';
 import { workspaceRouter } from '@server/routes/workspace';
+import { writingRouter } from '@server/routes/writing';
 import { type AnalysisRequest, analysisRequestSchema, analyzeNiche } from '@server/services/analysis';
 import {
   METHODOLOGY_VERSION,
@@ -96,6 +97,7 @@ api.use('/covers', coversRouter);
 api.use('/reviews', reviewsRouter);
 api.use('/reports', reportsRouter);
 api.use('/workspace', workspaceRouter);
+api.use('/writing', writingRouter);
 
 /* -------------------------------------------------------------------------- */
 /*  Santé et capacités                                                         */

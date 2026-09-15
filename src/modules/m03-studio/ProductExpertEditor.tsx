@@ -178,8 +178,8 @@ export function ProductExpertEditor({ product, hasDraft, writeFailed, onSave, on
               <Textarea
                 value={module.details}
                 onChange={(event) => updateModule(index, { details: event.target.value })}
-                rows={2}
-                maxLength={4000}
+                rows={module.details.length > 400 ? 10 : 3}
+                maxLength={12000}
                 placeholder="Contenu du module"
                 aria-label={`Contenu du module ${index + 1}`}
               />

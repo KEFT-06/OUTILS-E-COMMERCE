@@ -1,6 +1,20 @@
 import { useEffect, useState } from 'react';
-import { AlertTriangle, Download, ExternalLink, Info, Plus, Rocket, Trash2, Wand2, X } from 'lucide-react';
+import { toast } from 'sonner';
+import { AlertTriangle, Download, ExternalLink, Info, Plus, Rocket, Sparkles, Trash2, Wand2, X } from 'lucide-react';
+import { useCreditGate } from '@/app/providers/CreditGateProvider';
 import { PageHeader } from '@/shared/components/PageHeader';
+import { WritingFindings } from '@/shared/components/WritingFindings';
+import { useProviders } from '@/shared/lib/useProviders';
+import { type WritingFinding, writingApi } from '@/shared/lib/writing';
+import {
+  Dialog,
+  DialogClose,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/shared/ui/dialog';
 import { type ApiError, readApiError, toApiError } from '@/shared/lib/apiError';
 import { ComplianceBlockedError } from '@/shared/lib/complianceGate';
 import { formatDateFr } from '@/shared/lib/formatDate';
@@ -39,8 +53,9 @@ import { Textarea } from '@/shared/ui/textarea';
 /**
  * Kit de lancement.
  *
- * Aucun fournisseur de texte n'est branché : le kit structure, pré-remplit depuis
- * le produit réel et contrôle, mais n'écrit pas à la place de l'auteur.
+ * Le kit structure, pré-remplit depuis le produit réel et contrôle. Quand la
+ * rédaction par l'IA est configurée, elle propose textes et scripts, que l'auteur
+ * relit ; sans elle, le kit n'écrit rien à sa place.
  *
  * Les boutons d'appel à l'action ne sont demandés que pour les marchés choisis :
  * l'ancienne version affichait d'un coup 17 menus « non concerné ».
@@ -63,6 +78,11 @@ export function LaunchKitView({ report }: { report: MarketAnalysisReport }) {
   const [isExporting, setIsExporting] = useState(false);
   const [exportError, setExportError] = useState<string | null>(null);
   const [blockedVerdict, setBlockedVerdict] = useState<ReportComplianceVerdict | null>(null);
+  const providers = useProviders();
+  const { runWithCredits } = useCreditGate();
+  const [isWriting, setIsWriting] = useState(false);
+  const [replaceOpen, setReplaceOpen] = useState(false);
+  const [findings, setFindings] = useState<WritingFinding[]>([]);
 
   useEffect(() => {
     let cancelled = false;
@@ -158,6 +178,40 @@ export function LaunchKitView({ report }: { report: MarketAnalysisReport }) {
     }
   };
 
+  const kitHasText =
+    draft.copies.some((copy) => copy.primaryText.trim() || copy.headline.trim() || copy.description.trim()) ||
+    Object.values(draft.scripts).some((beats) => Object.values(beats).some((beat) => beat.onScreen.trim() || beat.voiceOver.trim()));
+
+  const writeWithAi = async () => {
+    setIsWriting(true);
+    try {
+      const result = await runWithCredits('ad_campaign', () =>
+        writingApi.launchKit({
+          product: {
+            title: product.title,
+            subtitle: product.subtitle,
+            targetAudience: product.targetAudience,
+            transformationPromise: product.transformationPromise,
+            modules: product.tableOfContents.map((module) => module.title).filter(Boolean),
+          },
+          objective: draft.objective,
+          market: report.market ?? null,
+        }),
+      );
+      if (!result) return;
+      update({
+        copies: result.copies.length > 0 ? result.copies : draft.copies,
+        scripts: { ...draft.scripts, ...result.scripts },
+      });
+      setFindings(result.findings);
+      toast.success('Kit rédigé', { description: 'Relisez chaque texte et chaque script avant de l’exporter.' });
+    } catch (error) {
+      toast.error('La rédaction n’a pas abouti', { description: toApiError(error, 'Réessayez dans un moment.').message });
+    } finally {
+      setIsWriting(false);
+    }
+  };
+
   const platform = config?.ctaPlatforms[0];
   const format = config?.scriptFormats.find((candidate) => candidate.durationSeconds === duration);
   const missing = missingForKit(draft);
@@ -188,13 +242,61 @@ export function LaunchKitView({ report }: { report: MarketAnalysisReport }) {
         }
       />
 
-      <Alert variant="info">
-        <Info />
-        <AlertDescription>
-          Aucun fournisseur de rédaction n’est branché : le kit vous guide et contrôle vos textes, il ne les écrit pas.
-          Le pré-remplissage reprend uniquement les données de votre produit.
-        </AlertDescription>
-      </Alert>
+      {providers?.text ? (
+        <Card className="py-5">
+          <CardContent className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+            <div className="space-y-1">
+              <p className="flex items-center gap-2 font-semibold">
+                <Sparkles className="size-4 text-brand-green-text" aria-hidden="true" />
+                Rédaction par l’IA
+              </p>
+              <p className="text-sm text-muted-foreground">
+                Trois textes publicitaires et les scripts de chaque durée, à partir de votre produit et de l’objectif
+                choisi. Relisez-les : tout repasse la conformité avant le téléchargement.
+              </p>
+            </div>
+            <Button className="shrink-0" onClick={() => (kitHasText ? setReplaceOpen(true) : void writeWithAi())} disabled={isWriting}>
+              {isWriting ? <Spinner /> : <Sparkles />}
+              {isWriting ? 'Rédaction…' : 'Rédiger avec l’IA'}
+            </Button>
+          </CardContent>
+        </Card>
+      ) : (
+        <Alert variant="info">
+          <Info />
+          <AlertDescription>
+            La rédaction par l’IA n’est pas configurée sur le serveur : le kit vous guide et contrôle vos textes, sans les
+            écrire. Le pré-remplissage reprend uniquement les données de votre produit.
+          </AlertDescription>
+        </Alert>
+      )}
+
+      <WritingFindings findings={findings} />
+
+      <Dialog open={replaceOpen} onOpenChange={setReplaceOpen}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Remplacer vos textes ?</DialogTitle>
+            <DialogDescription>
+              Les variantes et les scripts rédigés par l’IA remplacent ceux que vous avez déjà saisis pour ce produit. Les
+              boutons choisis par marché sont gardés.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter className="gap-2 sm:gap-2">
+            <DialogClose asChild>
+              <Button variant="outline">Garder mes textes</Button>
+            </DialogClose>
+            <Button
+              onClick={() => {
+                setReplaceOpen(false);
+                void writeWithAi();
+              }}
+            >
+              Remplacer
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       {loadError && (
         <Alert variant="danger">

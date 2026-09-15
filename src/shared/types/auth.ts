@@ -4,6 +4,7 @@ export type PlanId = 'free' | 'plus' | 'pro' | 'max' | 'elite';
 
 export type FeatureId =
   | 'niche_analysis'
+  | 'ai_writing'
   | 'radar_scan'
   | 'ad_gallery_scan'
   | 'image_generation'

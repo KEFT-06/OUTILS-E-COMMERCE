@@ -43,6 +43,13 @@
       "when": 1789491066455,
       "tag": "0005_brouillons_espace_travail",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1789491900508,
+      "tag": "0006_redactions_ia",
+      "breakpoints": true
     }
   ]
 }

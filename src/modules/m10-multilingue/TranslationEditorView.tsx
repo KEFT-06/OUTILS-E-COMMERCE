@@ -10,7 +10,7 @@ import { useAuth } from '@/features/auth/AuthContext';
 import { ExportMenu, LevelBadge, StatusBadge } from '@/modules/m10-multilingue/GuideBadges';
 import { type Guide, guidesApi } from '@/modules/m10-multilingue/guidesApi';
 import { CheckList, SideBySideEditor, type TextDocument } from '@/modules/m10-multilingue/SideBySideEditor';
-import { useProviders } from '@/modules/m10-multilingue/useProviders';
+import { useProviders } from '@/shared/lib/useProviders';
 import { PageHeader } from '@/shared/components/PageHeader';
 import { toApiError } from '@/shared/lib/apiError';
 import { formatDateFr } from '@/shared/lib/formatDate';
