@@ -1,19 +1,21 @@
 import { Suspense, lazy, useEffect, useState, type ReactNode } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { ArrowRight, BadgeCheck, ExternalLink, Moon, Scale, ShieldCheck, Sun, Wallet } from 'lucide-react';
+import { ArrowRight, ExternalLink, Moon, Scale, ShieldCheck, Sun, Wallet } from 'lucide-react';
 import { MODULES, MODULE_GROUPS, type ModuleGroup } from '@/app/navigation';
 import { usePreferences } from '@/app/providers/PreferencesContext';
 import { useAuth } from '@/features/auth/AuthContext';
-import { MARKETS } from '@/shared/lib/markets';
-import { formatPlanPrice, formatPlanQuota, usePlans } from '@/shared/lib/plans';
-import { cn } from '@/shared/lib/utils';
+import { COUNTRIES, countryName } from '@server/shared/countries';
+import { CountryCombobox } from '@/shared/components/CountryCombobox';
+import { CountryFlag } from '@/shared/components/CountryFlag';
+import { PlanCards } from '@/shared/components/PlanCards';
+import { guessCountryCode } from '@/shared/lib/geo';
+import { usePlans } from '@/shared/lib/plans';
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from '@/shared/ui/accordion';
 import { Badge } from '@/shared/ui/badge';
 import { BrandLogo } from '@/shared/ui/BrandLogo';
 import { Button } from '@/shared/ui/button';
 import { Card, CardContent, CardDescription, CardHeader } from '@/shared/ui/card';
 import { Marquee } from '@/shared/ui/magicui/marquee';
-import { Skeleton } from '@/shared/ui/skeleton';
 
 // Effet décoratif : chargé après la page, il ne retarde pas le premier affichage.
 const BorderBeam = lazy(() => import('@/shared/ui/magicui/border-beam').then((module) => ({ default: module.BorderBeam })));
@@ -60,7 +62,7 @@ const FAQ = [
   {
     question: 'Les analyses de marché sont-elles en temps réel ?',
     answer:
-      'Pas encore. Le scan en direct attend la connexion de la bibliothèque publicitaire Meta et d’un fournisseur d’IA. Votre espace contient un rapport d’exemple complet, étiqueté comme tel.',
+      'Pas encore. Le scan en direct attend la connexion de la bibliothèque publicitaire Meta et d’un fournisseur d’IA. Aucun rapport d’exemple n’est fabriqué en attendant : chaque analyse porte sur la niche que vous choisissez.',
   },
   {
     question: 'Mes publicités seront-elles acceptées par Meta ou TikTok ?',
@@ -76,9 +78,17 @@ const FAQ = [
   {
     question: 'Combien coûte Smart Creator ?',
     answer:
-      'Chaque palier donne un quota mensuel de points de recherche, et chaque action affiche son coût avant validation. Les prix des abonnements seront publiés à leur ouverture.',
+      'Le palier Gratuit permet de commencer sans carte bancaire. Les forfaits Plus, Pro, Max et Elite Enterprise sont détaillés dans la section Paliers, avec leur prix dans la devise de votre pays. Chaque action affiche son coût en points avant validation.',
+  },
+  {
+    question: 'Smart Creator est-il disponible dans mon pays ?',
+    answer:
+      'Oui : l’outil est international. Choisissez votre pays à l’inscription et les prix s’affichent dans votre devise : franc CFA, naira, euro, dollar…',
   },
 ];
+
+/** Quelques pays montrés en bandeau : l'outil couvre tous les pays du monde. */
+const SHOWCASE_COUNTRIES = ['CM', 'CI', 'SN', 'CD', 'NG', 'GH', 'KE', 'MA', 'BJ', 'GA', 'FR', 'BE', 'CA', 'US', 'GB', 'BR', 'IN', 'AE', 'ZA', 'HT'];
 
 /** Préférence système « réduire les animations », sans charger la bibliothèque motion. */
 function usePrefersReducedMotion(): boolean {
@@ -106,11 +116,12 @@ function SectionHeading({ eyebrow, title, description }: { eyebrow: string; titl
 }
 
 export function LandingPage() {
-  const { isAuthenticated } = useAuth();
+  const { isAuthenticated, account } = useAuth();
+  const [priceCountry, setPriceCountry] = useState(() => account?.country ?? guessCountryCode() ?? 'US');
   const { theme, toggleTheme } = usePreferences();
   const navigate = useNavigate();
   const reduceMotion = usePrefersReducedMotion();
-  const { catalog } = usePlans();
+  const { catalog } = usePlans(priceCountry);
 
   useEffect(() => {
     document.title = 'Smart Creator — Veille stratégique & production e-commerce';
@@ -179,7 +190,7 @@ export function LandingPage() {
           <div className="relative mx-auto grid max-w-6xl items-center gap-12 px-4 py-16 sm:px-6 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.1fr)] lg:py-24">
             <div className="space-y-6">
               <Badge variant="brand" className="px-3 py-1 text-sm whitespace-normal">
-                Pour les créateurs de produits digitaux d’Afrique francophone
+                Pour les créateurs de produits digitaux, partout dans le monde
               </Badge>
               <h1 className="font-display text-4xl leading-[1.05] font-black tracking-tight sm:text-5xl lg:text-6xl">
                 Sachez quoi vendre <span className="text-brand-green-text">avant de le produire.</span>
@@ -200,7 +211,7 @@ export function LandingPage() {
                 )}
               </div>
               <p className="text-sm text-muted-foreground">
-                Gratuit pour commencer, sans carte bancaire. Les rapports d’exemple de votre espace sont étiquetés comme tels.
+                Gratuit pour commencer, sans carte bancaire. Prix affichés dans la devise de votre pays.
               </p>
             </div>
 
@@ -210,18 +221,18 @@ export function LandingPage() {
                   <span className="size-2.5 rounded-full bg-muted-foreground/30" />
                   <span className="size-2.5 rounded-full bg-muted-foreground/30" />
                   <span className="size-2.5 rounded-full bg-muted-foreground/30" />
-                  <span className="ml-3 truncate text-xs text-muted-foreground">Smart Creator · Analyse stratégique</span>
+                  <span className="ml-3 truncate text-xs text-muted-foreground">Smart Creator · Niches</span>
                 </div>
                 <img
-                  src="/captures/analyse-clair.jpg"
-                  alt="Écran Analyse stratégique de Smart Creator : verdict, synthèse et onglets des cinq taux, avec un rapport d’exemple"
+                  src="/captures/niches-clair.jpg"
+                  alt="Écran Niches de Smart Creator : niches enregistrées et catalogue des niches par secteur"
                   width={1440}
                   height={900}
                   className="block w-full dark:hidden"
                 />
                 <img
-                  src="/captures/analyse-sombre.jpg"
-                  alt="Écran Analyse stratégique de Smart Creator en thème sombre, avec un rapport d’exemple"
+                  src="/captures/niches-sombre.jpg"
+                  alt="Écran Niches de Smart Creator en thème sombre"
                   width={1440}
                   height={900}
                   className="hidden w-full dark:block"
@@ -233,7 +244,7 @@ export function LandingPage() {
                 )}
               </div>
               <figcaption className="mt-3 text-center text-sm text-muted-foreground">
-                Capture réelle de l’outil, avec un rapport d’exemple.
+                Capture réelle de l’outil : le catalogue des niches, tous secteurs.
               </figcaption>
             </figure>
           </div>
@@ -241,28 +252,25 @@ export function LandingPage() {
 
         <section aria-labelledby="marches-titre" className="border-b py-10">
           <p id="marches-titre" className="px-4 text-center text-sm font-medium text-muted-foreground">
-            {MARKETS.length} marchés d’Afrique francophone pris en charge
+            Disponible dans {COUNTRIES.length} pays, avec les prix dans la devise locale
           </p>
-          <ul className="sr-only">
-            {MARKETS.map((market) => (
-              <li key={market.code}>{market.label}</li>
-            ))}
-          </ul>
           <div className="relative mt-5" aria-hidden="true">
             {reduceMotion ? (
               <div className="mx-auto flex max-w-5xl flex-wrap justify-center gap-2 px-4">
-                {MARKETS.map((market) => (
-                  <span key={market.code} className="rounded-full border bg-card px-4 py-1.5 text-sm font-medium">
-                    {market.label}
+                {SHOWCASE_COUNTRIES.map((code) => (
+                  <span key={code} className="inline-flex items-center gap-2 rounded-full border bg-card px-4 py-1.5 text-sm font-medium">
+                    <CountryFlag code={code} />
+                    {countryName(code)}
                   </span>
                 ))}
               </div>
             ) : (
               <>
                 <Marquee pauseOnHover className="[--duration:50s]">
-                  {MARKETS.map((market) => (
-                    <span key={market.code} className="rounded-full border bg-card px-4 py-1.5 text-sm font-medium whitespace-nowrap">
-                      {market.label}
+                  {SHOWCASE_COUNTRIES.map((code) => (
+                    <span key={code} className="inline-flex items-center gap-2 rounded-full border bg-card px-4 py-1.5 text-sm font-medium whitespace-nowrap">
+                      <CountryFlag code={code} />
+                      {countryName(code)}
                     </span>
                   ))}
                 </Marquee>
@@ -364,36 +372,24 @@ export function LandingPage() {
         <section id="paliers" className="mx-auto max-w-6xl scroll-mt-20 px-4 py-20 sm:px-6">
           <SectionHeading
             eyebrow="Paliers"
-            title="Un quota de points par mois"
-            description="Chaque action consomme des points et affiche son coût avant validation. Un prix pas encore fixé est indiqué « Prix à venir »."
+            title="Un forfait pour chaque étape"
+            description="Chaque carte détaille ce que comprend le forfait : points de recherche, niches enregistrées, méthodes publicitaires et fonctions. Prix dans la devise de votre pays."
           />
-          <ul className="mt-10 grid gap-3 sm:grid-cols-2 lg:grid-cols-5" aria-busy={!catalog}>
-            {catalog
-              ? catalog.plans.map((plan) => (
-                  <li
-                    key={plan.id}
-                    className={cn(
-                      'flex flex-col gap-2 rounded-xl border bg-card p-5',
-                      plan.highlight && 'border-primary ring-1 ring-primary/30',
-                    )}
-                  >
-                    <span className="flex items-center justify-between gap-2 font-semibold">
-                      {plan.label}
-                      {plan.highlight && <BadgeCheck className="size-4 text-brand-green-text" aria-label="Palier conseillé" />}
-                    </span>
-                    <span className="font-display text-xl font-extrabold tabular-nums">{formatPlanPrice(plan)}</span>
-                    <span className="text-sm text-muted-foreground tabular-nums">{formatPlanQuota(plan)}</span>
-                    <span className="text-xs text-muted-foreground">
-                      {plan.features.video_generation === false ? 'Sans vidéo' : 'Vidéos incluses'}
-                    </span>
-                  </li>
-                ))
-              : Array.from({ length: 5 }, (_, index) => (
-                  <li key={index}>
-                    <Skeleton className="h-36 rounded-xl" />
-                  </li>
-                ))}
-          </ul>
+          <div className="mt-8 flex flex-col gap-2 sm:flex-row sm:items-center">
+            <label htmlFor="landing-price-country" className="text-sm font-medium">
+              Prix affichés pour
+            </label>
+            <CountryCombobox id="landing-price-country" value={priceCountry} onChange={setPriceCountry} showCurrency className="sm:w-72" />
+          </div>
+          <PlanCards
+            className="mt-6"
+            catalog={catalog}
+            renderAction={(plan) => (
+              <Button className="w-full" variant={plan.highlight ? 'default' : 'outline'} onClick={openWorkspace}>
+                {plan.price?.monthly === 0 ? 'Commencer gratuitement' : `Choisir ${plan.label}`}
+              </Button>
+            )}
+          />
         </section>
 
         <section id="questions" className="scroll-mt-20 border-t bg-muted/30">

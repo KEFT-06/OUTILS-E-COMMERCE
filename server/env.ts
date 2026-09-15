@@ -88,6 +88,16 @@ const schema = z.object({
   PLANS_PATH: emptyAsUndefined(z.string().optional()),
 
   /**
+   * Taux de change (base EUR), rafraîchis chaque jour pour afficher les prix dans
+   * la devise du pays de chaque utilisateur. Données ouvertes, sans clé ; aucune
+   * donnée personnelle n'est envoyée. « off » : taux de repli de
+   * server/config/exchange-rates.json uniquement.
+   */
+  EXCHANGE_RATES_URL: emptyAsUndefined(
+    z.union([z.literal('off'), z.string().url()]).default('https://open.er-api.com/v6/latest/EUR'),
+  ),
+
+  /**
    * Emplacement de la table de règles de conformité.
    *
    * Doit rester un fichier EXTERNE au bundle : le CdC §6.4.1 exige de pouvoir

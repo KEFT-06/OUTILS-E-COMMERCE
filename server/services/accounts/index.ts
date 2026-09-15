@@ -10,7 +10,14 @@ import {
 } from '@server/db/schema';
 import { AppError } from '@server/middleware';
 import { effectivePermissions, type Permission } from '@server/services/auth/permissions';
-import { getPlan, resolveFeatures, type FeatureId, type PlanDefinition } from '@server/services/plans';
+import {
+  UNLIMITED,
+  getPlan,
+  resolveFeatures,
+  type FeatureId,
+  type PlanDefinition,
+  type PlanLimits,
+} from '@server/services/plans';
 
 /**
  * Comptes : palier, crédits et droits effectifs.
@@ -52,7 +59,14 @@ export function addMonths(date: Date, months: number): Date {
 }
 
 export async function createUserRecord(
-  input: { name: string; email: string; passwordHash: string | null; role: 'user' | 'admin'; plan?: PlanId },
+  input: {
+    name: string;
+    email: string;
+    passwordHash: string | null;
+    role: 'user' | 'admin';
+    plan?: PlanId;
+    country?: string | null;
+  },
   executor?: Transaction,
 ): Promise<UserRow> {
   const plan = await getPlan(input.plan ?? 'free');
@@ -67,6 +81,7 @@ export async function createUserRecord(
           name: input.name,
           email: input.email,
           passwordHash: input.passwordHash,
+          country: input.country ?? null,
           role: input.role,
           plan: plan.id,
           planCredits: credits,
@@ -176,6 +191,11 @@ export async function loadAccount(userId: string, now = new Date()): Promise<Acc
     features: resolveFeatures(plan, overrides),
     isStaff: permissions.length > 0,
   };
+}
+
+/** Limites du palier (niches enregistrées, méthodes publicitaires) ; un administrateur n'en a aucune. */
+export function effectiveLimits(snapshot: Pick<AccountSnapshot, 'user' | 'plan'>): PlanLimits {
+  return snapshot.user.role === 'admin' ? UNLIMITED : snapshot.plan.limits;
 }
 
 export function creditSummary(snapshot: Pick<AccountSnapshot, 'user' | 'plan'>) {

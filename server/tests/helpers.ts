@@ -21,6 +21,7 @@ export async function createTestApp(overrides: Record<string, string> = {}): Pro
     HIGGSFIELD_API_URL: 'http://127.0.0.1:9',
     CHARIOW_API_KEY: 'sk_test_cle_du_proprietaire_0000',
     CHARIOW_API_URL: 'http://127.0.0.1:9',
+    EXCHANGE_RATES_URL: 'off',
     ...overrides,
   });
 

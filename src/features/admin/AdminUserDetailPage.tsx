@@ -1,3 +1,5 @@
+import { countryName } from '@server/shared/countries';
+import { CountryFlag } from '@/shared/components/CountryFlag';
 import { useEffect, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import { toast } from 'sonner';
@@ -29,7 +31,7 @@ import {
   PAYMENT_METHOD_LABELS,
   labelOf,
 } from '@/shared/lib/labels';
-import { formatFcfa } from '@/shared/lib/plans';
+import { formatPaymentAmount } from '@/features/admin/format';
 import { cn } from '@/shared/lib/utils';
 import type { FeatureId, Permission } from '@/shared/types/auth';
 import { Alert, AlertDescription, AlertTitle } from '@/shared/ui/alert';
@@ -122,7 +124,16 @@ export function AdminUserDetailPage() {
 
           <div className="min-w-0 flex-1 space-y-2">
             <h1 className="truncate font-display text-2xl font-extrabold tracking-tight">{data.user.name}</h1>
-            <p className="truncate text-sm text-muted-foreground">{data.user.email}</p>
+            <p className="flex flex-wrap items-center gap-1.5 text-sm text-muted-foreground">
+              <span className="truncate">{data.user.email}</span>
+              {data.user.country && (
+                <>
+                  <span aria-hidden="true">·</span>
+                  <CountryFlag code={data.user.country} />
+                  {countryName(data.user.country)}
+                </>
+              )}
+            </p>
             <div className="flex flex-wrap items-center gap-2">
               <Badge variant={data.user.plan.id === 'free' ? 'secondary' : 'brand'}>Palier {data.user.plan.label}</Badge>
               {data.user.role === 'admin' ? (
@@ -131,7 +142,13 @@ export function AdminUserDetailPage() {
                 <Badge variant="outline">Équipe</Badge>
               ) : null}
               {data.user.status === 'suspended' && <Badge variant="danger">Suspendu</Badge>}
-              {data.user.twoFactorEnabled ? <Badge variant="success">2FA activée</Badge> : <Badge variant="outline">Sans 2FA</Badge>}
+              {data.user.twoFactorEnabled ? (
+                <Badge variant="success">
+                  {data.user.twoFactorMethods.code && !data.user.twoFactorMethods.app ? 'Code de sécurité' : 'Second facteur actif'}
+                </Badge>
+              ) : (
+                <Badge variant="outline">Sans second facteur</Badge>
+              )}
               {!data.user.passwordSet && <Badge variant="warning">Mot de passe pas encore choisi</Badge>}
               <PresenceLabel online={data.user.online} lastSeenAt={data.user.lastSeenAt} />
             </div>
@@ -667,7 +684,7 @@ function PaymentsTab({
                   {planLabels[payment.plan] ?? payment.plan}
                   <span className="block text-xs text-muted-foreground">{payment.periodMonths} mois</span>
                 </TableCell>
-                <TableCell className="text-right font-semibold tabular-nums">{formatFcfa(payment.amountFcfa)}</TableCell>
+                <TableCell className="text-right font-semibold tabular-nums">{formatPaymentAmount(payment)}</TableCell>
                 <TableCell>
                   {labelOf(PAYMENT_METHOD_LABELS, payment.method)}
                   {payment.reference && <span className="block text-xs text-muted-foreground">{payment.reference}</span>}

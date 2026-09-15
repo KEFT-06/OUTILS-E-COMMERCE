@@ -1,6 +1,6 @@
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react';
 import { SESSION_EXPIRED_EVENT, apiRequest } from '@/shared/lib/api';
-import type { Account } from '@/shared/types/auth';
+import type { Account, SecondFactorMethods } from '@/shared/types/auth';
 
 /**
  * Compte connecté.
@@ -18,16 +18,19 @@ interface AuthContextType {
   account: Account | null;
   status: AuthStatus;
   isAuthenticated: boolean;
-  signup: (input: { name: string; email: string; password: string }) => Promise<void>;
-  /** `mfaRequired` : le mot de passe est bon, le code de double authentification est attendu. */
-  login: (input: { email: string; password: string }) => Promise<{ mfaRequired: boolean }>;
+  signup: (input: { name: string; email: string; password: string; country: string }) => Promise<void>;
+  /** `mfaRequired` : le mot de passe est bon, le second facteur est attendu (`methods` dit lequel). */
+  login: (input: { email: string; password: string }) => Promise<{ mfaRequired: boolean; methods: SecondFactorMethods | null }>;
   verifyMfa: (code: string) => Promise<void>;
   logout: () => Promise<void>;
   logoutEverywhere: () => Promise<void>;
   /** Relit le compte (solde, palier, privilèges) depuis le serveur. */
   refresh: () => Promise<Account | null>;
   setAccount: (account: Account | null) => void;
-  updateProfile: (updates: { name?: string; savedNiches?: string[] }) => Promise<void>;
+  updateProfile: (updates: { name?: string; country?: string }) => Promise<void>;
+  /** Enregistre une niche, dans la limite du palier (le serveur refuse au-delà). */
+  saveNiche: (name: string) => Promise<void>;
+  removeNiche: (name: string) => Promise<void>;
 }
 
 const HEARTBEAT_MS = 2 * 60_000;
@@ -73,19 +76,19 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     return () => window.removeEventListener(SESSION_EXPIRED_EVENT, onExpired);
   }, []);
 
-  const signup = useCallback(async (input: { name: string; email: string; password: string }) => {
+  const signup = useCallback(async (input: { name: string; email: string; password: string; country: string }) => {
     const { account: created } = await apiRequest<{ account: Account }>('/api/auth/signup', { method: 'POST', body: input });
     setAccount(created);
   }, []);
 
   const login = useCallback(async (input: { email: string; password: string }) => {
-    const result = await apiRequest<{ account?: Account; mfaRequired?: boolean }>('/api/auth/login', {
+    const result = await apiRequest<{ account?: Account; mfaRequired?: boolean; methods?: SecondFactorMethods }>('/api/auth/login', {
       method: 'POST',
       body: input,
     });
-    if (result.mfaRequired) return { mfaRequired: true };
+    if (result.mfaRequired) return { mfaRequired: true, methods: result.methods ?? null };
     setAccount(result.account ?? null);
-    return { mfaRequired: false };
+    return { mfaRequired: false, methods: null };
   }, []);
 
   const verifyMfa = useCallback(async (code: string) => {
@@ -112,10 +115,23 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   }, []);
 
-  const updateProfile = useCallback(async (updates: { name?: string; savedNiches?: string[] }) => {
+  const updateProfile = useCallback(async (updates: { name?: string; country?: string }) => {
     const { account: updated } = await apiRequest<{ account: Account }>('/api/account/profile', {
       method: 'PATCH',
       body: updates,
+    });
+    setAccount(updated);
+  }, []);
+
+  const saveNiche = useCallback(async (name: string) => {
+    const { account: updated } = await apiRequest<{ account: Account }>('/api/account/niches', { method: 'POST', body: { name } });
+    setAccount(updated);
+  }, []);
+
+  const removeNiche = useCallback(async (name: string) => {
+    const { account: updated } = await apiRequest<{ account: Account }>('/api/account/niches/remove', {
+      method: 'POST',
+      body: { name },
     });
     setAccount(updated);
   }, []);
@@ -133,8 +149,10 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       refresh,
       setAccount,
       updateProfile,
+      saveNiche,
+      removeNiche,
     }),
-    [account, status, signup, login, verifyMfa, logout, logoutEverywhere, refresh, updateProfile],
+    [account, status, signup, login, verifyMfa, logout, logoutEverywhere, refresh, updateProfile, saveNiche, removeNiche],
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

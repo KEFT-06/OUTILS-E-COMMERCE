@@ -19,6 +19,7 @@ import { PageHeader } from '@/shared/components/PageHeader';
 import { formatDateFr } from '@/shared/lib/formatDate';
 import { PAYMENT_METHOD_LABELS, labelOf } from '@/shared/lib/labels';
 import { formatFcfa } from '@/shared/lib/plans';
+import { formatPaymentAmount } from '@/features/admin/format';
 import { Alert, AlertDescription, AlertTitle } from '@/shared/ui/alert';
 import { Badge } from '@/shared/ui/badge';
 import { Card, CardAction, CardContent, CardDescription, CardHeader, CardTitle } from '@/shared/ui/card';
@@ -263,7 +264,7 @@ export function AdminRevenuePage() {
                         {planLabels[payment.plan] ?? payment.plan}
                         <span className="block text-xs text-muted-foreground">{payment.periodMonths} mois</span>
                       </TableCell>
-                      <TableCell className="text-right font-semibold tabular-nums">{formatFcfa(payment.amountFcfa)}</TableCell>
+                      <TableCell className="text-right font-semibold tabular-nums">{formatPaymentAmount(payment)}</TableCell>
                       <TableCell>
                         {labelOf(PAYMENT_METHOD_LABELS, payment.method)}
                         {payment.reference && <span className="block text-xs text-muted-foreground">{payment.reference}</span>}

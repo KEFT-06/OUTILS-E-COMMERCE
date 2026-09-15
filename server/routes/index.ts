@@ -73,7 +73,11 @@ import {
   settleGeneration,
 } from '@server/services/generations';
 import { resolveChariowCredentials } from '@server/services/integrations';
-import { FEATURES, PlansUnavailableError, getPlanConfig } from '@server/services/plans';
+import { effectiveLimits } from '@server/services/accounts';
+import { currencyForCountry, getRates, isSupportedCurrency } from '@server/services/currency';
+import { FEATURES, PlansUnavailableError, getPlanConfig, planPrice } from '@server/services/plans';
+import { AD_FRAMEWORKS, findAdFramework, isAdFrameworkAvailable } from '@server/shared/adFrameworks';
+import { findCountry } from '@server/shared/countries';
 
 export const api = Router();
 
@@ -110,17 +114,52 @@ api.get('/health', (_req, res) => {
 /*  Paliers d'abonnement                                                       */
 /* -------------------------------------------------------------------------- */
 
+const plansQuery = z.object({
+  currency: z.string().trim().toUpperCase().regex(/^[A-Z]{3}$/).optional().catch(undefined),
+  country: z.string().trim().toUpperCase().optional().catch(undefined),
+});
+
+/**
+ * Paliers, avec leur prix dans la devise demandée : devise explicite, sinon celle
+ * du pays indiqué, sinon celle du compte connecté, sinon le dollar.
+ */
 api.get(
   '/plans',
-  asyncRoute(async (_req, res) => {
+  asyncRoute(async (req, res) => {
     try {
       const config = await getPlanConfig();
+      const rates = await getRates();
+      const query = plansQuery.parse(req.query);
+      const currency =
+        query.currency && isSupportedCurrency(query.currency, rates)
+          ? query.currency
+          : query.country && findCountry(query.country)
+            ? currencyForCountry(query.country, rates)
+            : currencyForCountry(req.auth?.account.user.country, rates);
+
+      res.setHeader('Cache-Control', 'no-store');
       res.json({
         version: config.version,
         updatedAt: config.updatedAt,
-        currency: config.currency,
+        currency,
+        pricing: {
+          status: config.pricing.status ?? null,
+          yearlyMonthsCharged: config.pricing.yearlyMonthsCharged,
+          ratesUpdatedAt: rates.updatedAt,
+          ratesSource: rates.source,
+        },
         features: FEATURES,
-        plans: config.plans,
+        adFrameworksTotal: AD_FRAMEWORKS.length,
+        plans: config.plans.map((plan) => ({
+          id: plan.id,
+          label: plan.label,
+          tagline: plan.tagline ?? null,
+          monthlyCredits: plan.monthlyCredits,
+          highlight: plan.highlight ?? false,
+          limits: plan.limits,
+          features: plan.features,
+          price: planPrice(plan, config, currency, rates),
+        })),
       });
     } catch (error) {
       if (error instanceof PlansUnavailableError) {
@@ -449,6 +488,20 @@ async function assertCompliantBrief(text: string, message: string): Promise<void
   }
 }
 
+/** Une méthode publicitaire hors du palier est refusée par le serveur, pas seulement grisée à l'écran. */
+function assertFrameworkAllowed(req: Request, brief: VisualBrief | VideoBrief): void {
+  if (brief.purpose !== 'ad' || !brief.adFramework) return;
+  const { account } = req.auth!;
+  if (isAdFrameworkAvailable(brief.adFramework, effectiveLimits(account).adFrameworks)) return;
+  const framework = findAdFramework(brief.adFramework);
+  throw new AppError(
+    403,
+    `La méthode ${framework?.acronym ?? brief.adFramework} n’est pas incluse dans votre palier ${account.plan.label}. Choisissez une autre méthode, ou passez à un palier supérieur.`,
+    'FRAMEWORK_LOCKED',
+    { framework: brief.adFramework },
+  );
+}
+
 function parseCreativeRequestId(value: string | undefined): string {
   const parsed = requestIdSchema.safeParse(value);
   if (!parsed.success) {
@@ -465,6 +518,7 @@ api.post(
   validateBody(visualBriefSchema),
   asyncRoute(async (req, res) => {
     const brief = req.body as VisualBrief;
+    assertFrameworkAllowed(req, brief);
     await assertCompliantBrief(
       creativeText(brief),
       'Le brief du visuel contient des formulations non conformes : corrigez-les avant de lancer la génération.',
@@ -496,6 +550,7 @@ api.post(
   validateBody(videoBriefSchema),
   asyncRoute(async (req, res) => {
     const brief = req.body as VideoBrief;
+    assertFrameworkAllowed(req, brief);
     await assertCompliantBrief(
       creativeText(brief),
       'Le brief de la vidéo contient des formulations non conformes : corrigez-les avant de lancer la génération.',

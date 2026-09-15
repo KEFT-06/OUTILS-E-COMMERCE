@@ -2,7 +2,7 @@ import { ComplianceBlockedError, checkSectionsCompliance } from '@/shared/lib/co
 import { triggerDownload } from '@/shared/lib/download';
 import { formatDateFr } from '@/shared/lib/formatDate';
 import { FALLBACK_DISCLAIMER } from '@/shared/lib/legal';
-import { marketLabel } from '@/shared/lib/markets';
+import { countryName } from '@server/shared/countries';
 import { toFileSlug } from '@/shared/lib/pdfText';
 import { recordExport } from '@/shared/lib/usage';
 import { DigitalProductIdea } from '@/shared/types/analysis';
@@ -101,7 +101,7 @@ export function renderKitText(
     lines.push('', `== BOUTONS D'APPEL À L'ACTION PAR MARCHÉ (${platform.label}) ==`);
     for (const [market, buttonId] of choices) {
       const button = platform.buttons.find((candidate) => candidate.id === buttonId);
-      if (button) lines.push(`${marketLabel(market)} : ${button.officialName}`);
+      if (button) lines.push(`${countryName(market)} : ${button.officialName}`);
     }
     lines.push(`Noms officiels vérifiés le ${formatDateFr(platform.checkedAt)} — ${platform.source}`);
   }

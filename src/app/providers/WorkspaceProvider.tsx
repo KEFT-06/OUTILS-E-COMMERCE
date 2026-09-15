@@ -1,7 +1,6 @@
 import React, { createContext, useCallback, useContext, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { toast } from 'sonner';
-import { PRESET_ANALYSES } from '@/data/presetAnalyses';
 import type { MarketAnalysisReport } from '@/shared/types/analysis';
 import type { ReportComplianceVerdict } from '@/shared/types/compliance';
 import { ComplianceBlockedError, exportReportPDF } from '@/shared/lib/complianceGate';
@@ -10,13 +9,14 @@ import { useCreditGate } from '@/app/providers/CreditGateProvider';
 import { pathOf } from '@/app/navigation';
 
 /**
- * État de l'espace de travail partagé par tous les écrans : rapports disponibles,
+ * État de l'espace de travail partagé par tous les écrans : rapports analysés (aucun
+ * rapport d'exemple : l'espace démarre vide),
  * niche active, analyse et export PDF, fenêtres ouvertes depuis l'en-tête ou la
  * palette ⌘K.
  */
 interface WorkspaceContextType {
   reports: MarketAnalysisReport[];
-  currentReport: MarketAnalysisReport;
+  currentReport: MarketAnalysisReport | null;
   selectReport: (id: string) => void;
   isAnalyzing: boolean;
   analyzeNiche: (query: string) => Promise<void>;
@@ -30,14 +30,12 @@ interface WorkspaceContextType {
 
 const WorkspaceContext = createContext<WorkspaceContextType | undefined>(undefined);
 
-const FIRST_REPORT = PRESET_ANALYSES[0] as MarketAnalysisReport;
-
 export const WorkspaceProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const navigate = useNavigate();
   const { runWithCredits } = useCreditGate();
 
-  const [reports, setReports] = useState<MarketAnalysisReport[]>(PRESET_ANALYSES);
-  const [currentReport, setCurrentReport] = useState<MarketAnalysisReport>(FIRST_REPORT);
+  const [reports, setReports] = useState<MarketAnalysisReport[]>([]);
+  const [currentReport, setCurrentReport] = useState<MarketAnalysisReport | null>(null);
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [isExportingPdf, setIsExportingPdf] = useState(false);
   const [analysisDialogOpen, setAnalysisDialogOpen] = useState(false);
@@ -97,6 +95,12 @@ export const WorkspaceProvider: React.FC<{ children: React.ReactNode }> = ({ chi
 
   // Export PDF : passe obligatoirement par la porte de conformité.
   const exportPdf = useCallback(async () => {
+    if (!currentReport) {
+      toast.info('Aucun rapport à exporter', {
+        description: 'Analysez d’abord une niche : le dossier PDF reprend son rapport.',
+      });
+      return;
+    }
     setIsExportingPdf(true);
     try {
       const verdict = await exportReportPDF(currentReport);

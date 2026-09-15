@@ -34,6 +34,7 @@
     "clsx": "^2.1.1",
     "cmdk": "^1.1.1",
     "compression": "^1.7.5",
+    "country-flag-icons": "^1.6.20",
     "docx": "^9.7.1",
     "dotenv": "^17.2.3",
     "drizzle-orm": "^0.45.2",

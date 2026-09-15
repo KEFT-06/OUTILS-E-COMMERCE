@@ -3,9 +3,12 @@ import { isAbsolute, join, resolve } from 'node:path';
 import { z } from 'zod';
 import { PLAN_IDS, type PlanId } from '@server/db/schema';
 import { env } from '@server/env';
+import { convertAmount, type RatesSnapshot } from '@server/services/currency';
+import { AD_FRAMEWORKS } from '@server/shared/adFrameworks';
+import { roundPrice } from '@server/shared/currency';
 
 /**
- * Paliers d'abonnement : quota mensuel de points, prix et fonctions ouvertes.
+ * Paliers d'abonnement : quota mensuel de points, prix, limites et fonctions ouvertes.
  *
  * Même règle que la grille tarifaire et la table de conformité : un fichier de
  * configuration externe, éditable sans redéployer. Le code ne fige aucun prix.
@@ -29,14 +32,25 @@ export function isFeature(value: string): value is FeatureId {
   return Object.hasOwn(FEATURES, value);
 }
 
+const currencyCode = z.string().regex(/^[A-Z]{3}$/, 'Code de devise ISO 4217 attendu (ex. XAF).');
+
+const limitsSchema = z.object({
+  /** Niches qu'un compte peut enregistrer ; null : illimité. */
+  savedNiches: z.number().int().min(0).nullable(),
+  /** Méthodes publicitaires ouvertes, dans l'ordre de server/shared/adFrameworks.ts ; null : toutes. */
+  adFrameworks: z.number().int().min(0).max(AD_FRAMEWORKS.length).nullable(),
+});
+
 const planSchema = z.object({
   id: z.enum(PLAN_IDS),
   label: z.string().min(1),
+  tagline: z.string().optional(),
   /** null : illimité. */
   monthlyCredits: z.number().int().min(0).nullable(),
-  /** null : prix pas encore fixé. */
-  priceMonthlyFcfa: z.number().int().min(0).nullable(),
+  /** Prix mensuel par devise ; null : prix pas encore fixé. */
+  prices: z.record(currencyCode, z.number().min(0)).nullable(),
   highlight: z.boolean().optional(),
+  limits: limitsSchema,
   features: z.record(z.boolean()).default({}),
 });
 
@@ -45,15 +59,26 @@ const configSchema = z
     version: z.string(),
     updatedAt: z.string(),
     note: z.string().optional(),
-    currency: z.string().min(1),
+    pricing: z.object({
+      baseCurrency: currencyCode,
+      /** Mois facturés pour un an payé d'avance (10 : deux mois offerts). */
+      yearlyMonthsCharged: z.number().int().min(1).max(12),
+      status: z.string().optional(),
+    }),
     plans: z.array(planSchema),
   })
   .refine((config) => PLAN_IDS.every((id) => config.plans.some((plan) => plan.id === id)), {
     message: 'Chaque palier connu de la base doit figurer dans le fichier.',
+  })
+  .refine((config) => config.plans.every((plan) => !plan.prices || config.pricing.baseCurrency in plan.prices), {
+    message: 'Un palier dont le prix est fixé doit indiquer ce prix dans la devise de base.',
   });
 
 export type PlanDefinition = z.infer<typeof planSchema>;
+export type PlanLimits = z.infer<typeof limitsSchema>;
 export type PlanConfig = z.infer<typeof configSchema>;
+
+export const UNLIMITED: PlanLimits = { savedNiches: null, adFrameworks: null };
 
 export class PlansUnavailableError extends Error {
   constructor(
@@ -98,6 +123,39 @@ export function resolveFeatures(
     if (isFeature(override.feature)) resolved[override.feature] = override.access === 'granted';
   }
   return resolved;
+}
+
+export interface PlanPrice {
+  currency: string;
+  monthly: number;
+  /** Un an payé d'avance. */
+  yearly: number;
+  /** Converti depuis la devise de base (sinon : prix fixé dans cette devise). */
+  converted: boolean;
+}
+
+/** Prix d'un palier dans une devise ; null si le prix n'est pas fixé ou si la devise n'a pas de taux. */
+export function planPrice(plan: PlanDefinition, config: PlanConfig, currency: string, rates: RatesSnapshot): PlanPrice | null {
+  if (!plan.prices) return null;
+  const { baseCurrency, yearlyMonthsCharged } = config.pricing;
+  const explicit = plan.prices[currency];
+  const base = plan.prices[baseCurrency] ?? 0;
+
+  let monthly: number;
+  let converted = false;
+  if (explicit !== undefined) {
+    monthly = explicit;
+  } else if (base === 0) {
+    monthly = 0;
+  } else {
+    const value = convertAmount(base, baseCurrency, currency, rates);
+    if (value === null) return null;
+    monthly = roundPrice(value, currency);
+    converted = true;
+  }
+
+  const yearly = monthly === 0 ? 0 : roundPrice(monthly * yearlyMonthsCharged, currency);
+  return { currency, monthly, yearly, converted };
 }
 
 /** Utilisé par les tests et par un rechargement à chaud. */

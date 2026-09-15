@@ -41,8 +41,8 @@ interface RadarTrendsViewProps {
   onSelectNicheForFullAnalysis: (nicheName: string) => Promise<void>;
   onNavigateToMetaAds: (productTitle: string) => void;
   isAnalyzingNiche: boolean;
-  /** Ouvre le rapport d'exemple, le temps que le scan en direct soit disponible. */
-  onOpenExampleReport?: () => void;
+  /** Ouvre le catalogue des niches, le temps que le scan en direct soit disponible. */
+  onBrowseNiches?: () => void;
 }
 
 const CATEGORY_FILTERS = [
@@ -75,7 +75,7 @@ export function RadarTrendsView({
   onSelectNicheForFullAnalysis,
   onNavigateToMetaAds,
   isAnalyzingNiche,
-  onOpenExampleReport,
+  onBrowseNiches,
 }: RadarTrendsViewProps) {
   const { runWithCredits } = useCreditGate();
   const [selectedCategory, setSelectedCategory] = useState<string>('all');
@@ -180,9 +180,9 @@ export function RadarTrendsView({
               Le radar interrogera la bibliothèque publicitaire Meta et un fournisseur d’IA. Tant qu’ils ne sont pas
               branchés, un scan renvoie un message d’indisponibilité et ne débite aucun point.
             </p>
-            {onOpenExampleReport && (
-              <Button variant="link" className="h-auto p-0 text-info" onClick={onOpenExampleReport}>
-                Voir le rapport d’exemple
+            {onBrowseNiches && (
+              <Button variant="link" className="h-auto p-0 text-info" onClick={onBrowseNiches}>
+                Parcourir le catalogue des niches
                 <ArrowRight />
               </Button>
             )}

@@ -5,6 +5,9 @@ import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 import { ArrowLeft, Check, KeyRound, Lock, ShieldCheck, Smartphone, TriangleAlert } from 'lucide-react';
 import { useAuth } from '@/features/auth/AuthContext';
+import { CountryCombobox } from '@/shared/components/CountryCombobox';
+import { guessCountryCode } from '@/shared/lib/geo';
+import type { SecondFactorMethods } from '@/shared/types/auth';
 import { PASSWORD_MIN_LENGTH, PasswordHints, PasswordInput } from '@/features/auth/PasswordInput';
 import { passwordProblemsOf } from '@/shared/lib/api';
 import { type ApiError, toApiError } from '@/shared/lib/apiError';
@@ -40,13 +43,14 @@ const signupSchema = z
       .min(PASSWORD_MIN_LENGTH, `${PASSWORD_MIN_LENGTH} caractères au moins.`)
       .max(128, '128 caractères au plus.'),
     confirmation: z.string(),
+    country: z.string().min(2, 'Choisissez votre pays : la devise des prix en dépend.'),
   })
   .refine((values) => values.password === values.confirmation, {
     message: 'Les deux mots de passe ne correspondent pas.',
     path: ['confirmation'],
   });
 
-const mfaSchema = z.object({ code: z.string().trim().min(6, 'Saisissez le code à 6 chiffres.').max(12, 'Code trop long.') });
+const mfaSchema = z.object({ code: z.string().trim().min(6, 'Saisissez votre code (6 caractères au moins).').max(128, 'Code trop long.') });
 
 function AuthErrorAlert({ error }: { error: ApiError }) {
   const problems = passwordProblemsOf(error);
@@ -70,7 +74,13 @@ function AuthErrorAlert({ error }: { error: ApiError }) {
   );
 }
 
-function LoginForm({ defaultEmail, onMfaRequired }: { defaultEmail: string; onMfaRequired: () => void }) {
+function LoginForm({
+  defaultEmail,
+  onMfaRequired,
+}: {
+  defaultEmail: string;
+  onMfaRequired: (methods: SecondFactorMethods | null) => void;
+}) {
   const { login } = useAuth();
   const [error, setError] = useState<ApiError | null>(null);
   const form = useForm<z.infer<typeof loginSchema>>({
@@ -81,8 +91,8 @@ function LoginForm({ defaultEmail, onMfaRequired }: { defaultEmail: string; onMf
   const onSubmit = form.handleSubmit(async (values) => {
     setError(null);
     try {
-      const { mfaRequired } = await login(values);
-      if (mfaRequired) onMfaRequired();
+      const { mfaRequired, methods } = await login(values);
+      if (mfaRequired) onMfaRequired(methods);
     } catch (caught) {
       setError(toApiError(caught, 'La connexion a échoué.'));
       form.resetField('password');
@@ -134,7 +144,9 @@ function LoginForm({ defaultEmail, onMfaRequired }: { defaultEmail: string; onMf
   );
 }
 
-function MfaForm({ onBack }: { onBack: () => void }) {
+function MfaForm({ methods, onBack }: { methods: SecondFactorMethods | null; onBack: () => void }) {
+  const codeOnly = Boolean(methods?.code && !methods.app);
+  const appOnly = Boolean(methods?.app && !methods.code);
   const { verifyMfa } = useAuth();
   const [error, setError] = useState<ApiError | null>(null);
   const form = useForm<z.infer<typeof mfaSchema>>({ resolver: zodResolver(mfaSchema), defaultValues: { code: '' } });
@@ -154,11 +166,15 @@ function MfaForm({ onBack }: { onBack: () => void }) {
     <div className="space-y-6">
       <div className="space-y-2">
         <span className="flex size-11 items-center justify-center rounded-xl bg-accent text-accent-foreground">
-          <Smartphone className="size-5" aria-hidden="true" />
+          {codeOnly ? <KeyRound className="size-5" aria-hidden="true" /> : <Smartphone className="size-5" aria-hidden="true" />}
         </span>
         <h1 className="font-display text-3xl font-extrabold tracking-tight">Vérification en deux étapes</h1>
         <p className="text-sm text-muted-foreground">
-          Ouvrez votre application d’authentification et saisissez le code affiché pour Smart Creator.
+          {codeOnly
+            ? 'Saisissez votre code de sécurité : celui que vous avez choisi en plus de votre mot de passe.'
+            : appOnly
+              ? 'Ouvrez votre application d’authentification et saisissez le code affiché pour Smart Creator.'
+              : 'Saisissez votre code de sécurité, ou le code affiché par votre application d’authentification.'}
         </p>
       </div>
 
@@ -172,19 +188,25 @@ function MfaForm({ onBack }: { onBack: () => void }) {
                 control={form.control}
                 render={({ field, fieldState }) => (
                   <Field data-invalid={fieldState.invalid}>
-                    <FieldLabel htmlFor="mfa-code">Code de vérification</FieldLabel>
-                    <Input
-                      {...field}
-                      id="mfa-code"
-                      inputMode="text"
-                      autoComplete="one-time-code"
-                      autoFocus
-                      placeholder="123456"
-                      className="h-12 text-center text-xl font-semibold tracking-[0.3em] tabular-nums"
-                      aria-invalid={fieldState.invalid}
-                    />
+                    <FieldLabel htmlFor="mfa-code">{codeOnly ? 'Code de sécurité' : 'Code de vérification'}</FieldLabel>
+                    {appOnly ? (
+                      <Input
+                        {...field}
+                        id="mfa-code"
+                        inputMode="text"
+                        autoComplete="one-time-code"
+                        autoFocus
+                        placeholder="123456"
+                        className="h-12 text-center text-xl font-semibold tracking-[0.3em] tabular-nums"
+                        aria-invalid={fieldState.invalid}
+                      />
+                    ) : (
+                      <PasswordInput {...field} id="mfa-code" autoComplete="off" autoFocus aria-invalid={fieldState.invalid} />
+                    )}
                     <FieldDescription>
-                      Téléphone perdu ? Saisissez l’un de vos codes de secours, au format XXXX-XXXX.
+                      {methods?.app
+                        ? 'Téléphone perdu ? Saisissez l’un de vos codes de secours, au format XXXX-XXXX.'
+                        : 'Code oublié ? L’administrateur de Smart Creator peut réinitialiser votre second facteur.'}
                     </FieldDescription>
                     {fieldState.invalid && <FieldError errors={[fieldState.error]} />}
                   </Field>
@@ -211,14 +233,14 @@ function SignupForm() {
   const [error, setError] = useState<ApiError | null>(null);
   const form = useForm<z.infer<typeof signupSchema>>({
     resolver: zodResolver(signupSchema),
-    defaultValues: { name: '', email: '', password: '', confirmation: '' },
+    defaultValues: { name: '', email: '', password: '', confirmation: '', country: guessCountryCode() ?? '' },
   });
   const password = form.watch('password');
 
-  const onSubmit = form.handleSubmit(async ({ name, email, password: chosen }) => {
+  const onSubmit = form.handleSubmit(async ({ name, email, password: chosen, country }) => {
     setError(null);
     try {
-      await signup({ name, email, password: chosen });
+      await signup({ name, email, password: chosen, country });
     } catch (caught) {
       setError(toApiError(caught, 'La création du compte a échoué.'));
     }
@@ -254,6 +276,27 @@ function SignupForm() {
                 aria-invalid={fieldState.invalid}
               />
               {fieldState.invalid && <FieldError errors={[fieldState.error]} />}
+            </Field>
+          )}
+        />
+        <Controller
+          name="country"
+          control={form.control}
+          render={({ field, fieldState }) => (
+            <Field data-invalid={fieldState.invalid}>
+              <FieldLabel htmlFor="signup-country">Pays</FieldLabel>
+              <CountryCombobox
+                id="signup-country"
+                value={field.value}
+                onChange={field.onChange}
+                showCurrency
+                invalid={fieldState.invalid}
+              />
+              {fieldState.invalid ? (
+                <FieldError errors={[fieldState.error]} />
+              ) : (
+                <FieldDescription>Les prix s’affichent dans la devise de votre pays.</FieldDescription>
+              )}
             </Field>
           )}
         />
@@ -309,7 +352,7 @@ const PROMISES = [
 const SECURITY = [
   { icon: KeyRound, text: 'Mot de passe haché avec Argon2id : il n’est jamais stocké en clair.' },
   { icon: Lock, text: 'Connexion bloquée automatiquement après cinq essais erronés.' },
-  { icon: ShieldCheck, text: 'Double authentification disponible pour tous, obligatoire pour l’administration.' },
+  { icon: ShieldCheck, text: 'Code de sécurité ou application en second facteur, obligatoire pour l’administration.' },
 ];
 
 export function LoginPage() {
@@ -319,6 +362,7 @@ export function LoginPage() {
   const state = location.state as { from?: string; email?: string } | null;
   const [tab, setTab] = useState(params.get('mode') === 'inscription' ? 'signup' : 'login');
   const [step, setStep] = useState<'credentials' | 'mfa'>('credentials');
+  const [methods, setMethods] = useState<SecondFactorMethods | null>(null);
 
   if (isAuthenticated) {
     return <Navigate to={state?.from?.startsWith('/app') ? state.from : '/app/cockpit'} replace />;
@@ -384,7 +428,7 @@ export function LoginPage() {
               Vérification de votre session…
             </div>
           ) : step === 'mfa' ? (
-            <MfaForm onBack={() => setStep('credentials')} />
+            <MfaForm methods={methods} onBack={() => setStep('credentials')} />
           ) : (
             <>
               <div className="space-y-2">
@@ -400,7 +444,10 @@ export function LoginPage() {
                   <TabsTrigger value="signup">Créer un compte</TabsTrigger>
                 </TabsList>
                 <TabsContent value="login" className="pt-4">
-                  <LoginForm defaultEmail={state?.email ?? ''} onMfaRequired={() => setStep('mfa')} />
+                  <LoginForm defaultEmail={state?.email ?? ''} onMfaRequired={(next) => {
+                      setMethods(next);
+                      setStep('mfa');
+                    }} />
                 </TabsContent>
                 <TabsContent value="signup" className="pt-4">
                   <SignupForm />

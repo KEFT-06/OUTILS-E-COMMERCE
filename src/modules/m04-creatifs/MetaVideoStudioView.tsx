@@ -120,7 +120,7 @@ export function MetaVideoStudioView({ campaigns, provenance }: MetaVideoStudioVi
       <NoDataState
         icon={Video}
         title="Aucun script vidéo pour cette niche"
-        reason="Le rapport actif ne contient pas de campagne publicitaire. Choisissez une autre niche dans l’en-tête."
+        reason="Aucune niche analysée ne contient encore de campagne publicitaire. Analysez une niche pour obtenir ses scripts vidéo."
       />
     );
   }

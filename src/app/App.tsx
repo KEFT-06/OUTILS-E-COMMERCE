@@ -20,6 +20,7 @@ import {
   GaleriePage,
   KitLancementPage,
   MultilinguePage,
+  NichesPage,
   PagesProduitsPage,
   RadarPage,
   StorybookPage,
@@ -62,6 +63,7 @@ export default function App() {
                   <Route element={<AppLayout />}>
                     <Route index element={<Navigate to="cockpit" replace />} />
                     <Route path="cockpit" element={<CockpitPage />} />
+                    <Route path="niches" element={<NichesPage />} />
                     <Route path="radar" element={<RadarPage />} />
                     <Route path="galerie" element={<GaleriePage />} />
                     <Route path="analyse" element={<AnalysePage />} />

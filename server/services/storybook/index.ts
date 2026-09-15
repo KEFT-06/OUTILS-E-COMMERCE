@@ -1,7 +1,7 @@
 import { z } from 'zod';
 import { env } from '@server/env';
 import { AppError, marketSchema, providerUnavailable } from '@server/middleware';
-import { COUNTRY_NAMES } from '@server/services/markets';
+import { countryName } from '@server/shared/countries';
 
 /**
  * Storybook Africain via Gamma — feuille de route 3.4.
@@ -60,7 +60,7 @@ export function briefText(brief: StorybookBrief): string {
 
 /** Corps de `POST /v1.0/generations`. Fonction pure, testable sans appel réseau. */
 export function buildGammaRequest(brief: StorybookBrief) {
-  const country = COUNTRY_NAMES[brief.country];
+  const country = { fr: countryName(brief.country, 'fr'), en: countryName(brief.country, 'en') };
   const age = AGE_LABELS[brief.ageRange];
   const hero = brief.heroDescription ? `${brief.heroName} — ${brief.heroDescription}` : brief.heroName;
 
@@ -80,7 +80,7 @@ export function buildGammaRequest(brief: StorybookBrief) {
       numCards: brief.pages,
       cardSplit: 'auto',
       additionalInstructions:
-        `Ancre les prénoms, les lieux, les paysages, les vêtements et la vie quotidienne dans le contexte ${country.frOf}, ` +
+        `Ancre les prénoms, les lieux, les paysages, les vêtements et la vie quotidienne dans le contexte du pays suivant : ${country.fr}, ` +
         'avec justesse, sans caricature ni stéréotype. ' +
         "N'invente aucun fait historique, aucune tradition ni aucun proverbe présenté comme authentique : " +
         "comme références culturelles précises, n'utilise que les éléments fournis par l'auteur. " +

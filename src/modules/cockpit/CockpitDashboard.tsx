@@ -7,7 +7,6 @@ import { useAuth } from '@/features/auth/AuthContext';
 import { PageHeader } from '@/shared/components/PageHeader';
 import { cn } from '@/shared/lib/utils';
 import type { MarketAnalysisReport } from '@/shared/types/analysis';
-import { Badge } from '@/shared/ui/badge';
 import { Button } from '@/shared/ui/button';
 import { Card, CardAction, CardContent, CardDescription, CardHeader, CardTitle } from '@/shared/ui/card';
 import { NoDataState } from '@/shared/ui/NoDataState';
@@ -17,7 +16,8 @@ import { SalesSummaryCard } from '@/shared/ui/SalesSummaryCard';
 import { Skeleton } from '@/shared/ui/skeleton';
 
 interface CockpitDashboardProps {
-  report: MarketAnalysisReport;
+  /** null : aucune niche analysée pour l’instant. */
+  report: MarketAnalysisReport | null;
   onNavigateToModule: (module: ModuleId) => void;
   onOpenBilling: () => void;
 }
@@ -32,7 +32,8 @@ const SERVICE_LABELS: Record<string, string> = {
 
 /** Parcours conseillé : c'est une vraie séquence, d'où la numérotation. */
 const GETTING_STARTED: { module: ModuleId; title: string; text: string }[] = [
-  { module: 'analyse', title: 'Lire l’analyse d’exemple', text: 'Les 5 taux, la concurrence et le plan d’action d’une niche.' },
+  { module: 'niches', title: 'Choisir une niche', text: 'Parcourez toutes les niches, enregistrez les vôtres et lancez leur analyse.' },
+  { module: 'analyse', title: 'Lire l’analyse de la niche', text: 'Les 5 taux, la concurrence et le plan d’action.' },
   { module: 'galerie', title: 'Collecter les publicités d’une niche', text: 'Qui annonce déjà, et depuis combien de temps.' },
   { module: 'studio', title: 'Structurer votre produit', text: 'Modules, promesse et simulation de rentabilité.' },
   { module: 'kit-lancement', title: 'Préparer le lancement', text: 'Textes, scripts vidéo et boutons par marché.' },
@@ -80,8 +81,7 @@ export function CockpitDashboard({ report, onNavigateToModule, onOpenBilling }: 
 
   // Seul le taux de saturation porte une trace de calcul vérifiable : c'est
   // donc le seul affiché comme indicateur de tension.
-  const saturation = report.rates.saturation;
-  const isExampleReport = report.dataProvenance?.rates?.isDemonstration ?? false;
+  const saturation = report?.rates.saturation;
 
   const serviceEntries = providers ? Object.entries(providers) : [];
   const connectedCount = serviceEntries.filter(([, connected]) => connected).length;
@@ -158,17 +158,17 @@ export function CockpitDashboard({ report, onNavigateToModule, onOpenBilling }: 
             </CardTitle>
             <CardDescription>Niveau de tension concurrentielle mesuré</CardDescription>
             <CardAction>
-              <Button variant="ghost" size="sm" onClick={() => onNavigateToModule('radar')}>
-                Radar
+              <Button variant="ghost" size="sm" onClick={() => onNavigateToModule('niches')}>
+                Niches
                 <ArrowUpRight />
               </Button>
             </CardAction>
           </CardHeader>
           <CardContent className="space-y-3">
+            {report && saturation ? (
             <div className="rounded-lg border border-primary/30 bg-accent/50 p-4">
               <div className="flex flex-wrap items-start justify-between gap-2">
                 <p className="font-semibold">{report.nicheName}</p>
-                {isExampleReport && <Badge variant="info">Rapport d’exemple</Badge>}
               </div>
               <div className="mt-2 flex flex-wrap items-center gap-2 text-sm">
                 <RateBadge level={saturation.level} size="sm" />
@@ -181,6 +181,13 @@ export function CockpitDashboard({ report, onNavigateToModule, onOpenBilling }: 
                 )}
               </div>
             </div>
+            ) : (
+              <NoDataState
+                icon={Target}
+                title="Aucune niche analysée"
+                reason="Choisissez une niche dans le catalogue ou lancez une analyse : son niveau de concurrence s’affichera ici."
+              />
+            )}
 
             {(account?.savedNiches ?? []).slice(0, 3).map((niche) => (
               <div key={niche} className="flex items-center justify-between gap-3 rounded-lg border px-4 py-3">
@@ -206,11 +213,15 @@ export function CockpitDashboard({ report, onNavigateToModule, onOpenBilling }: 
             </CardAction>
           </CardHeader>
           <CardContent>
-            {report.strategicActionPlan.length === 0 ? (
+            {!report || report.strategicActionPlan.length === 0 ? (
               <NoDataState
                 icon={Layers}
-                title="Aucun plan d’action dans ce rapport"
-                reason="Le rapport analysé ne contient pas encore de plan d’action structuré."
+                title={report ? 'Aucun plan d’action dans ce rapport' : 'Aucun plan d’action pour l’instant'}
+                reason={
+                  report
+                    ? 'Le rapport analysé ne contient pas encore de plan d’action structuré.'
+                    : 'Le plan d’action apparaît après l’analyse d’une niche.'
+                }
               />
             ) : (
               <ol className="space-y-4">

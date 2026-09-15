@@ -1,3 +1,7 @@
+import { COUNTRIES, findCountry } from '@server/shared/countries';
+import { formatMoney, fractionDigits } from '@server/shared/currency';
+import { CountryCombobox } from '@/shared/components/CountryCombobox';
+import type { PlanCatalog } from '@/shared/types/auth';
 import { useEffect, useState } from 'react';
 import { toast } from 'sonner';
 import { Banknote, Ban, KeyRound, LogOut, Minus, Plus, RotateCcw, Search, TriangleAlert, UserPlus, Zap } from 'lucide-react';
@@ -6,7 +10,6 @@ import { CopyableLink } from '@/features/admin/components';
 import { apiRequest } from '@/shared/lib/api';
 import { type ApiError, toApiError } from '@/shared/lib/apiError';
 import { PAYMENT_METHOD_LABELS, labelOf } from '@/shared/lib/labels';
-import { formatFcfa } from '@/shared/lib/plans';
 import { cn } from '@/shared/lib/utils';
 import { Alert, AlertDescription } from '@/shared/ui/alert';
 import { Button } from '@/shared/ui/button';
@@ -359,6 +362,12 @@ export function ChangePlanDialog({
 
 const todayIso = () => new Date().toISOString().slice(0, 10);
 
+const MAIN_CURRENCIES = ['XAF', 'XOF', 'EUR', 'USD'];
+const PAYMENT_CURRENCIES = [
+  ...MAIN_CURRENCIES,
+  ...[...new Set(COUNTRIES.map((country) => country.currency))].filter((code) => !MAIN_CURRENCIES.includes(code)).sort(),
+];
+
 export function RecordPaymentDialog({
   plans,
   presetUser,
@@ -366,7 +375,7 @@ export function RecordPaymentDialog({
   onDone,
 }: {
   plans: AdminMeta['plans'];
-  presetUser?: { id: string; name: string; email: string };
+  presetUser?: { id: string; name: string; email: string; country?: string | null };
   /** Palier actuel du compte : proposé par défaut, un renouvellement étant le cas le plus courant. */
   presetPlan?: string;
   onDone?: () => void;
@@ -381,17 +390,29 @@ export function RecordPaymentDialog({
   );
   const [months, setMonths] = useState('1');
   const [amount, setAmount] = useState('');
+  const [currency, setCurrency] = useState(() => findCountry(presetUser?.country)?.currency ?? 'XAF');
   const [method, setMethod] = useState('mobile_money');
   const [reference, setReference] = useState('');
   const [paidOn, setPaidOn] = useState(todayIso());
   const [note, setNote] = useState('');
   const [activate, setActivate] = useState(true);
 
-  // Montant proposé d'après le prix du palier, quand il est fixé.
+  // Montant proposé d'après le prix du palier dans la devise choisie, quand il est fixé.
   useEffect(() => {
-    const price = plans.find((candidate) => candidate.id === plan)?.priceMonthlyFcfa;
-    if (price) setAmount(String(price * Number(months)));
-  }, [plan, months, plans]);
+    if (!state.open) return;
+    let cancelled = false;
+    apiRequest<PlanCatalog>(`/api/plans?currency=${encodeURIComponent(currency)}`)
+      .then((catalog) => {
+        const price = catalog.plans.find((candidate) => candidate.id === plan)?.price;
+        if (!cancelled && price && price.currency === currency && price.monthly > 0) {
+          setAmount(String(Math.round(price.monthly * Number(months) * 100) / 100));
+        }
+      })
+      .catch(() => undefined);
+    return () => {
+      cancelled = true;
+    };
+  }, [plan, months, currency, state.open]);
 
   useEffect(() => {
     if (presetUser || !state.open || search.trim().length < 2) {
@@ -410,8 +431,8 @@ export function RecordPaymentDialog({
     };
   }, [search, presetUser, state.open]);
 
-  const value = Number.parseInt(amount, 10);
-  const valid = Boolean(user) && Number.isInteger(value) && value > 0;
+  const value = Number.parseFloat(amount.replace(',', '.'));
+  const valid = Boolean(user) && Number.isFinite(value) && value > 0;
 
   const submit = (event: React.FormEvent) => {
     event.preventDefault();
@@ -423,7 +444,8 @@ export function RecordPaymentDialog({
           userId: user.id,
           plan,
           periodMonths: Number(months),
-          amountFcfa: value,
+          amount: value,
+          currency,
           method,
           ...(reference.trim() ? { reference: reference.trim() } : {}),
           ...(note.trim() ? { note: note.trim() } : {}),
@@ -431,7 +453,7 @@ export function RecordPaymentDialog({
           activatePlan: activate,
         },
       });
-      toast.success(`Paiement de ${formatFcfa(value)} enregistré`, {
+      toast.success(`Paiement de ${formatMoney(value, currency)} enregistré`, {
         description: activate ? `Palier activé pour ${user.name}.` : undefined,
       });
       onDone?.();
@@ -497,6 +519,8 @@ export function RecordPaymentDialog({
                           className="flex w-full flex-col items-start px-3 py-2 text-left text-sm hover:bg-accent"
                           onClick={() => {
                             setUser({ id: candidate.id, name: candidate.name, email: candidate.email });
+                            const local = findCountry(candidate.country)?.currency;
+                            if (local) setCurrency(local);
                             setSearch('');
                           }}
                         >
@@ -544,16 +568,33 @@ export function RecordPaymentDialog({
                 </Select>
               </Field>
               <Field>
-                <FieldLabel htmlFor="payment-amount">Montant (FCFA)</FieldLabel>
+                <FieldLabel htmlFor="payment-amount">Montant payé</FieldLabel>
                 <Input
                   id="payment-amount"
                   type="number"
-                  min={1}
-                  inputMode="numeric"
+                  min={0}
+                  step={fractionDigits(currency) === 0 ? 1 : 0.01}
+                  inputMode="decimal"
                   value={amount}
                   onChange={(event) => setAmount(event.target.value)}
-                  placeholder="ex. 15000"
+                  placeholder={fractionDigits(currency) === 0 ? 'ex. 9900' : 'ex. 14.99'}
                 />
+              </Field>
+              <Field>
+                <FieldLabel htmlFor="payment-currency">Devise</FieldLabel>
+                <Select value={currency} onValueChange={setCurrency}>
+                  <SelectTrigger id="payment-currency" className="w-full">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {PAYMENT_CURRENCIES.map((code) => (
+                      <SelectItem key={code} value={code}>
+                        {code}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                {currency !== 'XAF' && currency !== 'XOF' && <FieldDescription>Converti en francs CFA au taux du jour pour les revenus.</FieldDescription>}
               </Field>
               <Field>
                 <FieldLabel htmlFor="payment-method">Moyen de paiement</FieldLabel>
@@ -605,7 +646,7 @@ export function RecordPaymentDialog({
             </Button>
             <Button type="submit" disabled={!valid || state.busy}>
               {state.busy && <Spinner />}
-              Enregistrer {Number.isInteger(value) && value > 0 ? formatFcfa(value) : ''}
+              Enregistrer {Number.isFinite(value) && value > 0 ? formatMoney(value, currency) : ''}
             </Button>
           </DialogFooter>
         </form>
@@ -638,7 +679,7 @@ export function RefundPaymentDialog({ payment, onDone }: { payment: AdminPayment
       <DialogContent className="sm:max-w-md">
         <form onSubmit={submit} className="space-y-4">
           <DialogHeader>
-            <DialogTitle>Rembourser {formatFcfa(payment.amountFcfa)}</DialogTitle>
+            <DialogTitle>Rembourser {formatMoney(payment.amount, payment.currency)}</DialogTitle>
             <DialogDescription>
               Le montant sort des revenus. Le palier du compte ne change pas : ajustez-le ensuite depuis sa fiche si nécessaire.
             </DialogDescription>
@@ -672,6 +713,7 @@ export function CreateUserDialog({ plans, onCreated }: { plans: AdminMeta['plans
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
   const [plan, setPlan] = useState('free');
+  const [country, setCountry] = useState<string | null>(null);
   const [link, setLink] = useState<{ url: string; expiresAt: string } | null>(null);
 
   const change = (next: boolean) => {
@@ -681,6 +723,7 @@ export function CreateUserDialog({ plans, onCreated }: { plans: AdminMeta['plans
       setName('');
       setEmail('');
       setPlan('free');
+      setCountry(null);
       state.setError(null);
     }
   };
@@ -690,7 +733,7 @@ export function CreateUserDialog({ plans, onCreated }: { plans: AdminMeta['plans
     void state.run(async () => {
       const result = await apiRequest<{ setupLink: { url: string; expiresAt: string } }>('/api/admin/users', {
         method: 'POST',
-        body: { name: name.trim(), email: email.trim(), plan },
+        body: { name: name.trim(), email: email.trim(), plan, ...(country ? { country } : {}) },
       });
       setLink(result.setupLink);
       onCreated();
@@ -737,6 +780,11 @@ export function CreateUserDialog({ plans, onCreated }: { plans: AdminMeta['plans
               <Field>
                 <FieldLabel htmlFor="new-user-email">Adresse e-mail</FieldLabel>
                 <Input id="new-user-email" type="email" value={email} onChange={(event) => setEmail(event.target.value)} />
+              </Field>
+              <Field>
+                <FieldLabel htmlFor="new-user-country">Pays</FieldLabel>
+                <CountryCombobox id="new-user-country" value={country} onChange={setCountry} showCurrency />
+                <FieldDescription>Facultatif : la personne pourra le choisir elle-même.</FieldDescription>
               </Field>
               <Field>
                 <FieldLabel htmlFor="new-user-plan">Palier</FieldLabel>

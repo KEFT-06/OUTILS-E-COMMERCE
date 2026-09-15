@@ -1,9 +1,13 @@
-import { lazy } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { lazy, type ReactNode } from 'react';
+import { Link, useNavigate } from 'react-router-dom';
+import { Compass, Sparkles } from 'lucide-react';
 import { ACCOUNT_PATH, pathOf, type ModuleId } from '@/app/navigation';
 import { useWorkspace } from '@/app/providers/WorkspaceProvider';
 import { AccountView } from '@/features/account/AccountView';
 import { PageHeader } from '@/shared/components/PageHeader';
+import type { MarketAnalysisReport } from '@/shared/types/analysis';
+import { Button } from '@/shared/ui/button';
+import { Empty, EmptyDescription, EmptyHeader, EmptyTitle } from '@/shared/ui/empty';
 import { PlaceholderModuleView } from '@/shared/ui/PlaceholderModuleView';
 
 /**
@@ -17,6 +21,7 @@ import { PlaceholderModuleView } from '@/shared/ui/PlaceholderModuleView';
 const CockpitDashboard = lazy(() =>
   import('@/modules/cockpit/CockpitDashboard').then((module) => ({ default: module.CockpitDashboard })),
 );
+const NichesView = lazy(() => import('@/modules/niches/NichesView').then((module) => ({ default: module.NichesView })));
 const AdGalleryView = lazy(() =>
   import('@/modules/m01-radar/AdGalleryView').then((module) => ({ default: module.AdGalleryView })),
 );
@@ -62,6 +67,52 @@ function useGoTo() {
   return (id: ModuleId) => navigate(pathOf(id));
 }
 
+/**
+ * Écrans construits sur le rapport d'une niche. Sans rapport, ils le disent et
+ * proposent d'en obtenir un : aucun rapport d'exemple n'est affiché à la place.
+ */
+function RequireReport({
+  eyebrow,
+  title,
+  description,
+  children,
+}: {
+  eyebrow: string;
+  title: string;
+  description: string;
+  children: (report: MarketAnalysisReport) => ReactNode;
+}) {
+  const { currentReport, setAnalysisDialogOpen } = useWorkspace();
+  if (currentReport) return <>{children(currentReport)}</>;
+
+  return (
+    <div className="space-y-6">
+      <PageHeader eyebrow={eyebrow} title={title} description={description} />
+      <Empty className="border border-dashed py-12">
+        <EmptyHeader>
+          <EmptyTitle>Aucune niche analysée pour l’instant</EmptyTitle>
+          <EmptyDescription>
+            Cet écran se remplit à partir de l’analyse d’une niche. Choisissez-en une dans le catalogue, ou lancez l’analyse
+            de la vôtre.
+          </EmptyDescription>
+        </EmptyHeader>
+        <div className="flex flex-wrap justify-center gap-2">
+          <Button asChild>
+            <Link to={pathOf('niches')}>
+              <Compass />
+              Parcourir les niches
+            </Link>
+          </Button>
+          <Button variant="outline" onClick={() => setAnalysisDialogOpen(true)}>
+            <Sparkles />
+            Analyser une niche
+          </Button>
+        </div>
+      </Empty>
+    </div>
+  );
+}
+
 export function CockpitPage() {
   const { currentReport } = useWorkspace();
   const goTo = useGoTo();
@@ -69,6 +120,10 @@ export function CockpitPage() {
   return (
     <CockpitDashboard report={currentReport} onNavigateToModule={goTo} onOpenBilling={() => navigate(ACCOUNT_PATH)} />
   );
+}
+
+export function NichesPage() {
+  return <NichesView />;
 }
 
 export function RadarPage() {
@@ -79,7 +134,7 @@ export function RadarPage() {
       onSelectNicheForFullAnalysis={analyzeNiche}
       onNavigateToMetaAds={() => goTo('creatifs')}
       isAnalyzingNiche={isAnalyzing}
-      onOpenExampleReport={() => goTo('analyse')}
+      onBrowseNiches={() => goTo('niches')}
     />
   );
 }
@@ -89,31 +144,44 @@ export function GaleriePage() {
 }
 
 export function AnalysePage() {
-  const { currentReport } = useWorkspace();
   const goTo = useGoTo();
   return (
-    <StrategicAnalysisView
-      report={currentReport}
-      onNavigateToProducts={() => goTo('studio')}
-      onNavigateToMetaAds={() => goTo('creatifs')}
-    />
+    <RequireReport
+      eyebrow="Voir"
+      title="Analyse stratégique"
+      description="Les 5 taux, la concurrence et le plan d’action de la niche analysée."
+    >
+      {(report) => (
+        <StrategicAnalysisView
+          report={report}
+          onNavigateToProducts={() => goTo('studio')}
+          onNavigateToMetaAds={() => goTo('creatifs')}
+        />
+      )}
+    </RequireReport>
   );
 }
 
 export function DossierPdfPage() {
-  const { currentReport } = useWorkspace();
-  return <ReportPDFView report={currentReport} />;
+  return (
+    <RequireReport eyebrow="Voir" title="Dossier PDF" description="Le rapport A4 de la niche analysée, à télécharger.">
+      {(report) => <ReportPDFView report={report} />}
+    </RequireReport>
+  );
 }
 
 export function StudioPage() {
-  const { currentReport } = useWorkspace();
   const goTo = useGoTo();
   return (
-    <DigitalProductsView
-      report={currentReport}
-      products={currentReport.digitalProducts}
-      onSelectProductForAd={() => goTo('creatifs')}
-    />
+    <RequireReport
+      eyebrow="Créer"
+      title="Studio de création"
+      description="Ebooks, templates et rentabilité des produits de la niche analysée."
+    >
+      {(report) => (
+        <DigitalProductsView report={report} products={report.digitalProducts} onSelectProductForAd={() => goTo('creatifs')} />
+      )}
+    </RequireReport>
   );
 }
 
@@ -124,10 +192,13 @@ export function CreatifsPage() {
       <PageHeader
         eyebrow="Créer"
         title="Créatifs publicitaires"
-        description="Générez un visuel ou une vidéo, puis travaillez les scripts vidéo proposés pour la niche active."
+        description="Générez une vidéo ou un visuel publicitaire structuré par une méthode (AIDA, PAS…), puis travaillez les scripts vidéo de la niche analysée."
       />
       <CreativeGeneratorPanel />
-      <MetaVideoStudioView campaigns={currentReport.adCampaigns} provenance={currentReport.dataProvenance?.adCampaigns} />
+      <MetaVideoStudioView
+        campaigns={currentReport?.adCampaigns ?? []}
+        provenance={currentReport?.dataProvenance?.adCampaigns}
+      />
     </div>
   );
 }
@@ -137,13 +208,23 @@ export function StorybookPage() {
 }
 
 export function PagesProduitsPage() {
-  const { currentReport } = useWorkspace();
-  return <ProductPageBuilderView report={currentReport} />;
+  return (
+    <RequireReport eyebrow="Créer" title="Pages produits" description="Pages de vente en 7 sections, à partir de la niche analysée.">
+      {(report) => <ProductPageBuilderView report={report} />}
+    </RequireReport>
+  );
 }
 
 export function KitLancementPage() {
-  const { currentReport } = useWorkspace();
-  return <LaunchKitView report={currentReport} />;
+  return (
+    <RequireReport
+      eyebrow="Vendre"
+      title="Kit de lancement"
+      description="Textes publicitaires, scripts et boutons d’appel à l’action par marché, pour un produit de la niche analysée."
+    >
+      {(report) => <LaunchKitView report={report} />}
+    </RequireReport>
+  );
 }
 
 export function CampagnesPage() {

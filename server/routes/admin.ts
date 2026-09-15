@@ -15,7 +15,7 @@ import {
   type UserRow,
 } from '@server/db/schema';
 import { env } from '@server/env';
-import { AppError, asyncRoute, routeLimiter, validateBody } from '@server/middleware';
+import { AppError, asyncRoute, countrySchema, routeLimiter, validateBody } from '@server/middleware';
 import {
   requireAdminRole,
   requireAuth,
@@ -44,7 +44,9 @@ import { AUTH_EVENT_LABELS, clientInfo, recordAudit } from '@server/services/aud
 import { emailSchema, issuePasswordToken, nameSchema, verifyStepUp } from '@server/services/auth';
 import { PERMISSIONS, PERMISSION_IDS, isPermission } from '@server/services/auth/permissions';
 import { revokeUserSessions } from '@server/services/auth/sessions';
+import { convertAmount, getRates, toMinorUnits } from '@server/services/currency';
 import { FEATURES, getPlan, getPlanConfig, isFeature } from '@server/services/plans';
+import { formatMoney } from '@server/shared/currency';
 
 /**
  * Administration.
@@ -101,7 +103,6 @@ async function activeAdminCount(): Promise<number> {
   return row?.value ?? 0;
 }
 
-const formatFcfa = (amount: number) => `${amount.toLocaleString('fr-FR')} FCFA`;
 const formatDay = (date: Date) => date.toLocaleDateString('fr-FR', { timeZone: env.REPORTING_TIMEZONE });
 
 /* -------------------------------------------------------------------------- */
@@ -118,7 +119,10 @@ adminRouter.get(
       viewer: { id: auth.account.user.id, role: auth.account.user.role, permissions: auth.account.permissions },
       permissions: PERMISSION_IDS.map((id) => ({ id, ...PERMISSIONS[id] })),
       features: Object.entries(FEATURES).map(([id, label]) => ({ id, label })),
-      plans: config.plans.map(({ id, label, monthlyCredits, priceMonthlyFcfa }) => ({ id, label, monthlyCredits, priceMonthlyFcfa })),
+      plans: config.plans.map(({ id, label, monthlyCredits }) => ({ id, label, monthlyCredits })),
+      /** Devise des statistiques de revenus : chaque paiement y est converti au taux du jour. */
+      reportingCurrency: 'XAF',
+      currencies: Object.keys((await getRates()).rates).sort(),
       paymentMethods: PAYMENT_METHODS,
       authEventTypes: Object.entries(AUTH_EVENT_LABELS).map(([id, label]) => ({ id, label })),
       timezone: env.REPORTING_TIMEZONE,
@@ -233,6 +237,7 @@ const createUserSchema = z.object({
   name: nameSchema,
   email: emailSchema,
   plan: z.enum(PLAN_IDS).default('free'),
+  country: countrySchema.optional(),
 });
 
 /** Ouvre un compte pour quelqu'un (client payé hors ligne, membre de l'équipe) et renvoie son lien de création de mot de passe. */
@@ -242,13 +247,13 @@ adminRouter.post(
   validateBody(createUserSchema),
   asyncRoute(async (req, res) => {
     const auth = authOf(req);
-    const { name, email, plan } = req.body as z.infer<typeof createUserSchema>;
+    const { name, email, plan, country } = req.body as z.infer<typeof createUserSchema>;
 
     const [existing] = await getDb().select({ id: users.id }).from(users).where(eq(users.email, email)).limit(1);
     if (existing) throw emailTaken();
 
     const { user, link } = await getDb().transaction(async (tx) => {
-      const created = await createUserRecord({ name, email, passwordHash: null, role: 'user', plan }, tx);
+      const created = await createUserRecord({ name, email, passwordHash: null, role: 'user', plan, country: country ?? null }, tx);
       const issued = await issuePasswordToken({ userId: created.id, purpose: 'setup', createdBy: auth.account.user.id }, tx);
       await recordAudit(
         { actor: actorOf(auth), action: 'user.created', target: created, details: { plan }, client: clientInfo(req) },
@@ -483,7 +488,12 @@ adminRouter.put(
   }),
 );
 
-const confirmationCode = z.string().trim().regex(/^\d{6}$/, 'Saisissez le code à 6 chiffres de votre application d’authentification.');
+/** Code de sécurité personnel, ou code à 6 chiffres de l'application d'authentification. */
+const confirmationCode = z
+  .string()
+  .trim()
+  .min(6, 'Saisissez votre code de sécurité, ou le code affiché par votre application d’authentification.')
+  .max(128);
 
 const permissionsSchema = z.object({
   permissions: z.array(z.string().refine(isPermission, 'Privilège inconnu.')).max(PERMISSION_IDS.length),
@@ -631,7 +641,15 @@ adminRouter.post(
     await getDb().transaction(async (tx) => {
       await tx
         .update(users)
-        .set({ twoFactorSecret: null, twoFactorPendingSecret: null, twoFactorEnabledAt: null, twoFactorLastStep: null, updatedAt: new Date() })
+        .set({
+          twoFactorSecret: null,
+          twoFactorPendingSecret: null,
+          twoFactorEnabledAt: null,
+          twoFactorLastStep: null,
+          securityCodeHash: null,
+          securityCodeSetAt: null,
+          updatedAt: new Date(),
+        })
         .where(eq(users.id, target.id));
       await tx.delete(recoveryCodes).where(eq(recoveryCodes.userId, target.id));
       await tx.delete(sessions).where(eq(sessions.userId, target.id));
@@ -650,7 +668,14 @@ const paymentSchema = z.object({
   userId: z.string().uuid(),
   plan: z.enum(PLAN_IDS).refine((plan) => plan !== 'free', 'Un paiement porte sur un palier payant.'),
   periodMonths: z.number().int().min(1).max(36),
-  amountFcfa: z.number().int().min(1).max(100_000_000),
+  /** Montant payé, dans la devise du paiement. */
+  amount: z.number().positive().max(1_000_000_000),
+  currency: z
+    .string()
+    .trim()
+    .toUpperCase()
+    .regex(/^[A-Z]{3}$/, 'Devise ISO 4217 attendue (ex. XAF).')
+    .default('XAF'),
   method: z.enum(PAYMENT_METHODS),
   reference: z.string().trim().max(120).optional(),
   paidAt: z.string().datetime({ offset: true }).optional(),
@@ -673,6 +698,12 @@ adminRouter.post(
       throw new AppError(400, 'La date du paiement ne peut pas être dans le futur.', 'VALIDATION_ERROR');
     }
     const plan = await getPlan(body.plan);
+    const converted = convertAmount(body.amount, body.currency, 'XAF', await getRates());
+    if (converted === null) {
+      throw new AppError(400, `Devise non prise en charge : ${body.currency}.`, 'UNSUPPORTED_CURRENCY');
+    }
+    const amountFcfa = Math.max(1, Math.round(converted));
+    const paidLabel = formatMoney(body.amount, body.currency);
 
     const payment = await getDb().transaction(async (tx) => {
       const [created] = await tx
@@ -682,7 +713,9 @@ adminRouter.post(
           userEmail: target.email,
           plan: body.plan,
           periodMonths: body.periodMonths,
-          amountFcfa: body.amountFcfa,
+          currency: body.currency,
+          amountMinor: toMinorUnits(body.amount, body.currency),
+          amountFcfa,
           method: body.method,
           reference: body.reference || null,
           note: body.note || null,
@@ -704,7 +737,7 @@ adminRouter.post(
             expiresAt,
             refillCredits: true,
             actorId: auth.account.user.id,
-            note: `Paiement de ${formatFcfa(body.amountFcfa)} enregistré : palier ${plan.label} jusqu’au ${formatDay(expiresAt)}.`,
+            note: `Paiement de ${paidLabel} enregistré : palier ${plan.label} jusqu’au ${formatDay(expiresAt)}.`,
           },
           tx,
         );
@@ -717,7 +750,9 @@ adminRouter.post(
           target,
           details: {
             paymentId: created!.id,
-            amountFcfa: body.amountFcfa,
+            amount: body.amount,
+            currency: body.currency,
+            amountFcfa,
             plan: body.plan,
             periodMonths: body.periodMonths,
             method: body.method,

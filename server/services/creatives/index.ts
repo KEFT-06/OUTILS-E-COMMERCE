@@ -10,7 +10,8 @@ import {
   getGenerationStatus,
   submitGeneration,
 } from '@server/services/higgsfield';
-import { COUNTRY_NAMES } from '@server/services/markets';
+import { AD_FRAMEWORK_IDS, findAdFramework } from '@server/shared/adFrameworks';
+import { countryName } from '@server/shared/countries';
 
 /**
  * Créatifs publicitaires : visuels et vidéos — feuille de route 4.1, 4.2 et 4.4.
@@ -66,6 +67,11 @@ const baseBrief = {
   sceneDescription: z.string().trim().min(3).max(600),
   onScreenText: z.string().trim().max(120).optional(),
   visualStyle: z.string().trim().max(300).optional(),
+  /** Publicité (structurée par une méthode de rédaction) ou contenu non publicitaire. */
+  purpose: z.enum(['ad', 'content']).default('ad'),
+  adFramework: z.enum(AD_FRAMEWORK_IDS).optional(),
+  /** Message de chaque étape de la méthode, dans l'ordre ; vide : consigne par défaut de l'étape. */
+  frameworkBeats: z.array(z.string().trim().max(200)).max(6).optional(),
 };
 
 export const visualBriefSchema = z.object(baseBrief);
@@ -81,30 +87,81 @@ export type VideoBrief = z.infer<typeof videoBriefSchema>;
 
 /** Texte soumis au vérificateur de conformité avant toute génération. */
 export function creativeText(brief: VisualBrief | VideoBrief): string {
-  return [brief.productName, brief.audience, brief.sceneDescription, brief.onScreenText, brief.visualStyle]
+  return [
+    brief.productName,
+    brief.audience,
+    brief.sceneDescription,
+    brief.onScreenText,
+    brief.visualStyle,
+    ...(brief.frameworkBeats ?? []),
+  ]
     .filter((part): part is string => Boolean(part))
     .join('\n');
 }
 
-function promptLines(brief: VisualBrief | VideoBrief): string[] {
+/** Longueur maximale retenue pour la consigne du modèle d'image. */
+const VISUAL_PROMPT_MAX = 3000;
+
+/** Structure de la méthode publicitaire choisie, étape par étape ; consigne « contenu » sinon. */
+function frameworkLines(brief: VisualBrief | VideoBrief, durationSeconds?: number): string[] {
+  if (brief.purpose === 'content') {
+    return ['Purpose: organic content (presentation, tutorial or storytelling), not a hard-sell advertisement. No call to action.'];
+  }
+  const framework = findAdFramework(brief.adFramework);
+  if (!framework) return [];
+
+  const count = framework.steps.length;
+  const seconds = (value: number) => value.toFixed(1).replace(/\.0$/, '');
   return [
-    `Advertising creative for "${brief.productName}".`,
+    `Advertising copywriting structure: ${framework.acronym} (${framework.steps.map((step) => step.name).join(', ')}).`,
+    durationSeconds
+      ? 'Sequence the video in these beats, in this order:'
+      : 'Compose the single image so that it conveys these beats, in reading order:',
+    ...framework.steps.map((step, index) => {
+      const custom = brief.frameworkBeats?.[index]?.trim();
+      const timing = durationSeconds
+        ? ` (${seconds((index * durationSeconds) / count)}–${seconds(((index + 1) * durationSeconds) / count)} s)`
+        : '';
+      return `${index + 1}. ${step.name}${timing}: ${custom || step.direction}`;
+    }),
+  ];
+}
+
+/**
+ * Consigne complète envoyée au modèle. Si elle dépasse sa limite, c'est la
+ * description de scène qui est raccourcie : les garde-fous (marques, texte,
+ * stéréotypes) partent toujours.
+ */
+function buildPrompt(brief: VisualBrief | VideoBrief, options: { maxLength: number; durationSeconds?: number }): string {
+  const head = [
+    `${brief.purpose === 'content' ? 'Video content' : 'Advertising creative'} for "${brief.productName}".`,
     `Creative direction (prospect awareness level: ${brief.awarenessLevel.replace('_', ' ')}): ${AWARENESS_DIRECTION[brief.awarenessLevel]}`,
-    `Scene: ${brief.sceneDescription}`,
-    `Setting and people grounded in ${COUNTRY_NAMES[brief.market].en}, portrayed accurately and respectfully, without caricature or stereotypes.`,
+  ];
+  const tail = [
+    ...frameworkLines(brief, options.durationSeconds),
+    `Setting and people grounded in ${countryName(brief.market, 'en')}, portrayed accurately and respectfully, without caricature or stereotypes.`,
     ...(brief.audience ? [`Target audience: ${brief.audience}.`] : []),
     ...(brief.visualStyle ? [`Visual style: ${brief.visualStyle}.`] : []),
     brief.onScreenText
       ? `If text appears, it must read exactly: "${brief.onScreenText}". No other text.`
       : 'No text, no logos, no watermarks.',
     'No real brand logos, no celebrities, no invented testimonials, prices or figures.',
+    ...(options.durationSeconds
+      ? [`Duration: ${options.durationSeconds} seconds, smooth camera movement, the beats flowing naturally within one continuous take.`]
+      : []),
   ];
+
+  const fixed = [...head, ...tail].join('\n').length + '\nScene: '.length;
+  const budget = Math.max(120, options.maxLength - fixed);
+  const scene =
+    brief.sceneDescription.length > budget ? `${brief.sceneDescription.slice(0, budget - 1)}…` : brief.sceneDescription;
+  return [...head, `Scene: ${scene}`, ...tail].join('\n').slice(0, options.maxLength);
 }
 
 /** Corps envoyé au modèle d'image. Fonction pure, testable sans appel réseau. */
 export function buildVisualInput(brief: VisualBrief) {
   return {
-    prompt: promptLines(brief).join('\n'),
+    prompt: buildPrompt(brief, { maxLength: VISUAL_PROMPT_MAX }),
     num_images: 1,
     resolution: '2K',
     aspect_ratio: brief.format,
@@ -114,12 +171,7 @@ export function buildVisualInput(brief: VisualBrief) {
 /** Corps envoyé au modèle vidéo. Fonction pure, testable sans appel réseau. */
 export function buildVideoInput(brief: VideoBrief) {
   return {
-    prompt: [
-      ...promptLines(brief),
-      `Duration: ${brief.duration} seconds, one continuous shot with smooth camera movement.`,
-    ]
-      .join('\n')
-      .slice(0, VIDEO_PROMPT_MAX),
+    prompt: buildPrompt(brief, { maxLength: VIDEO_PROMPT_MAX, durationSeconds: brief.duration }),
     duration: brief.duration,
     aspect_ratio: brief.format,
     cfg_scale: 0.5,

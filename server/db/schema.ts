@@ -86,6 +86,11 @@ export const users = pgTable(
     twoFactorEnabledAt: moment('two_factor_enabled_at'),
     /** Dernier pas TOTP accepté : un code déjà utilisé ne peut pas être rejoué. */
     twoFactorLastStep: integer('two_factor_last_step'),
+    /** Code de sécurité personnel (second facteur sans application), haché en Argon2id comme un mot de passe. */
+    securityCodeHash: text('security_code_hash'),
+    securityCodeSetAt: moment('security_code_set_at'),
+    /** Pays choisi par l'utilisateur (ISO 3166-1 alpha-2) : il fixe la devise d'affichage des prix. */
+    country: text('country'),
     savedNiches: jsonb('saved_niches').$type<string[]>().notNull().default(sql`'[]'::jsonb`),
     lastLoginAt: moment('last_login_at'),
     passwordChangedAt: moment('password_changed_at'),
@@ -275,7 +280,11 @@ export const payments = pgTable(
     userEmail: text('user_email').notNull(),
     plan: planId('plan').notNull(),
     periodMonths: integer('period_months').notNull(),
-    /** Montant entier en francs CFA : la devise n'a pas de centimes. */
+    /** Devise du paiement (ISO 4217). */
+    currency: text('currency').notNull().default('XAF'),
+    /** Montant payé, en plus petite unité de la devise (centimes ; unités pour le franc CFA). */
+    amountMinor: integer('amount_minor').notNull().default(0),
+    /** Équivalent en francs CFA au taux du jour du paiement : la devise des statistiques de revenus. */
     amountFcfa: integer('amount_fcfa').notNull(),
     method: paymentMethod('method').notNull(),
     reference: text('reference'),

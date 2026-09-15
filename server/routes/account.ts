@@ -4,9 +4,9 @@ import { z } from 'zod';
 import { getDb } from '@server/db/client';
 import { creditTransactions, sessions, users } from '@server/db/schema';
 import { describeDevice, maskIp } from '@server/lib/device';
-import { AppError, asyncRoute, routeLimiter, validateBody } from '@server/middleware';
+import { AppError, asyncRoute, countrySchema, routeLimiter, validateBody } from '@server/middleware';
 import { requireAuth } from '@server/middleware/auth';
-import { creditSummary, loadAccount } from '@server/services/accounts';
+import { creditSummary, effectiveLimits, loadAccount } from '@server/services/accounts';
 import { accountView } from '@server/services/accounts/view';
 import { clientInfo } from '@server/services/audit';
 import {
@@ -18,6 +18,9 @@ import {
   nameSchema,
   passwordInputSchema,
   regenerateRecoveryCodes,
+  removeSecurityCode,
+  securityCodeInputSchema,
+  setSecurityCode,
 } from '@server/services/auth';
 import {
   ONLINE_WINDOW_MS,
@@ -46,20 +49,21 @@ async function refreshAuth(req: Request): Promise<void> {
 const profileSchema = z
   .object({
     name: nameSchema.optional(),
-    savedNiches: z.array(z.string().trim().min(2).max(200)).max(50).optional(),
+    /** Pays de l'utilisateur : la devise des prix en découle. */
+    country: countrySchema.optional(),
   })
-  .refine((value) => value.name !== undefined || value.savedNiches !== undefined, { message: 'Rien à modifier.' });
+  .refine((value) => value.name !== undefined || value.country !== undefined, { message: 'Rien à modifier.' });
 
 accountRouter.patch(
   '/profile',
   validateBody(profileSchema),
   asyncRoute(async (req, res) => {
-    const { name, savedNiches } = req.body as z.infer<typeof profileSchema>;
+    const { name, country } = req.body as z.infer<typeof profileSchema>;
     await getDb()
       .update(users)
       .set({
         ...(name ? { name } : {}),
-        ...(savedNiches ? { savedNiches: [...new Set(savedNiches)] } : {}),
+        ...(country ? { country } : {}),
         updatedAt: new Date(),
       })
       .where(eq(users.id, req.auth!.account.user.id));
@@ -206,6 +210,114 @@ accountRouter.post(
       clientInfo(req),
     );
     res.json({ recoveryCodes });
+  }),
+);
+
+/* -------------------------------------------------------------------------- */
+/*  Code de sécurité                                                           */
+/* -------------------------------------------------------------------------- */
+
+const securityCodeBody = z.object({
+  password: passwordInputSchema,
+  newCode: securityCodeInputSchema,
+  /** Exigé quand le compte a déjà un second facteur (code actuel ou code de l'application). */
+  currentCode: z.string().max(128).optional(),
+});
+
+accountRouter.post(
+  '/two-factor/security-code',
+  routeLimiter(15, 10),
+  validateBody(securityCodeBody),
+  asyncRoute(async (req, res) => {
+    const auth = req.auth!;
+    const { password, newCode, currentCode } = req.body as z.infer<typeof securityCodeBody>;
+    await setSecurityCode(auth.account.user, { password, newCode, currentCode, sessionId: auth.sessionId, client: clientInfo(req) });
+    await refreshAuth(req);
+    req.auth = { ...req.auth!, mfaVerified: true };
+    res.json({ account: await accountView(req.auth) });
+  }),
+);
+
+const removeSecurityCodeBody = z.object({ password: passwordInputSchema, code: codeSchema });
+
+accountRouter.post(
+  '/two-factor/security-code/remove',
+  routeLimiter(15, 10),
+  validateBody(removeSecurityCodeBody),
+  asyncRoute(async (req, res) => {
+    const auth = req.auth!;
+    const { password, code } = req.body as z.infer<typeof removeSecurityCodeBody>;
+    await removeSecurityCode(auth.account.user, { password, code, isStaff: auth.account.isStaff, client: clientInfo(req) });
+    await refreshAuth(req);
+    res.json({ account: await accountView(req.auth!) });
+  }),
+);
+
+/* -------------------------------------------------------------------------- */
+/*  Niches enregistrées                                                        */
+/* -------------------------------------------------------------------------- */
+
+const nicheBody = z.object({
+  name: z.string().trim().min(2, 'Le nom de la niche doit contenir au moins 2 caractères.').max(200, '200 caractères au plus.'),
+});
+
+const sameNiche = (a: string, b: string) => a.localeCompare(b, 'fr', { sensitivity: 'base' }) === 0;
+
+/** Enregistre une niche, dans la limite du palier. Verrou de ligne : deux ajouts simultanés ne dépassent pas la limite. */
+accountRouter.post(
+  '/niches',
+  routeLimiter(1, 60),
+  validateBody(nicheBody),
+  asyncRoute(async (req, res) => {
+    const auth = req.auth!;
+    const { name } = req.body as z.infer<typeof nicheBody>;
+    const limit = effectiveLimits(auth.account).savedNiches;
+
+    await getDb().transaction(async (tx) => {
+      const [row] = await tx
+        .select({ savedNiches: users.savedNiches })
+        .from(users)
+        .where(eq(users.id, auth.account.user.id))
+        .for('update');
+      const current = row?.savedNiches ?? [];
+      if (current.some((niche) => sameNiche(niche, name))) return;
+      if (limit !== null && current.length >= limit) {
+        throw new AppError(
+          403,
+          `Votre palier ${auth.account.plan.label} permet d’enregistrer ${limit} niche${limit > 1 ? 's' : ''}. Retirez-en une, ou passez à un palier supérieur pour en suivre davantage.`,
+          'NICHE_LIMIT_REACHED',
+          { limit },
+        );
+      }
+      await tx
+        .update(users)
+        .set({ savedNiches: [...current, name], updatedAt: new Date() })
+        .where(eq(users.id, auth.account.user.id));
+    });
+
+    await refreshAuth(req);
+    res.status(201).json({ account: await accountView(req.auth!) });
+  }),
+);
+
+accountRouter.post(
+  '/niches/remove',
+  routeLimiter(1, 60),
+  validateBody(nicheBody),
+  asyncRoute(async (req, res) => {
+    const auth = req.auth!;
+    const { name } = req.body as z.infer<typeof nicheBody>;
+    await getDb().transaction(async (tx) => {
+      const [row] = await tx
+        .select({ savedNiches: users.savedNiches })
+        .from(users)
+        .where(eq(users.id, auth.account.user.id))
+        .for('update');
+      const next = (row?.savedNiches ?? []).filter((niche) => !sameNiche(niche, name));
+      await tx.update(users).set({ savedNiches: next, updatedAt: new Date() }).where(eq(users.id, auth.account.user.id));
+    });
+    await refreshAuth(req);
+    res.json({ account: await accountView(req.auth!) });
   }),
 );
 

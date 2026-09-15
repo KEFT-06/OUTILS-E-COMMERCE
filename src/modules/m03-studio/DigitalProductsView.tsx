@@ -59,7 +59,7 @@ export function DigitalProductsView({ report, products, onSelectProductForAd }: 
         <NoDataState
           icon={Package}
           title="Aucune idée de produit pour cette niche"
-          reason="Le rapport actif ne propose pas de produit digital. Choisissez une autre niche dans l’en-tête."
+          reason="Le rapport de cette niche ne propose pas de produit digital. Analysez une autre niche depuis le catalogue."
         />
       </div>
     );

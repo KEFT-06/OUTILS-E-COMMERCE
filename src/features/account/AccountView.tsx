@@ -1,35 +1,26 @@
 import { useCallback, useEffect, useState } from 'react';
-import { useLocation, useNavigate } from 'react-router-dom';
+import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { Controller, useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 import { toast } from 'sonner';
-import {
-  ArrowRight,
-  Bookmark,
-  Check,
-  History,
-  KeyRound,
-  LogOut,
-  MonitorSmartphone,
-  Pencil,
-  PlugZap,
-  ShieldCheck,
-  TriangleAlert,
-  Zap,
-} from 'lucide-react';
+import { ArrowRight, Bookmark, Check, History, KeyRound, LogOut, MonitorSmartphone, Pencil, PlugZap, ShieldCheck, TriangleAlert, X, Zap } from 'lucide-react';
 import { useCreditGate } from '@/app/providers/CreditGateProvider';
 import { initialsOf, useAuth } from '@/features/auth/AuthContext';
 import { PASSWORD_MIN_LENGTH, PasswordHints, PasswordInput } from '@/features/auth/PasswordInput';
+import { SecondFactorChooser, SecurityCodeForm } from '@/features/auth/SecurityCodeForm';
 import { RecoveryCodesPanel, TwoFactorSetup } from '@/features/auth/TwoFactorSetup';
+import { CountryCombobox } from '@/shared/components/CountryCombobox';
+import { PlanCards } from '@/shared/components/PlanCards';
+import { findCountry } from '@server/shared/countries';
 import { PageHeader } from '@/shared/components/PageHeader';
 import { apiRequest, passwordProblemsOf } from '@/shared/lib/api';
 import { type ApiError, toApiError } from '@/shared/lib/apiError';
 import { formatDateFr, formatRelativeFr } from '@/shared/lib/formatDate';
 import { CREDIT_REASON_LABELS, labelOf } from '@/shared/lib/labels';
-import { formatPlanPrice, formatPlanQuota, usePlans } from '@/shared/lib/plans';
+import { usePlans } from '@/shared/lib/plans';
 import { cn } from '@/shared/lib/utils';
-import type { Account, PlanId } from '@/shared/types/auth';
+import type { Account } from '@/shared/types/auth';
 import { Alert, AlertDescription, AlertTitle } from '@/shared/ui/alert';
 import { Avatar, AvatarFallback } from '@/shared/ui/avatar';
 import { Badge } from '@/shared/ui/badge';
@@ -66,6 +57,45 @@ function formatMonthYear(iso: string): string {
 /* -------------------------------------------------------------------------- */
 /*  Profil                                                                     */
 /* -------------------------------------------------------------------------- */
+
+function CountryField({ account }: { account: Account }) {
+  const { updateProfile } = useAuth();
+  const [saving, setSaving] = useState(false);
+
+  const change = async (code: string) => {
+    if (code === account.country) return;
+    setSaving(true);
+    try {
+      await updateProfile({ country: code });
+      const country = findCountry(code);
+      toast.success('Pays enregistré', {
+        description: country ? `Les prix s’affichent désormais en ${country.currency}.` : undefined,
+      });
+    } catch (caught) {
+      toast.error('Le pays n’a pas pu être enregistré', { description: toApiError(caught, 'Erreur inconnue.').message });
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <div className="flex flex-wrap items-center gap-2">
+      <label htmlFor="profile-country" className="text-sm text-muted-foreground">
+        Pays
+      </label>
+      <CountryCombobox
+        id="profile-country"
+        value={account.country}
+        onChange={(code) => void change(code)}
+        showCurrency
+        disabled={saving}
+        placeholder="Choisissez votre pays"
+        className="h-8 w-auto min-w-52"
+      />
+      <span className="text-xs text-muted-foreground">Prix affichés en {account.currency}</span>
+    </div>
+  );
+}
 
 function ProfileCard({ account }: { account: Account }) {
   const { logout, updateProfile } = useAuth();
@@ -145,6 +175,7 @@ function ProfileCard({ account }: { account: Account }) {
           )}
 
           <p className="text-sm text-muted-foreground">{account.email}</p>
+          <CountryField account={account} />
 
           <div className="flex flex-wrap items-center gap-2">
             <Badge variant={account.plan.id === 'free' ? 'secondary' : 'brand'}>Palier {account.plan.label}</Badge>
@@ -153,7 +184,7 @@ function ProfileCard({ account }: { account: Account }) {
             ) : account.isStaff ? (
               <Badge variant="outline">Équipe</Badge>
             ) : null}
-            {account.twoFactor.enabled && <Badge variant="success">Double authentification</Badge>}
+            {account.twoFactor.enabled && <Badge variant="success">Second facteur actif</Badge>}
             <span className="text-xs text-muted-foreground">Membre depuis {formatMonthYear(account.createdAt)}</span>
           </div>
         </div>
@@ -327,7 +358,11 @@ function CreditsCard({ account }: { account: Account }) {
   );
 }
 
-function SavedNichesCard({ niches, onSelect }: { niches: string[]; onSelect: (niche: string) => void }) {
+function SavedNichesCard({ account, onSelect }: { account: Account; onSelect: (niche: string) => void }) {
+  const { removeNiche } = useAuth();
+  const niches = account.savedNiches;
+  const limit = account.limits.savedNiches;
+
   return (
     <Card>
       <CardHeader>
@@ -337,27 +372,52 @@ function SavedNichesCard({ niches, onSelect }: { niches: string[]; onSelect: (ni
             Niches enregistrées
           </h2>
         </CardTitle>
-        <CardDescription>Relancez une analyse en un clic.</CardDescription>
+        <CardDescription>
+          {limit === null
+            ? `${niches.length} enregistrée${niches.length > 1 ? 's' : ''}, sans limite avec votre palier.`
+            : `${niches.length} sur ${limit} avec votre palier ${account.plan.label}.`}
+        </CardDescription>
+        <CardAction>
+          <Button variant="ghost" size="sm" asChild>
+            <Link to="/app/niches">
+              Catalogue
+              <ArrowRight />
+            </Link>
+          </Button>
+        </CardAction>
       </CardHeader>
-      <CardContent>
+      <CardContent className="space-y-3">
+        {limit !== null && <Progress value={limit === 0 ? 100 : Math.min(100, (niches.length / limit) * 100)} aria-label="Niches enregistrées" />}
         {niches.length === 0 ? (
           <Empty className="border border-dashed">
             <EmptyHeader>
               <EmptyTitle>Aucune niche enregistrée</EmptyTitle>
-              <EmptyDescription>Les niches que vous suivez apparaîtront ici.</EmptyDescription>
+              <EmptyDescription>Enregistrez des niches depuis le catalogue pour les retrouver ici.</EmptyDescription>
             </EmptyHeader>
           </Empty>
         ) : (
           <ul className="space-y-2">
             {niches.map((niche) => (
-              <li key={niche}>
+              <li key={niche} className="flex items-center gap-2">
                 <Button
                   variant="outline"
-                  className="h-auto w-full justify-between py-3 text-left font-medium whitespace-normal"
+                  className="h-auto flex-1 justify-between py-3 text-left font-medium whitespace-normal"
                   onClick={() => onSelect(niche)}
                 >
                   {niche}
                   <ArrowRight />
+                </Button>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  aria-label={`Retirer ${niche}`}
+                  onClick={() => {
+                    void removeNiche(niche).catch((caught: unknown) =>
+                      toast.error('La niche n’a pas pu être retirée', { description: toApiError(caught, 'Erreur inconnue.').message }),
+                    );
+                  }}
+                >
+                  <X />
                 </Button>
               </li>
             ))}
@@ -368,42 +428,44 @@ function SavedNichesCard({ niches, onSelect }: { niches: string[]; onSelect: (ni
   );
 }
 
-function PlansCard({ currentPlanId }: { currentPlanId: PlanId }) {
-  const { catalog } = usePlans();
+function PlansCard({ account }: { account: Account }) {
+  const { catalog, error } = usePlans(account.country);
 
   return (
-    <Card>
+    <Card id="paliers" className="scroll-mt-24">
       <CardHeader>
         <CardTitle>
           <h2>Paliers d’abonnement</h2>
         </CardTitle>
-        <CardDescription>Chaque palier fixe un quota mensuel de points. Un prix pas encore fixé est indiqué « Prix à venir ».</CardDescription>
+        <CardDescription>
+          Prix en {catalog?.currency ?? account.currency}, selon votre pays. Chaque forfait fixe vos points, vos niches
+          enregistrées et vos méthodes publicitaires.
+        </CardDescription>
       </CardHeader>
       <CardContent>
-        <ul className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
-          {catalog
-            ? catalog.plans.map((plan) => {
-                const isCurrent = plan.id === currentPlanId;
-                return (
-                  <li
-                    key={plan.id}
-                    className={cn('rounded-lg border p-4', isCurrent ? 'border-primary bg-accent/60 ring-1 ring-primary/30' : 'bg-background')}
-                  >
-                    <div className="flex items-center justify-between gap-1">
-                      <span className="text-sm font-semibold">{plan.label}</span>
-                      {isCurrent && <Check className="size-4 text-brand-green-text" aria-label="Palier actuel" />}
-                    </div>
-                    <p className="mt-2 text-sm font-semibold tabular-nums">{formatPlanPrice(plan)}</p>
-                    <p className="text-sm text-muted-foreground tabular-nums">{formatPlanQuota(plan)}</p>
-                  </li>
-                );
-              })
-            : Array.from({ length: 5 }, (_, index) => (
-                <li key={index}>
-                  <Skeleton className="h-24 rounded-lg" />
-                </li>
-              ))}
-        </ul>
+        {error ? (
+          <Alert variant="danger">
+            <TriangleAlert />
+            <AlertDescription>{error.message}</AlertDescription>
+          </Alert>
+        ) : (
+          <PlanCards
+            catalog={catalog}
+            currentPlanId={account.plan.id}
+            renderAction={(plan, isCurrent) =>
+              isCurrent ? (
+                <Button variant="outline" className="w-full" disabled>
+                  <Check />
+                  Palier actuel
+                </Button>
+              ) : plan.price?.monthly === 0 ? null : (
+                <p className="text-xs leading-relaxed text-muted-foreground">
+                  Paiement en ligne bientôt disponible. En attendant, l’administrateur active ce palier après votre paiement.
+                </p>
+              )
+            }
+          />
+        )}
       </CardContent>
     </Card>
   );
@@ -537,15 +599,14 @@ function ChangePasswordDialog() {
 function CodeField({ id, value, onChange }: { id: string; value: string; onChange: (value: string) => void }) {
   return (
     <Field>
-      <FieldLabel htmlFor={id}>Code de votre application</FieldLabel>
+      <FieldLabel htmlFor={id}>Code de votre application ou code de sécurité</FieldLabel>
       <Input
         id={id}
         value={value}
-        onChange={(event) => onChange(event.target.value.replace(/[^\d\s]/g, '').slice(0, 7))}
-        inputMode="numeric"
-        autoComplete="one-time-code"
-        placeholder="123456"
-        className="h-11 max-w-44 text-center text-lg font-semibold tracking-[0.3em] tabular-nums"
+        onChange={(event) => onChange(event.target.value.slice(0, 128))}
+        type="password"
+        autoComplete="off"
+        className="h-11"
       />
     </Field>
   );
@@ -608,7 +669,7 @@ function RegenerateRecoveryCodesDialog() {
                 <AlertDescription>{error.message}</AlertDescription>
               </Alert>
             )}
-            <Button type="submit" disabled={busy || code.replace(/\s/g, '').length !== 6}>
+            <Button type="submit" disabled={busy || code.trim().length < 6}>
               {busy && <Spinner />}
               Générer de nouveaux codes
             </Button>
@@ -646,7 +707,7 @@ function DisableTwoFactorDialog() {
         body: { password, code },
       });
       setAccount(result.account);
-      toast.success('Double authentification désactivée');
+      toast.success('Application d’authentification retirée');
       change(false);
     } catch (caught) {
       setError(toApiError(caught, 'La double authentification n’a pas pu être désactivée.'));
@@ -665,8 +726,8 @@ function DisableTwoFactorDialog() {
       <DialogContent className="sm:max-w-md">
         <form onSubmit={(event) => void submit(event)} className="space-y-4">
           <DialogHeader>
-            <DialogTitle>Désactiver la double authentification ?</DialogTitle>
-            <DialogDescription>Votre mot de passe suffira de nouveau pour vous connecter : votre compte sera moins protégé.</DialogDescription>
+            <DialogTitle>Retirer l’application d’authentification ?</DialogTitle>
+            <DialogDescription>Votre code de sécurité, s’il est défini, restera demandé à la connexion. Sinon, votre mot de passe suffira : votre compte sera moins protégé.</DialogDescription>
           </DialogHeader>
           <FieldGroup>
             <input type="text" name="username" autoComplete="username" hidden readOnly />
@@ -686,12 +747,132 @@ function DisableTwoFactorDialog() {
             <Button type="button" variant="outline" onClick={() => change(false)}>
               Garder la protection
             </Button>
-            <Button type="submit" variant="destructive" disabled={busy || !password || code.replace(/\s/g, '').length !== 6}>
+            <Button type="submit" variant="destructive" disabled={busy || !password || code.trim().length < 6}>
               {busy && <Spinner />}
               Désactiver
             </Button>
           </DialogFooter>
         </form>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+function SecurityCodeDialog({ account }: { account: Account }) {
+  const [open, setOpen] = useState(false);
+  const defined = account.twoFactor.methods.code;
+
+  return (
+    <Dialog open={open} onOpenChange={setOpen}>
+      <DialogTrigger asChild>
+        <Button variant="outline" size="sm">
+          {defined ? 'Modifier' : 'Définir'}
+        </Button>
+      </DialogTrigger>
+      <DialogContent className="max-h-[90svh] overflow-y-auto sm:max-w-md">
+        <DialogHeader>
+          <DialogTitle>{defined ? 'Modifier le code de sécurité' : 'Définir un code de sécurité'}</DialogTitle>
+          <DialogDescription>Demandé après votre mot de passe, à chaque connexion. Vos autres appareils seront déconnectés.</DialogDescription>
+        </DialogHeader>
+        <SecurityCodeForm account={account} onDone={() => setOpen(false)} />
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+function RemoveSecurityCodeDialog() {
+  const { setAccount } = useAuth();
+  const [open, setOpen] = useState(false);
+  const [password, setPassword] = useState('');
+  const [code, setCode] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<ApiError | null>(null);
+
+  const change = (next: boolean) => {
+    setOpen(next);
+    if (!next) {
+      setPassword('');
+      setCode('');
+      setError(null);
+    }
+  };
+
+  const submit = async (event: React.FormEvent) => {
+    event.preventDefault();
+    setBusy(true);
+    setError(null);
+    try {
+      const result = await apiRequest<{ account: Account }>('/api/account/two-factor/security-code/remove', {
+        method: 'POST',
+        body: { password, code },
+      });
+      setAccount(result.account);
+      toast.success('Code de sécurité retiré');
+      change(false);
+    } catch (caught) {
+      setError(toApiError(caught, 'Le code n’a pas pu être retiré.'));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <Dialog open={open} onOpenChange={change}>
+      <DialogTrigger asChild>
+        <Button variant="ghost" size="sm" className="text-danger hover:text-danger">
+          Retirer
+        </Button>
+      </DialogTrigger>
+      <DialogContent className="sm:max-w-md">
+        <form onSubmit={(event) => void submit(event)} className="space-y-4">
+          <DialogHeader>
+            <DialogTitle>Retirer le code de sécurité ?</DialogTitle>
+            <DialogDescription>Il ne sera plus demandé à la connexion.</DialogDescription>
+          </DialogHeader>
+          <FieldGroup>
+            <input type="text" name="username" autoComplete="username" hidden readOnly />
+            <Field>
+              <FieldLabel htmlFor="remove-code-password">Mot de passe</FieldLabel>
+              <PasswordInput id="remove-code-password" value={password} onChange={(event) => setPassword(event.target.value)} autoComplete="current-password" />
+            </Field>
+            <CodeField id="remove-code" value={code} onChange={setCode} />
+          </FieldGroup>
+          {error && (
+            <Alert variant="danger" role="alert">
+              <TriangleAlert />
+              <AlertDescription>{error.message}</AlertDescription>
+            </Alert>
+          )}
+          <DialogFooter className="gap-2 sm:gap-2">
+            <Button type="button" variant="outline" onClick={() => change(false)}>
+              Garder le code
+            </Button>
+            <Button type="submit" variant="destructive" disabled={busy || !password || code.trim().length < 6}>
+              {busy && <Spinner />}
+              Retirer
+            </Button>
+          </DialogFooter>
+        </form>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+function AddAuthenticatorDialog() {
+  const [open, setOpen] = useState(false);
+  return (
+    <Dialog open={open} onOpenChange={setOpen}>
+      <DialogTrigger asChild>
+        <Button variant="outline" size="sm">
+          Configurer
+        </Button>
+      </DialogTrigger>
+      <DialogContent className="max-h-[90svh] overflow-y-auto sm:max-w-lg">
+        <DialogHeader>
+          <DialogTitle>Application d’authentification</DialogTitle>
+          <DialogDescription>Google Authenticator, Microsoft Authenticator ou 2FAS : un code à 6 chiffres en plus du mot de passe.</DialogDescription>
+        </DialogHeader>
+        <TwoFactorSetup onEnabled={() => setOpen(false)} />
       </DialogContent>
     </Dialog>
   );
@@ -804,6 +985,7 @@ function SessionsList() {
 }
 
 function SecurityCard({ account }: { account: Account }) {
+  const methods = account.twoFactor.methods;
   return (
     <Card id="securite" className="scroll-mt-24">
       <CardHeader>
@@ -813,7 +995,7 @@ function SecurityCard({ account }: { account: Account }) {
             Sécurité
           </h2>
         </CardTitle>
-        <CardDescription>Mot de passe, double authentification et appareils connectés.</CardDescription>
+        <CardDescription>Mot de passe, second facteur et appareils connectés.</CardDescription>
       </CardHeader>
       <CardContent className="space-y-6">
         <section aria-labelledby="security-password" className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
@@ -831,19 +1013,55 @@ function SecurityCard({ account }: { account: Account }) {
         <section aria-labelledby="security-2fa" className="space-y-3">
           <div className="flex flex-wrap items-center gap-2">
             <h3 id="security-2fa" className="text-sm font-semibold">
-              Double authentification
+              Second facteur
             </h3>
-            {account.twoFactor.enabled ? <Badge variant="success">Activée</Badge> : <Badge variant="outline">Désactivée</Badge>}
+            {account.twoFactor.enabled ? <Badge variant="success">Actif</Badge> : <Badge variant="outline">Désactivé</Badge>}
           </div>
           {account.twoFactor.enabled ? (
-            <div className="space-y-3">
-              <p className="text-sm text-muted-foreground">Un code de votre application vous est demandé à chaque connexion.</p>
-              <div className="flex flex-wrap gap-2">
-                <RegenerateRecoveryCodesDialog />
-                {!account.isStaff && <DisableTwoFactorDialog />}
-              </div>
+            <div className="space-y-4">
+              <p className="text-sm text-muted-foreground">
+                Après votre mot de passe, Smart Creator demande{' '}
+                {methods.code && methods.app
+                  ? 'votre code de sécurité ou le code de votre application'
+                  : methods.code
+                    ? 'votre code de sécurité'
+                    : 'le code de votre application'}{' '}
+                à chaque connexion.
+              </p>
+              <ul className="divide-y rounded-lg border">
+                <li className="flex flex-wrap items-center justify-between gap-3 p-3">
+                  <span className="flex flex-wrap items-center gap-2 text-sm font-medium">
+                    <KeyRound className="size-4 text-brand-green-text" aria-hidden="true" />
+                    Code de sécurité
+                    {methods.code ? <Badge variant="success">Actif</Badge> : <Badge variant="outline">Non défini</Badge>}
+                  </span>
+                  <div className="flex flex-wrap gap-2">
+                    <SecurityCodeDialog account={account} />
+                    {methods.code && (!account.isStaff || methods.app) && <RemoveSecurityCodeDialog />}
+                  </div>
+                </li>
+                <li className="flex flex-wrap items-center justify-between gap-3 p-3">
+                  <span className="flex flex-wrap items-center gap-2 text-sm font-medium">
+                    <MonitorSmartphone className="size-4 text-brand-green-text" aria-hidden="true" />
+                    Application d’authentification
+                    {methods.app ? <Badge variant="success">Active</Badge> : <Badge variant="outline">Non configurée</Badge>}
+                  </span>
+                  <div className="flex flex-wrap gap-2">
+                    {methods.app ? (
+                      <>
+                        <RegenerateRecoveryCodesDialog />
+                        {(!account.isStaff || methods.code) && <DisableTwoFactorDialog />}
+                      </>
+                    ) : (
+                      <AddAuthenticatorDialog />
+                    )}
+                  </div>
+                </li>
+              </ul>
               {account.isStaff && (
-                <p className="text-xs text-muted-foreground">Obligatoire pour les comptes qui détiennent des privilèges d’administration.</p>
+                <p className="text-xs text-muted-foreground">
+                  Obligatoire pour les comptes qui détiennent des privilèges d’administration : gardez au moins l’un des deux.
+                </p>
               )}
             </div>
           ) : (
@@ -852,10 +1070,10 @@ function SecurityCard({ account }: { account: Account }) {
                 <Alert variant="warning">
                   <TriangleAlert />
                   <AlertTitle>Obligatoire pour votre compte</AlertTitle>
-                  <AlertDescription>Votre compte détient des privilèges d’administration : activez-la pour y accéder.</AlertDescription>
+                  <AlertDescription>Votre compte détient des privilèges d’administration : activez-en un pour y accéder.</AlertDescription>
                 </Alert>
               )}
-              <TwoFactorSetup />
+              <SecondFactorChooser account={account} />
             </>
           )}
         </section>
@@ -1044,15 +1262,22 @@ export function AccountView({ onSelectSavedNiche }: AccountViewProps) {
 
   return (
     <div className="space-y-6">
-      <PageHeader title="Mon compte" description="Profil, points, sécurité et connexions." />
+      <PageHeader title="Mon compte" description="Profil et pays, points, niches, sécurité, connexions et paliers." />
+      {!account.country && (
+        <Alert variant="warning">
+          <TriangleAlert />
+          <AlertTitle>Choisissez votre pays</AlertTitle>
+          <AlertDescription>Il fixe la devise de vos prix : sans pays, ils s’affichent en dollars.</AlertDescription>
+        </Alert>
+      )}
       <ProfileCard account={account} />
       <div className="grid gap-6 lg:grid-cols-2">
         <CreditsCard account={account} />
-        <SavedNichesCard niches={account.savedNiches} onSelect={onSelectSavedNiche} />
+        <SavedNichesCard account={account} onSelect={onSelectSavedNiche} />
       </div>
       <SecurityCard account={account} />
       <ConnectionsCard account={account} />
-      <PlansCard currentPlanId={account.plan.id} />
+      <PlansCard account={account} />
     </div>
   );
 }

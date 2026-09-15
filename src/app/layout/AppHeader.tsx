@@ -88,6 +88,7 @@ export function AppHeader() {
       </Breadcrumb>
 
       <div className="ml-auto flex min-w-0 items-center gap-1.5 sm:gap-2">
+        {currentReport && reports.length > 0 && (
         <Select value={currentReport.id} onValueChange={selectReport}>
           <SelectTrigger size="sm" aria-label="Niche analysée" className="w-[8.5rem] sm:w-[13rem] xl:w-[17rem]">
             <SelectValue />
@@ -103,6 +104,7 @@ export function AppHeader() {
             </SelectGroup>
           </SelectContent>
         </Select>
+        )}
 
         <Button
           variant="outline"
@@ -133,7 +135,7 @@ export function AppHeader() {
             </Button>
           </DropdownMenuTrigger>
           <DropdownMenuContent align="end" className="w-60">
-            <DropdownMenuItem onSelect={() => void exportPdf()} disabled={isExportingPdf}>
+            <DropdownMenuItem onSelect={() => void exportPdf()} disabled={isExportingPdf || !currentReport}>
               {isExportingPdf ? <Spinner /> : <Download />}
               Exporter le dossier PDF
             </DropdownMenuItem>

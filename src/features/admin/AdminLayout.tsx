@@ -3,7 +3,7 @@ import { NavLink, Navigate, Outlet, useLocation, useNavigate } from 'react-route
 import { LogIn, ShieldCheck } from 'lucide-react';
 import { findAdminSection, visibleAdminSections } from '@/app/navigation';
 import { useAuth } from '@/features/auth/AuthContext';
-import { TwoFactorSetup } from '@/features/auth/TwoFactorSetup';
+import { SecondFactorChooser } from '@/features/auth/SecurityCodeForm';
 import { PageHeader } from '@/shared/components/PageHeader';
 import { cn } from '@/shared/lib/utils';
 import { Button } from '@/shared/ui/button';
@@ -41,13 +41,16 @@ export function AdminLayout() {
             <CardTitle>
               <h2 className="flex items-center gap-2">
                 <ShieldCheck className="size-4 text-brand-green-text" aria-hidden="true" />
-                Double authentification obligatoire
+                Second facteur obligatoire
               </h2>
             </CardTitle>
-            <CardDescription>Deux minutes, une seule fois. L’administration s’ouvre dès l’activation.</CardDescription>
+            <CardDescription>
+              Choisissez un code de sécurité, demandé après votre mot de passe, ou une application d’authentification.
+              L’administration s’ouvre dès l’activation.
+            </CardDescription>
           </CardHeader>
           <CardContent>
-            <TwoFactorSetup />
+            <SecondFactorChooser account={account} />
           </CardContent>
         </Card>
       </div>
@@ -61,10 +64,10 @@ export function AdminLayout() {
         <Card className="max-w-2xl">
           <CardHeader>
             <CardTitle>
-              <h2>Session ouverte sans code</h2>
+              <h2>Session ouverte sans votre code</h2>
             </CardTitle>
             <CardDescription>
-              Cette session date d’avant l’activation de la double authentification. Reconnectez-vous : votre code vous sera demandé.
+              Cette session date d’avant l’activation de votre second facteur. Reconnectez-vous : votre code vous sera demandé.
             </CardDescription>
           </CardHeader>
           <CardContent>

@@ -3,6 +3,7 @@ import {
   Banknote,
   BookOpen,
   Clapperboard,
+  Compass,
   FileText,
   Film,
   Gauge,
@@ -35,6 +36,7 @@ export type ModuleGroup = 'voir' | 'creer' | 'vendre';
 
 export type ModuleId =
   | 'cockpit'
+  | 'niches'
   | 'radar'
   | 'galerie'
   | 'analyse'
@@ -79,6 +81,15 @@ export const MODULES: readonly ModuleEntry[] = [
     label: { fr: 'Cockpit', en: 'Cockpit' },
     description: { fr: 'Solde, ventes et plan d’action', en: 'Balance, sales and action plan' },
     icon: LayoutDashboard,
+    ready: true,
+  },
+  {
+    id: 'niches',
+    path: '/app/niches',
+    group: 'voir',
+    label: { fr: 'Niches', en: 'Niches' },
+    description: { fr: 'Toutes les niches, tous secteurs', en: 'Every niche, every sector' },
+    icon: Compass,
     ready: true,
   },
   {
@@ -139,8 +150,8 @@ export const MODULES: readonly ModuleEntry[] = [
     id: 'storybook',
     path: '/app/storybook',
     group: 'creer',
-    label: { fr: 'Storybook africain', en: 'African storybook' },
-    description: { fr: 'Contes illustrés ancrés localement', en: 'Locally grounded illustrated tales' },
+    label: { fr: 'Storybook illustré', en: 'Illustrated storybook' },
+    description: { fr: 'Contes illustrés ancrés dans un pays', en: 'Illustrated tales grounded in a country' },
     icon: BookOpen,
     ready: true,
   },

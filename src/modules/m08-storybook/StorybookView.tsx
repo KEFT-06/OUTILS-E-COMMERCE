@@ -3,7 +3,9 @@ import { AlertTriangle, BookOpen, CheckCircle2, ExternalLink, PenLine, Sparkles 
 import { useCreditGate } from '@/app/providers/CreditGateProvider';
 import { PageHeader } from '@/shared/components/PageHeader';
 import { ApiError, readApiError, toApiError } from '@/shared/lib/apiError';
-import { MARKETS } from '@/shared/lib/markets';
+import { useAuth } from '@/features/auth/AuthContext';
+import { CountryCombobox } from '@/shared/components/CountryCombobox';
+import { guessCountryCode } from '@/shared/lib/geo';
 import { safeHttpUrl } from '@/shared/lib/safeUrl';
 import type { StorybookBrief, StorybookStatus } from '@/shared/types/storybook';
 import { Alert, AlertDescription, AlertTitle } from '@/shared/ui/alert';
@@ -48,7 +50,11 @@ const INITIAL_BRIEF: StorybookBrief = {
 export function StorybookView() {
   const { runWithCredits } = useCreditGate();
 
-  const [brief, setBrief] = useState<StorybookBrief>(INITIAL_BRIEF);
+  const { account } = useAuth();
+  const [brief, setBrief] = useState<StorybookBrief>(() => ({
+    ...INITIAL_BRIEF,
+    country: account?.country ?? guessCountryCode() ?? INITIAL_BRIEF.country,
+  }));
   const [isGenerating, setIsGenerating] = useState(false);
   const [elapsedSeconds, setElapsedSeconds] = useState(0);
   const [result, setResult] = useState<StorybookStatus | null>(null);
@@ -150,7 +156,7 @@ export function StorybookView() {
     <div className="space-y-6">
       <PageHeader
         eyebrow="Créer"
-        title="Storybook africain"
+        title="Storybook illustré"
         description="Des contes illustrés ancrés dans le pays de vos lecteurs, générés avec Gamma à partir de votre brief."
       />
 
@@ -176,18 +182,7 @@ export function StorybookView() {
             <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
               <Field>
                 <FieldLabel htmlFor="story-country">Pays d’ancrage</FieldLabel>
-                <Select value={brief.country} onValueChange={(value) => update('country', value)}>
-                  <SelectTrigger id="story-country" className="w-full">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {MARKETS.map((market) => (
-                      <SelectItem key={market.code} value={market.code}>
-                        {market.label}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+                <CountryCombobox id="story-country" value={brief.country} onChange={(value) => update('country', value)} />
               </Field>
 
               <Field>

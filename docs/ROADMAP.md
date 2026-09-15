@@ -553,6 +553,25 @@ Détail dans `docs/COMPTES-ET-ADMINISTRATION.md`.
   > ⚠️ Brouillons, swipe file et rapports restent dans le navigateur : leur migration en base est
   > la prochaine étape.
 
+## International, niches et méthodes publicitaires — septembre 2026 ✅
+
+Détail dans `docs/COMPTES-ET-ADMINISTRATION.md`.
+
+- **Second facteur au choix** : code de sécurité personnel (par défaut) ou application
+  d'authentification, pour la connexion et la confirmation des actions d'administration.
+- **Outil international** : 249 pays avec drapeau, pays choisi à l'inscription, prix dans la devise
+  du pays (taux du jour, parités fixes du franc CFA), paiements saisis en toute devise et convertis
+  en FCFA pour les revenus. Les 17 marchés fixes sont remplacés par tous les pays.
+- **Paliers** : une carte par forfait (prix, points, niches, méthodes, fonctions) ; prix provisoires
+  générés ; limites de niches enregistrées et de méthodes publicitaires appliquées par le serveur.
+- **Niches** : nouvelle rubrique, 594 niches dans 41 secteurs, enregistrement limité par palier.
+- **Méthodes publicitaires** : 12 méthodes (AIDA, PAS, AIDCA, ACCA, 4P, 4C, BAB, FAB, PASTOR, QUEST,
+  ODC, PPPP) pour les vidéos et visuels pub, ouvertes selon le palier.
+- **Contenus générés retirés** : plus aucun rapport d'exemple (« solopreneurs », « nutrition
+  anti-inflammatoire ») ; les écrans attendent une vraie analyse.
+- **Vérifié** : 47 tests serveur, `tsc`, build, audit de 32 écrans (0 violation axe, 0 débordement).
+  > ⛔ **Bloqué sur toi :** prix définitifs ; Supabase ; paiement en ligne ; e-mails transactionnels.
+
 ## Ordre de bataille recommandé
 
 ```

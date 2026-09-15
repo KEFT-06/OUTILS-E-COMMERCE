@@ -1,11 +1,13 @@
 import { useEffect, useState } from 'react';
-import { AlertTriangle, Check, Download, ExternalLink, Info, Plus, Rocket, Trash2, Wand2 } from 'lucide-react';
+import { AlertTriangle, Download, ExternalLink, Info, Plus, Rocket, Trash2, Wand2, X } from 'lucide-react';
 import { PageHeader } from '@/shared/components/PageHeader';
 import { type ApiError, readApiError, toApiError } from '@/shared/lib/apiError';
 import { ComplianceBlockedError } from '@/shared/lib/complianceGate';
 import { formatDateFr } from '@/shared/lib/formatDate';
 import { KitIncompleteError, OBJECTIVE_LABELS, exportLaunchKit, missingForKit } from '@/shared/lib/launchKit';
-import { MARKETS } from '@/shared/lib/markets';
+import { countryName } from '@server/shared/countries';
+import { CountryCombobox } from '@/shared/components/CountryCombobox';
+import { CountryFlag } from '@/shared/components/CountryFlag';
 import { safeHttpUrl } from '@/shared/lib/safeUrl';
 import { MAX_COPY_VARIANTS, emptyKitDraft, useLaunchKitDrafts } from '@/shared/lib/useLaunchKitDrafts';
 import { useProductDrafts } from '@/shared/lib/useProductDrafts';
@@ -159,7 +161,7 @@ export function LaunchKitView({ report }: { report: MarketAnalysisReport }) {
   const platform = config?.ctaPlatforms[0];
   const format = config?.scriptFormats.find((candidate) => candidate.durationSeconds === duration);
   const missing = missingForKit(draft);
-  const targetedMarkets = MARKETS.filter((market) => market.code in draft.ctaByMarket);
+  const targetedMarkets = Object.keys(draft.ctaByMarket).map((code) => ({ code, label: countryName(code) }));
 
   return (
     <div className="space-y-6">
@@ -400,25 +402,35 @@ export function LaunchKitView({ report }: { report: MarketAnalysisReport }) {
           <CardContent className="space-y-5">
             <fieldset className="space-y-2">
               <legend className="mb-2 text-sm font-medium">1. Choisissez vos marchés</legend>
-              <div className="flex flex-wrap gap-2">
-                {MARKETS.map((market) => {
-                  const isTargeted = market.code in draft.ctaByMarket;
-                  return (
-                    <Button
-                      key={market.code}
-                      type="button"
-                      size="sm"
-                      variant={isTargeted ? 'secondary' : 'outline'}
-                      aria-pressed={isTargeted}
-                      onClick={() => toggleMarket(market.code)}
-                      className={cn(isTargeted && 'border-primary/40 text-brand-green-text')}
-                    >
-                      {isTargeted && <Check />}
+              <CountryCombobox
+                id="kit-add-market"
+                value={null}
+                placeholder="Ajouter un pays"
+                className="sm:max-w-xs"
+                onChange={(code) => {
+                  if (!(code in draft.ctaByMarket)) toggleMarket(code);
+                }}
+              />
+              {targetedMarkets.length > 0 && (
+                <ul className="flex flex-wrap gap-2" aria-label="Marchés ciblés">
+                  {targetedMarkets.map((market) => (
+                    <li key={market.code} className="flex items-center gap-1.5 rounded-full border bg-background py-1 pr-1 pl-2.5 text-sm">
+                      <CountryFlag code={market.code} />
                       {market.label}
-                    </Button>
-                  );
-                })}
-              </div>
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="icon"
+                        className="size-6 rounded-full"
+                        onClick={() => toggleMarket(market.code)}
+                        aria-label={`Retirer ${market.label}`}
+                      >
+                        <X />
+                      </Button>
+                    </li>
+                  ))}
+                </ul>
+              )}
             </fieldset>
 
             <div className="space-y-2">

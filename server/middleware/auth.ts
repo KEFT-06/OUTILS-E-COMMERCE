@@ -2,6 +2,7 @@ import type { RequestHandler } from 'express';
 import { readCookie } from '@server/lib/cookies';
 import { AppError, asyncRoute } from '@server/middleware';
 import { loadAccount, type AccountSnapshot } from '@server/services/accounts';
+import { hasSecondFactor } from '@server/services/auth/factors';
 import type { Permission } from '@server/services/auth/permissions';
 import { SESSION_COOKIE, resolveSession, revokeSession } from '@server/services/auth/sessions';
 import { FEATURES, type FeatureId } from '@server/services/plans';
@@ -55,17 +56,17 @@ export const requireAuth: RequestHandler = (req, _res, next) => {
 
 /** Un privilège d'administration exige un compte protégé par la double authentification, et une session qui l'a prouvée. */
 function staffSessionProblem(auth: RequestAuth): AppError | null {
-  if (!auth.account.user.twoFactorEnabledAt) {
+  if (!hasSecondFactor(auth.account.user)) {
     return new AppError(
       403,
-      'Activez la double authentification dans Mon compte pour accéder à l’administration.',
+      'Protégez votre compte avec un code de sécurité ou une application d’authentification (Mon compte → Sécurité) pour accéder à l’administration.',
       'TWO_FACTOR_REQUIRED',
     );
   }
   if (!auth.mfaVerified) {
     return new AppError(
       403,
-      'Cette session n’a pas été ouverte avec votre code de double authentification : reconnectez-vous.',
+      'Cette session n’a pas été ouverte avec votre second facteur : reconnectez-vous et saisissez votre code.',
       'TWO_FACTOR_SESSION_REQUIRED',
     );
   }

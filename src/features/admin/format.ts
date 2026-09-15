@@ -1,3 +1,4 @@
+import { formatMoney } from '@server/shared/currency';
 import type { Granularity } from '@/features/admin/adminApi';
 import { formatDateFr } from '@/shared/lib/formatDate';
 import { formatFcfa } from '@/shared/lib/plans';
@@ -58,7 +59,7 @@ export function describeAuditDetails(
     case 'user.suspended':
       return text(details.reason);
     case 'payment.recorded':
-      return `${formatFcfa(Number(details.amountFcfa))} · ${plan(details.plan)} · ${text(details.periodMonths)} mois`;
+      return `${details.currency && details.currency !== 'XAF' ? `${formatMoney(Number(details.amount), text(details.currency))} (≈ ${formatFcfa(Number(details.amountFcfa))})` : formatFcfa(Number(details.amountFcfa))} · ${plan(details.plan)} · ${text(details.periodMonths)} mois`;
     case 'payment.refunded':
       return `${formatFcfa(Number(details.amountFcfa))}${details.note ? ` · ${text(details.note)}` : ''}`;
     case 'permissions.updated': {
@@ -81,4 +82,11 @@ export function describeAuditDetails(
     default:
       return '';
   }
+}
+
+/** Montant d'un paiement : dans sa devise, avec son équivalent en francs CFA quand elle diffère. */
+export function formatPaymentAmount(payment: { amount: number; currency: string; amountFcfa: number }): string {
+  return payment.currency === 'XAF'
+    ? formatFcfa(payment.amountFcfa)
+    : `${formatMoney(payment.amount, payment.currency)} (≈ ${formatFcfa(payment.amountFcfa)})`;
 }

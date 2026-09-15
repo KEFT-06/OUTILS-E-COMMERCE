@@ -1,8 +1,11 @@
 import { Controller, useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
-import { Sparkles } from 'lucide-react';
+import { Link } from 'react-router-dom';
+import { Compass, Sparkles } from 'lucide-react';
+import { pathOf } from '@/app/navigation';
 import { useWorkspace } from '@/app/providers/WorkspaceProvider';
+import { useAuth } from '@/features/auth/AuthContext';
 import { Button } from '@/shared/ui/button';
 import {
   Dialog,
@@ -27,14 +30,6 @@ const schema = z.object({
 
 type FormValues = z.infer<typeof schema>;
 
-const SUGGESTIONS = [
-  'Templates Notion pour freelances',
-  'Formation montage vidéo TikTok',
-  'Guide nutrition et fatigue chronique',
-  'Pack de prompts pour copywriting',
-  'Outils no-code pour solopreneurs',
-];
-
 /**
  * Fenêtre « Analyser une niche ».
  *
@@ -44,6 +39,8 @@ const SUGGESTIONS = [
  */
 export function NicheAnalysisDialog() {
   const { analysisDialogOpen, setAnalysisDialogOpen, analyzeNiche, isAnalyzing } = useWorkspace();
+  const { account } = useAuth();
+  const suggestions = account?.savedNiches.slice(0, 6) ?? [];
 
   const form = useForm<FormValues>({
     resolver: zodResolver(schema),
@@ -81,7 +78,7 @@ export function NicheAnalysisDialog() {
                     id="niche-query"
                     autoFocus
                     autoComplete="off"
-                    placeholder="ex. templates Notion pour freelances"
+                    placeholder="ex. élevage de poulets, énergie solaire, formation Excel"
                     aria-invalid={fieldState.invalid}
                   />
                   {fieldState.invalid ? (
@@ -93,10 +90,11 @@ export function NicheAnalysisDialog() {
               )}
             />
 
+            {suggestions.length > 0 && (
             <div className="space-y-2">
-              <p className="text-sm font-medium">Suggestions</p>
+              <p className="text-sm font-medium">Vos niches enregistrées</p>
               <div className="flex flex-wrap gap-2">
-                {SUGGESTIONS.map((suggestion) => (
+                {suggestions.map((suggestion) => (
                   <Button
                     key={suggestion}
                     type="button"
@@ -110,6 +108,14 @@ export function NicheAnalysisDialog() {
                 ))}
               </div>
             </div>
+            )}
+
+            <Button variant="link" asChild className="h-auto justify-start p-0">
+              <Link to={pathOf('niches')} onClick={() => setAnalysisDialogOpen(false)}>
+                <Compass />
+                Parcourir le catalogue des niches, tous secteurs
+              </Link>
+            </Button>
           </FieldGroup>
         </form>
 

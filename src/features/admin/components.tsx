@@ -180,7 +180,7 @@ export function StepUpDialog({
     setBusy(true);
     setError(null);
     try {
-      await onConfirm(code.replace(/\s/g, ''));
+      await onConfirm(code.trim());
       change(false);
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : 'Action refusée.');
@@ -199,18 +199,17 @@ export function StepUpDialog({
             <DialogDescription>{description}</DialogDescription>
           </DialogHeader>
           <Field>
-            <FieldLabel htmlFor="step-up-code">Code de double authentification</FieldLabel>
+            <FieldLabel htmlFor="step-up-code">Votre code de vérification</FieldLabel>
             <Input
               id="step-up-code"
               value={code}
-              onChange={(event) => setCode(event.target.value.replace(/[^\d\s]/g, '').slice(0, 7))}
-              inputMode="numeric"
-              autoComplete="one-time-code"
-              placeholder="123456"
+              onChange={(event) => setCode(event.target.value.slice(0, 128))}
+              type="password"
+              autoComplete="off"
               autoFocus
-              className="h-11 max-w-44 text-center text-lg font-semibold tracking-[0.3em] tabular-nums"
+              className="h-11"
             />
-            <FieldDescription>Chaque code ne sert qu’une fois : si besoin, attendez le suivant.</FieldDescription>
+            <FieldDescription>Votre code de sécurité, ou le code à 6 chiffres affiché par votre application d’authentification.</FieldDescription>
           </Field>
           {error && (
             <Alert variant="danger" role="alert">
@@ -222,7 +221,7 @@ export function StepUpDialog({
             <Button type="button" variant="outline" onClick={() => change(false)}>
               Annuler
             </Button>
-            <Button type="submit" variant={destructive ? 'destructive' : 'default'} disabled={busy || code.replace(/\s/g, '').length !== 6}>
+            <Button type="submit" variant={destructive ? 'destructive' : 'default'} disabled={busy || code.trim().length < 6}>
               {busy && <Spinner />}
               {confirmLabel}
             </Button>

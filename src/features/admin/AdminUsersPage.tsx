@@ -1,3 +1,4 @@
+import { CountryFlag } from '@/shared/components/CountryFlag';
 import { useEffect, useState } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import { Search, ShieldCheck } from 'lucide-react';
@@ -195,7 +196,10 @@ export function AdminUsersPage() {
                                 <ShieldCheck className="size-3.5 shrink-0 text-success" aria-label="Double authentification activée" />
                               )}
                             </Link>
-                            <span className="block truncate text-xs text-muted-foreground">{user.email}</span>
+                            <span className="flex min-w-0 items-center gap-1.5 text-xs text-muted-foreground">
+                              {user.country && <CountryFlag code={user.country} />}
+                              <span className="truncate">{user.email}</span>
+                            </span>
                           </div>
                         </div>
                       </TableCell>

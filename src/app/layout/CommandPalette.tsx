@@ -1,6 +1,6 @@
 import { useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Check, Download, LogOut, Moon, Sparkles, Sun, Target, UserRound } from 'lucide-react';
+import { Check, Compass, Download, LogOut, Moon, Sparkles, Sun, Target, UserRound } from 'lucide-react';
 import { ACCOUNT_PATH, MODULES, MODULE_GROUPS, visibleAdminSections } from '@/app/navigation';
 import { usePreferences } from '@/app/providers/PreferencesContext';
 import { useWorkspace } from '@/app/providers/WorkspaceProvider';
@@ -94,23 +94,31 @@ export function CommandPalette() {
           </>
         )}
 
-        <CommandSeparator />
-        <CommandGroup heading="Niches">
-          {reports.map((report) => (
-            <CommandItem
-              key={report.id}
-              value={`niche ${report.nicheName}`}
-              onSelect={() => run(() => selectReport(report.id))}
-            >
-              <Target />
-              <span className="truncate">{report.nicheName}</span>
-              {report.id === currentReport.id && <Check className="ml-auto" aria-label="Niche active" />}
-            </CommandItem>
-          ))}
-        </CommandGroup>
+        {reports.length > 0 && (
+          <>
+            <CommandSeparator />
+            <CommandGroup heading="Niches analysées">
+              {reports.map((report) => (
+                <CommandItem
+                  key={report.id}
+                  value={`niche ${report.nicheName}`}
+                  onSelect={() => run(() => selectReport(report.id))}
+                >
+                  <Target />
+                  <span className="truncate">{report.nicheName}</span>
+                  {report.id === currentReport?.id && <Check className="ml-auto" aria-label="Niche active" />}
+                </CommandItem>
+              ))}
+            </CommandGroup>
+          </>
+        )}
 
         <CommandSeparator />
         <CommandGroup heading="Actions">
+          <CommandItem value="parcourir le catalogue des niches" onSelect={() => run(() => navigate('/app/niches'))}>
+            <Compass />
+            Parcourir les niches
+          </CommandItem>
           <CommandItem value="analyser une niche" onSelect={() => run(() => setAnalysisDialogOpen(true))}>
             <Sparkles />
             Analyser une niche

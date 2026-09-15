@@ -20,7 +20,9 @@ import { describeDevice, maskIp } from '@server/lib/device';
 import { AppError } from '@server/middleware';
 import { creditSummary, loadAccount } from '@server/services/accounts';
 import { AUTH_EVENT_LABELS } from '@server/services/audit';
+import { hasSecondFactor, secondFactorMethods } from '@server/services/auth/factors';
 import { ONLINE_WINDOW_MS } from '@server/services/auth/sessions';
+import { fromMinorUnits } from '@server/services/currency';
 import { integrationsOverview } from '@server/services/integrations';
 import { FEATURES, FEATURE_IDS, getPlanConfig } from '@server/services/plans';
 
@@ -167,7 +169,7 @@ export async function adminOverview(options: { includeRevenue: boolean; includeS
       new30d: num(sql`count(*) filter (where ${users.createdAt} >= ${at(new Date(now.getTime() - 30 * DAY_MS))})`),
       suspended: num(sql`count(*) filter (where ${users.status} = 'suspended')`),
       admins: num(sql`count(*) filter (where ${users.role} = 'admin')`),
-      withTwoFactor: num(sql`count(*) filter (where ${users.twoFactorEnabledAt} is not null)`),
+      withTwoFactor: num(sql`count(*) filter (where ${users.twoFactorEnabledAt} is not null or ${users.securityCodeHash} is not null)`),
     })
     .from(users);
 
@@ -409,6 +411,8 @@ export async function listUsers(query: UserListQuery) {
       createdAt: users.createdAt,
       lastLoginAt: users.lastLoginAt,
       twoFactorEnabledAt: users.twoFactorEnabledAt,
+      hasSecurityCode: sql<boolean>`${users.securityCodeHash} is not null`.mapWith(Boolean),
+      country: users.country,
       lastSeenAt: sql<Date | null>`${lastSeen}`.mapWith(optionalDate),
       generations: num(sql`(select count(*) from ${generations} where ${generations.userId} = ${users.id})`),
       permissionCount: num(sql`(select count(*) from ${userPermissions} where ${userPermissions.userId} = ${users.id})`),
@@ -441,7 +445,8 @@ export async function listUsers(query: UserListQuery) {
       online: Boolean(row.lastSeenAt && row.lastSeenAt >= onlineSince),
       generations: row.generations,
       isStaff: row.role === 'admin' || row.permissionCount > 0,
-      twoFactorEnabled: Boolean(row.twoFactorEnabledAt),
+      twoFactorEnabled: Boolean(row.twoFactorEnabledAt) || row.hasSecurityCode,
+      country: row.country,
     })),
   };
 }
@@ -529,7 +534,9 @@ export async function adminUserDetail(userId: string) {
       lastSeenAt: lastSeenAt?.toISOString() ?? null,
       online: Boolean(lastSeenAt && lastSeenAt >= onlineSince),
       passwordSet: Boolean(user.passwordHash),
-      twoFactorEnabled: Boolean(user.twoFactorEnabledAt),
+      twoFactorEnabled: hasSecondFactor(user),
+      twoFactorMethods: secondFactorMethods(user),
+      country: user.country,
       isStaff: snapshot.isStaff,
     },
     credits: creditSummary(snapshot),
@@ -642,6 +649,8 @@ export function serializePayment(payment: PaymentRow, recordedByEmail: string | 
     userEmail: payment.userEmail,
     plan: payment.plan,
     periodMonths: payment.periodMonths,
+    currency: payment.currency,
+    amount: fromMinorUnits(payment.amountMinor, payment.currency),
     amountFcfa: payment.amountFcfa,
     method: payment.method,
     reference: payment.reference,

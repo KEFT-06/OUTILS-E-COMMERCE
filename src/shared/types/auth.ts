@@ -32,25 +32,45 @@ export interface CreditBalance {
   cycleEndsAt: string;
 }
 
+export interface PlanLimits {
+  /** Niches qu'un compte peut enregistrer ; null : illimité. */
+  savedNiches: number | null;
+  /** Méthodes publicitaires ouvertes ; null : toutes. */
+  adFrameworks: number | null;
+}
+
+export interface SecondFactorMethods {
+  /** Application d'authentification (code à 6 chiffres). */
+  app: boolean;
+  /** Code de sécurité personnel. */
+  code: boolean;
+}
+
 export interface Account {
   id: string;
   name: string;
   email: string;
   role: 'user' | 'admin';
   status: 'active' | 'suspended';
+  /** Code ISO du pays ; null tant qu'il n'est pas choisi. */
+  country: string | null;
+  /** Devise d'affichage des prix (ISO 4217). */
+  currency: string;
   plan: { id: PlanId; label: string };
   planExpiresAt: string | null;
   createdAt: string;
   credits: CreditBalance;
   features: Record<FeatureId, boolean>;
+  limits: PlanLimits;
   permissions: Permission[];
   /** Détient au moins un privilège d'administration. */
   isStaff: boolean;
   twoFactor: {
     enabled: boolean;
+    methods: SecondFactorMethods;
     /** Obligatoire pour les comptes qui détiennent des privilèges. */
     required: boolean;
-    /** La session courante a été ouverte avec le code. */
+    /** La session courante a été ouverte avec le second facteur. */
     sessionVerified: boolean;
   };
   integrations: {
@@ -65,20 +85,38 @@ export interface Account {
   savedNiches: string[];
 }
 
+export interface PlanPrice {
+  currency: string;
+  monthly: number;
+  /** Un an payé d'avance. */
+  yearly: number;
+  /** Converti depuis la devise de base au taux du jour. */
+  converted: boolean;
+}
+
 export interface PlanDefinition {
   id: PlanId;
   label: string;
+  tagline: string | null;
   monthlyCredits: number | null;
-  /** null : prix pas encore fixé. */
-  priceMonthlyFcfa: number | null;
-  highlight?: boolean;
+  highlight: boolean;
+  limits: PlanLimits;
   features: Partial<Record<FeatureId, boolean>>;
+  /** null : prix pas encore fixé. */
+  price: PlanPrice | null;
 }
 
 export interface PlanCatalog {
   version: string;
   updatedAt: string;
   currency: string;
+  pricing: {
+    status: string | null;
+    yearlyMonthsCharged: number;
+    ratesUpdatedAt: string;
+    ratesSource: 'live' | 'fallback';
+  };
   features: Record<FeatureId, string>;
+  adFrameworksTotal: number;
   plans: PlanDefinition[];
 }

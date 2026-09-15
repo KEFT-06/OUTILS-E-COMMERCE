@@ -3,7 +3,11 @@ import { AlertTriangle, Clapperboard, Download, Image as ImageIcon, PenLine, Shi
 import { useCreditGate } from '@/app/providers/CreditGateProvider';
 import { ApiError, readApiError, toApiError } from '@/shared/lib/apiError';
 import { AWARENESS_OPTIONS } from '@/shared/lib/awareness';
-import { MARKETS } from '@/shared/lib/markets';
+import { findAdFramework } from '@server/shared/adFrameworks';
+import { useAuth } from '@/features/auth/AuthContext';
+import { AdFrameworkPicker } from '@/modules/m04-creatifs/AdFrameworkPicker';
+import { CountryCombobox } from '@/shared/components/CountryCombobox';
+import { guessCountryCode } from '@/shared/lib/geo';
 import { cn } from '@/shared/lib/utils';
 import type { AwarenessLevel, CreativeFormat, CreativeKind, CreativeStatus } from '@/shared/types/creatives';
 import { Alert, AlertDescription, AlertTitle } from '@/shared/ui/alert';
@@ -14,7 +18,6 @@ import { Checkbox } from '@/shared/ui/checkbox';
 import { Field, FieldDescription, FieldLabel } from '@/shared/ui/field';
 import { Input } from '@/shared/ui/input';
 import { Label } from '@/shared/ui/label';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/shared/ui/select';
 import { Spinner } from '@/shared/ui/spinner';
 import { Textarea } from '@/shared/ui/textarea';
 
@@ -61,7 +64,11 @@ export function CreativeGeneratorPanel() {
   const [productName, setProductName] = useState('');
   const [awarenessLevel, setAwarenessLevel] = useState<AwarenessLevel | null>(null);
   const [format, setFormat] = useState<CreativeFormat>('9:16');
-  const [market, setMarket] = useState('CI');
+  const { account } = useAuth();
+  const [market, setMarket] = useState(() => account?.country ?? guessCountryCode() ?? 'CI');
+  const [purpose, setPurpose] = useState<'ad' | 'content'>('ad');
+  const [adFramework, setAdFramework] = useState<string | null>(null);
+  const [frameworkBeats, setFrameworkBeats] = useState<string[]>([]);
   const [audience, setAudience] = useState('');
   const [sceneDescription, setSceneDescription] = useState('');
   const [onScreenText, setOnScreenText] = useState('');
@@ -85,7 +92,11 @@ export function CreativeGeneratorPanel() {
 
   const sceneMax = kind === 'visual' ? 600 : 1500;
   const canSubmit =
-    productName.trim().length > 0 && awarenessLevel !== null && sceneDescription.trim().length >= 3 && !isGenerating;
+    productName.trim().length > 0 &&
+    awarenessLevel !== null &&
+    sceneDescription.trim().length >= 3 &&
+    (purpose === 'content' || adFramework !== null) &&
+    !isGenerating;
   const allAttested = attested.every(Boolean);
 
   const handleSubmit = async (event: React.FormEvent) => {
@@ -98,6 +109,15 @@ export function CreativeGeneratorPanel() {
       awarenessLevel,
       format,
       market,
+      purpose,
+      ...(purpose === 'ad' && adFramework
+        ? {
+            adFramework,
+            frameworkBeats: frameworkBeats
+              .slice(0, findAdFramework(adFramework)?.steps.length ?? 0)
+              .map((beat) => beat.trim()),
+          }
+        : {}),
       sceneDescription: sceneDescription.trim().slice(0, sceneMax),
       ...(audience.trim() ? { audience: audience.trim() } : {}),
       ...(onScreenText.trim() ? { onScreenText: onScreenText.trim() } : {}),
@@ -174,7 +194,9 @@ export function CreativeGeneratorPanel() {
     <Card>
       <CardHeader>
         <CardTitle className="text-lg">Générer un visuel ou une vidéo</CardTitle>
-        <CardDescription>Un créatif publicitaire orienté par le niveau de conscience de votre prospect.</CardDescription>
+        <CardDescription>
+          Une vidéo ou un visuel structuré par une méthode publicitaire, et orienté par le niveau de conscience de votre prospect.
+        </CardDescription>
         <CardAction>
           <div className="inline-flex rounded-lg border bg-muted/50 p-1" role="group" aria-label="Type de créatif">
             <Button
@@ -203,6 +225,44 @@ export function CreativeGeneratorPanel() {
 
       <CardContent className="space-y-5">
         <form onSubmit={handleSubmit} className="space-y-5">
+          <fieldset className="space-y-2">
+            <legend className="mb-2 text-sm font-medium">Objectif {kind === 'video' ? 'de la vidéo' : 'du visuel'}</legend>
+            <div className="flex flex-wrap gap-1.5">
+              {(
+                [
+                  ['ad', 'Publicité'],
+                  ['content', 'Contenu : présentation, tutoriel…'],
+                ] as const
+              ).map(([value, label]) => (
+                <Button
+                  key={value}
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  aria-pressed={purpose === value}
+                  onClick={() => setPurpose(value)}
+                  disabled={isGenerating}
+                  className={choiceClass(purpose === value)}
+                >
+                  {label}
+                </Button>
+              ))}
+            </div>
+          </fieldset>
+
+          {purpose === 'ad' && (
+            <AdFrameworkPicker
+              value={adFramework}
+              onChange={(id) => {
+                setAdFramework(id);
+                setFrameworkBeats([]);
+              }}
+              beats={frameworkBeats}
+              onBeatsChange={setFrameworkBeats}
+              disabled={isGenerating}
+            />
+          )}
+
           <fieldset className="space-y-2">
             <legend className="mb-2 flex items-center gap-2 text-sm font-medium">
               Niveau de conscience du prospect
@@ -248,18 +308,7 @@ export function CreativeGeneratorPanel() {
 
             <Field>
               <FieldLabel htmlFor="creative-market">Marché</FieldLabel>
-              <Select value={market} onValueChange={setMarket}>
-                <SelectTrigger id="creative-market" className="w-full">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  {MARKETS.map((option) => (
-                    <SelectItem key={option.code} value={option.code}>
-                      {option.label}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+              <CountryCombobox id="creative-market" value={market} onChange={setMarket} />
             </Field>
 
             <fieldset className="space-y-2">
@@ -356,6 +405,9 @@ export function CreativeGeneratorPanel() {
               restez sur cet écran pendant la génération.
               {!awarenessLevel && (
                 <span className="mt-1 block text-warning">Choisissez le niveau de conscience du prospect pour continuer.</span>
+              )}
+              {purpose === 'ad' && !adFramework && (
+                <span className="mt-1 block text-warning">Choisissez une méthode publicitaire pour continuer.</span>
               )}
             </p>
             <Button type="submit" disabled={!canSubmit} className="shrink-0">

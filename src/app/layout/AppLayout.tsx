@@ -49,10 +49,10 @@ export function AppLayout() {
           Aller au contenu
         </a>
         <AppSidebar />
-        <SidebarInset>
+        <SidebarInset className="min-w-0">
           <AppHeader />
           {/* SidebarInset est déjà l'élément <main> : un second <main> dupliquerait le repère. */}
-          <div id="contenu" tabIndex={-1} className="flex-1 px-4 pt-6 pb-28 outline-none sm:px-6 md:pb-12 lg:px-8">
+          <div id="contenu" tabIndex={-1} className="min-w-0 flex-1 px-4 pt-6 pb-28 outline-none sm:px-6 md:pb-12 lg:px-8">
             <div className="mx-auto w-full max-w-6xl">
               {/* La clé relance le squelette à chaque écran chargé à la demande. */}
               <Suspense key={pathname} fallback={<PageSkeleton />}>

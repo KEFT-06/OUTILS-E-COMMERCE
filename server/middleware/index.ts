@@ -2,6 +2,7 @@ import type { NextFunction, Request, RequestHandler, Response } from 'express';
 import rateLimit from 'express-rate-limit';
 import { z, type ZodType } from 'zod';
 import { env, isProd } from '@server/env';
+import { isCountryCode } from '@server/shared/countries';
 
 /* -------------------------------------------------------------------------- */
 /*  Erreurs                                                                    */
@@ -221,9 +222,11 @@ export const nicheQuerySchema = z
   );
 
 /** Les 15+ marchés d'Afrique francophone du cahier des charges, §6.1. */
-export const marketSchema = z
-  .enum([
-    'CI', 'SN', 'CM', 'BJ', 'TG', 'BF', 'ML', 'NE', 'GN',
-    'CD', 'CG', 'GA', 'TD', 'MG', 'MA', 'TN', 'DZ',
-  ])
-  .describe('Code ISO 3166-1 alpha-2 du marché analysé');
+/** Pays au format ISO 3166-1 alpha-2 : tous les pays, l'outil est international. */
+export const countrySchema = z
+  .string()
+  .trim()
+  .toUpperCase()
+  .refine(isCountryCode, 'Pays inconnu : code ISO 3166-1 alpha-2 attendu (ex. CM).');
+
+export const marketSchema = countrySchema.describe('Code ISO 3166-1 alpha-2 du marché analysé');

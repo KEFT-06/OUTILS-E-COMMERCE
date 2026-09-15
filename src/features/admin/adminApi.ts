@@ -17,7 +17,6 @@ export interface AdminPlan {
   id: PlanId;
   label: string;
   monthlyCredits: number | null;
-  priceMonthlyFcfa: number | null;
 }
 
 export interface AdminMeta {
@@ -25,6 +24,9 @@ export interface AdminMeta {
   permissions: { id: Permission; label: string; description: string }[];
   features: { id: FeatureId; label: string }[];
   plans: AdminPlan[];
+  /** Devise des statistiques de revenus. */
+  reportingCurrency: string;
+  currencies: string[];
   paymentMethods: string[];
   authEventTypes: { id: string; label: string }[];
   timezone: string;
@@ -109,6 +111,7 @@ export interface AdminUserRow {
   generations: number;
   isStaff: boolean;
   twoFactorEnabled: boolean;
+  country: string | null;
 }
 
 export interface UserList {
@@ -124,6 +127,10 @@ export interface AdminPayment {
   userEmail: string;
   plan: PlanId;
   periodMonths: number;
+  /** Montant payé, dans sa devise. */
+  amount: number;
+  currency: string;
+  /** Équivalent en francs CFA au taux du jour du paiement. */
   amountFcfa: number;
   method: string;
   reference: string | null;
@@ -158,6 +165,8 @@ export interface AdminUserDetail {
     online: boolean;
     passwordSet: boolean;
     twoFactorEnabled: boolean;
+    twoFactorMethods: { app: boolean; code: boolean };
+    country: string | null;
     isStaff: boolean;
   };
   credits: CreditBalance;

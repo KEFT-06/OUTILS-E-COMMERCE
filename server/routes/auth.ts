@@ -3,7 +3,7 @@ import { z } from 'zod';
 import { isProd } from '@server/env';
 import { authCookieOptions, clearAuthCookie, readCookie } from '@server/lib/cookies';
 import { sha256 } from '@server/lib/crypto';
-import { AppError, asyncRoute, routeLimiter, validateBody } from '@server/middleware';
+import { AppError, asyncRoute, countrySchema, routeLimiter, validateBody } from '@server/middleware';
 import { requireAuth } from '@server/middleware/auth';
 import { loadAccount } from '@server/services/accounts';
 import { accountView } from '@server/services/accounts/view';
@@ -60,6 +60,8 @@ const signupSchema = z.object({
   name: nameSchema,
   email: emailSchema,
   password: passwordInputSchema,
+  /** Pays de l'utilisateur : il fixe la devise des prix affichés. */
+  country: countrySchema.optional(),
 });
 
 authRouter.post(
@@ -67,9 +69,9 @@ authRouter.post(
   routeLimiter(60, 10),
   validateBody(signupSchema),
   asyncRoute(async (req, res) => {
-    const { name, email, password } = req.body as z.infer<typeof signupSchema>;
+    const { name, email, password, country } = req.body as z.infer<typeof signupSchema>;
     const client = clientInfo(req);
-    const user = await registerUser({ name, email, password, client });
+    const user = await registerUser({ name, email, password, country, client });
     await respondWithSession(req, res, await openSession(user, false, client), 201);
   }),
 );
@@ -86,7 +88,7 @@ authRouter.post(
 
     if (result.kind === 'mfa') {
       res.cookie(MFA_COOKIE, result.challengeToken, authCookieOptions(result.expiresAt.getTime() - Date.now()));
-      res.json({ mfaRequired: true, expiresAt: result.expiresAt.toISOString() });
+      res.json({ mfaRequired: true, expiresAt: result.expiresAt.toISOString(), methods: result.methods });
       return;
     }
 

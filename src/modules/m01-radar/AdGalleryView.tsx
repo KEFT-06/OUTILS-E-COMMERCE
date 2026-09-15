@@ -18,7 +18,10 @@ import { useCreditGate } from '@/app/providers/CreditGateProvider';
 import { AdvertiserSheet } from '@/modules/m01-radar/AdvertiserSheet';
 import { PageHeader } from '@/shared/components/PageHeader';
 import { formatDateFr } from '@/shared/lib/formatDate';
-import { MARKETS, marketLabel } from '@/shared/lib/markets';
+import { countryName } from '@server/shared/countries';
+import { useAuth } from '@/features/auth/AuthContext';
+import { CountryCombobox } from '@/shared/components/CountryCombobox';
+import { guessCountryCode } from '@/shared/lib/geo';
 import { safeHttpUrl } from '@/shared/lib/safeUrl';
 import { exportSwipeFileCSV, exportSwipeFilePDF } from '@/shared/lib/swipeExport';
 import { swipeKey, useSwipeFile } from '@/shared/lib/useSwipeFile';
@@ -160,9 +163,10 @@ function ResultFormatPreview() {
 export function AdGalleryView() {
   const { runWithCredits } = useCreditGate();
   const swipe = useSwipeFile();
+  const { account } = useAuth();
 
   const [niche, setNiche] = useState('');
-  const [market, setMarket] = useState('CI');
+  const [market, setMarket] = useState(() => account?.country ?? guessCountryCode() ?? 'CI');
   const [isScanning, setIsScanning] = useState(false);
   const [scanError, setScanError] = useState<string | null>(null);
 
@@ -329,25 +333,14 @@ export function AdGalleryView() {
                   value={niche}
                   onChange={(event) => setNiche(event.target.value)}
                   maxLength={200}
-                  placeholder="ex. templates Notion pour freelances"
+                  placeholder="ex. élevage de poulets, énergie solaire, formation Excel"
                 />
                 <FieldDescription>Le coût en points s’affiche avant toute collecte.</FieldDescription>
               </Field>
 
               <Field>
                 <FieldLabel htmlFor="gallery-market">Marché</FieldLabel>
-                <Select value={market} onValueChange={setMarket}>
-                  <SelectTrigger id="gallery-market" className="w-full">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {MARKETS.map((option) => (
-                      <SelectItem key={option.code} value={option.code}>
-                        {option.label}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+                <CountryCombobox id="gallery-market" value={market} onChange={setMarket} />
               </Field>
 
               <Button type="submit" disabled={isScanning} className="md:mt-[1.625rem]">
@@ -387,7 +380,7 @@ export function AdGalleryView() {
                 <div className="flex flex-col gap-5 sm:flex-row sm:items-center sm:justify-between">
                   <div className="space-y-1">
                     <p className="text-sm text-muted-foreground">
-                      « {scannedNiche} » · {marketLabel(scannedMarket)}
+                      « {scannedNiche} » · {countryName(scannedMarket)}
                     </p>
                     <div className="flex flex-wrap items-center gap-3">
                       <span className="font-display text-3xl font-extrabold tabular-nums">
@@ -612,7 +605,7 @@ export function AdGalleryView() {
                   <div className="min-w-0">
                     <p className="truncate font-semibold">{entry.ad.advertiserName}</p>
                     <p className="text-xs text-muted-foreground">
-                      « {entry.niche} » · {marketLabel(entry.ad.market)} · {entry.ad.isActive ? 'active' : 'arrêtée'} à
+                      « {entry.niche} » · {countryName(entry.ad.market)} · {entry.ad.isActive ? 'active' : 'arrêtée'} à
                       la collecte du {formatDateFr(entry.collectedAt)}
                     </p>
                   </div>

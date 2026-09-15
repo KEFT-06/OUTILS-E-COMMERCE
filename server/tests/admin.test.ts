@@ -76,11 +76,11 @@ describe('Administration : crédits, palier et fonctions', () => {
 
     const reopened = await admin.agent
       .put(`/api/admin/users/${kwame.account.id}/features`)
-      .send({ feature: 'video_generation', access: 'granted' })
+      .send({ feature: 'video_generation', access: 'revoked' })
       .expect(200);
     const video = reopened.body.features.find((feature: { id: string }) => feature.id === 'video_generation');
-    assert.equal(video.planDefault, false);
-    assert.equal(video.effective, true, 'accès accordé par-dessus le palier Pro');
+    assert.equal(video.planDefault, true);
+    assert.equal(video.effective, false, 'accès retiré malgré le palier Pro');
 
     await admin.agent
       .put(`/api/admin/users/${kwame.account.id}/features`)
@@ -93,7 +93,7 @@ describe('Administration : paiements et revenus', () => {
   it('enregistre un paiement Mobile Money qui active le palier et alimente jour, mois et année', async () => {
     const recorded = await admin.agent
       .post('/api/admin/payments')
-      .send({ userId: kwame.account.id, plan: 'max', periodMonths: 1, amountFcfa: 15_000, method: 'mobile_money', reference: 'OM-2026-0915' })
+      .send({ userId: kwame.account.id, plan: 'max', periodMonths: 1, amount: 15_000, currency: 'XAF', method: 'mobile_money', reference: 'OM-2026-0915' })
       .expect(201);
     assert.equal(recorded.body.payment.amountFcfa, 15_000);
 
