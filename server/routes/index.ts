@@ -40,10 +40,11 @@ import {
   storybookBriefSchema,
 } from '@server/services/storybook';
 import {
-  CreativeStatus,
   VideoBrief,
   VisualBrief,
   creativeText,
+  fileFormatOf,
+  generationStateOf,
   getCreativeStatus,
   streamCreativeFile,
   submitVideo,
@@ -70,7 +71,6 @@ import {
   findOwnedGeneration,
   runBilledGeneration,
   settleGeneration,
-  type GenerationState,
 } from '@server/services/generations';
 import { resolveChariowCredentials } from '@server/services/integrations';
 import { FEATURES, PlansUnavailableError, getPlanConfig } from '@server/services/plans';
@@ -457,19 +457,6 @@ function parseCreativeRequestId(value: string | undefined): string {
   return parsed.data;
 }
 
-/** Les statuts « nsfw » et « canceled » de Higgsfield ne produisent pas de fichier : ils rendent les points. */
-function creativeState(status: CreativeStatus['status']): GenerationState {
-  if (status === 'completed') return 'completed';
-  if (status === 'failed' || status === 'nsfw' || status === 'canceled') return 'failed';
-  return 'pending';
-}
-
-function creativeFormat(status: CreativeStatus): string | null {
-  if (status.mediaType === 'video') return 'mp4';
-  if (status.mediaType === 'image') return 'png';
-  return null;
-}
-
 api.post(
   '/creatives/visuals',
   requireAuth,
@@ -492,8 +479,8 @@ api.post(
       run: () => submitVisual(brief),
       describe: (status) => ({
         providerRef: status.requestId,
-        state: creativeState(status.status),
-        fileFormat: creativeFormat(status),
+        state: generationStateOf(status.status),
+        fileFormat: fileFormatOf(status),
       }),
     });
 
@@ -523,8 +510,8 @@ api.post(
       run: () => submitVideo(brief),
       describe: (status) => ({
         providerRef: status.requestId,
-        state: creativeState(status.status),
-        fileFormat: creativeFormat(status),
+        state: generationStateOf(status.status),
+        fileFormat: fileFormatOf(status),
       }),
     });
 
@@ -542,7 +529,7 @@ api.get(
 
     const generation = await findOwnedGeneration(req.auth!, 'higgsfield', requestId);
     const status = await getCreativeStatus(requestId);
-    await settleGeneration(generation, creativeState(status.status), creativeFormat(status));
+    await settleGeneration(generation, generationStateOf(status.status), fileFormatOf(status));
     res.json(status);
   }),
 );

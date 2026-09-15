@@ -28,7 +28,7 @@ import { Textarea } from '@/shared/ui/textarea';
 
 /** Cadence de sondage recommandée par la documentation Gamma. */
 const POLL_INTERVAL_MS = 5_000;
-/** Au-delà, le suivi est abandonné et aucun point n'est débité. */
+/** Au-delà, l'écran cesse de suivre ; le serveur continue de vérifier la génération et rend les points si elle échoue. */
 const MAX_WAIT_MS = 10 * 60_000;
 
 const wait = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
@@ -99,7 +99,7 @@ export function StorybookView() {
     setResult(null);
 
     try {
-      // Points débités seulement quand le conte est terminé.
+      // Points réservés par le serveur au lancement, rendus automatiquement si le conte échoue.
       await runWithCredits('storybook_generation', async () => {
         setIsGenerating(true);
         try {
@@ -132,7 +132,9 @@ export function StorybookView() {
             }
           }
 
-          throw new ApiError("La génération dépasse 10 minutes : suivi abandonné. Aucun point n'a été débité.");
+          throw new ApiError(
+            'La génération dépasse 10 minutes : suivi abandonné sur cet écran. Si le conte échoue chez Gamma, vos points vous seront rendus automatiquement.',
+          );
         } finally {
           if (!unmountedRef.current) setIsGenerating(false);
         }

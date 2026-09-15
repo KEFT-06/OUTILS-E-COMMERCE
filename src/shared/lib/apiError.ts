@@ -17,6 +17,9 @@ export class ApiError extends Error {
     message: string,
     readonly code?: string,
     readonly findings: ApiFinding[] = [],
+    /** Détails bruts renvoyés par le serveur (motifs d'un mot de passe refusé, délai d'un verrou…). */
+    readonly details?: unknown,
+    readonly status?: number,
   ) {
     super(message);
     this.name = 'ApiError';
@@ -46,6 +49,8 @@ export async function readApiError(response: Response, fallback: string): Promis
     payload?.error?.message ?? fallback,
     payload?.error?.code,
     parseFindings(payload?.error?.details),
+    payload?.error?.details,
+    response.status,
   );
 }
 

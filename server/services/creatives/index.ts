@@ -162,6 +162,23 @@ function toClientStatus(status: HiggsfieldStatus): CreativeStatus {
   };
 }
 
+/**
+ * État de facturation d'une génération. « nsfw » et « canceled » ne produisent
+ * aucun fichier : comme un échec, ils rendent les points.
+ */
+export function generationStateOf(status: CreativeStatus['status']): 'pending' | 'completed' | 'failed' {
+  if (status === 'completed') return 'completed';
+  if (status === 'failed' || status === 'nsfw' || status === 'canceled') return 'failed';
+  return 'pending';
+}
+
+/** Format du fichier produit, pour les statistiques de contenus. */
+export function fileFormatOf(status: CreativeStatus): string | null {
+  if (status.mediaType === 'video') return 'mp4';
+  if (status.mediaType === 'image') return 'png';
+  return null;
+}
+
 export async function submitVisual(brief: VisualBrief): Promise<CreativeStatus> {
   return toClientStatus(await submitGeneration(VISUAL_MODEL_PATH, buildVisualInput(brief)));
 }

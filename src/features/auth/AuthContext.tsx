@@ -1,158 +1,143 @@
-import React, { createContext, useCallback, useContext, useEffect, useState } from 'react';
-import type { PlanId, UserProfile } from '@/shared/types/auth';
-import { planOf } from '@/shared/lib/plans';
+import React, { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react';
+import { SESSION_EXPIRED_EVENT, apiRequest } from '@/shared/lib/api';
+import type { Account } from '@/shared/types/auth';
 
 /**
- * Session locale.
+ * Compte connecté.
  *
- * Il n'existe pas encore d'authentification serveur : le profil vit dans ce
- * navigateur et aucun mot de passe n'est vérifié. L'écran de connexion le dit.
- *
- * Plus aucun profil n'est ouvert par défaut. L'ancienne version connectait tout
- * visiteur au nom et à l'adresse e-mail du fondateur, avec la photo d'une autre
- * personne. La démonstration utilise désormais un compte fictif, nommé comme tel.
+ * Tout est vérifié par le serveur : mot de passe, double authentification,
+ * solde, palier et privilèges. Le navigateur ne garde aucune copie du compte
+ * entre deux visites et ne voit jamais la session, qui vit dans un cookie
+ * httpOnly. Le contexte relit le compte toutes les deux minutes quand l'onglet
+ * est visible : le solde reste à jour et l'administration sait qui est en ligne.
  */
 
+type AuthStatus = 'loading' | 'ready';
+
 interface AuthContextType {
-  user: UserProfile | null;
+  account: Account | null;
+  status: AuthStatus;
   isAuthenticated: boolean;
-  login: (email: string) => void;
-  signup: (name: string, email: string) => void;
-  loginDemo: () => void;
-  logout: () => void;
-  updateProfile: (updates: Partial<Pick<UserProfile, 'name' | 'savedNiches'>>) => void;
-  /**
-   * Débite des points de recherche. Passe par une mise à jour fonctionnelle :
-   * deux débits rapprochés calculés depuis une même lecture du solde en
-   * perdraient un.
-   */
-  consumeCredits: (points: number) => void;
+  signup: (input: { name: string; email: string; password: string }) => Promise<void>;
+  /** `mfaRequired` : le mot de passe est bon, le code de double authentification est attendu. */
+  login: (input: { email: string; password: string }) => Promise<{ mfaRequired: boolean }>;
+  verifyMfa: (code: string) => Promise<void>;
+  logout: () => Promise<void>;
+  logoutEverywhere: () => Promise<void>;
+  /** Relit le compte (solde, palier, privilèges) depuis le serveur. */
+  refresh: () => Promise<Account | null>;
+  setAccount: (account: Account | null) => void;
+  updateProfile: (updates: { name?: string; savedNiches?: string[] }) => Promise<void>;
 }
 
-const STORAGE_KEY = 'smartcreator_user';
-
-const PLAN_IDS: readonly PlanId[] = ['Gratuit', 'Plus', 'Pro', 'Max', 'Elite Enterprise'];
-
-function isUserProfile(value: unknown): value is UserProfile {
-  if (!value || typeof value !== 'object') return false;
-  const v = value as Record<string, unknown>;
-  return (
-    typeof v.id === 'string' &&
-    typeof v.name === 'string' &&
-    typeof v.email === 'string' &&
-    typeof v.role === 'string' &&
-    typeof v.plan === 'string' &&
-    PLAN_IDS.includes(v.plan as PlanId) &&
-    typeof v.isDemo === 'boolean' &&
-    typeof v.joinedAt === 'string' &&
-    typeof v.apiSearchesUsed === 'number' &&
-    typeof v.apiSearchesLimit === 'number' &&
-    Array.isArray(v.savedNiches) &&
-    v.savedNiches.every((niche) => typeof niche === 'string')
-  );
-}
-
-function readStoredUser(): UserProfile | null {
-  try {
-    const raw = localStorage.getItem(STORAGE_KEY);
-    if (!raw) return null;
-    const parsed: unknown = JSON.parse(raw);
-    if (isUserProfile(parsed)) return parsed;
-    // Profil d'une ancienne version ou corrompu : on repart d'une session vide.
-    localStorage.removeItem(STORAGE_KEY);
-    return null;
-  } catch {
-    return null;
-  }
-}
-
-function newId(): string {
-  return typeof crypto !== 'undefined' && 'randomUUID' in crypto
-    ? crypto.randomUUID()
-    : `usr_${Date.now().toString(36)}`;
-}
-
-function createProfile(name: string, email: string, plan: PlanId, isDemo: boolean): UserProfile {
-  return {
-    id: newId(),
-    name,
-    email,
-    role: 'Créateur digital',
-    plan,
-    isDemo,
-    joinedAt: new Date().toISOString(),
-    apiSearchesUsed: 0,
-    apiSearchesLimit: planOf(plan).monthlyPoints ?? 0,
-    savedNiches: [],
-  };
-}
+const HEARTBEAT_MS = 2 * 60_000;
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  const [user, setUser] = useState<UserProfile | null>(readStoredUser);
+  const [account, setAccount] = useState<Account | null>(null);
+  const [status, setStatus] = useState<AuthStatus>('loading');
+
+  const refresh = useCallback(async () => {
+    try {
+      const { account: current } = await apiRequest<{ account: Account | null }>('/api/auth/me');
+      setAccount(current);
+      return current;
+    } catch {
+      // Serveur momentanément injoignable : on garde l'état connu plutôt que de déconnecter.
+      return null;
+    }
+  }, []);
 
   useEffect(() => {
-    try {
-      if (user) localStorage.setItem(STORAGE_KEY, JSON.stringify(user));
-      else localStorage.removeItem(STORAGE_KEY);
-    } catch {
-      // Stockage indisponible (navigation privée) : la session reste en mémoire.
-    }
-  }, [user]);
+    void refresh().finally(() => setStatus('ready'));
+  }, [refresh]);
 
-  const login = useCallback((email: string) => {
-    const clean = email.trim().toLowerCase();
-    setUser(createProfile(clean.split('@')[0] || 'Créateur', clean, 'Gratuit', false));
+  const accountId = account?.id;
+  useEffect(() => {
+    if (!accountId) return;
+    const refreshIfVisible = () => {
+      if (document.visibilityState === 'visible') void refresh();
+    };
+    const timer = window.setInterval(refreshIfVisible, HEARTBEAT_MS);
+    document.addEventListener('visibilitychange', refreshIfVisible);
+    return () => {
+      window.clearInterval(timer);
+      document.removeEventListener('visibilitychange', refreshIfVisible);
+    };
+  }, [accountId, refresh]);
+
+  useEffect(() => {
+    const onExpired = () => setAccount(null);
+    window.addEventListener(SESSION_EXPIRED_EVENT, onExpired);
+    return () => window.removeEventListener(SESSION_EXPIRED_EVENT, onExpired);
   }, []);
 
-  const signup = useCallback((name: string, email: string) => {
-    setUser(createProfile(name.trim() || 'Créateur', email.trim().toLowerCase(), 'Gratuit', false));
+  const signup = useCallback(async (input: { name: string; email: string; password: string }) => {
+    const { account: created } = await apiRequest<{ account: Account }>('/api/auth/signup', { method: 'POST', body: input });
+    setAccount(created);
   }, []);
 
-  const loginDemo = useCallback(() => {
-    setUser({
-      ...createProfile('Compte démo', '', 'Pro', true),
-      apiSearchesUsed: 22,
-      savedNiches: [
-        'Templates Notion productivité pour solopreneurs',
-        'Packs de prompts IA pour designers',
-        'Automatisation no-code pour agences',
-      ],
+  const login = useCallback(async (input: { email: string; password: string }) => {
+    const result = await apiRequest<{ account?: Account; mfaRequired?: boolean }>('/api/auth/login', {
+      method: 'POST',
+      body: input,
     });
+    if (result.mfaRequired) return { mfaRequired: true };
+    setAccount(result.account ?? null);
+    return { mfaRequired: false };
   }, []);
 
-  const logout = useCallback(() => setUser(null), []);
-
-  const updateProfile = useCallback((updates: Partial<Pick<UserProfile, 'name' | 'savedNiches'>>) => {
-    setUser((current) => (current ? { ...current, ...updates } : current));
+  const verifyMfa = useCallback(async (code: string) => {
+    const { account: verified } = await apiRequest<{ account: Account }>('/api/auth/login/mfa', {
+      method: 'POST',
+      body: { code },
+    });
+    setAccount(verified);
   }, []);
 
-  const consumeCredits = useCallback((points: number) => {
-    if (points <= 0) return;
-    setUser((current) =>
-      current
-        ? { ...current, apiSearchesUsed: Math.min(current.apiSearchesLimit, current.apiSearchesUsed + points) }
-        : current,
-    );
+  const logout = useCallback(async () => {
+    try {
+      await apiRequest('/api/auth/logout', { method: 'POST' });
+    } finally {
+      setAccount(null);
+    }
   }, []);
 
-  return (
-    <AuthContext.Provider
-      value={{
-        user,
-        isAuthenticated: user !== null,
-        login,
-        signup,
-        loginDemo,
-        logout,
-        updateProfile,
-        consumeCredits,
-      }}
-    >
-      {children}
-    </AuthContext.Provider>
+  const logoutEverywhere = useCallback(async () => {
+    try {
+      await apiRequest('/api/auth/logout-all', { method: 'POST' });
+    } finally {
+      setAccount(null);
+    }
+  }, []);
+
+  const updateProfile = useCallback(async (updates: { name?: string; savedNiches?: string[] }) => {
+    const { account: updated } = await apiRequest<{ account: Account }>('/api/account/profile', {
+      method: 'PATCH',
+      body: updates,
+    });
+    setAccount(updated);
+  }, []);
+
+  const value = useMemo<AuthContextType>(
+    () => ({
+      account,
+      status,
+      isAuthenticated: account !== null,
+      signup,
+      login,
+      verifyMfa,
+      logout,
+      logoutEverywhere,
+      refresh,
+      setAccount,
+      updateProfile,
+    }),
+    [account, status, signup, login, verifyMfa, logout, logoutEverywhere, refresh, updateProfile],
   );
+
+  return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 };
 
 export const useAuth = () => {

@@ -1,8 +1,11 @@
 import type { LucideIcon } from 'lucide-react';
 import {
+  Banknote,
   BookOpen,
   Clapperboard,
   FileText,
+  Film,
+  Gauge,
   Languages,
   LayoutDashboard,
   LayoutGrid,
@@ -11,10 +14,13 @@ import {
   Package,
   Radar,
   Rocket,
+  ShieldAlert,
   Store,
   Telescope,
   Users,
+  UsersRound,
 } from 'lucide-react';
+import type { Permission } from '@/shared/types/auth';
 
 /**
  * Carte de l'application : chaque écran a une adresse, un groupe et un libellé.
@@ -195,6 +201,74 @@ export const MODULES: readonly ModuleEntry[] = [
 ];
 
 export const ACCOUNT_PATH = '/app/compte';
+
+/**
+ * Administration : visible des seuls comptes qui détiennent le privilège de la
+ * section. Le serveur refuse de toute façon ; masquer évite de proposer une porte
+ * fermée.
+ */
+export interface AdminSection {
+  id: 'overview' | 'users' | 'revenue' | 'content' | 'security';
+  path: `/app/admin${string}`;
+  label: string;
+  description: string;
+  icon: LucideIcon;
+  permission: Permission;
+}
+
+export const ADMIN_PATH = '/app/admin';
+
+export const ADMIN_SECTIONS: readonly AdminSection[] = [
+  {
+    id: 'overview',
+    path: '/app/admin',
+    label: 'Vue d’ensemble',
+    description: 'Revenus, utilisateurs en ligne et contenus créés',
+    icon: Gauge,
+    permission: 'admin.dashboard.read',
+  },
+  {
+    id: 'users',
+    path: '/app/admin/utilisateurs',
+    label: 'Utilisateurs',
+    description: 'Comptes, paliers, crédits et privilèges',
+    icon: UsersRound,
+    permission: 'admin.users.read',
+  },
+  {
+    id: 'revenue',
+    path: '/app/admin/revenus',
+    label: 'Revenus',
+    description: 'Abonnements par jour, mois et année',
+    icon: Banknote,
+    permission: 'admin.revenue.read',
+  },
+  {
+    id: 'content',
+    path: '/app/admin/contenus',
+    label: 'Contenus créés',
+    description: 'Vidéos, visuels, ebooks, storybooks et fichiers',
+    icon: Film,
+    permission: 'admin.dashboard.read',
+  },
+  {
+    id: 'security',
+    path: '/app/admin/securite',
+    label: 'Sécurité',
+    description: 'Connexions, verrous et journal d’audit',
+    icon: ShieldAlert,
+    permission: 'admin.security.read',
+  },
+];
+
+export function findAdminSection(pathname: string): AdminSection | undefined {
+  if (pathname === ADMIN_PATH || pathname === `${ADMIN_PATH}/`) return ADMIN_SECTIONS[0];
+  return ADMIN_SECTIONS.slice(1).find((section) => pathname === section.path || pathname.startsWith(`${section.path}/`));
+}
+
+export function visibleAdminSections(permissions: readonly Permission[]): AdminSection[] {
+  return ADMIN_SECTIONS.filter((section) => permissions.includes(section.permission));
+}
 
 export function findModule(pathname: string): ModuleEntry | undefined {
   return MODULES.find((entry) => pathname === entry.path || pathname.startsWith(`${entry.path}/`));

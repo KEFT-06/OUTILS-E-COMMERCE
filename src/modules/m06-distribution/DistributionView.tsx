@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { AlertTriangle, CheckCircle2, Info, PackageSearch, XCircle } from 'lucide-react';
+import { ConnectChariowLink } from '@/shared/components/ConnectChariowLink';
 import { PageHeader } from '@/shared/components/PageHeader';
 import { type ApiError, readApiError, toApiError } from '@/shared/lib/apiError';
 import { cn } from '@/shared/lib/utils';
@@ -141,6 +142,7 @@ export function DistributionView() {
                 {marketplace.reason && (
                   <p className="border-t pt-3 text-xs leading-relaxed text-muted-foreground">{marketplace.reason}</p>
                 )}
+                {marketplace.id === 'chariow' && !marketplace.available && <ConnectChariowLink />}
               </CardContent>
             </Card>
           ))}

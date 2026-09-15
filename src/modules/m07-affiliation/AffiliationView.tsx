@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { toast } from 'sonner';
 import { AlertTriangle, CheckCircle2, ChevronDown, Copy, ExternalLink, Info, Link2, Mail, Search } from 'lucide-react';
+import { ConnectChariowLink } from '@/shared/components/ConnectChariowLink';
 import { PageHeader } from '@/shared/components/PageHeader';
 import { type ApiError, readApiError, toApiError } from '@/shared/lib/apiError';
 import { formatDateFr } from '@/shared/lib/formatDate';
@@ -306,7 +307,10 @@ export function AffiliationView() {
               {lookupError && (
                 <Alert variant="danger">
                   <AlertTriangle />
-                  <AlertDescription>{lookupError.message}</AlertDescription>
+                  <AlertDescription>
+                    <p>{lookupError.message}</p>
+                    {lookupError.code === 'CHARIOW_NOT_CONNECTED' && <ConnectChariowLink className="mt-2" />}
+                  </AlertDescription>
                 </Alert>
               )}
 
@@ -404,7 +408,10 @@ export function AffiliationView() {
               {invitationError && (
                 <Alert variant="danger">
                   <AlertTriangle />
-                  <AlertDescription>{invitationError.message}</AlertDescription>
+                  <AlertDescription>
+                    <p>{invitationError.message}</p>
+                    {invitationError.code === 'CHARIOW_NOT_CONNECTED' && <ConnectChariowLink className="mt-2" />}
+                  </AlertDescription>
                 </Alert>
               )}
               {invitation && (

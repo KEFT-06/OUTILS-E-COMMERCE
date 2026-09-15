@@ -15,9 +15,9 @@ import { CreditSimulatorDialog } from '@/shared/ui/CreditSimulatorDialog';
  *   const { runWithCredits } = useCreditGate();
  *   await runWithCredits('niche_analysis', async () => { ... });
  *
- * L'action n'est exécutée que si l'utilisateur confirme, et les points ne sont
- * débités qu'une fois l'action terminée sans erreur — facturer un échec serait
- * indéfendable.
+ * L'action n'est exécutée que si l'utilisateur confirme. Le débit, lui, est fait
+ * par le serveur : points réservés au lancement, rendus si l'action échoue —
+ * facturer un échec serait indéfendable. Le solde réel est relu après chaque action.
  */
 
 interface CreditGateContextType {
@@ -55,7 +55,7 @@ async function loadCostTable(): Promise<CreditCostTable> {
 }
 
 export const CreditGateProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  const { user, consumeCredits } = useAuth();
+  const { account, refresh } = useAuth();
 
   const [quote, setQuote] = useState<CreditQuote | null>(null);
   const [unavailableReason, setUnavailableReason] = useState<string | null>(null);
@@ -109,10 +109,8 @@ export const CreditGateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
         }
 
         cost = definition.cost;
-        const balanceBefore = Math.max(
-          0,
-          (user?.apiSearchesLimit ?? 0) - (user?.apiSearchesUsed ?? 0),
-        );
+        const unlimited = account?.credits.unlimited ?? false;
+        const balanceBefore = account?.credits.total ?? 0;
 
         setQuote({
           action: definition,
@@ -120,8 +118,9 @@ export const CreditGateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
           monetaryEquivalent: cost * table.pointValue,
           currency: table.currency,
           balanceBefore,
-          balanceAfter: Math.max(0, balanceBefore - cost),
-          sufficient: balanceBefore >= cost,
+          balanceAfter: unlimited ? balanceBefore : Math.max(0, balanceBefore - cost),
+          sufficient: unlimited || balanceBefore >= cost,
+          unlimited,
           tableVersion: table.version,
           ...(table.pointValueStatus ? { pointValueStatus: table.pointValueStatus } : {}),
         });
@@ -141,13 +140,14 @@ export const CreditGateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
 
       if (!approved) return null;
 
-      const result = await action();
-
-      // Débit après succès uniquement : si l'action a levé, on n'arrive pas ici.
-      consumeCredits(cost);
-      return result;
+      try {
+        return await action();
+      } finally {
+        // Le serveur a réservé, débité ou rendu les points : on relit le solde réel.
+        void refresh();
+      }
     },
-    [user, consumeCredits],
+    [account, refresh],
   );
 
   return (

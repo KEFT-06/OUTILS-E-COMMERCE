@@ -65,15 +65,18 @@ function useProviderStatus() {
 }
 
 export function CockpitDashboard({ report, onNavigateToModule, onOpenBilling }: CockpitDashboardProps) {
-  const { user } = useAuth();
+  const { account } = useAuth();
   const { costTable } = useCreditGate();
   const { providers, failed } = useProviderStatus();
 
-  // Le solde vient du profil, source unique partagée avec la page Compte.
-  const creditsTotal = user?.apiSearchesLimit ?? 0;
-  const creditsUsed = user?.apiSearchesUsed ?? 0;
-  const creditsRemaining = Math.max(0, creditsTotal - creditsUsed);
-  const creditPercentage = creditsTotal > 0 ? (creditsRemaining / creditsTotal) * 100 : 0;
+  // Le solde vient du serveur, source unique partagée avec la page Compte.
+  const credits = account?.credits;
+  const creditsRemaining = credits?.total ?? 0;
+  const creditPercentage = credits?.unlimited
+    ? 100
+    : credits?.allowance
+      ? Math.min(100, (credits.plan / credits.allowance) * 100)
+      : 0;
 
   // Seul le taux de saturation porte une trace de calcul vérifiable : c'est
   // donc le seul affiché comme indicateur de tension.
@@ -95,7 +98,7 @@ export function CockpitDashboard({ report, onNavigateToModule, onOpenBilling }: 
         <Card className="lg:col-span-4">
           <CardHeader>
             <CardTitle>Points de recherche</CardTitle>
-            <CardDescription>Palier {user?.plan}</CardDescription>
+            <CardDescription>Palier {account?.plan.label}</CardDescription>
             <CardAction>
               <span className="flex size-9 items-center justify-center rounded-lg bg-brand-orange/15 text-brand-orange-text">
                 <Zap className="size-4" aria-hidden="true" />
@@ -104,17 +107,25 @@ export function CockpitDashboard({ report, onNavigateToModule, onOpenBilling }: 
           </CardHeader>
           <CardContent className="space-y-4">
             <p className="flex items-baseline gap-2">
-              <span className="font-display text-4xl font-extrabold tabular-nums">{creditsRemaining}</span>
-              <span className="text-sm text-muted-foreground">/ {creditsTotal} pts restants</span>
+              <span className="font-display text-4xl font-extrabold tabular-nums">
+                {credits?.unlimited ? '∞' : creditsRemaining}
+              </span>
+              <span className="text-sm text-muted-foreground">
+                {credits?.unlimited
+                  ? 'points illimités'
+                  : `pts disponibles${credits?.allowance ? ` · quota de ${credits.allowance} par mois` : ''}`}
+              </span>
             </p>
-            <Progress value={creditPercentage} aria-label="Points restants" />
+            <Progress value={creditPercentage} aria-label="Quota mensuel restant" />
             {/*
               L'équivalent monétaire vient de la grille tarifaire servie par l'API,
               jamais d'une constante du bundle. Sans grille, aucun montant.
             */}
             <p className="flex items-center justify-between gap-2 text-sm">
               <span className="text-muted-foreground">Équivalent estimé</span>
-              {costTable ? (
+              {credits?.unlimited ? (
+                <span className="font-semibold">Illimité</span>
+              ) : costTable ? (
                 <span className="font-semibold tabular-nums">
                   ≈ {(creditsRemaining * costTable.pointValue).toLocaleString('fr-FR')} {costTable.currency}
                 </span>
@@ -171,7 +182,7 @@ export function CockpitDashboard({ report, onNavigateToModule, onOpenBilling }: 
               </div>
             </div>
 
-            {(user?.savedNiches ?? []).slice(0, 3).map((niche) => (
+            {(account?.savedNiches ?? []).slice(0, 3).map((niche) => (
               <div key={niche} className="flex items-center justify-between gap-3 rounded-lg border px-4 py-3">
                 <p className="text-sm font-medium">{niche}</p>
                 <span className="shrink-0 text-xs text-muted-foreground">Pas encore analysée</span>

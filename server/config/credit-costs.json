@@ -28,7 +28,7 @@
       "id": "storybook_generation",
       "label": "Génération d'un conte illustré",
       "cost": 15,
-      "description": "Conte illustré généré avec Gamma à partir de votre brief. Les points ne sont débités qu'une fois le conte terminé."
+      "description": "Conte illustré généré avec Gamma à partir de votre brief. Points réservés au lancement et rendus automatiquement si la génération échoue."
     },
     {
       "id": "product_generation",

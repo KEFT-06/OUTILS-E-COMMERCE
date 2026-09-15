@@ -399,5 +399,5 @@ export async function generateAnalysisPDF(
 
   // Save file
   const cleanName = report.nicheName.toLowerCase().replace(/[^a-z0-9]/g, '_').substring(0, 30);
-  doc.save(`SMART_LIFE_Rapport_${cleanName}.pdf`);
+  doc.save(`SmartCreator_Rapport_${cleanName}.pdf`);
 }

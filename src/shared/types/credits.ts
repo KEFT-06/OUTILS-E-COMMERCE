@@ -31,6 +31,8 @@ export interface CreditQuote {
   balanceAfter: number;
   /** false ⇒ solde insuffisant, l'action ne peut pas être validée. */
   sufficient: boolean;
+  /** Palier illimité : l'action ne prélève aucun point. */
+  unlimited?: boolean;
   tableVersion: string;
   pointValueStatus?: string;
 }

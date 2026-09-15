@@ -1,43 +1,98 @@
-import { Link, Navigate, useLocation } from 'react-router-dom';
+import { useState } from 'react';
+import { Link, Navigate, useLocation, useSearchParams } from 'react-router-dom';
 import { Controller, useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
-import { ArrowLeft, Check, Info, PlayCircle } from 'lucide-react';
+import { ArrowLeft, Check, KeyRound, Lock, ShieldCheck, Smartphone, TriangleAlert } from 'lucide-react';
 import { useAuth } from '@/features/auth/AuthContext';
+import { PASSWORD_MIN_LENGTH, PasswordHints, PasswordInput } from '@/features/auth/PasswordInput';
+import { passwordProblemsOf } from '@/shared/lib/api';
+import { type ApiError, toApiError } from '@/shared/lib/apiError';
 import { Alert, AlertDescription, AlertTitle } from '@/shared/ui/alert';
 import { BrandLogo } from '@/shared/ui/BrandLogo';
 import { Button } from '@/shared/ui/button';
-import { Field, FieldError, FieldGroup, FieldLabel } from '@/shared/ui/field';
+import { Field, FieldDescription, FieldError, FieldGroup, FieldLabel } from '@/shared/ui/field';
 import { Input } from '@/shared/ui/input';
-import { Separator } from '@/shared/ui/separator';
+import { Spinner } from '@/shared/ui/spinner';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/shared/ui/tabs';
 
 /**
- * Connexion.
+ * Connexion et inscription.
  *
- * Il n'existe pas encore d'authentification serveur : aucun mot de passe n'est
- * demandé, parce qu'aucun ne serait vérifié. L'ancien écran affichait un champ
- * mot de passe pré-rempli, l'adresse du fondateur et « chiffré SSL 256-bit ».
+ * Tout est vérifié par le serveur. Les messages ne disent jamais si une adresse
+ * est inscrite ; un verrou après plusieurs essais est annoncé tel quel, avec son
+ * délai, pour que la personne sache quoi faire.
  */
 
 const emailField = z.string().trim().min(1, 'Indiquez votre adresse e-mail.').email('Adresse e-mail invalide.');
 
-const loginSchema = z.object({ email: emailField });
-const signupSchema = z.object({
-  name: z.string().trim().min(2, 'Indiquez votre nom (2 caractères au moins).').max(80, '80 caractères au plus.'),
+const loginSchema = z.object({
   email: emailField,
+  password: z.string().min(1, 'Indiquez votre mot de passe.'),
 });
 
-function LoginForm() {
+const signupSchema = z
+  .object({
+    name: z.string().trim().min(2, 'Indiquez votre nom (2 caractères au moins).').max(80, '80 caractères au plus.'),
+    email: emailField,
+    password: z
+      .string()
+      .min(PASSWORD_MIN_LENGTH, `${PASSWORD_MIN_LENGTH} caractères au moins.`)
+      .max(128, '128 caractères au plus.'),
+    confirmation: z.string(),
+  })
+  .refine((values) => values.password === values.confirmation, {
+    message: 'Les deux mots de passe ne correspondent pas.',
+    path: ['confirmation'],
+  });
+
+const mfaSchema = z.object({ code: z.string().trim().min(6, 'Saisissez le code à 6 chiffres.').max(12, 'Code trop long.') });
+
+function AuthErrorAlert({ error }: { error: ApiError }) {
+  const problems = passwordProblemsOf(error);
+  const locked = error.code === 'TOO_MANY_ATTEMPTS';
+
+  return (
+    <Alert variant={locked ? 'warning' : 'danger'} role="alert">
+      {locked ? <Lock /> : <TriangleAlert />}
+      <AlertTitle>{locked ? 'Connexion temporairement bloquée' : error.message}</AlertTitle>
+      {locked && <AlertDescription>{error.message}</AlertDescription>}
+      {!locked && problems.length > 1 && (
+        <AlertDescription>
+          <ul className="list-disc space-y-0.5 pl-4">
+            {problems.slice(1).map((problem) => (
+              <li key={problem}>{problem}</li>
+            ))}
+          </ul>
+        </AlertDescription>
+      )}
+    </Alert>
+  );
+}
+
+function LoginForm({ defaultEmail, onMfaRequired }: { defaultEmail: string; onMfaRequired: () => void }) {
   const { login } = useAuth();
+  const [error, setError] = useState<ApiError | null>(null);
   const form = useForm<z.infer<typeof loginSchema>>({
     resolver: zodResolver(loginSchema),
-    defaultValues: { email: '' },
+    defaultValues: { email: defaultEmail, password: '' },
+  });
+
+  const onSubmit = form.handleSubmit(async (values) => {
+    setError(null);
+    try {
+      const { mfaRequired } = await login(values);
+      if (mfaRequired) onMfaRequired();
+    } catch (caught) {
+      setError(toApiError(caught, 'La connexion a échoué.'));
+      form.resetField('password');
+    }
   });
 
   return (
-    <form onSubmit={form.handleSubmit(({ email }) => login(email))} noValidate>
+    <form onSubmit={onSubmit} noValidate>
       <FieldGroup>
+        {error && <AuthErrorAlert error={error} />}
         <Controller
           name="email"
           control={form.control}
@@ -56,24 +111,123 @@ function LoginForm() {
             </Field>
           )}
         />
-        <Button type="submit" className="w-full">
+        <Controller
+          name="password"
+          control={form.control}
+          render={({ field, fieldState }) => (
+            <Field data-invalid={fieldState.invalid}>
+              <FieldLabel htmlFor="login-password">Mot de passe</FieldLabel>
+              <PasswordInput {...field} id="login-password" autoComplete="current-password" aria-invalid={fieldState.invalid} />
+              {fieldState.invalid && <FieldError errors={[fieldState.error]} />}
+            </Field>
+          )}
+        />
+        <Button type="submit" className="w-full" disabled={form.formState.isSubmitting}>
+          {form.formState.isSubmitting && <Spinner />}
           Se connecter
         </Button>
+        <p className="text-center text-xs leading-relaxed text-muted-foreground">
+          Mot de passe oublié ? Demandez un lien de réinitialisation à l’administrateur de Smart Creator.
+        </p>
       </FieldGroup>
     </form>
   );
 }
 
-function SignupForm() {
-  const { signup } = useAuth();
-  const form = useForm<z.infer<typeof signupSchema>>({
-    resolver: zodResolver(signupSchema),
-    defaultValues: { name: '', email: '' },
+function MfaForm({ onBack }: { onBack: () => void }) {
+  const { verifyMfa } = useAuth();
+  const [error, setError] = useState<ApiError | null>(null);
+  const form = useForm<z.infer<typeof mfaSchema>>({ resolver: zodResolver(mfaSchema), defaultValues: { code: '' } });
+  const expired = error?.code === 'MFA_CHALLENGE_EXPIRED';
+
+  const onSubmit = form.handleSubmit(async ({ code }) => {
+    setError(null);
+    try {
+      await verifyMfa(code);
+    } catch (caught) {
+      setError(toApiError(caught, 'La vérification a échoué.'));
+      form.resetField('code');
+    }
   });
 
   return (
-    <form onSubmit={form.handleSubmit(({ name, email }) => signup(name, email))} noValidate>
+    <div className="space-y-6">
+      <div className="space-y-2">
+        <span className="flex size-11 items-center justify-center rounded-xl bg-accent text-accent-foreground">
+          <Smartphone className="size-5" aria-hidden="true" />
+        </span>
+        <h1 className="font-display text-3xl font-extrabold tracking-tight">Vérification en deux étapes</h1>
+        <p className="text-sm text-muted-foreground">
+          Ouvrez votre application d’authentification et saisissez le code affiché pour Smart Creator.
+        </p>
+      </div>
+
+      <form onSubmit={onSubmit} noValidate>
+        <FieldGroup>
+          {error && <AuthErrorAlert error={error} />}
+          {!expired && (
+            <>
+              <Controller
+                name="code"
+                control={form.control}
+                render={({ field, fieldState }) => (
+                  <Field data-invalid={fieldState.invalid}>
+                    <FieldLabel htmlFor="mfa-code">Code de vérification</FieldLabel>
+                    <Input
+                      {...field}
+                      id="mfa-code"
+                      inputMode="text"
+                      autoComplete="one-time-code"
+                      autoFocus
+                      placeholder="123456"
+                      className="h-12 text-center text-xl font-semibold tracking-[0.3em] tabular-nums"
+                      aria-invalid={fieldState.invalid}
+                    />
+                    <FieldDescription>
+                      Téléphone perdu ? Saisissez l’un de vos codes de secours, au format XXXX-XXXX.
+                    </FieldDescription>
+                    {fieldState.invalid && <FieldError errors={[fieldState.error]} />}
+                  </Field>
+                )}
+              />
+              <Button type="submit" className="w-full" disabled={form.formState.isSubmitting}>
+                {form.formState.isSubmitting && <Spinner />}
+                Vérifier et me connecter
+              </Button>
+            </>
+          )}
+          <Button type="button" variant={expired ? 'default' : 'ghost'} className="w-full" onClick={onBack}>
+            <ArrowLeft />
+            {expired ? 'Recommencer la connexion' : 'Retour'}
+          </Button>
+        </FieldGroup>
+      </form>
+    </div>
+  );
+}
+
+function SignupForm() {
+  const { signup } = useAuth();
+  const [error, setError] = useState<ApiError | null>(null);
+  const form = useForm<z.infer<typeof signupSchema>>({
+    resolver: zodResolver(signupSchema),
+    defaultValues: { name: '', email: '', password: '', confirmation: '' },
+  });
+  const password = form.watch('password');
+
+  const onSubmit = form.handleSubmit(async ({ name, email, password: chosen }) => {
+    setError(null);
+    try {
+      await signup({ name, email, password: chosen });
+    } catch (caught) {
+      setError(toApiError(caught, 'La création du compte a échoué.'));
+    }
+  });
+
+  return (
+    <form onSubmit={onSubmit} noValidate>
       <FieldGroup>
+        {error && <AuthErrorAlert error={error} />}
         <Controller
           name="name"
           control={form.control}
@@ -103,9 +257,44 @@ function SignupForm() {
             </Field>
           )}
         />
-        <Button type="submit" className="w-full">
-          Créer mon compte
+        <Controller
+          name="password"
+          control={form.control}
+          render={({ field, fieldState }) => (
+            <Field data-invalid={fieldState.invalid}>
+              <FieldLabel htmlFor="signup-password">Mot de passe</FieldLabel>
+              <PasswordInput {...field} id="signup-password" autoComplete="new-password" aria-invalid={fieldState.invalid} />
+              <PasswordHints password={password} />
+              {fieldState.invalid && <FieldError errors={[fieldState.error]} />}
+            </Field>
+          )}
+        />
+        <Controller
+          name="confirmation"
+          control={form.control}
+          render={({ field, fieldState }) => (
+            <Field data-invalid={fieldState.invalid}>
+              <FieldLabel htmlFor="signup-confirmation">Confirmez le mot de passe</FieldLabel>
+              <PasswordInput {...field} id="signup-confirmation" autoComplete="new-password" aria-invalid={fieldState.invalid} />
+              {fieldState.invalid && <FieldError errors={[fieldState.error]} />}
+            </Field>
+          )}
+        />
+        <Button type="submit" className="w-full" disabled={form.formState.isSubmitting}>
+          {form.formState.isSubmitting && <Spinner />}
+          Créer mon compte gratuit
         </Button>
+        <p className="text-center text-xs leading-relaxed text-muted-foreground">
+          En créant un compte, vous acceptez les{' '}
+          <Link to="/conditions" className="font-medium text-brand-green-text underline-offset-4 hover:underline">
+            conditions d’utilisation
+          </Link>{' '}
+          et la{' '}
+          <Link to="/confidentialite" className="font-medium text-brand-green-text underline-offset-4 hover:underline">
+            politique de confidentialité
+          </Link>
+          .
+        </p>
       </FieldGroup>
     </form>
   );
@@ -117,13 +306,22 @@ const PROMISES = [
   'Le coût en points s’affiche avant chaque action.',
 ];
 
+const SECURITY = [
+  { icon: KeyRound, text: 'Mot de passe haché avec Argon2id : il n’est jamais stocké en clair.' },
+  { icon: Lock, text: 'Connexion bloquée automatiquement après cinq essais erronés.' },
+  { icon: ShieldCheck, text: 'Double authentification disponible pour tous, obligatoire pour l’administration.' },
+];
+
 export function LoginPage() {
-  const { isAuthenticated, loginDemo } = useAuth();
+  const { status, isAuthenticated } = useAuth();
   const location = useLocation();
-  const from = (location.state as { from?: string } | null)?.from;
+  const [params] = useSearchParams();
+  const state = location.state as { from?: string; email?: string } | null;
+  const [tab, setTab] = useState(params.get('mode') === 'inscription' ? 'signup' : 'login');
+  const [step, setStep] = useState<'credentials' | 'mfa'>('credentials');
 
   if (isAuthenticated) {
-    return <Navigate to={from?.startsWith('/app') ? from : '/app/cockpit'} replace />;
+    return <Navigate to={state?.from?.startsWith('/app') ? state.from : '/app/cockpit'} replace />;
   }
 
   return (
@@ -133,20 +331,34 @@ export function LoginPage() {
           <BrandLogo size="md" showTagline />
         </Link>
 
-        <div className="max-w-md space-y-6">
-          <h2 className="font-display text-4xl leading-tight font-extrabold tracking-tight">
-            Sachez quoi vendre avant de le produire.
-          </h2>
-          <ul className="space-y-3">
-            {PROMISES.map((promise) => (
-              <li key={promise} className="flex items-start gap-3 text-sm text-muted-foreground">
-                <span className="mt-0.5 flex size-5 shrink-0 items-center justify-center rounded-full bg-accent text-accent-foreground">
-                  <Check className="size-3.5" aria-hidden="true" />
-                </span>
-                {promise}
-              </li>
-            ))}
-          </ul>
+        <div className="max-w-md space-y-8">
+          <div className="space-y-6">
+            <h2 className="font-display text-4xl leading-tight font-extrabold tracking-tight">
+              Sachez quoi vendre avant de le produire.
+            </h2>
+            <ul className="space-y-3">
+              {PROMISES.map((promise) => (
+                <li key={promise} className="flex items-start gap-3 text-sm text-muted-foreground">
+                  <span className="mt-0.5 flex size-5 shrink-0 items-center justify-center rounded-full bg-accent text-accent-foreground">
+                    <Check className="size-3.5" aria-hidden="true" />
+                  </span>
+                  {promise}
+                </li>
+              ))}
+            </ul>
+          </div>
+
+          <div className="space-y-3 rounded-xl border bg-background p-5">
+            <p className="text-sm font-semibold">Votre compte est protégé</p>
+            <ul className="space-y-2.5">
+              {SECURITY.map(({ icon: Icon, text }) => (
+                <li key={text} className="flex items-start gap-2.5 text-sm text-muted-foreground">
+                  <Icon className="mt-0.5 size-4 shrink-0 text-brand-green-text" aria-hidden="true" />
+                  {text}
+                </li>
+              ))}
+            </ul>
+          </div>
         </div>
 
         <p className="text-xs text-muted-foreground">
@@ -166,50 +378,36 @@ export function LoginPage() {
         </div>
 
         <div className="mx-auto flex w-full max-w-sm flex-1 flex-col justify-center gap-6 py-10">
-          <div className="space-y-2">
-            <h1 className="font-display text-3xl font-extrabold tracking-tight">Accéder à votre espace</h1>
-            <p className="text-sm text-muted-foreground">
-              Radar, analyses, studio de création et kit de lancement au même endroit.
-            </p>
-          </div>
+          {status === 'loading' ? (
+            <div role="status" className="flex items-center justify-center gap-3 text-sm text-muted-foreground">
+              <Spinner className="size-5" />
+              Vérification de votre session…
+            </div>
+          ) : step === 'mfa' ? (
+            <MfaForm onBack={() => setStep('credentials')} />
+          ) : (
+            <>
+              <div className="space-y-2">
+                <h1 className="font-display text-3xl font-extrabold tracking-tight">Accéder à votre espace</h1>
+                <p className="text-sm text-muted-foreground">
+                  Radar, analyses, studio de création et kit de lancement au même endroit.
+                </p>
+              </div>
 
-          <Alert>
-            <Info />
-            <AlertTitle>Version locale</AlertTitle>
-            <AlertDescription>
-              Aucun mot de passe n’est demandé ni vérifié : votre profil reste enregistré dans ce navigateur, en
-              attendant les comptes sécurisés.
-            </AlertDescription>
-          </Alert>
-
-          <Tabs defaultValue="login">
-            <TabsList className="grid w-full grid-cols-2">
-              <TabsTrigger value="login">Se connecter</TabsTrigger>
-              <TabsTrigger value="signup">Créer un compte</TabsTrigger>
-            </TabsList>
-            <TabsContent value="login" className="pt-4">
-              <LoginForm />
-            </TabsContent>
-            <TabsContent value="signup" className="pt-4">
-              <SignupForm />
-            </TabsContent>
-          </Tabs>
-
-          <div className="flex items-center gap-3 text-xs text-muted-foreground">
-            <Separator className="flex-1" />
-            ou
-            <Separator className="flex-1" />
-          </div>
-
-          <div className="space-y-2">
-            <Button variant="outline" className="w-full" onClick={loginDemo}>
-              <PlayCircle />
-              Explorer la démonstration
-            </Button>
-            <p className="text-center text-xs text-muted-foreground">
-              Compte fictif et rapports d’exemple, étiquetés comme tels.
-            </p>
-          </div>
+              <Tabs value={tab} onValueChange={setTab}>
+                <TabsList className="grid w-full grid-cols-2">
+                  <TabsTrigger value="login">Se connecter</TabsTrigger>
+                  <TabsTrigger value="signup">Créer un compte</TabsTrigger>
+                </TabsList>
+                <TabsContent value="login" className="pt-4">
+                  <LoginForm defaultEmail={state?.email ?? ''} onMfaRequired={() => setStep('mfa')} />
+                </TabsContent>
+                <TabsContent value="signup" className="pt-4">
+                  <SignupForm />
+                </TabsContent>
+              </Tabs>
+            </>
+          )}
         </div>
       </main>
     </div>

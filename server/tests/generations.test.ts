@@ -168,6 +168,38 @@ describe('Générations facturées', () => {
   });
 });
 
+describe('Suivi des générations abandonnées', () => {
+  it('rend les points d’une génération échouée que plus aucun écran ne suit, et abandonne après 48 h', async () => {
+    const creator = await signUp(app, { name: 'Binta Camara', email: 'binta@exemple.com' });
+    const { getDb } = await import('@server/db/client');
+    const { generations } = await import('@server/db/schema');
+    const { eq } = await import('drizzle-orm');
+
+    const failed = await creator.agent.post('/api/creatives/visuals').send(visualBrief).expect(202);
+    creativeStatuses.set(failed.body.requestId, { status: 'failed', error: 'panne du modèle' });
+    await getDb()
+      .update(generations)
+      .set({ createdAt: new Date(Date.now() - 20 * 60_000) })
+      .where(eq(generations.providerRef, failed.body.requestId));
+
+    const forgotten = await creator.agent.post('/api/creatives/visuals').send(visualBrief).expect(202);
+    await getDb()
+      .update(generations)
+      .set({ createdAt: new Date(Date.now() - 72 * 3_600_000) })
+      .where(eq(generations.providerRef, forgotten.body.requestId));
+    assert.equal(await balanceOf(creator.agent), 1);
+
+    const { sweepPendingGenerations } = await import('@server/services/generations/sweeper');
+    const result = await sweepPendingGenerations();
+    assert.ok(result.settled >= 2);
+    assert.equal(await balanceOf(creator.agent), 3, 'les deux points sont rendus');
+
+    const again = await sweepPendingGenerations();
+    assert.equal(again.settled, 0);
+    assert.equal(await balanceOf(creator.agent), 3, 'pas de double remboursement');
+  });
+});
+
 describe('Clés Chariow personnelles', () => {
   it('n’utilise jamais la clé du propriétaire pour un autre compte', async () => {
     const seller = await signUp(app, { name: 'Grace Ekwueme', email: 'grace@exemple.com' });

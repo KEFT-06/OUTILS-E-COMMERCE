@@ -1,7 +1,7 @@
 import { useEffect } from 'react';
 import { useLocation } from 'react-router-dom';
 import { Download, Moon, MoreHorizontal, Search, Sparkles, Sun } from 'lucide-react';
-import { ACCOUNT_PATH, MODULE_GROUPS, findModule } from '@/app/navigation';
+import { ACCOUNT_PATH, MODULE_GROUPS, findAdminSection, findModule } from '@/app/navigation';
 import { usePreferences } from '@/app/providers/PreferencesContext';
 import { useWorkspace } from '@/app/providers/WorkspaceProvider';
 import {
@@ -50,8 +50,19 @@ export function AppHeader() {
   } = useWorkspace();
 
   const entry = findModule(pathname);
-  const group = entry ? MODULE_GROUPS.find((candidate) => candidate.id === entry.group) : undefined;
-  const pageLabel = entry ? entry.label.fr : pathname.startsWith(ACCOUNT_PATH) ? 'Mon compte' : 'Espace de travail';
+  const adminSection = entry ? undefined : findAdminSection(pathname);
+  const group = entry
+    ? MODULE_GROUPS.find((candidate) => candidate.id === entry.group)
+    : adminSection
+      ? { label: { fr: 'Administration' } }
+      : undefined;
+  const pageLabel = entry
+    ? entry.label.fr
+    : adminSection
+      ? adminSection.label
+      : pathname.startsWith(ACCOUNT_PATH)
+        ? 'Mon compte'
+        : 'Espace de travail';
 
   useEffect(() => {
     document.title = `${pageLabel} · Smart Creator`;

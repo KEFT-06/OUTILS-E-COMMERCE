@@ -5,7 +5,7 @@ import { MODULES, MODULE_GROUPS, type ModuleGroup } from '@/app/navigation';
 import { usePreferences } from '@/app/providers/PreferencesContext';
 import { useAuth } from '@/features/auth/AuthContext';
 import { MARKETS } from '@/shared/lib/markets';
-import { PLANS, formatPlanQuota } from '@/shared/lib/plans';
+import { formatPlanPrice, formatPlanQuota, usePlans } from '@/shared/lib/plans';
 import { cn } from '@/shared/lib/utils';
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from '@/shared/ui/accordion';
 import { Badge } from '@/shared/ui/badge';
@@ -13,6 +13,7 @@ import { BrandLogo } from '@/shared/ui/BrandLogo';
 import { Button } from '@/shared/ui/button';
 import { Card, CardContent, CardDescription, CardHeader } from '@/shared/ui/card';
 import { Marquee } from '@/shared/ui/magicui/marquee';
+import { Skeleton } from '@/shared/ui/skeleton';
 
 // Effet décoratif : chargé après la page, il ne retarde pas le premier affichage.
 const BorderBeam = lazy(() => import('@/shared/ui/magicui/border-beam').then((module) => ({ default: module.BorderBeam })));
@@ -59,7 +60,7 @@ const FAQ = [
   {
     question: 'Les analyses de marché sont-elles en temps réel ?',
     answer:
-      'Pas encore. Le scan en direct attend la connexion de la bibliothèque publicitaire Meta et d’un fournisseur d’IA. La démonstration montre un rapport d’exemple complet, étiqueté comme tel.',
+      'Pas encore. Le scan en direct attend la connexion de la bibliothèque publicitaire Meta et d’un fournisseur d’IA. Votre espace contient un rapport d’exemple complet, étiqueté comme tel.',
   },
   {
     question: 'Mes publicités seront-elles acceptées par Meta ou TikTok ?',
@@ -69,7 +70,7 @@ const FAQ = [
   {
     question: 'Où sont stockées mes données ?',
     answer:
-      'Dans votre navigateur, pour l’instant : il n’existe pas encore de compte sur nos serveurs. La politique de confidentialité détaille ce qui est transmis aux services tiers.',
+      'Votre compte, votre solde de points et vos paiements sont enregistrés sur nos serveurs, dans une base protégée : mot de passe haché, jamais stocké en clair, et clés API chiffrées. Vos brouillons de travail restent pour l’instant dans votre navigateur. La politique de confidentialité détaille ce qui est transmis aux services tiers.',
     link: { to: '/confidentialite', label: 'Politique de confidentialité' },
   },
   {
@@ -105,21 +106,21 @@ function SectionHeading({ eyebrow, title, description }: { eyebrow: string; titl
 }
 
 export function LandingPage() {
-  const { isAuthenticated, loginDemo } = useAuth();
+  const { isAuthenticated } = useAuth();
   const { theme, toggleTheme } = usePreferences();
   const navigate = useNavigate();
   const reduceMotion = usePrefersReducedMotion();
+  const { catalog } = usePlans();
 
   useEffect(() => {
     document.title = 'Smart Creator — Veille stratégique & production e-commerce';
   }, []);
 
   const openWorkspace = () => {
-    if (!isAuthenticated) loginDemo();
-    navigate('/app/cockpit');
+    navigate(isAuthenticated ? '/app/cockpit' : '/connexion?mode=inscription');
   };
 
-  const primaryLabel = isAuthenticated ? 'Ouvrir mon espace' : 'Explorer la démonstration';
+  const primaryLabel = isAuthenticated ? 'Ouvrir mon espace' : 'Créer mon compte gratuit';
 
   return (
     <div className="min-h-svh bg-background text-foreground">
@@ -159,7 +160,7 @@ export function LandingPage() {
                 <Link to="/connexion">Connexion</Link>
               </Button>
             )}
-            <Button onClick={openWorkspace}>{isAuthenticated ? 'Mon espace' : 'Démo'}</Button>
+            <Button onClick={openWorkspace}>{isAuthenticated ? 'Mon espace' : 'Commencer'}</Button>
           </div>
         </div>
       </header>
@@ -194,12 +195,12 @@ export function LandingPage() {
                 </Button>
                 {!isAuthenticated && (
                   <Button size="lg" variant="outline" asChild>
-                    <Link to="/connexion">Créer un compte</Link>
+                    <Link to="/connexion">Se connecter</Link>
                   </Button>
                 )}
               </div>
               <p className="text-sm text-muted-foreground">
-                La démonstration utilise un compte fictif et des rapports d’exemple, étiquetés comme tels.
+                Gratuit pour commencer, sans carte bancaire. Les rapports d’exemple de votre espace sont étiquetés comme tels.
               </p>
             </div>
 
@@ -364,23 +365,35 @@ export function LandingPage() {
           <SectionHeading
             eyebrow="Paliers"
             title="Un quota de points par mois"
-            description="Chaque action consomme des points et affiche son coût avant validation. Les prix des abonnements seront publiés à leur ouverture."
+            description="Chaque action consomme des points et affiche son coût avant validation. Un prix pas encore fixé est indiqué « Prix à venir »."
           />
-          <ul className="mt-10 grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
-            {PLANS.map((plan) => (
-              <li
-                key={plan.id}
-                className={cn('flex flex-col gap-2 rounded-xl border bg-card p-5', plan.id === 'Pro' && 'border-primary ring-1 ring-primary/30')}
-              >
-                <span className="flex items-center justify-between gap-2 font-semibold">
-                  {plan.id}
-                  {plan.id === 'Pro' && <BadgeCheck className="size-4 text-brand-green-text" aria-label="Palier de la démonstration" />}
-                </span>
-                <span className="text-sm text-muted-foreground tabular-nums">{formatPlanQuota(plan)}</span>
-              </li>
-            ))}
+          <ul className="mt-10 grid gap-3 sm:grid-cols-2 lg:grid-cols-5" aria-busy={!catalog}>
+            {catalog
+              ? catalog.plans.map((plan) => (
+                  <li
+                    key={plan.id}
+                    className={cn(
+                      'flex flex-col gap-2 rounded-xl border bg-card p-5',
+                      plan.highlight && 'border-primary ring-1 ring-primary/30',
+                    )}
+                  >
+                    <span className="flex items-center justify-between gap-2 font-semibold">
+                      {plan.label}
+                      {plan.highlight && <BadgeCheck className="size-4 text-brand-green-text" aria-label="Palier conseillé" />}
+                    </span>
+                    <span className="font-display text-xl font-extrabold tabular-nums">{formatPlanPrice(plan)}</span>
+                    <span className="text-sm text-muted-foreground tabular-nums">{formatPlanQuota(plan)}</span>
+                    <span className="text-xs text-muted-foreground">
+                      {plan.features.video_generation === false ? 'Sans vidéo' : 'Vidéos incluses'}
+                    </span>
+                  </li>
+                ))
+              : Array.from({ length: 5 }, (_, index) => (
+                  <li key={index}>
+                    <Skeleton className="h-36 rounded-xl" />
+                  </li>
+                ))}
           </ul>
-          <p className="mt-4 text-sm text-muted-foreground">La démonstration utilise le palier Pro.</p>
         </section>
 
         <section id="questions" className="scroll-mt-20 border-t bg-muted/30">
@@ -424,7 +437,7 @@ export function LandingPage() {
                   asChild
                   className="border-background/30 bg-transparent text-background hover:bg-background/10 hover:text-background dark:border-background/30 dark:bg-transparent"
                 >
-                  <Link to="/connexion">Créer un compte</Link>
+                  <Link to="/connexion">Se connecter</Link>
                 </Button>
               )}
             </div>

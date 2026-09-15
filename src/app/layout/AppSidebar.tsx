@@ -1,6 +1,6 @@
 import { Link, NavLink, useLocation, useNavigate } from 'react-router-dom';
-import { ChevronsUpDown, Home, LogOut, UserRound } from 'lucide-react';
-import { ACCOUNT_PATH, MODULES, MODULE_GROUPS } from '@/app/navigation';
+import { ChevronsUpDown, Home, LogOut, ShieldCheck, UserRound } from 'lucide-react';
+import { ACCOUNT_PATH, ADMIN_PATH, MODULES, MODULE_GROUPS, visibleAdminSections } from '@/app/navigation';
 import { initialsOf, useAuth } from '@/features/auth/AuthContext';
 import { Avatar, AvatarFallback } from '@/shared/ui/avatar';
 import { BrandMark } from '@/shared/ui/BrandLogo';
@@ -30,7 +30,7 @@ import {
 } from '@/shared/ui/sidebar';
 
 export function AppSidebar() {
-  const { user, logout } = useAuth();
+  const { account, logout } = useAuth();
   const { pathname } = useLocation();
   const navigate = useNavigate();
   const { isMobile, setOpenMobile } = useSidebar();
@@ -39,8 +39,10 @@ export function AppSidebar() {
     if (isMobile) setOpenMobile(false);
   };
 
-  const remaining = user ? Math.max(0, user.apiSearchesLimit - user.apiSearchesUsed) : 0;
-  const remainingPct = user && user.apiSearchesLimit > 0 ? (remaining / user.apiSearchesLimit) * 100 : 0;
+  const credits = account?.credits;
+  const planPct =
+    credits && !credits.unlimited && credits.allowance ? Math.min(100, (credits.plan / credits.allowance) * 100) : 100;
+  const adminSections = account ? visibleAdminSections(account.permissions) : [];
 
   return (
     <Sidebar collapsible="icon" role="navigation" aria-label="Navigation principale">
@@ -87,22 +89,53 @@ export function AppSidebar() {
             </SidebarGroupContent>
           </SidebarGroup>
         ))}
+
+        {adminSections.length > 0 && (
+          <SidebarGroup>
+            <SidebarGroupLabel>Administration</SidebarGroupLabel>
+            <SidebarGroupContent>
+              <SidebarMenu>
+                {adminSections.map((section) => {
+                  const Icon = section.icon;
+                  const isActive =
+                    section.path === ADMIN_PATH
+                      ? pathname === ADMIN_PATH
+                      : pathname === section.path || pathname.startsWith(`${section.path}/`);
+                  return (
+                    <SidebarMenuItem key={section.id}>
+                      <SidebarMenuButton asChild isActive={isActive} tooltip={section.label}>
+                        <NavLink to={section.path} end={section.path === ADMIN_PATH} onClick={closeOnMobile}>
+                          <Icon />
+                          <span>{section.label}</span>
+                        </NavLink>
+                      </SidebarMenuButton>
+                      {section.id === 'overview' && !account?.twoFactor.enabled && (
+                        <SidebarMenuBadge className="text-warning">2FA</SidebarMenuBadge>
+                      )}
+                    </SidebarMenuItem>
+                  );
+                })}
+              </SidebarMenu>
+            </SidebarGroupContent>
+          </SidebarGroup>
+        )}
       </SidebarContent>
 
       <SidebarFooter>
-        {user && (
+        {account && credits && (
           <div className="rounded-lg border bg-card p-3 group-data-[collapsible=icon]:hidden">
             <div className="flex items-baseline justify-between gap-2 text-xs">
-              <span className="font-medium text-muted-foreground">Points restants</span>
-              <span className="font-semibold tabular-nums">
-                {remaining} / {user.apiSearchesLimit}
-              </span>
+              <span className="font-medium text-muted-foreground">Points disponibles</span>
+              <span className="font-semibold tabular-nums">{credits.unlimited ? 'Illimités' : credits.total}</span>
             </div>
-            <Progress value={remainingPct} className="mt-2 h-1.5" aria-label="Points de recherche restants" />
+            <Progress value={planPct} className="mt-2 h-1.5" aria-label="Quota mensuel restant" />
+            {!credits.unlimited && credits.bonus > 0 && (
+              <p className="mt-1.5 text-xs text-muted-foreground tabular-nums">dont {credits.bonus} bonus</p>
+            )}
           </div>
         )}
 
-        {user && (
+        {account && (
           <SidebarMenu>
             <SidebarMenuItem>
               <DropdownMenu>
@@ -110,13 +143,13 @@ export function AppSidebar() {
                   <SidebarMenuButton size="lg" className="data-[state=open]:bg-sidebar-accent">
                     <Avatar className="size-8 rounded-lg">
                       <AvatarFallback className="rounded-lg bg-accent text-xs font-semibold text-accent-foreground">
-                        {initialsOf(user.name)}
+                        {initialsOf(account.name)}
                       </AvatarFallback>
                     </Avatar>
                     <span className="grid min-w-0 flex-1 text-left leading-tight">
-                      <span className="truncate text-sm font-semibold">{user.name}</span>
+                      <span className="truncate text-sm font-semibold">{account.name}</span>
                       <span className="truncate text-xs text-muted-foreground">
-                        {user.isDemo ? 'Démonstration · ' : ''}Palier {user.plan}
+                        {account.role === 'admin' ? 'Administrateur · ' : ''}Palier {account.plan.label}
                       </span>
                     </span>
                     <ChevronsUpDown className="ml-auto size-4" />
@@ -124,10 +157,8 @@ export function AppSidebar() {
                 </DropdownMenuTrigger>
                 <DropdownMenuContent side={isMobile ? 'top' : 'right'} align="end" sideOffset={8} className="min-w-56">
                   <DropdownMenuLabel className="font-normal">
-                    <span className="block truncate text-sm font-semibold">{user.name}</span>
-                    <span className="block truncate text-xs text-muted-foreground">
-                      {user.email || 'Compte de démonstration'}
-                    </span>
+                    <span className="block truncate text-sm font-semibold">{account.name}</span>
+                    <span className="block truncate text-xs text-muted-foreground">{account.email}</span>
                   </DropdownMenuLabel>
                   <DropdownMenuSeparator />
                   <DropdownMenuItem
@@ -139,6 +170,17 @@ export function AppSidebar() {
                     <UserRound />
                     Mon compte
                   </DropdownMenuItem>
+                  {adminSections.length > 0 && (
+                    <DropdownMenuItem
+                      onSelect={() => {
+                        closeOnMobile();
+                        navigate(adminSections[0]!.path);
+                      }}
+                    >
+                      <ShieldCheck />
+                      Administration
+                    </DropdownMenuItem>
+                  )}
                   <DropdownMenuItem onSelect={() => navigate('/')}>
                     <Home />
                     Page d’accueil
@@ -147,8 +189,7 @@ export function AppSidebar() {
                   <DropdownMenuItem
                     variant="destructive"
                     onSelect={() => {
-                      logout();
-                      navigate('/');
+                      void logout().finally(() => navigate('/'));
                     }}
                   >
                     <LogOut />

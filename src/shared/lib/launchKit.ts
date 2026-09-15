@@ -4,6 +4,7 @@ import { formatDateFr } from '@/shared/lib/formatDate';
 import { FALLBACK_DISCLAIMER } from '@/shared/lib/legal';
 import { marketLabel } from '@/shared/lib/markets';
 import { toFileSlug } from '@/shared/lib/pdfText';
+import { recordExport } from '@/shared/lib/usage';
 import { DigitalProductIdea } from '@/shared/types/analysis';
 import { ComplianceSection } from '@/shared/types/compliance';
 import { KitObjective, LaunchKitConfig, LaunchKitDraft } from '@/shared/types/launchKit';
@@ -131,4 +132,5 @@ export async function exportLaunchKit(
     new Blob(['﻿' + text], { type: 'text/plain;charset=utf-8' }),
     `${toFileSlug(product.title, 'produit')}-kit-de-lancement.txt`,
   );
+  recordExport('launch_kit', 'txt');
 }

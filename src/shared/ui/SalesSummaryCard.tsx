@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { AlertTriangle, TrendingUp } from 'lucide-react';
+import { ConnectChariowLink } from '@/shared/components/ConnectChariowLink';
 import { type ApiError, readApiError, toApiError } from '@/shared/lib/apiError';
 import { formatDateFr } from '@/shared/lib/formatDate';
 import type { SalesSummaryResponse } from '@/shared/types/marketplaces';
@@ -74,8 +75,10 @@ export function SalesSummaryCard() {
         error.code === 'NO_SALES_SOURCE' ? (
           <NoDataState
             title="Vos ventes s’afficheront ici"
-            reason="Aucune marketplace capable de remonter des ventes n’est connectée. Dès que la clé API Chariow est configurée sur le serveur, vos ventes réelles apparaîtront ici, jamais une estimation."
-          />
+            reason="Aucune boutique n’est reliée à votre compte. Ajoutez votre clé API Chariow dans Mon compte : vos ventes réelles apparaîtront ici, jamais une estimation."
+          >
+            <ConnectChariowLink />
+          </NoDataState>
         ) : (
           <Alert variant="danger">
             <AlertTriangle />

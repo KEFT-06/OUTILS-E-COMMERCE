@@ -92,9 +92,15 @@ export function CreditSimulatorDialog({ quote, unavailableReason, open, onConfir
                   Solde
                 </dt>
                 <dd className="inline-flex items-center gap-2 text-sm font-semibold tabular-nums">
-                  <span className="text-muted-foreground">{quote.balanceBefore} pts</span>
-                  <ArrowRight className="size-3.5 text-muted-foreground" aria-label="après l’action" />
-                  <span className={cn(!quote.sufficient && 'text-danger')}>{quote.balanceAfter} pts</span>
+                  {quote.unlimited ? (
+                    <span>Palier illimité : aucun point prélevé</span>
+                  ) : (
+                    <>
+                      <span className="text-muted-foreground">{quote.balanceBefore} pts</span>
+                      <ArrowRight className="size-3.5 text-muted-foreground" aria-label="après l’action" />
+                      <span className={cn(!quote.sufficient && 'text-danger')}>{quote.balanceAfter} pts</span>
+                    </>
+                  )}
                 </dd>
               </div>
             </dl>
@@ -122,7 +128,7 @@ export function CreditSimulatorDialog({ quote, unavailableReason, open, onConfir
                 Annuler
               </Button>
               <Button onClick={onConfirm} disabled={!quote.sufficient}>
-                Confirmer — {quote.cost} pts
+                {quote.unlimited ? 'Confirmer' : `Confirmer — ${quote.cost} pts`}
               </Button>
             </DialogFooter>
 

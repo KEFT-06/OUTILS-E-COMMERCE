@@ -110,8 +110,8 @@ export function CreativeGeneratorPanel() {
     setAttested(ATTESTATIONS.map(() => false));
 
     try {
-      // Points débités seulement si un fichier est produit : échec, refus du
-      // filtre de sécurité, abandon ou dépassement de délai ne coûtent rien.
+      // Points réservés par le serveur au lancement, puis rendus automatiquement si
+      // la génération échoue ou si le filtre de sécurité du fournisseur la refuse.
       await runWithCredits(generationKind === 'visual' ? 'image_generation' : 'video_generation', async () => {
         setIsGenerating(true);
         setProgress('queued');
@@ -132,7 +132,9 @@ export function CreativeGeneratorPanel() {
               throw new ApiError(status.message ?? 'La génération a échoué.');
             }
             if (Date.now() > deadline) {
-              throw new ApiError("La génération dépasse le délai d'attente : suivi abandonné. Aucun point n'a été débité.");
+              throw new ApiError(
+                "La génération dépasse le délai d'attente : suivi abandonné sur cet écran. Si elle échoue chez le fournisseur, vos points vous seront rendus automatiquement.",
+              );
             }
 
             await wait(POLL_INTERVAL_MS);

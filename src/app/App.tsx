@@ -1,6 +1,7 @@
 import { BrowserRouter, Navigate, Route, Routes } from 'react-router-dom';
 import { AuthProvider } from '@/features/auth/AuthContext';
 import { LoginPage } from '@/features/auth/LoginPage';
+import { PasswordTokenPage } from '@/features/auth/PasswordTokenPage';
 import { LandingPage } from '@/features/landing/LandingPage';
 import { LegalPage } from '@/features/legal/LegalPage';
 import { AppLayout } from '@/app/layout/AppLayout';
@@ -24,6 +25,15 @@ import {
   StorybookPage,
   StudioPage,
 } from '@/app/routes/ModulePages';
+import {
+  AdminContentPage,
+  AdminLayout,
+  AdminOverviewPage,
+  AdminRevenuePage,
+  AdminSecurityPage,
+  AdminUserDetailPage,
+  AdminUsersPage,
+} from '@/app/routes/AdminPages';
 import { NotFoundPage } from '@/app/routes/NotFoundPage';
 import { Toaster } from '@/shared/ui/sonner';
 import { TooltipProvider } from '@/shared/ui/tooltip';
@@ -43,6 +53,7 @@ export default function App() {
               <Routes>
                 <Route path="/" element={<LandingPage />} />
                 <Route path="/connexion" element={<LoginPage />} />
+                <Route path="/mot-de-passe" element={<PasswordTokenPage />} />
                 <Route path="/mentions-legales" element={<LegalPage kind="mentions-legales" />} />
                 <Route path="/confidentialite" element={<LegalPage kind="confidentialite" />} />
                 <Route path="/conditions" element={<LegalPage kind="conditions" />} />
@@ -65,6 +76,14 @@ export default function App() {
                     <Route path="distribution" element={<DistributionPage />} />
                     <Route path="affiliation" element={<AffiliationPage />} />
                     <Route path="compte" element={<AccountPage />} />
+                    <Route path="admin" element={<AdminLayout />}>
+                      <Route index element={<AdminOverviewPage />} />
+                      <Route path="utilisateurs" element={<AdminUsersPage />} />
+                      <Route path="utilisateurs/:userId" element={<AdminUserDetailPage />} />
+                      <Route path="revenus" element={<AdminRevenuePage />} />
+                      <Route path="contenus" element={<AdminContentPage />} />
+                      <Route path="securite" element={<AdminSecurityPage />} />
+                    </Route>
                     <Route path="*" element={<Navigate to="cockpit" replace />} />
                   </Route>
                 </Route>

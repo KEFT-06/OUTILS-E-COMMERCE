@@ -114,7 +114,15 @@ Export PDF / DOCX / MP4 / publication marketplace
       joignent pas ; `0.0.0.0` en production
 - [ ] Aucune clé côté client — vérifiable par `grep -r "VITE_" src/`
 - [ ] Échappement HTML systématique dans tout générateur de document (cf. audit D8)
-- [ ] Sessions : cookies `httpOnly` + `secure` + `sameSite=strict`
+- [x] Sessions en base, cookie `httpOnly` + `secure` (production, préfixe `__Host-`) + `sameSite=strict`,
+      révocables à l'instant ; 12 h au plus pour un compte qui détient des privilèges
+- [x] Mots de passe Argon2id (paramètres OWASP), vérification factice sans compte : pas d'énumération
+- [x] Verrou anti-force brute en base, par adresse e-mail et par IP, vérifié avant le mot de passe
+- [x] Double authentification TOTP avec codes de secours, obligatoire pour l'administration ; code frais
+      exigé pour changer un rôle ou des privilèges
+- [x] Secrets en base chiffrés AES-256-GCM (`DATA_ENCRYPTION_KEY`) ; Row Level Security activée sur toutes
+      les tables, sans politique : l'API REST de Supabase ne lit rien
+- [x] Journal d'audit des actions d'administration, écrit dans la même transaction que l'action
 - [ ] Jetons OAuth (Meta, marketplaces) chiffrés au repos, jamais journalisés
 - [ ] Pas de `dangerouslySetInnerHTML` sans assainissement
 - [ ] En-têtes de sécurité vérifiés en CI

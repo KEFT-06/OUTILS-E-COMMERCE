@@ -1,7 +1,7 @@
 import { useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Check, Download, LogOut, Moon, Sparkles, Sun, Target, UserRound } from 'lucide-react';
-import { ACCOUNT_PATH, MODULES, MODULE_GROUPS } from '@/app/navigation';
+import { ACCOUNT_PATH, MODULES, MODULE_GROUPS, visibleAdminSections } from '@/app/navigation';
 import { usePreferences } from '@/app/providers/PreferencesContext';
 import { useWorkspace } from '@/app/providers/WorkspaceProvider';
 import { useAuth } from '@/features/auth/AuthContext';
@@ -19,7 +19,8 @@ import {
 export function CommandPalette() {
   const navigate = useNavigate();
   const { theme, toggleTheme } = usePreferences();
-  const { logout } = useAuth();
+  const { account, logout } = useAuth();
+  const adminSections = account ? visibleAdminSections(account.permissions) : [];
   const { commandOpen, setCommandOpen, reports, currentReport, selectReport, setAnalysisDialogOpen, exportPdf } =
     useWorkspace();
 
@@ -71,6 +72,28 @@ export function CommandPalette() {
           </CommandGroup>
         ))}
 
+        {adminSections.length > 0 && (
+          <>
+            <CommandSeparator />
+            <CommandGroup heading="Administration">
+              {adminSections.map((section) => {
+                const Icon = section.icon;
+                return (
+                  <CommandItem
+                    key={section.id}
+                    value={`administration ${section.label} ${section.description}`}
+                    onSelect={() => run(() => navigate(section.path))}
+                  >
+                    <Icon />
+                    <span>{section.label}</span>
+                    <span className="ml-auto truncate text-xs text-muted-foreground">{section.description}</span>
+                  </CommandItem>
+                );
+              })}
+            </CommandGroup>
+          </>
+        )}
+
         <CommandSeparator />
         <CommandGroup heading="Niches">
           {reports.map((report) => (
@@ -108,8 +131,7 @@ export function CommandPalette() {
             value="se déconnecter"
             onSelect={() =>
               run(() => {
-                logout();
-                navigate('/');
+                void logout().finally(() => navigate('/'));
               })
             }
           >

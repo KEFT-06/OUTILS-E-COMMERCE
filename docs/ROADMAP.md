@@ -350,15 +350,15 @@ c'est la **traçabilité**. Ce lot livre les différenciateurs 1, 2 et 3 du cahi
     Le fournisseur ne les conserve qu'environ **sept jours** — l'écran le dit.
   - Soumissions jamais rejouées automatiquement : l'API n'accepte pas de clé d'idempotence, une
     génération relancée après un délai ambigu serait facturée deux fois.
-  - Points débités seulement si un fichier est produit ; refus du filtre de sécurité (`nsfw`), échec
-    ou abandon ne coûtent rien (et ne sont pas facturés par Higgsfield).
+  - Points réservés par le serveur au lancement, rendus si la génération échoue, est refusée par le
+    filtre de sécurité (`nsfw`) ou reste sans nouvelles 48 h (non facturées par Higgsfield non plus).
   - Identifiant de suivi validé comme UUID ; configuration corrigée : Higgsfield authentifie par une
     **paire** identifiant + secret, alors que le serveur n'attendait qu'une clé unique, qui n'aurait
     fonctionné avec aucun appel réel.
-  > ⛔ **Bloqué sur toi :** identifiants Higgsfield Cloud (identifiant + secret) pour vérifier contre
-  > l'API réelle. Coûts en points (1 par visuel, 12 par vidéo) toujours provisoires.
-  > ⚠️ Aucune authentification réelle : n'importe quel utilisateur connaissant l'identifiant d'une
-  > génération peut en récupérer le fichier. À corriger avec la base de données et les comptes.
+  > ✅ Identifiants Higgsfield configurés et acceptés par l'API (appel de statut gratuit, 14/09/2026) ;
+  > une vraie génération, payante, reste à lancer. Coûts en points (1 par visuel, 12 par vidéo)
+  > toujours provisoires.
+  > ✅ Chaque génération appartient à son auteur : suivi et fichier refusés (404) à tout autre compte.
 
 ## Lot 5 — Vendre (modules 5, 6, 9, 11)
 
@@ -488,9 +488,9 @@ c'est la **traçabilité**. Ce lot livre les différenciateurs 1, 2 et 3 du cahi
   - Vérifié : 4 consentants + 1 refus → masqué ; 5 vendeurs dont un retrait de consentement →
     masqué ; gros vendeur à 3 lignes (10, 20, 30) compté une fois, médiane de [20, 1, 2, 3, 4] = 3 ;
     mesure fournie par 4 vendeurs sur 5 → non publiée.
-  > ⛔ **Bloqué** : il n'existe ni base de données ni authentification serveur (les brouillons vivent
-  > dans le navigateur). Sans identité vérifiée, n'importe qui pourrait se déclarer « 5 vendeurs » et
-  > contourner le seuil. La règle n'est branchée à aucune route tant que la collecte n'existe pas.
+  > ⛔ **Bloqué** : les comptes vérifiés existent désormais, mais pas encore la collecte des ventes
+  > par vendeur ni le consentement en base. La règle n'est branchée à aucune route tant que la
+  > collecte n'existe pas.
 
 - **Module 10 — Multilingue Tier A/B/C et réseau de relecteurs ⛔ non commencé**
   > ⛔ Le cahier des charges n'est pas dans le dépôt : aucune définition des tiers A, B et C
@@ -531,6 +531,27 @@ Suite de l'audit d'interface (26 écrans, 24 problèmes classés). Détail des r
   > compléter par l'éditeur (identité, hébergeur, contact) ; prix des paliers non définis ;
   > `radix-ui` épinglé en 1.4.3 et composants shadcn récupérés par script, le CLI et les versions
   > récentes dépendant de paquets absents du registre npm.
+
+## Comptes, sécurité et administration — septembre 2026 ✅
+
+Détail dans `docs/COMPTES-ET-ADMINISTRATION.md`.
+
+- **Base de données** : PostgreSQL avec Drizzle, 14 tables, Row Level Security activée. Base
+  embarquée en développement, Supabase attendu en production.
+- **Comptes réels** : inscription et connexion par mot de passe (Argon2id), sessions `httpOnly`
+  révocables, verrou anti-force brute par adresse et par IP, double authentification TOTP avec codes
+  de secours, liens de mot de passe à usage unique. Le compte de démonstration local est retiré.
+- **Points côté serveur** : quota mensuel du palier et points bonus, réservés au lancement d'une
+  génération et rendus en cas d'échec ; registre de chaque mouvement.
+- **Administration** : vue d'ensemble (revenus, en ligne, contenus), utilisateurs et fiches (palier,
+  points, fonctions accordées ou retirées, privilèges délégués, suspension, sessions, liens), revenus
+  par jour, mois et année, contenus créés par type et par format, sécurité et journal d'audit.
+- **Chariow** : clé du serveur réservée aux administrateurs ; clé personnelle chiffrée par utilisateur.
+- **Vérifié** : 38 tests serveur (fournisseurs simulés), `tsc` et build de production OK.
+  > ⛔ **Bloqué sur toi :** projet Supabase (région Paris) et sa chaîne de connexion ; prix des
+  > paliers ; moyen de paiement en ligne (les abonnements s'enregistrent à la main en attendant).
+  > ⚠️ Brouillons, swipe file et rapports restent dans le navigateur : leur migration en base est
+  > la prochaine étape.
 
 ## Ordre de bataille recommandé
 

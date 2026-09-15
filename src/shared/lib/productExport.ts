@@ -8,6 +8,7 @@ import {
   documentPlainText,
 } from '@/shared/lib/productDocument';
 import { renderProductPDF } from '@/shared/lib/productPdf';
+import { recordExport } from '@/shared/lib/usage';
 import { getSwipeEntries } from '@/shared/lib/useSwipeFile';
 import { DigitalProductIdea, MarketAnalysisReport } from '@/shared/types/analysis';
 import { ReportComplianceVerdict } from '@/shared/types/compliance';
@@ -157,5 +158,6 @@ export async function exportProduct(
     await renderProductDOCX(productDocument, stamp);
   }
 
+  recordExport('ebook', format);
   return verdict;
 }

@@ -2,6 +2,7 @@ import { jsPDF } from 'jspdf';
 import { triggerDownload } from '@/shared/lib/download';
 import { fetchRequiredDisclaimer } from '@/shared/lib/legal';
 import { toPdfSafe } from '@/shared/lib/pdfText';
+import { recordExport } from '@/shared/lib/usage';
 import { SwipeEntry } from '@/shared/lib/useSwipeFile';
 
 /**
@@ -79,6 +80,7 @@ export async function exportSwipeFileCSV(entries: SwipeEntry[]): Promise<void> {
   // BOM : sans lui, Excel lit l'UTF-8 comme du Windows-1252 et casse les accents.
   const blob = new Blob(['﻿' + lines.join('\r\n')], { type: 'text/csv;charset=utf-8' });
   triggerDownload(blob, `swipe-file_${fileStamp()}.csv`);
+  recordExport('swipe_file', 'csv');
 }
 
 export async function exportSwipeFilePDF(entries: SwipeEntry[]): Promise<void> {
@@ -197,4 +199,5 @@ export async function exportSwipeFilePDF(entries: SwipeEntry[]): Promise<void> {
   }
 
   doc.save(`swipe-file_${fileStamp()}.pdf`);
+  recordExport('swipe_file', 'pdf');
 }

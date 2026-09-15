@@ -1,6 +1,7 @@
 import { env, listenHost, providers } from '@server/env';
 import { closeDatabase, databaseKind, initDatabase } from '@server/db/client';
 import { createApp } from '@server/app';
+import { startGenerationSweeper } from '@server/services/generations/sweeper';
 
 /* -------------------------------------------------------------------------- */
 /*  Démarrage                                                                  */
@@ -40,10 +41,14 @@ const server = app.listen(env.PORT, listenHost, () => {
   console.log('');
 });
 
+// Reprend le suivi des générations dont l'écran a été fermé avant la fin.
+const stopSweeper = startGenerationSweeper();
+
 // Arrêt propre : sans cela, un déploiement coupe les requêtes en cours.
 for (const signal of ['SIGTERM', 'SIGINT'] as const) {
   process.on(signal, () => {
     console.log(`\n  ${signal} reçu, arrêt en cours…`);
+    stopSweeper();
     server.close(() => {
       void closeDatabase().finally(() => process.exit(0));
     });

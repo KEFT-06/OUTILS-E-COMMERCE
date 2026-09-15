@@ -34,6 +34,7 @@ import {
   listUsers,
   onlineUsers,
   revenueSeries,
+  revenueTotals,
   securityEvents,
   serializePayment,
   throttleEntries,
@@ -160,6 +161,14 @@ adminRouter.get(
   requirePermission('admin.revenue.read'),
   asyncRoute(async (req, res) => {
     res.json(await revenueSeries(granularityOf(req.query.granularity)));
+  }),
+);
+
+adminRouter.get(
+  '/revenue/totals',
+  requirePermission('admin.revenue.read'),
+  asyncRoute(async (_req, res) => {
+    res.json(await revenueTotals());
   }),
 );
 

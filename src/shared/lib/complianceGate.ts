@@ -7,6 +7,7 @@ import {
 } from '@/shared/types/compliance';
 import { FALLBACK_DISCLAIMER } from '@/shared/lib/legal';
 import { generateAnalysisPDF } from '@/shared/lib/pdfGenerator';
+import { recordExport } from '@/shared/lib/usage';
 
 /**
  * Porte de conformité — différenciateur n°2 (CdC §6.4.1).
@@ -188,5 +189,6 @@ export async function exportReportPDF(
     disclaimer: verdict.requiredDisclaimer || FALLBACK_DISCLAIMER,
   });
 
+  recordExport('report_pdf', 'pdf');
   return verdict;
 }

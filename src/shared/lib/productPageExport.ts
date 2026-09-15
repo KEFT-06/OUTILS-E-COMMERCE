@@ -1,5 +1,6 @@
 import { ComplianceBlockedError, checkSectionsCompliance } from '@/shared/lib/complianceGate';
 import { triggerDownload } from '@/shared/lib/download';
+import { recordExport } from '@/shared/lib/usage';
 import { FALLBACK_DISCLAIMER } from '@/shared/lib/legal';
 import { toFileSlug } from '@/shared/lib/pdfText';
 import {
@@ -49,4 +50,5 @@ export async function exportProductPage(
     new Blob([html], { type: 'text/html;charset=utf-8' }),
     `${toFileSlug(product.title, 'page-produit')}-variante-${variant.toLowerCase()}.html`,
   );
+  recordExport('product_page', 'html');
 }
