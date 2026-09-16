@@ -1,10 +1,11 @@
 import { useEffect, useState } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useSearchParams } from 'react-router-dom';
 import { ArrowLeft, Mail, MailCheck, TriangleAlert } from 'lucide-react';
 import { useAuth } from '@/features/auth/AuthContext';
 import { apiRequest } from '@/shared/lib/api';
 import { type ApiError, toApiError } from '@/shared/lib/apiError';
 import { useTrackVisit } from '@/shared/lib/audience';
+import { usePublicPageMeta } from '@/shared/lib/pageMeta';
 import { Alert, AlertDescription, AlertTitle } from '@/shared/ui/alert';
 import { BrandLogo } from '@/shared/ui/BrandLogo';
 import { Button } from '@/shared/ui/button';
@@ -37,10 +38,12 @@ function firstIssue(error: ApiError): string {
 
 export function ContactPage() {
   useTrackVisit('/contact');
+  usePublicPageMeta('/contact');
   const { account } = useAuth();
   const [name, setName] = useState(account?.name ?? '');
   const [email, setEmail] = useState(account?.email ?? '');
-  const [topic, setTopic] = useState<Topic>('question');
+  const [params] = useSearchParams();
+  const [topic, setTopic] = useState<Topic>(() => TOPICS.find((entry) => entry.value === params.get('sujet'))?.value ?? 'question');
   const [message, setMessage] = useState('');
   const [website, setWebsite] = useState('');
   const [busy, setBusy] = useState(false);
@@ -48,7 +51,6 @@ export function ContactPage() {
   const [error, setError] = useState<ApiError | null>(null);
 
   useEffect(() => {
-    document.title = 'Contact · Smart Creator';
     window.scrollTo(0, 0);
   }, []);
 

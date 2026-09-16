@@ -1,6 +1,7 @@
 import { useEffect, type ReactNode } from 'react';
 import { Link } from 'react-router-dom';
 import { useTrackVisit } from '@/shared/lib/audience';
+import { usePublicPageMeta } from '@/shared/lib/pageMeta';
 import { AlertTriangle, ArrowLeft } from 'lucide-react';
 import { Alert, AlertDescription, AlertTitle } from '@/shared/ui/alert';
 import { BrandLogo } from '@/shared/ui/BrandLogo';
@@ -9,9 +10,10 @@ import { Button } from '@/shared/ui/button';
 /**
  * Pages légales.
  *
- * Les informations que seul l'éditeur peut fournir (identité, adresse,
- * hébergeur, contact) sont signalées « à compléter » plutôt qu'inventées. Le
- * reste décrit le service tel qu'il fonctionne réellement aujourd'hui.
+ * Les informations que seul l'éditeur peut fournir (identité, adresse, hébergeur,
+ * durées légales, droit applicable) sont signalées « à compléter » plutôt
+ * qu'inventées. Le reste décrit le site tel qu'il fonctionne réellement : chaque
+ * durée et chaque service cité correspond au code du serveur.
  */
 
 export type LegalKind = 'mentions-legales' | 'confidentialite' | 'conditions';
@@ -39,6 +41,14 @@ function Section({ title, children }: { title: string; children: ReactNode }) {
   );
 }
 
+function ContactLink({ topic, children }: { topic?: 'data'; children: ReactNode }) {
+  return (
+    <Link to={topic ? `/contact?sujet=${topic}` : '/contact'} className="font-medium text-primary underline underline-offset-4">
+      {children}
+    </Link>
+  );
+}
+
 function MentionsLegales() {
   return (
     <>
@@ -50,24 +60,28 @@ function MentionsLegales() {
           Directeur de la publication : <ToComplete>nom</ToComplete>
         </p>
         <p>
-          Contact : <ToComplete>adresse e-mail</ToComplete>
+          Contact : par le <ContactLink>formulaire de contact</ContactLink>.
         </p>
       </Section>
       <Section title="Hébergement">
         <p>
-          <ToComplete>nom, adresse et contact de l’hébergeur</ToComplete>
+          Site : <ToComplete>nom, adresse et contact de l’hébergeur du site</ToComplete>
+        </p>
+        <p>
+          Base de données : <ToComplete>nom de l’hébergeur de la base de données et pays des serveurs</ToComplete>
         </p>
       </Section>
       <Section title="Propriété intellectuelle">
         <p>
           La marque Smart Creator, son logo, ses textes et son interface sont protégés. Toute reproduction sans
-          l’autorisation de l’éditeur est interdite. Les contenus que vous créez avec l’outil vous appartiennent.
+          l’autorisation de l’éditeur est interdite. Les contenus que vous créez avec le site vous appartiennent.
         </p>
       </Section>
       <Section title="Nature des analyses">
         <p>
-          Smart Creator fournit des analyses fondées sur des données publiques et des estimations. Elles aident à décider
-          mais ne garantissent aucun résultat commercial ou financier.
+          Les analyses de niche s’appuient sur des sources web citées une à une. Un chiffre sans source n’est pas affiché,
+          et une analyse sans source ne rend aucun verdict. Ces analyses aident à décider mais ne garantissent aucun
+          résultat commercial ou financier.
         </p>
       </Section>
     </>
@@ -77,44 +91,139 @@ function MentionsLegales() {
 function Confidentialite() {
   return (
     <>
-      <Section title="Où sont conservées vos données">
+      <Section title="Responsable du traitement">
         <p>
-          Dans la version actuelle, il n’existe pas encore de compte sur nos serveurs. Votre profil (nom, adresse e-mail,
-          palier, points de recherche, niches enregistrées) et vos brouillons (produits, swipe file, kits de lancement,
-          pages produits) sont enregistrés dans votre navigateur.
+          <ToComplete>identité et adresse du responsable du traitement</ToComplete>
         </p>
         <p>
-          Se déconnecter supprime le profil de ce navigateur. Effacer les données du site dans les réglages du navigateur
-          supprime aussi les brouillons.
+          Pour toute question sur vos données : le <ContactLink topic="data">formulaire de contact</ContactLink>, sujet
+          « Mes données personnelles ».
         </p>
       </Section>
-      <Section title="Données transmises à des services tiers">
+
+      <Section title="Données conservées">
+        <ul className="list-disc space-y-1.5 pl-5">
+          <li>
+            <strong>Compte</strong> : nom, adresse e-mail, pays, date de confirmation de l’adresse, palier et points de
+            recherche. Le mot de passe n’est jamais conservé en clair (empreinte Argon2id) ; le secret de l’application
+            d’authentification est chiffré.
+          </li>
+          <li>
+            <strong>Travail</strong> : vos 50 dernières analyses de niche, vos brouillons (produits, kits de lancement,
+            pages produits), vos guides et leurs traductions, vos couvertures et l’historique de vos
+            générations. Ils sont enregistrés sur votre compte et vous les retrouvez sur chaque appareil.
+          </li>
+          <li>
+            <strong>Connexions</strong> : pendant une session, l’adresse IP et le navigateur. Après la déconnexion,
+            l’historique ne garde que le type d’appareil et une adresse IP tronquée.
+          </li>
+          <li>
+            <strong>Journal de sécurité</strong> : connexions réussies ou refusées, changements de mot de passe et de
+            second facteur, avec l’adresse IP et le navigateur.
+          </li>
+          <li>
+            <strong>Paiements</strong> : palier, montant, devise, date et référence du paiement. Le numéro de carte est
+            saisi sur la page de Stripe et n’arrive jamais sur nos serveurs.
+          </li>
+          <li>
+            <strong>Clé Chariow personnelle</strong> : chiffrée sur le serveur, jamais renvoyée au navigateur ; seuls ses
+            quatre derniers caractères sont affichés.
+          </li>
+          <li>
+            <strong>Messages de contact</strong> : nom, adresse e-mail, sujet et message.
+          </li>
+        </ul>
+      </Section>
+
+      <Section title="Qui y accède">
+        <p>
+          Les administrateurs de Smart Creator voient les informations de compte, les paiements et l’historique des
+          connexions, pour l’assistance et la sécurité ; chacune de leurs actions est inscrite dans un journal qu’ils ne
+          peuvent pas effacer. Quand vous demandez la relecture d’une traduction, le relecteur désigné voit le guide
+          concerné.
+        </p>
+      </Section>
+
+      <Section title="Services tiers">
         <p>
           Quand vous utilisez une fonction, et seulement si le service correspondant est configuré sur le serveur, les
-          informations nécessaires lui sont transmises :
+          informations nécessaires lui sont transmises par le serveur. Aucune de nos clés d’accès n’est envoyée au
+          navigateur.
         </p>
         <ul className="list-disc space-y-1.5 pl-5">
-          <li>Meta (bibliothèque publicitaire) : la niche et le marché d’une collecte de publicités ;</li>
-          <li>Google Gemini : la requête d’une analyse de niche ;</li>
+          <li>Google Gemini : la niche et le marché d’une analyse avec les sources trouvées, les textes à rédiger ou à traduire, la vidéo ou le lien YouTube d’un produit créé à partir d’une vidéo ;</li>
+          <li>Perplexity : les recherches web d’une analyse (niche et marché), sans aucune donnée de compte ;</li>
+          <li>Higgsfield : le brief d’un visuel, d’une vidéo ou d’une couverture ;</li>
           <li>Gamma : le brief d’un storybook ;</li>
-          <li>Higgsfield : le brief d’un visuel ou d’une vidéo ;</li>
           <li>
-            Chariow : la consultation de votre catalogue, de vos ventes et de vos affiliés, et les adresses e-mail que vous
-            saisissez pour inviter des affiliés — Chariow leur envoie alors un e-mail ;
+            Chariow : avec votre propre clé, la consultation de votre catalogue, de vos ventes et de vos affiliés, et les
+            adresses e-mail que vous saisissez pour inviter des affiliés — Chariow leur envoie alors un e-mail ;
+          </li>
+          <li>Stripe : votre adresse e-mail, l’identifiant de votre compte, le palier et le montant, lors d’un paiement ;</li>
+          <li>
+            Service d’envoi d’e-mails (Brevo ou Resend) : votre adresse et le contenu des e-mails de sécurité (lien de
+            nouveau mot de passe, confirmation d’adresse, alerte de changement de mot de passe) ;
           </li>
           <li>Google Fonts : les polices du site sont chargées depuis les serveurs de Google, qui reçoivent votre adresse IP.</li>
         </ul>
-      </Section>
-      <Section title="Cookies">
         <p>
-          Un cookie fonctionnel mémorise l’état ouvert ou replié de la barre latérale. Smart Creator ne dépose aucun cookie
-          publicitaire ni de mesure d’audience.
+          Plusieurs de ces services sont établis hors de l’Union européenne.{' '}
+          <ToComplete>garanties encadrant ces transferts (clauses contractuelles types, cadre de protection des données)</ToComplete>
         </p>
       </Section>
+
+      <Section title="Cookies et stockage du navigateur">
+        <ul className="list-disc space-y-1.5 pl-5">
+          <li>
+            Cookie de session : vous garde connecté, illisible par les scripts de la page. Il expire après 30 jours, ou 7
+            jours sans activité ; 12 heures pour un compte d’administration.
+          </li>
+          <li>Cookie de second facteur : quelques minutes, le temps de saisir le code de connexion.</li>
+          <li>Cookie « sidebar_state » : mémorise l’état ouvert ou replié de la barre latérale, 7 jours.</li>
+          <li>Stockage du navigateur : le thème clair ou sombre et la dernière analyse ouverte.</li>
+        </ul>
+        <p>
+          Ces éléments sont nécessaires au fonctionnement du site. Smart Creator ne dépose aucun cookie publicitaire ni de
+          mesure d’audience.
+        </p>
+      </Section>
+
+      <Section title="Mesure d’audience sans cookie">
+        <p>
+          Sur les pages publiques seulement (accueil, connexion, contact, pages légales), le serveur compte les visites par
+          page et par jour, et le site d’où vient le visiteur. Pour compter les visiteurs uniques, il calcule une empreinte
+          avec une clé qui change chaque jour ; les empreintes sont effacées le lendemain et ne permettent pas de vous
+          suivre d’un jour à l’autre. Si votre navigateur envoie un refus de suivi (Do Not Track ou Global Privacy
+          Control), rien n’est compté.
+        </p>
+      </Section>
+
+      <Section title="Durées de conservation">
+        <ul className="list-disc space-y-1.5 pl-5">
+          <li>Compte, contenus et clé Chariow : tant que le compte existe ;</li>
+          <li>Analyses de niche : les 50 plus récentes ;</li>
+          <li>Historique des connexions : 12 mois après la déconnexion ;</li>
+          <li>Journal de sécurité : 12 mois ;</li>
+          <li>Messages de contact : 12 mois ;</li>
+          <li>Lien de nouveau mot de passe : 1 heure ; lien de confirmation d’adresse : 48 heures ;</li>
+          <li>Empreintes de la mesure d’audience : jusqu’au lendemain ;</li>
+          <li>
+            Paiements : conservés pour la comptabilité, y compris après la suppression du compte, pendant{' '}
+            <ToComplete>durée légale de conservation des pièces comptables</ToComplete>.
+          </li>
+        </ul>
+      </Section>
+
       <Section title="Vos droits">
         <p>
-          Vous pouvez demander l’accès, la rectification ou la suppression des données vous concernant :{' '}
-          <ToComplete>adresse de contact pour exercer ces droits</ToComplete>
+          Dans Mon compte, vous pouvez à tout moment modifier votre nom et votre pays, télécharger une copie de toutes vos
+          données (fichier JSON) et supprimer votre compte. La suppression efface le compte, les contenus, les sessions et
+          le journal de sécurité ; seule reste une trace anonyme de la suppression, et les paiements pour la comptabilité.
+        </p>
+        <p>
+          Pour toute autre demande (rectification, opposition, limitation) : le{' '}
+          <ContactLink topic="data">formulaire de contact</ContactLink>. Vous pouvez aussi saisir l’autorité de protection
+          des données de votre pays (en France, la CNIL).
         </p>
       </Section>
     </>
@@ -124,46 +233,88 @@ function Confidentialite() {
 function Conditions() {
   return (
     <>
-      <Section title="Un service en cours de développement">
+      <Section title="Objet">
         <p>
-          Plusieurs fonctions dépendent de services tiers qui ne sont pas encore tous branchés ; l’écran l’indique chaque
-          fois. Les comptes sont pour l’instant locaux : aucun mot de passe n’est demandé ni vérifié.
+          Smart Creator aide à lire un marché, à produire des produits digitaux et à les vendre : analyses de niche,
+          studio de produits, kits de lancement, pages produits, campagnes et guides multilingues. Ces conditions
+          s’appliquent dès la création d’un compte.
+        </p>
+      </Section>
+      <Section title="Compte">
+        <p>
+          Un compte correspond à une personne. Vous fournissez une adresse e-mail valide, gardez votre mot de passe pour
+          vous et êtes responsable de ce qui est fait depuis votre compte. Activer l’application d’authentification est
+          vivement recommandé.
+        </p>
+      </Section>
+      <Section title="Points de recherche et paliers">
+        <p>
+          Chaque action payante affiche son coût en points avant validation. Si une génération échoue, les points sont
+          rendus. Les quotas et les prix affichés sur le site sont ceux en vigueur au moment de l’action ou du paiement.
+        </p>
+      </Section>
+      <Section title="Paiement">
+        <p>
+          Les paliers se paient par carte sur la page sécurisée de Stripe, pour 1 mois ou 1 an. Le palier s’active dès que
+          Stripe confirme le paiement. Il n’y a pas de renouvellement automatique : aucun prélèvement n’a lieu sans un
+          nouveau paiement de votre part.
+        </p>
+        <p>
+          Rétractation et remboursement : <ToComplete>conditions de rétractation et de remboursement</ToComplete>
         </p>
       </Section>
       <Section title="Analyses et résultats">
         <p>
-          Les taux, volumes et recommandations reposent sur des données publiques et des estimations dont la provenance est
-          affichée. Ils ne constituent ni un conseil financier ni une garantie de ventes.
+          Les taux, volumes et recommandations reposent sur des sources publiques citées et sur des estimations dont la
+          nature est affichée. Ils ne constituent ni un conseil financier ni une garantie de ventes.
+        </p>
+      </Section>
+      <Section title="Contenus générés">
+        <p>
+          Les textes, visuels et vidéos sont produits par des modèles d’intelligence artificielle qui peuvent se tromper.
+          Relisez tout contenu avant de le diffuser ; vous restez responsable de ce que vous publiez. Les contes du
+          storybook ne passent pas par le vérificateur de conformité, et la cohérence d’un personnage d’une page à l’autre
+          n’est pas garantie.
         </p>
       </Section>
       <Section title="Conformité publicitaire">
         <p>
           Le vérificateur de conformité signale les formulations à risque avant chaque export. Il ne remplace ni la
-          modération des plateformes publicitaires, qui garde la décision finale, ni un avis juridique. Vous restez
-          responsable des contenus que vous publiez.
+          modération des plateformes publicitaires, qui garde la décision finale, ni un avis juridique.
         </p>
       </Section>
-      <Section title="Contenus générés">
+      <Section title="Chariow et invitations d’affiliés">
         <p>
-          Relisez tout contenu généré avant de le diffuser. Les contes du storybook ne passent pas par le vérificateur de
-          conformité, et la cohérence d’un personnage d’une page à l’autre n’est pas garantie.
+          Chaque utilisateur branche sa propre clé Chariow. Une invitation déclenche l’envoi immédiat d’un e-mail par
+          Chariow : n’invitez que des personnes qui ont accepté d’être contactées.
         </p>
       </Section>
-      <Section title="Points de recherche et paliers">
+      <Section title="Usages interdits">
+        <ul className="list-disc space-y-1.5 pl-5">
+          <li>produire ou diffuser des contenus illicites, trompeurs ou qui portent atteinte aux droits d’autrui ;</li>
+          <li>tenter d’accéder au compte d’un autre utilisateur ou aux parties non publiques du site ;</li>
+          <li>contourner les limites de points, de débit ou de sécurité, ou automatiser l’usage du site ;</li>
+          <li>revendre ou partager l’accès à un compte.</li>
+        </ul>
+        <p>Un compte qui enfreint ces règles peut être bloqué par l’administration.</p>
+      </Section>
+      <Section title="Disponibilité">
         <p>
-          Le coût de chaque action s’affiche avant validation. Les quotas et la valeur des points sont provisoires, et le
-          paiement en ligne n’est pas encore ouvert.
+          Le site évolue régulièrement. Plusieurs fonctions dépendent de services tiers ; quand l’un d’eux n’est pas
+          disponible ou pas configuré, l’écran l’indique.
         </p>
       </Section>
-      <Section title="Invitations d’affiliés">
+      <Section title="Fin d’utilisation">
+        <p>Vous pouvez supprimer votre compte à tout moment depuis Mon compte.</p>
+      </Section>
+      <Section title="Droit applicable">
         <p>
-          Une invitation déclenche l’envoi immédiat d’un e-mail par Chariow. N’invitez que des personnes qui ont accepté
-          d’être contactées.
+          <ToComplete>droit applicable et juridiction compétente</ToComplete>
         </p>
       </Section>
       <Section title="Contact">
         <p>
-          <ToComplete>adresse e-mail de contact</ToComplete>
+          Par le <ContactLink>formulaire de contact</ContactLink>.
         </p>
       </Section>
     </>
@@ -178,13 +329,13 @@ const CONTENT: Record<LegalKind, () => ReactNode> = {
 
 export function LegalPage({ kind }: { kind: LegalKind }) {
   useTrackVisit(`/${kind}`);
+  usePublicPageMeta(`/${kind}`);
   const title = TITLES[kind];
   const Content = CONTENT[kind];
 
   useEffect(() => {
-    document.title = `${title} · Smart Creator`;
     window.scrollTo(0, 0);
-  }, [title]);
+  }, [kind]);
 
   return (
     <div className="min-h-svh bg-background">

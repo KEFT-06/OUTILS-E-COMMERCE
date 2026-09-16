@@ -1,6 +1,7 @@
 import { Suspense, lazy, useEffect, useState, type ReactNode } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useTrackVisit } from '@/shared/lib/audience';
+import { usePublicPageMeta } from '@/shared/lib/pageMeta';
 import { ArrowRight, ExternalLink, Moon, Scale, ShieldCheck, Sun, Wallet } from 'lucide-react';
 import { MODULES, MODULE_GROUPS, type ModuleGroup } from '@/app/navigation';
 import { usePreferences } from '@/app/providers/PreferencesContext';
@@ -31,7 +32,7 @@ const BorderBeam = lazy(() => import('@/shared/ui/magicui/border-beam').then((mo
  */
 
 const GROUP_PITCH: Record<ModuleGroup, string> = {
-  voir: 'Lire la demande, la concurrence et les publicités déjà diffusées.',
+  voir: 'Lire la demande, la concurrence et les prix pratiqués.',
   creer: 'Structurer le produit, ses visuels, ses scripts et sa page de vente.',
   vendre: 'Préparer la campagne, suivre les ventes et animer vos affiliés.',
 };
@@ -39,8 +40,8 @@ const GROUP_PITCH: Record<ModuleGroup, string> = {
 const COMMITMENTS = [
   {
     icon: Scale,
-    title: 'Le scoring est ouvert',
-    body: 'Le taux de saturation repose sur quatre critères publiés : annonceurs uniques (30 %), publicités actives (25 %), durée de vie moyenne (25 %), publicités établies (20 %). Chaque score est archivé avec sa version de méthodologie.',
+    title: 'Chaque chiffre porte sa source',
+    body: 'Concurrents, prix et niveaux de marché ne s’affichent que s’ils viennent d’une page web citée dans le rapport. Sans source, le taux reste « non évalué » plutôt que deviné.',
   },
   {
     icon: ShieldCheck,
@@ -63,7 +64,7 @@ const FAQ = [
   {
     question: 'Les analyses de marché sont-elles en temps réel ?',
     answer:
-      'Pas encore. Le scan en direct attend la connexion de la bibliothèque publicitaire Meta et d’un fournisseur d’IA. Aucun rapport d’exemple n’est fabriqué en attendant : chaque analyse porte sur la niche que vous choisissez.',
+      'Chaque analyse est lancée au moment où vous la demandez : une recherche web sur la niche et le marché, puis un rapport rédigé à partir de ces seules pages, citées une à une. Aucun rapport d’exemple n’est fabriqué.',
   },
   {
     question: 'Mes publicités seront-elles acceptées par Meta ou TikTok ?',
@@ -118,16 +119,13 @@ function SectionHeading({ eyebrow, title, description }: { eyebrow: string; titl
 
 export function LandingPage() {
   useTrackVisit('/');
+  usePublicPageMeta('/');
   const { isAuthenticated, account } = useAuth();
   const [priceCountry, setPriceCountry] = useState(() => account?.country ?? guessCountryCode() ?? 'US');
   const { theme, toggleTheme } = usePreferences();
   const navigate = useNavigate();
   const reduceMotion = usePrefersReducedMotion();
   const { catalog } = usePlans(priceCountry);
-
-  useEffect(() => {
-    document.title = 'Smart Creator — Veille stratégique & production e-commerce';
-  }, []);
 
   const openWorkspace = () => {
     navigate(isAuthenticated ? '/app/cockpit' : '/connexion?mode=inscription');

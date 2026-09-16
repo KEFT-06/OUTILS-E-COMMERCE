@@ -7,6 +7,7 @@ import { dirname, join } from 'node:path';
 import { env, isProd } from '@server/env';
 import { apiLimiter, corsMiddleware, errorHandler, notFoundHandler } from '@server/middleware';
 import { api } from '@server/routes';
+import { mountClient, mountSeoRoutes } from '@server/services/seo';
 
 /**
  * Application Express, sans démarrage : le serveur (server/index.ts) l'écoute sur
@@ -81,24 +82,9 @@ export function createApp() {
 
   if (isProd) {
     const here = dirname(fileURLToPath(import.meta.url));
-    const clientDir = join(here, 'client');
-
-    app.use(
-      express.static(clientDir, {
-        maxAge: '1y',
-        index: false,
-        setHeaders(res, path) {
-          // Le HTML ne doit jamais être mis en cache longtemps : c'est lui qui
-          // référence les bundles versionnés.
-          if (path.endsWith('.html')) res.setHeader('Cache-Control', 'no-cache');
-        },
-      }),
-    );
-
-    app.get('*', (req, res, next) => {
-      if (req.path.startsWith('/api')) return next();
-      res.sendFile(join(clientDir, 'index.html'));
-    });
+    mountClient(app, join(here, 'client'), env.APP_URL);
+  } else {
+    mountSeoRoutes(app, env.APP_URL, new Date().toISOString().slice(0, 10));
   }
 
   app.use(notFoundHandler);

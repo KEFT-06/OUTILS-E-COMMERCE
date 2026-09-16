@@ -101,6 +101,36 @@ describe('Historique des connexions', () => {
     assert.equal(me.body.account, null);
   });
 
+  it('efface le journal de sécurité au-delà de 12 mois, sauf la trace anonyme d’une suppression', async () => {
+    const { eq, inArray } = await import('drizzle-orm');
+    const { getDb } = await import('@server/db/client');
+    const { authEvents } = await import('@server/db/schema');
+    const { sweepSessions } = await import('@server/services/auth/sessions');
+
+    const old = new Date(Date.now() - 400 * 86_400_000);
+    const recent = new Date(Date.now() - 30 * 86_400_000);
+    const rows = await getDb()
+      .insert(authEvents)
+      .values([
+        { type: 'login_failed', email: 'ancien@exemple.com', ipAddress: '203.0.113.7', userAgent: 'Test', createdAt: old },
+        { type: 'login_failed', email: 'recent@exemple.com', ipAddress: '203.0.113.8', userAgent: 'Test', createdAt: recent },
+        { type: 'account_deleted', details: { emailHash: 'empreinte' }, createdAt: old },
+      ])
+      .returning({ id: authEvents.id, email: authEvents.email, type: authEvents.type });
+
+    await sweepSessions();
+
+    const kept = await getDb()
+      .select({ id: authEvents.id })
+      .from(authEvents)
+      .where(inArray(authEvents.id, rows.map((row) => row.id)));
+    const keptIds = new Set(kept.map((row) => row.id));
+    assert.equal(keptIds.has(rows[0]!.id), false, 'événement de plus de 12 mois effacé');
+    assert.equal(keptIds.has(rows[1]!.id), true, 'événement récent gardé');
+    assert.equal(keptIds.has(rows[2]!.id), true, 'trace anonyme de suppression gardée');
+    await getDb().delete(authEvents).where(eq(authEvents.id, rows[1]!.id));
+  });
+
   it('applique sans reconnexion un accès donné à un compte connecté, et compte les points utilisés', async () => {
     const admin = await createAdmin(app, 'admin-acces@smartcreator.test');
     const member = await signUp(app, { name: 'Ibrahim Keita', email: 'ibrahim@exemple.com' });

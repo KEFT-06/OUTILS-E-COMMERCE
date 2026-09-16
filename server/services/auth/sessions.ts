@@ -1,7 +1,16 @@
 import type { Response } from 'express';
 import { and, eq, inArray, isNull, lt, lte, ne, notExists, sql, type SQL } from 'drizzle-orm';
 import { getDb, type Executor } from '@server/db/client';
-import { sessionHistory, sessions, users, type SessionRow, type UserRow } from '@server/db/schema';
+import {
+  authEvents,
+  emailVerificationTokens,
+  passwordTokens,
+  sessionHistory,
+  sessions,
+  users,
+  type SessionRow,
+  type UserRow,
+} from '@server/db/schema';
 import { isProd } from '@server/env';
 import { authCookieOptions, clearAuthCookie } from '@server/lib/cookies';
 import { randomToken, sha256 } from '@server/lib/crypto';
@@ -209,10 +218,20 @@ export async function sweepSessions(now = new Date()): Promise<{ ended: number; 
     )
     .returning({ id: sessionHistory.id });
 
+  const retentionLimit = new Date(now.getTime() - SESSION_HISTORY_RETENTION_DAYS * DAY_MS);
   const purged = await db
     .delete(sessionHistory)
-    .where(lt(sessionHistory.endedAt, new Date(now.getTime() - SESSION_HISTORY_RETENTION_DAYS * DAY_MS)))
+    .where(lt(sessionHistory.endedAt, retentionLimit))
     .returning({ id: sessionHistory.id });
+
+  // Journal de sécurité (adresse IP et navigateur complets) : même durée de conservation.
+  // La trace anonyme d'une suppression de compte, sans IP ni adresse, est gardée.
+  await db.delete(authEvents).where(and(lt(authEvents.createdAt, retentionLimit), ne(authEvents.type, 'account_deleted')));
+
+  // Liens à usage unique expirés depuis plus d'un jour : plus rien à vérifier.
+  const expiredLinks = new Date(now.getTime() - DAY_MS);
+  await db.delete(passwordTokens).where(lt(passwordTokens.expiresAt, expiredLinks));
+  await db.delete(emailVerificationTokens).where(lt(emailVerificationTokens.expiresAt, expiredLinks));
 
   return { ended, reconciled: reconciled.length, purged: purged.length };
 }

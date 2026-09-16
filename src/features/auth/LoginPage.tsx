@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { Link, Navigate, useLocation, useSearchParams } from 'react-router-dom';
 import { useTrackVisit } from '@/shared/lib/audience';
+import { usePublicPageMeta } from '@/shared/lib/pageMeta';
 import { Controller, useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
@@ -360,6 +361,7 @@ const SECURITY = [
 
 export function LoginPage() {
   useTrackVisit('/connexion');
+  usePublicPageMeta('/connexion');
   const { status, isAuthenticated } = useAuth();
   const location = useLocation();
   const [params] = useSearchParams();
@@ -438,7 +440,7 @@ export function LoginPage() {
               <div className="space-y-2">
                 <h1 className="font-display text-3xl font-extrabold tracking-tight">Accéder à votre espace</h1>
                 <p className="text-sm text-muted-foreground">
-                  Radar, analyses, studio de création et kit de lancement au même endroit.
+                  Niches, analyses, studio de création et kit de lancement au même endroit.
                 </p>
               </div>
 

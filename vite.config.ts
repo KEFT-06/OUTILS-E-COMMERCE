@@ -8,7 +8,17 @@ export default defineConfig(({ mode }) => {
   const apiPort = env.PORT ?? '3001';
 
   return {
-    plugins: [react(), tailwindcss()],
+    plugins: [
+      react(),
+      tailwindcss(),
+      // En développement seulement : en production, le serveur écrit l'adresse publique
+      // et les balises propres à chaque page (server/services/seo).
+      {
+        name: 'adresse-publique',
+        apply: 'serve',
+        transformIndexHtml: (html) => html.replaceAll('__APP_URL__', (env.APP_URL ?? 'http://localhost:5173').replace(/\/+$/, '')),
+      },
+    ],
 
     resolve: {
       alias: {
