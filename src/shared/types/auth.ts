@@ -19,6 +19,7 @@ export type Permission =
   | 'admin.credits.grant'
   | 'admin.revenue.read'
   | 'admin.payments.record'
+  | 'admin.content.view'
   | 'admin.security.read'
   | 'guides.review';
 

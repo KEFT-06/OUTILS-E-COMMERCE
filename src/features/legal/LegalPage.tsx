@@ -138,8 +138,9 @@ function Confidentialite() {
       <Section title="Qui y accède">
         <p>
           Les administrateurs de Smart Creator voient les informations de compte, les paiements et l’historique des
-          connexions, pour l’assistance et la sécurité ; chacune de leurs actions est inscrite dans un journal qu’ils ne
-          peuvent pas effacer. Quand vous demandez la relecture d’une traduction, le relecteur désigné voit le guide
+          connexions, pour l’assistance et la sécurité. Ils peuvent aussi ouvrir les vidéos et visuels générés, pour
+          l’assistance et le contrôle du respect des conditions d’utilisation. Chacune de leurs actions, dont chaque
+          ouverture d’une vidéo ou d’un visuel, est inscrite dans un journal qu’ils ne peuvent pas effacer. Quand vous demandez la relecture d’une traduction, le relecteur désigné voit le guide
           concerné.
         </p>
       </Section>

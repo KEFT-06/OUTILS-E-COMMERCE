@@ -83,6 +83,19 @@ export async function sendEmail(message: OutgoingEmail): Promise<void> {
  * Envoi détaché de la réponse HTTP : la durée de l'envoi ne doit pas révéler si une
  * adresse est inscrite, et un fournisseur lent ne doit pas bloquer l'écran.
  */
+/**
+ * Avis à la boîte de l'équipe (CONTACT_INBOX_EMAIL), en arrière-plan. Sans boîte ou sans service
+ * d'e-mails, rien n'est envoyé : l'information reste dans l'administration.
+ */
+export function notifyTeamInBackground(subject: string, lines: string[], context: string): void {
+  if (!providers.email || !env.CONTACT_INBOX_EMAIL) return;
+  const escape = (value: string) => value.replace(/[&<>"']/g, (character) => `&#${character.charCodeAt(0)};`);
+  sendEmailInBackground(
+    { to: env.CONTACT_INBOX_EMAIL, subject, text: lines.join('\n'), html: `<p>${lines.map(escape).join('<br>')}</p>` },
+    context,
+  );
+}
+
 export function sendEmailInBackground(message: OutgoingEmail, context: string): void {
   void sendEmail(message).catch((error: unknown) => {
     console.error(`[e-mails] envoi impossible (${context}) :`, error instanceof AppError ? error.code : 'erreur inconnue');

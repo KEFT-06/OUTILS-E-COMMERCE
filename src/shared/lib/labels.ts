@@ -77,6 +77,8 @@ export const AUDIT_ACTION_LABELS: Record<string, string> = {
   'payment.recorded': 'Paiement enregistré',
   'payment.refunded': 'Paiement remboursé',
   'security.unlocked': 'Verrou de connexion levé',
+  'creative.viewed': 'Vidéo ou visuel d’un compte ouvert',
+  'creative.downloaded': 'Vidéo ou visuel d’un compte téléchargé',
 };
 
 export function labelOf(labels: Record<string, string>, value: string | null | undefined): string {

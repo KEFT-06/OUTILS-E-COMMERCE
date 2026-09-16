@@ -8,6 +8,7 @@ import { AppError } from '@server/middleware';
 import type { RequestAuth } from '@server/middleware/auth';
 import { addMonths, changePlan } from '@server/services/accounts';
 import { recordAuthEvent } from '@server/services/audit';
+import { notifyTeamInBackground } from '@server/services/email';
 import { createCheckoutSession, retrieveCheckoutSession, stripeMode, verifyWebhookSignature } from '@server/services/billing/stripe';
 import { convertAmount, currencyForCountry, fromMinorUnits, getRates, toMinorUnits } from '@server/services/currency';
 import { getPlan, getPlanConfig, planPrice } from '@server/services/plans';
@@ -125,7 +126,9 @@ export async function fulfillCheckout(sessionId: string): Promise<CheckoutOutcom
   const amount = fromMinorUnits(checkout.amountMinor, checkout.currency);
   const amountFcfa = Math.max(1, Math.round(convertAmount(amount, checkout.currency, 'XAF', rates) ?? 0));
 
-  return db.transaction(async (tx) => {
+  // Avis à l'équipe, envoyé seulement une fois le paiement enregistré, et une seule fois.
+  const notices: string[][] = [];
+  const outcome = await db.transaction(async (tx) => {
     const now = new Date();
     const [claimed] = await tx
       .update(paymentCheckouts)
@@ -180,8 +183,20 @@ export async function fulfillCheckout(sessionId: string): Promise<CheckoutOutcom
       },
       tx,
     );
+    notices.push([
+      `Paiement en ligne reçu${stripeMode() === 'test' ? ' (mode test : aucune carte réelle débitée)' : ''}.`,
+      `Montant : ${formatMoney(amount, claimed.currency)}`,
+      `Palier : ${plan.label}, ${claimed.periodMonths === 1 ? '1 mois' : `${claimed.periodMonths} mois`}, jusqu’au ${formatDay(expiresAt)}`,
+      `Compte : ${user.email}`,
+      `Référence Stripe : ${sessionId}`,
+    ]);
     return { status: 'paid' as const, plan: claimed.plan, expiresAt: expiresAt.toISOString() };
   });
+
+  for (const lines of notices) {
+    notifyTeamInBackground(`[Paiement] ${formatMoney(amount, checkout.currency)} · palier ${plan.label}`, lines, 'avis de paiement');
+  }
+  return outcome;
 }
 
 /** Retour de la page de paiement : seul le titulaire de la session peut la confirmer. */

@@ -1,5 +1,5 @@
 import { Link, NavLink, useLocation, useNavigate } from 'react-router-dom';
-import { ChevronsUpDown, Home, LogOut, ShieldCheck, UserRound } from 'lucide-react';
+import { ChevronsUpDown, CreditCard, Home, LogOut, ShieldCheck, UserRound } from 'lucide-react';
 import { ACCOUNT_PATH, ADMIN_PATH, MODULES, MODULE_GROUPS, visibleAdminSections } from '@/app/navigation';
 import { initialsOf, useAuth } from '@/features/auth/AuthContext';
 import { Avatar, AvatarFallback } from '@/shared/ui/avatar';
@@ -132,6 +132,13 @@ export function AppSidebar() {
             {!credits.unlimited && credits.bonus > 0 && (
               <p className="mt-1.5 text-xs text-muted-foreground tabular-nums">dont {credits.bonus} bonus</p>
             )}
+            <Link
+              to={`${ACCOUNT_PATH}#paliers`}
+              onClick={closeOnMobile}
+              className="mt-2 inline-block text-xs font-medium text-brand-green-text underline-offset-4 hover:underline"
+            >
+              Changer de palier
+            </Link>
           </div>
         )}
 
@@ -169,6 +176,15 @@ export function AppSidebar() {
                   >
                     <UserRound />
                     Mon compte
+                  </DropdownMenuItem>
+                  <DropdownMenuItem
+                    onSelect={() => {
+                      closeOnMobile();
+                      navigate(`${ACCOUNT_PATH}#paliers`);
+                    }}
+                  >
+                    <CreditCard />
+                    Paliers et paiement
                   </DropdownMenuItem>
                   {adminSections.length > 0 && (
                     <DropdownMenuItem

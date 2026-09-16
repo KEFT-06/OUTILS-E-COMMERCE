@@ -5,7 +5,7 @@ import type { AddressInfo } from 'node:net';
 import { after, before, describe, it } from 'node:test';
 import type { Express } from 'express';
 import request from 'supertest';
-import { STRONG_PASSWORD, closeTestApp, createTestApp, signUp } from './support/helpers';
+import { STRONG_PASSWORD, closeTestApp, createAdmin, createTestApp, signUp } from './support/helpers';
 
 /**
  * Faux Higgsfield et faux Chariow : les générations et les boutiques sont testées
@@ -120,6 +120,33 @@ describe('Générations facturées', () => {
     await stranger.agent.get(`/api/creatives/requests/${requestId}/file`).expect(404);
     const ownFile = await owner.agent.get(`/api/creatives/requests/${requestId}/file`);
     assert.notEqual(ownFile.status, 404, 'l’auteur passe le contrôle de propriété');
+  });
+
+  it('montre à l’administration les créatifs des comptes, et inscrit chaque ouverture au journal', async () => {
+    const admin = await createAdmin(app, 'admin-creatifs@smartcreator.test');
+
+    const refused = await stranger.agent.get('/api/admin/creatives?kind=image').expect(403);
+    assert.equal(refused.body.error.code, 'FORBIDDEN');
+
+    const list = await admin.agent.get('/api/admin/creatives?kind=image').expect(200);
+    const entry = (list.body.entries as { id: string; status: string; available: boolean; user: { email: string } }[]).find(
+      (row) => row.status === 'completed',
+    );
+    assert.ok(entry, 'le visuel terminé du propriétaire figure dans la liste');
+    assert.equal(entry.available, true);
+    assert.ok(list.body.counts.completed >= 1);
+    assert.equal(JSON.stringify(list.body).includes('fichiers.invalid'), false, 'aucune adresse du fournisseur ne sort');
+
+    await stranger.agent.get(`/api/admin/creatives/${entry.id}/file`).expect(403);
+    const file = await admin.agent.get(`/api/admin/creatives/${entry.id}/file`);
+    assert.notEqual(file.status, 404, 'l’administration passe le contrôle d’accès');
+    await admin.agent.get('/api/admin/creatives/pas-un-identifiant/file').expect(404);
+
+    const { getDb } = await import('@server/db/client');
+    const { auditLogs } = await import('@server/db/schema');
+    const { eq } = await import('drizzle-orm');
+    const logged = await getDb().select().from(auditLogs).where(eq(auditLogs.action, 'creative.viewed'));
+    assert.ok(logged.some((row) => row.actorEmail === 'admin-creatifs@smartcreator.test'), 'ouverture inscrite au journal');
   });
 
   it('rend les points une seule fois quand le filtre du fournisseur refuse le contenu', async () => {

@@ -131,6 +131,13 @@ export function LandingPage() {
     navigate(isAuthenticated ? '/app/cockpit' : '/connexion?mode=inscription');
   };
 
+  /** Palier payant : les boutons de paiement sont dans Mon compte → Paliers, juste après l'inscription pour un visiteur. */
+  const PAYMENT_PATH = '/app/compte#paliers';
+  const choosePaidPlan = () => {
+    if (isAuthenticated) navigate(PAYMENT_PATH);
+    else navigate('/connexion?mode=inscription', { state: { from: PAYMENT_PATH } });
+  };
+
   // Une seule action principale sur toute la page, toujours nommée pareil. La connexion reste un lien
   // discret : un visiteur déjà inscrit la trouve, sans qu'elle concurrence l'inscription.
   const primaryLabel = isAuthenticated ? 'Ouvrir mon espace' : 'Créer mon compte gratuit';
@@ -390,7 +397,11 @@ export function LandingPage() {
             className="mt-6"
             catalog={catalog}
             renderAction={(plan) => (
-              <Button className="w-full" variant={plan.highlight ? 'default' : 'outline'} onClick={openWorkspace}>
+              <Button
+                className="w-full"
+                variant={plan.highlight ? 'default' : 'outline'}
+                onClick={plan.price && plan.price.monthly > 0 ? choosePaidPlan : openWorkspace}
+              >
                 {plan.price?.monthly === 0 ? 'Commencer gratuitement' : `Choisir ${plan.label}`}
               </Button>
             )}

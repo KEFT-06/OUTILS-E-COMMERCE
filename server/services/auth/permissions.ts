@@ -35,6 +35,10 @@ export const PERMISSIONS = {
     label: 'Enregistrer des paiements',
     description: 'Saisir un paiement d’abonnement, qui active le palier, ou le rembourser.',
   },
+  'admin.content.view': {
+    label: 'Voir les vidéos et visuels créés',
+    description: 'Ouvrir et télécharger les vidéos et visuels générés par les comptes. Chaque ouverture est inscrite au journal d’audit.',
+  },
   'admin.security.read': {
     label: 'Voir la sécurité et le journal',
     description: 'Tentatives de connexion, verrous et journal des actions d’administration.',

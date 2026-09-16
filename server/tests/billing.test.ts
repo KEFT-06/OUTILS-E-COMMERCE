@@ -26,6 +26,7 @@ interface FakeSession {
 }
 
 const sessions = new Map<string, FakeSession>();
+const emails: { to: string; subject: string; text: string }[] = [];
 const forms: URLSearchParams[] = [];
 let counter = 0;
 
@@ -38,6 +39,12 @@ const fakeStripe = createServer((req, res) => {
       res.writeHead(status, { 'content-type': 'application/json' });
       res.end(JSON.stringify(body));
     };
+    // Faux Brevo sur le même serveur : avis de paiement à la boîte de l'équipe.
+    if (req.method === 'POST' && url.pathname === '/brevo/v3/smtp/email') {
+      const body = JSON.parse(Buffer.concat(chunks).toString('utf8')) as { to: { email: string }[]; subject: string; textContent: string };
+      emails.push({ to: body.to[0]!.email, subject: body.subject, text: body.textContent });
+      return send(201, { messageId: 'test' });
+    }
     if (req.headers.authorization !== 'Bearer sk_test_cle_de_test') return send(401, { error: { type: 'invalid_request_error' } });
 
     if (req.method === 'POST' && url.pathname === '/v1/checkout/sessions') {
@@ -84,6 +91,11 @@ before(async () => {
     STRIPE_API_KEY: 'sk_test_cle_de_test',
     STRIPE_WEBHOOK_SECRET: 'whsec_secret_de_test',
     STRIPE_API_URL: `http://127.0.0.1:${(fakeStripe.address() as AddressInfo).port}`,
+    EMAIL_PROVIDER: 'brevo',
+    EMAIL_API_KEY: 'cle-email-de-test',
+    EMAIL_FROM: 'Smart Creator <no-reply@smartcreator.test>',
+    EMAIL_API_URL: `http://127.0.0.1:${(fakeStripe.address() as AddressInfo).port}/brevo`,
+    CONTACT_INBOX_EMAIL: 'equipe@smartcreator.test',
   });
 });
 
@@ -133,6 +145,13 @@ describe('Paiement en ligne', () => {
     await agent.post('/api/billing/confirm').send({ sessionId }).expect(200);
     const recorded = await paymentsFor(sessionId);
     assert.equal(recorded.length, 1, 'un seul paiement malgré deux confirmations');
+
+    await new Promise((resolve) => setTimeout(resolve, 150));
+    const notices = emails.filter((email) => email.to === 'equipe@smartcreator.test' && email.subject.startsWith('[Paiement]'));
+    assert.equal(notices.length, 1, 'un seul avis à l’équipe malgré deux confirmations');
+    assert.match(notices[0]!.text, /Palier : Pro, 1 mois/);
+    assert.match(notices[0]!.text, /aicha-paie@exemple\.com/);
+    assert.match(notices[0]!.text, /mode test/);
     assert.equal(recorded[0]!.method, 'card');
     assert.equal(recorded[0]!.amountFcfa, 9900);
     assert.equal(recorded[0]!.recordedBy, null);

@@ -1,6 +1,6 @@
 import { useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Check, Compass, Download, LogOut, Moon, Sparkles, Sun, Target, UserRound } from 'lucide-react';
+import { Check, Compass, CreditCard, Download, LogOut, Moon, Sparkles, Sun, Target, UserRound } from 'lucide-react';
 import { ACCOUNT_PATH, MODULES, MODULE_GROUPS, visibleAdminSections } from '@/app/navigation';
 import { usePreferences } from '@/app/providers/PreferencesContext';
 import { useWorkspace } from '@/app/providers/WorkspaceProvider';
@@ -134,6 +134,10 @@ export function CommandPalette() {
           <CommandItem value="mon compte profil" onSelect={() => run(() => navigate(ACCOUNT_PATH))}>
             <UserRound />
             Mon compte
+          </CommandItem>
+          <CommandItem value="paliers paiement abonnement payer carte" onSelect={() => run(() => navigate(`${ACCOUNT_PATH}#paliers`))}>
+            <CreditCard />
+            Paliers et paiement
           </CommandItem>
           <CommandItem
             value="se déconnecter"

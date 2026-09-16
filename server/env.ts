@@ -95,7 +95,7 @@ const schema = z.object({
   STRIPE_WEBHOOK_SECRET: emptyAsUndefined(z.string().min(1).optional()),
   STRIPE_API_URL: emptyAsUndefined(z.string().url().default('https://api.stripe.com')),
 
-  /** Facultatif : boîte qui reçoit une copie de chaque message de la page Contact. */
+  /** Facultatif : boîte de l'équipe, qui reçoit une copie de chaque message de la page Contact et un avis à chaque paiement en ligne. */
   CONTACT_INBOX_EMAIL: emptyAsUndefined(z.string().email().optional()),
 
   /**

@@ -249,7 +249,8 @@ file, score d'intensité concurrentielle) et Brave Search ne sont plus utilisés
 
 Un **administrateur** a tous les accès. Un utilisateur peut recevoir des privilèges un par un :
 voir le tableau de bord, consulter les utilisateurs, gérer les utilisateurs, recharger des points,
-voir les revenus, enregistrer des paiements, voir la sécurité et le journal, relire des guides.
+voir les revenus, enregistrer des paiements, voir les vidéos et visuels créés, voir la sécurité et le
+journal, relire des guides.
 Changer un rôle et attribuer des privilèges ne se délèguent pas. Un membre de l'équipe n'agit ni sur
 un administrateur ni sur son propre compte. Tout privilège exige un second facteur actif et une
 session ouverte avec lui.
@@ -264,7 +265,7 @@ session ouverte avec lui.
 | Messages | Messages du formulaire de contact : nouveau, lu, archivé |
 | Audience | Visites et visiteurs uniques des pages publiques, sans cookie, sur 30 jours |
 | Revenus | Revenus par jour, mois et année, paiements Stripe et saisis à la main, remboursements |
-| Contenus | Vidéos, visuels, storybooks mesurés par le serveur ; exports déclarés par le navigateur |
+| Contenus | Nombre de vidéos, visuels, storybooks mesurés par le serveur et d'exports déclarés par le navigateur ; **bibliothèque des créatifs** : chaque vidéo et visuel avec son créateur, sa date et ses points, lecture et téléchargement (privilège « Voir les vidéos et visuels créés », chaque ouverture inscrite au journal ; fichiers disponibles environ 7 jours, durée de conservation de Higgsfield) |
 | Sécurité | Journal des connexions et des codes, verrous actifs, journal d'audit des actions de l'équipe |
 
 Un accès accordé ou retiré (fonction, palier, points) vaut dès la requête suivante. Bloquer un compte
@@ -361,11 +362,19 @@ balayage reprend le suivi des générations dont l'écran a été fermé.
 
 ### Paiement par carte (Stripe Checkout)
 
-1. *Mon compte* : « Payer 1 mois » ou « Payer 1 an ». Le serveur fixe le montant (EUR, USD, GBP, CAD,
-   CHF, XAF ou XOF selon le compte, sinon EUR) et ouvre la page de paiement Stripe.
+1. *Mon compte → Paliers d'abonnement* : « Payer 1 mois » ou « Payer 1 an ». Le serveur fixe le montant
+   (EUR, USD, GBP, CAD, CHF, XAF ou XOF selon le compte, sinon EUR) et ouvre la page de paiement Stripe.
+   On y arrive par « Choisir … » sur l'accueil (après l'inscription pour un visiteur), par
+   « Paliers et paiement » dans le menu du compte ou par « Changer de palier » sous le solde de points.
 2. Le palier s'active quand Stripe confirme le paiement : au retour sur le site, ou par le webhook
    si la page a été fermée. Le paiement apparaît dans *Administration → Revenus*.
 3. Pas de renouvellement automatique.
+4. La boîte de l'équipe (`CONTACT_INBOX_EMAIL`) reçoit un avis par paiement, une seule fois, dès que
+   le service d'e-mails est branché.
+
+**Activer les paiements réels** : le compte Stripe n'est pas encore activé (vérifié le 16 septembre
+2026). Compléter le profil d'entreprise dans le tableau de bord Stripe, puis remplacer la clé
+`sk_test_…` par `sk_live_…`.
 
 **Configurer le webhook** : dans le tableau de bord Stripe, ajouter le point de terminaison
 `https://<votre-domaine>/api/billing/webhook` avec les événements `checkout.session.completed`,
@@ -419,8 +428,9 @@ HTML. La couverture, générée sans texte par Higgsfield, est recopiée en base
   l'inscription, alerte après un changement de mot de passe. `EMAIL_FROM` doit appartenir à un
   domaine vérifié chez le fournisseur.
 - **Contact** : formulaire public avec piège à robots, 5 messages par heure par IP, et les règles du
-  serveur affichées sous chaque champ fautif ; les messages arrivent dans *Administration → Messages*. Le lien des pages légales préremplit le sujet
-  « Mes données personnelles ».
+  serveur affichées sous chaque champ fautif ; les messages arrivent dans *Administration → Messages*, et une copie part vers la boîte de l'équipe
+  (`CONTACT_INBOX_EMAIL`, qui reçoit aussi les avis de paiement). Le lien des pages légales préremplit
+  le sujet « Mes données personnelles ».
 - **Audience sans cookie** : une visite comptée par affichage d'une page publique ; visiteurs uniques
   comptés par une empreinte à clé quotidienne, effacée le lendemain ; Do Not Track et Global Privacy
   Control respectés ; robots ignorés. Aucun outil tiers (Google Analytics…) : il déposerait des cookies
@@ -521,7 +531,7 @@ types, relecture, tests, construction, et la recherche de toute variable `VITE_`
 | `PERPLEXITY_API_KEY` | `.env` |
 | Crédits API Higgsfield : le compte des clés actuelles est à zéro, aucune vidéo ni aucun visuel ne peut être créé | Compte Higgsfield des clés API |
 | Service d'e-mails et domaine vérifié | `.env` |
-| `STRIPE_WEBHOOK_SECRET` et activation des paiements réels | Tableau de bord Stripe |
+| `STRIPE_WEBHOOK_SECRET` et activation du compte Stripe pour les paiements réels (profil d'entreprise, puis clé `sk_live_…`) | Tableau de bord Stripe |
 | Prix définitifs des paliers | `server/config/plans.json` |
 | Garanties des transferts hors Union européenne (Google, Perplexity, Stripe, Higgsfield, Gamma) | Politique de confidentialité |
 

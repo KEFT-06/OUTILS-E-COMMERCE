@@ -96,6 +96,26 @@ export interface ContentStats {
   creditsByAction: { actionId: string | null; points: number; uses: number }[];
 }
 
+/** Vidéos ou visuels générés par les comptes (GET /api/admin/creatives). */
+export interface AdminCreativeList {
+  kind: 'video' | 'image';
+  page: number;
+  pageSize: number;
+  total: number;
+  counts: { pending: number; completed: number; failed: number };
+  retentionDays: number;
+  entries: {
+    id: string;
+    status: 'pending' | 'completed' | 'failed';
+    creditsCharged: number;
+    refunded: boolean;
+    createdAt: string;
+    completedAt: string | null;
+    user: { id: string; name: string; email: string };
+    available: boolean;
+  }[];
+}
+
 export interface AdminUserRow {
   id: string;
   name: string;

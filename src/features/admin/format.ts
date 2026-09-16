@@ -107,6 +107,9 @@ export function describeAuditDetails(
       return details.purpose === 'setup' ? 'création du mot de passe' : 'réinitialisation';
     case 'security.unlocked':
       return text(details.key);
+    case 'creative.viewed':
+    case 'creative.downloaded':
+      return details.kind === 'video' ? 'vidéo' : 'visuel';
     default:
       return '';
   }

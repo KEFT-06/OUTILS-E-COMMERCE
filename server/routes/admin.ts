@@ -48,6 +48,8 @@ import { revokeUserSessions } from '@server/services/auth/sessions';
 import { convertAmount, getRates, toMinorUnits } from '@server/services/currency';
 import { FEATURES, getPlan, getPlanConfig, isFeature } from '@server/services/plans';
 import { audienceSummary } from '@server/services/audience';
+import { creativeListQuerySchema, findCreativeFile, listCreatives } from '@server/services/admin/creatives';
+import { streamCreativeFile } from '@server/services/creatives';
 import { contactListQuerySchema, contactStatusSchema, listContactMessages, setContactMessageStatus } from '@server/services/contact';
 import { formatMoney } from '@server/shared/currency';
 
@@ -160,6 +162,34 @@ adminRouter.get(
   requirePermission('admin.dashboard.read'),
   asyncRoute(async (req, res) => {
     res.json(await contentStats(granularityOf(req.query.granularity)));
+  }),
+);
+
+/** Vidéos et visuels générés par les comptes : liste, puis fichier relayé depuis le fournisseur. */
+adminRouter.get(
+  '/creatives',
+  requirePermission('admin.content.view'),
+  asyncRoute(async (req, res) => {
+    res.json(await listCreatives(creativeListQuerySchema.parse(req.query)));
+  }),
+);
+
+/** Ouvrir le contenu d'un compte n'est pas anodin : chaque ouverture est inscrite au journal d'audit. */
+adminRouter.get(
+  '/creatives/:generationId/file',
+  requirePermission('admin.content.view'),
+  routeLimiter(1, 60),
+  asyncRoute(async (req, res) => {
+    const creative = await findCreativeFile(req.params.generationId);
+    const disposition = req.query.disposition === 'attachment' ? 'attachment' : 'inline';
+    await recordAudit({
+      actor: actorOf(req.auth!),
+      action: disposition === 'attachment' ? 'creative.downloaded' : 'creative.viewed',
+      target: { id: creative.userId, email: creative.userEmail },
+      details: { generationId: creative.id, kind: creative.kind },
+      client: clientInfo(req),
+    });
+    await streamCreativeFile(creative.providerRef, disposition, res);
   }),
 );
 

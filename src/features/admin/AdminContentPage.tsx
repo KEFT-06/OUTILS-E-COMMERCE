@@ -14,6 +14,7 @@ import {
   Rocket,
 } from 'lucide-react';
 import { useCreditGate } from '@/app/providers/CreditGateProvider';
+import { AdminCreativesLibrary } from '@/features/admin/AdminCreativesLibrary';
 import { GRANULARITY_RANGE, type ContentStats, type Granularity, useAdminResource } from '@/features/admin/adminApi';
 import { AdminErrorAlert, GranularityToggle, KpiCard } from '@/features/admin/components';
 import { formatPeriod } from '@/features/admin/format';
@@ -66,6 +67,7 @@ export function AdminContentPage() {
   const [granularity, setGranularity] = useState<Granularity>('day');
   const { data, error, reload } = useAdminResource<ContentStats>(`/api/admin/content?granularity=${granularity}`, { refreshMs: 60_000 });
   const canUsers = account?.permissions.includes('admin.users.read') ?? false;
+  const canViewCreatives = account?.permissions.includes('admin.content.view') ?? false;
 
   const points =
     data?.series.points.map((point) => ({
@@ -114,6 +116,8 @@ export function AdminContentPage() {
               />
             ))}
       </div>
+
+      {canViewCreatives && <AdminCreativesLibrary canOpenUsers={canUsers} />}
 
       <Card>
         <CardHeader>
