@@ -23,12 +23,6 @@ const CockpitDashboard = lazy(() =>
   import('@/modules/cockpit/CockpitDashboard').then((module) => ({ default: module.CockpitDashboard })),
 );
 const NichesView = lazy(() => import('@/modules/niches/NichesView').then((module) => ({ default: module.NichesView })));
-const AdGalleryView = lazy(() =>
-  import('@/modules/m01-radar/AdGalleryView').then((module) => ({ default: module.AdGalleryView })),
-);
-const RadarTrendsView = lazy(() =>
-  import('@/modules/m01-radar/RadarTrendsView').then((module) => ({ default: module.RadarTrendsView })),
-);
 const ReportPDFView = lazy(() =>
   import('@/modules/m02-analyse/ReportPDFView').then((module) => ({ default: module.ReportPDFView })),
 );
@@ -203,23 +197,6 @@ export function CockpitPage() {
 
 export function NichesPage() {
   return <NichesView />;
-}
-
-export function RadarPage() {
-  const { analyzeNiche, isAnalyzing } = useWorkspace();
-  const goTo = useGoTo();
-  return (
-    <RadarTrendsView
-      onSelectNicheForFullAnalysis={analyzeNiche}
-      onNavigateToMetaAds={() => goTo('creatifs')}
-      isAnalyzingNiche={isAnalyzing}
-      onBrowseNiches={() => goTo('niches')}
-    />
-  );
-}
-
-export function GaleriePage() {
-  return <AdGalleryView />;
 }
 
 export function AnalysePage() {

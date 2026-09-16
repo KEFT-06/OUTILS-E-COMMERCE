@@ -14,7 +14,7 @@
  * S'utilise avec `useSyncExternalStore(store.subscribe, store.getState)`.
  */
 
-export type WorkspaceKind = 'product_drafts' | 'swipe_file' | 'launch_kits' | 'product_pages' | 'custom_products';
+export type WorkspaceKind = 'product_drafts' | 'launch_kits' | 'product_pages' | 'custom_products';
 
 export interface PersistentState<T> {
   value: T;

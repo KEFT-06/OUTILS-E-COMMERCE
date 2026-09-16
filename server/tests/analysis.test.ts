@@ -5,8 +5,8 @@ import { type FakeProviders, signInWithPlan, startFakeProviders } from './analys
 import { closeTestApp, createTestApp } from './helpers';
 
 /**
- * Analyse de niche avec recherche web, contre un faux Gemini et un faux Brave
- * Search : aucun vrai appel payant. Le serveur doit garder les faits sourcés et
+ * Analyse de niche avec recherche web, contre un faux Gemini et une fausse
+ * recherche Perplexity : aucun vrai appel payant. Le serveur doit garder les faits sourcés et
  * écarter tout ce que le modèle avance sans source existante.
  */
 
@@ -17,8 +17,8 @@ before(async () => {
   providers = await startFakeProviders();
   app = await createTestApp({
     GEMINI_API_URL: `${providers.base}/gemini`,
-    BRAVE_SEARCH_API_KEY: 'cle-brave-de-test',
-    BRAVE_SEARCH_API_URL: `${providers.base}/brave`,
+    PERPLEXITY_API_KEY: 'cle-perplexity-de-test',
+    PERPLEXITY_API_URL: `${providers.base}/perplexity`,
   });
 });
 
@@ -58,12 +58,13 @@ describe('Analyse de niche', () => {
         [2, 'https://pouletpro.example/formation'],
       ],
     );
-    assert.equal(report.generator.webSearch, 'Brave Search');
+    assert.equal(report.generator.webSearch, 'Perplexity');
 
     // Recherche web : clé en en-tête, pays dans la requête, jamais la clé dans l'adresse.
-    assert.ok(providers.braveQueries.length >= 1);
-    assert.ok(providers.braveQueries.every((call) => call.token === 'cle-brave-de-test'));
-    assert.match(providers.braveQueries[0]!.query ?? '', /élevage de poulets Cameroun/);
+    assert.ok(providers.searchQueries.length >= 1);
+    assert.ok(providers.searchQueries.every((call) => call.token === 'Bearer cle-perplexity-de-test'));
+    assert.match(providers.searchQueries[0]!.query ?? '', /élevage de poulets Cameroun/);
+    assert.equal(providers.searchQueries[0]!.country, 'CM');
 
     // Consigne : règles sur les chiffres et sources numérotées transmises au modèle.
     const prompt = providers.geminiCalls.at(-1)!.prompt;
@@ -76,14 +77,15 @@ describe('Analyse de niche', () => {
     assert.equal(report.competitors[0]!.urlOrHandle, 'https://pouletpro.example/formation');
     assert.deepEqual(report.competitors[0]!.sourceIds, [2]);
 
-    // Taux : sourcés → appréciation ; source inexistante ou « non évaluable » → non évalué ; saturation non mesurée sans Meta.
+    // Taux : sourcés → appréciation ; source inexistante ou « non évaluable » → non évalué.
     assert.equal(report.rates.demand!.basis, 'assessment');
     assert.deepEqual(report.rates.demand!.sourceIds, [1, 2]);
     assert.equal(report.rates.demand!.score, null, 'aucun score inventé');
     assert.equal(report.rates.opportunity!.basis, 'unavailable');
     assert.equal(report.rates.opportunity!.level, null);
     assert.equal(report.rates.virality!.basis, 'unavailable');
-    assert.equal(report.rates.saturation!.basis, 'unavailable');
+    assert.equal(report.rates.saturation!.basis, 'assessment');
+    assert.deepEqual(report.rates.saturation!.sourceIds, [2]);
     assert.equal(report.overallVerdict, 'Opportunité Forte');
 
     // Aucun chiffre sans source : ni volume, ni prix, ni marge.
@@ -101,7 +103,7 @@ describe('Analyse de niche', () => {
     assert.equal(script.scenes.at(-1)!.timing.split(' - ')[1], '0:30');
     assert.equal(script.scenes[1]!.phase, 'Agitation');
     assert.deepEqual(script.complianceCheck, []);
-    assert.ok(report.limitations.some((limitation) => limitation.includes('Meta')));
+    assert.ok(report.limitations.every((limitation) => !limitation.includes('Meta')), 'aucune mention de la collecte Meta retirée');
 
     // Points : 5 débités, génération enregistrée.
     const afterCredits = await agent.get('/api/account/credits').expect(200);

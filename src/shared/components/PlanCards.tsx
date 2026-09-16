@@ -16,8 +16,6 @@ import { Skeleton } from '@/shared/ui/skeleton';
 const FEATURE_ORDER: FeatureId[] = [
   'niche_analysis',
   'ai_writing',
-  'radar_scan',
-  'ad_gallery_scan',
   'image_generation',
   'video_generation',
   'storybook_generation',

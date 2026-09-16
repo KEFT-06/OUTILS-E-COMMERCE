@@ -1,2 +1,2 @@
-/** Score d'intensité concurrentielle : contrat partagé avec server/services/scoring (types seulement). */
+/** Trace des scores des anciens rapports : types partagés avec server/shared/scoring. */
 export type * from '@server/shared/scoring';

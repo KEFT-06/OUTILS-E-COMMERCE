@@ -27,7 +27,6 @@ const SERVICE_LABELS: Record<string, string> = {
   text: 'Analyse et rédaction IA',
   video: 'Visuels et vidéos',
   storybook: 'Storybook illustré',
-  adIngestion: 'Collecte publicitaire',
   webSearch: 'Recherche web des analyses',
 };
 
@@ -35,7 +34,6 @@ const SERVICE_LABELS: Record<string, string> = {
 const GETTING_STARTED: { module: ModuleId; title: string; text: string }[] = [
   { module: 'niches', title: 'Choisir une niche', text: 'Parcourez toutes les niches, enregistrez les vôtres et lancez leur analyse.' },
   { module: 'analyse', title: 'Lire l’analyse de la niche', text: 'Les 5 taux, la concurrence et le plan d’action.' },
-  { module: 'galerie', title: 'Collecter les publicités d’une niche', text: 'Qui annonce déjà, et depuis combien de temps.' },
   { module: 'studio', title: 'Structurer votre produit', text: 'Modules, promesse et simulation de rentabilité.' },
   { module: 'kit-lancement', title: 'Préparer le lancement', text: 'Textes, scripts vidéo et boutons par marché.' },
 ];
@@ -157,7 +155,7 @@ export function CockpitDashboard({ report, onNavigateToModule, onOpenBilling }: 
               <Target className="size-4 text-brand-green-text" aria-hidden="true" />
               Niche active
             </CardTitle>
-            <CardDescription>Niveau de tension concurrentielle mesuré</CardDescription>
+            <CardDescription>Concurrence de la dernière niche analysée</CardDescription>
             <CardAction>
               <Button variant="ghost" size="sm" onClick={() => onNavigateToModule('niches')}>
                 Niches
@@ -182,9 +180,9 @@ export function CockpitDashboard({ report, onNavigateToModule, onOpenBilling }: 
                 {saturation.trace ? (
                   <span className="text-muted-foreground">méthode v{saturation.trace.methodologyVersion}</span>
                 ) : saturation.basis === 'unavailable' ? (
-                  <span className="text-muted-foreground">collecte publicitaire non branchée</span>
+                  <span className="text-muted-foreground">non évalué faute de source</span>
                 ) : (
-                  <span className="text-warning">méthode non publiée</span>
+                  <span className="text-muted-foreground">appréciation fondée sur des sources</span>
                 )}
               </div>
             </div>

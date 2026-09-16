@@ -1,6 +1,6 @@
 /**
  * Miroir client du contrat de `server/services/compliance`.
- * Comme pour le scoring, on ne fait entrer aucun code serveur dans le bundle.
+ * Types seulement : aucun code serveur n'entre dans le bundle.
  */
 
 export type ComplianceSeverity = 'block' | 'warn';

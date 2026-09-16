@@ -2,7 +2,7 @@ import { createServer, type Server } from 'node:http';
 import type { AddressInfo } from 'node:net';
 
 /**
- * Faux Gemini et faux Brave Search pour les tests d'analyse de niche. La réponse
+ * Faux Gemini et fausse recherche Perplexity pour les tests d'analyse de niche. La réponse
  * du faux modèle contient volontairement des pièges : une source inexistante, un
  * lien inventé, un doublon de mot-clé, une phase de script inconnue. Le serveur
  * doit les écarter.
@@ -23,6 +23,7 @@ export function fakeAnalysis(prompt: string) {
     verdict: 'Opportunité Forte',
     verdictRationale: 'Deux sources montrent une demande.',
     demand: { level: 'Élevé', rationale: 'Plusieurs guides se vendent.', sourceIds: ids },
+    saturation: { level: 'Moyen', rationale: 'Une formation concurrente est visible.', sourceIds: withSources ? [2] : [] },
     profitability: { level: 'Moyen', rationale: 'Prix bas constatés.', sourceIds: withSources ? [2] : [] },
     opportunity: { level: 'Élevé', rationale: 'Peu de contenus locaux.', sourceIds: [99] },
     virality: { level: 'Non évaluable', rationale: '', sourceIds: [] },
@@ -95,13 +96,13 @@ export function fakeAnalysis(prompt: string) {
 export interface FakeProviders {
   base: string;
   geminiCalls: FakeCall[];
-  braveQueries: { token: string | undefined; query: string | null }[];
+  searchQueries: { token: string | undefined; query: string | null; country: string | null }[];
   close: () => Promise<void>;
 }
 
 export async function startFakeProviders(): Promise<FakeProviders> {
   const geminiCalls: FakeCall[] = [];
-  const braveQueries: { token: string | undefined; query: string | null }[] = [];
+  const searchQueries: { token: string | undefined; query: string | null; country: string | null }[] = [];
 
   const server: Server = createServer((req, res) => {
     const chunks: Buffer[] = [];
@@ -124,19 +125,19 @@ export async function startFakeProviders(): Promise<FakeProviders> {
         return send(200, { candidates: [{ content: { parts: [{ text: JSON.stringify(fakeAnalysis(prompt)) }] } }] });
       }
 
-      if (url.pathname === '/brave/res/v1/web/search' && req.method === 'GET') {
-        const token = req.headers['x-subscription-token'] as string | undefined;
-        braveQueries.push({ token, query: url.searchParams.get('q') });
-        if (token !== 'cle-brave-de-test') return send(401, { error: 'clé refusée' });
+      if (url.pathname === '/perplexity/search' && req.method === 'POST') {
+        const token = req.headers.authorization;
+        const body = JSON.parse(Buffer.concat(chunks).toString('utf8')) as { query?: string; country?: string };
+        searchQueries.push({ token, query: body.query ?? null, country: body.country ?? null });
+        if (token !== 'Bearer cle-perplexity-de-test') return send(401, { error: 'clé refusée' });
         return send(200, {
-          web: {
-            results: [
-              { title: 'Élever des poulets en <strong>ville</strong>', url: 'https://agri.example/poulets', description: 'Le marché urbain grandit', page_age: '2026-08-01' },
-              { title: 'PouletPro Académie', url: 'https://pouletpro.example/formation', description: 'Formation à 15 000 FCFA' },
-              { title: 'Doublon', url: 'https://agri.example/poulets#avis', description: 'même page' },
-              { title: 'Lien piégé', url: 'javascript:alert(1)', description: 'refusé' },
-            ],
-          },
+          id: 'recherche-de-test',
+          results: [
+            { title: 'Élever des poulets en <strong>ville</strong>', url: 'https://agri.example/poulets', snippet: 'Le marché urbain grandit', date: '2026-08-01' },
+            { title: 'PouletPro Académie', url: 'https://pouletpro.example/formation', snippet: 'Formation à 15 000 FCFA', date: null },
+            { title: 'Doublon', url: 'https://agri.example/poulets#avis', snippet: 'même page' },
+            { title: 'Lien piégé', url: 'javascript:alert(1)', snippet: 'refusé' },
+          ],
         });
       }
 
@@ -148,7 +149,7 @@ export async function startFakeProviders(): Promise<FakeProviders> {
   return {
     base: `http://127.0.0.1:${(server.address() as AddressInfo).port}`,
     geminiCalls,
-    braveQueries,
+    searchQueries,
     close: () => new Promise<void>((resolve) => server.close(() => resolve())),
   };
 }

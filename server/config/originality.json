@@ -1,7 +1,7 @@
 {
   "version": "2026.09.1",
   "updatedAt": "2026-09-14",
-  "note": "Paramètres du vérificateur d'originalité (feuille de route 3.2), éditables sans redéploiement. Le corpus de référence part volontairement vide : le remplir de textes inventés produirait des mesures sans valeur. Il s'enrichit des textes que le client soumet (publicités collectées, swipe file, textes concurrents) et, à terme, d'un index en base.",
+  "note": "Paramètres du vérificateur d'originalité (feuille de route 3.2), éditables sans redéploiement. Le corpus de référence part volontairement vide : le remplir de textes inventés produirait des mesures sans valeur. Il s'enrichit des textes que le client soumet et, à terme, d'un index en base.",
   "blockingThreshold": 70,
   "shingleSize": 5,
   "minimumWords": 30,

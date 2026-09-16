@@ -7,7 +7,7 @@ import { useSidebar } from '@/shared/ui/sidebar';
 /** Raccourcis permanents sur téléphone ; « Menu » ouvre la navigation complète. */
 const SHORTCUTS = [
   { id: 'cockpit', short: 'Cockpit' },
-  { id: 'radar', short: 'Radar' },
+  { id: 'niches', short: 'Niches' },
   { id: 'analyse', short: 'Analyse' },
 ] as const;
 

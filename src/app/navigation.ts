@@ -10,11 +10,9 @@ import {
   History,
   Languages,
   LayoutDashboard,
-  LayoutGrid,
   LayoutTemplate,
   Megaphone,
   Package,
-  Radar,
   Rocket,
   ShieldAlert,
   Store,
@@ -40,8 +38,6 @@ export type ModuleGroup = 'voir' | 'creer' | 'vendre';
 export type ModuleId =
   | 'cockpit'
   | 'niches'
-  | 'radar'
-  | 'galerie'
   | 'analyse'
   | 'dossier-pdf'
   | 'studio'
@@ -93,24 +89,6 @@ export const MODULES: readonly ModuleEntry[] = [
     label: { fr: 'Niches', en: 'Niches' },
     description: { fr: 'Toutes les niches, tous secteurs', en: 'Every niche, every sector' },
     icon: Compass,
-    ready: true,
-  },
-  {
-    id: 'radar',
-    path: '/app/radar',
-    group: 'voir',
-    label: { fr: 'Radar marché', en: 'Market radar' },
-    description: { fr: 'Repérer les niches qui accélèrent', en: 'Spot accelerating niches' },
-    icon: Radar,
-    ready: true,
-  },
-  {
-    id: 'galerie',
-    path: '/app/galerie',
-    group: 'voir',
-    label: { fr: 'Galerie publicitaire', en: 'Ad gallery' },
-    description: { fr: 'Publicités, swipe file et annonceurs', en: 'Ads, swipe file and advertisers' },
-    icon: LayoutGrid,
     ready: true,
   },
   {

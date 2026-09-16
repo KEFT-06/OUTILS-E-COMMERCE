@@ -1,6 +1,6 @@
 {
-  "version": "2026.09.6",
-  "updatedAt": "2026-09-15",
+  "version": "2026.09.7",
+  "updatedAt": "2026-09-16",
   "note": "Grille tarifaire des research points (CdC §8). Table de configuration éditable sans déploiement, au même titre que la table de conformité. À migrer en base lors du Lot 2, avec un historique de versions : un coût qui change doit rester traçable pour les factures déjà émises.",
   "currency": "FCFA",
   "pointValueFcfa": 250,
@@ -11,18 +11,6 @@
       "label": "Analyse stratégique d'une niche",
       "cost": 5,
       "description": "Rapport d'une niche, conservé sur votre compte : faits de marché tirés de sources web citées, idées de produits, scripts publicitaires et plan d'action proposés par l'IA. Points rendus si l'analyse échoue."
-    },
-    {
-      "id": "radar_scan",
-      "label": "Scan du Radar Marché",
-      "cost": 3,
-      "description": "Détection des tendances et des annonceurs actifs sur un marché donné."
-    },
-    {
-      "id": "ad_gallery_scan",
-      "label": "Collecte de publicités pour la galerie",
-      "cost": 3,
-      "description": "Collecte des publicités d'une niche sur un marché, avec calcul du score d'intensité concurrentielle sur ce même échantillon."
     },
     {
       "id": "storybook_generation",

@@ -38,6 +38,7 @@ export const GENERATION_KINDS = [
   'ebook',
   'product_page',
   'report_pdf',
+  // swipe_file et ad_scan : historique de la galerie publicitaire Meta, retirée du site.
   'swipe_file',
   'launch_kit',
   'ad_scan',
@@ -280,7 +281,7 @@ export const reports = pgTable(
 
 /**
  * Brouillons de l'espace de travail, un document par type et par compte : retouches
- * des produits, swipe file, kits de lancement, pages produits. Voir
+ * des produits, produits créés hors analyse, kits de lancement, pages produits. Voir
  * server/services/workspace.
  */
 export const workspaceDocuments = pgTable(

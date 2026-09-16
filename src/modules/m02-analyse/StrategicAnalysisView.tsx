@@ -97,7 +97,7 @@ const INTENT_LABEL: Record<SearchTrendKeyword['intent'], string> = {
 
 /** Sur quoi repose un taux, en une ligne. */
 function basisLabel(rate: MarketRate): string {
-  if (rate.basis === 'measured' || rate.trace) return 'Calculé sur une collecte publicitaire';
+  if (rate.basis === 'measured' || rate.trace) return 'Calculé sur l’ancienne collecte publicitaire';
   if (rate.basis === 'assessment') return 'Appréciation de l’IA, fondée sur les sources citées';
   if (rate.basis === 'unavailable') return 'Non évalué';
   return 'Méthode de calcul non publiée';

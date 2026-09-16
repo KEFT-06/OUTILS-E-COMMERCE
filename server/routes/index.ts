@@ -4,8 +4,6 @@ import {
   AppError,
   aiLimiter,
   asyncRoute,
-  marketSchema,
-  nicheQuerySchema,
   providerUnavailable,
   validateBody,
 } from '@server/middleware';
@@ -22,18 +20,12 @@ import { workspaceRouter } from '@server/routes/workspace';
 import { writingRouter } from '@server/routes/writing';
 import { type AnalysisRequest, analysisRequestSchema, analyzeNiche } from '@server/services/analysis';
 import {
-  METHODOLOGY_VERSION,
-  computeCompetitiveScore,
-  describeMethodology,
-} from '@server/services/scoring';
-import {
   ComplianceUnavailableError,
   checkText,
   getRulesMetadata,
 } from '@server/services/compliance';
 import { CreditConfigUnavailableError, getCostTable } from '@server/services/credits';
 import { PricingUnavailableError, getPricing } from '@server/services/pricing';
-import { annotateAd, getActiveAdapter, listAdapters } from '@server/services/ingestion';
 import {
   OriginalityConfigUnavailableError,
   checkOriginality,
@@ -116,12 +108,10 @@ api.use(publicRouter);
 api.get('/health', (_req, res) => {
   res.json({
     status: 'ok',
-    methodologyVersion: METHODOLOGY_VERSION,
     providers: {
       text: providers.gemini,
       video: providers.higgsfield,
       storybook: providers.gamma,
-      adIngestion: providers.meta,
       webSearch: providers.webSearch,
       email: providers.email,
       payments: providers.payments,
@@ -189,44 +179,6 @@ api.get(
       }
       throw error;
     }
-  }),
-);
-
-/* -------------------------------------------------------------------------- */
-/*  Scoring — différenciateur n°1 : la méthode est publique                    */
-/* -------------------------------------------------------------------------- */
-
-api.get('/scoring/methodology', (_req, res) => {
-  res.json(describeMethodology());
-});
-
-const signalsSchema = z.object({
-  uniqueAdvertisers: z.number().int().min(0).max(1_000_000),
-  activeAds: z.number().int().min(0).max(10_000_000),
-  averageLifetimeDays: z.number().min(0).max(3650),
-  establishedAds: z.number().int().min(0).max(10_000_000),
-});
-
-/**
- * Calcule un score à partir de signaux bruts fournis.
- * Utile pour le panneau de détail de calcul et pour les tests de non-régression
- * de la méthodologie.
- */
-api.post(
-  '/scoring/compute',
-  validateBody(signalsSchema),
-  asyncRoute((req, res) => {
-    const signals = req.body as z.infer<typeof signalsSchema>;
-
-    if (signals.establishedAds > signals.activeAds) {
-      throw new AppError(
-        400,
-        'Le nombre de publicités établies ne peut pas dépasser le nombre de publicités actives.',
-        'INCONSISTENT_SIGNALS',
-      );
-    }
-
-    res.json(computeCompetitiveScore(signals));
   }),
 );
 
@@ -305,96 +257,6 @@ api.get(
       }
       throw error;
     }
-  }),
-);
-
-/* -------------------------------------------------------------------------- */
-/*  Ingestion publicitaire — source interchangeable (feuille de route 2.1)     */
-/* -------------------------------------------------------------------------- */
-
-/** Diagnostic : quelles sources existent, laquelle est active, et pourquoi. */
-api.get('/ingestion/adapters', (_req, res) => {
-  const active = getActiveAdapter();
-  res.json({ active: active.id, adapters: listAdapters() });
-});
-
-/**
- * Plafond de publicités renvoyées à la galerie. Le score, lui, reste calculé
- * sur l'échantillon complet : tronquer les signaux fausserait la mesure, alors
- * que tronquer l'affichage ne coûte qu'un « et N autres ».
- */
-const GALLERY_AD_LIMIT = 200;
-
-const ingestionSchema = z.object({
-  niche: nicheQuerySchema,
-  market: marketSchema.optional(),
-  limit: z.number().int().min(1).max(500).optional(),
-});
-
-/**
- * Collecte les publicités puis calcule le score d'intensité concurrentielle.
- *
- * C'est la chaîne complète du différenciateur n°1 sur données réelles :
- * ingestion → signaux bruts → `computeCompetitiveScore` → trace vérifiable.
- * Les points sont prélevés par le serveur et rendus si la collecte échoue.
- */
-api.post(
-  '/ingestion/scan',
-  requireAuth,
-  requireFeature('ad_gallery_scan'),
-  aiLimiter,
-  validateBody(ingestionSchema),
-  asyncRoute(async (req, res) => {
-    const { niche, market, limit } = req.body as z.infer<typeof ingestionSchema>;
-    const adapter = getActiveAdapter();
-
-    const availability = adapter.isAvailable();
-    if (!availability.available) {
-      throw new AppError(503, availability.reason, 'INGESTION_UNAVAILABLE');
-    }
-
-    const { result: ingestion } = await runBilledGeneration({
-      auth: req.auth!,
-      actionId: 'ad_gallery_scan',
-      kind: 'ad_scan',
-      provider: adapter.id,
-      run: () =>
-        adapter.fetchAds({
-          niche,
-          ...(market ? { market } : {}),
-          ...(limit ? { limit } : {}),
-        }),
-      describe: () => ({ providerRef: null, state: 'completed' }),
-    });
-
-    const score = computeCompetitiveScore(ingestion.signals, new Date(ingestion.collectedAt));
-
-    // Les publicités accompagnent le score dans la même réponse : la galerie et
-    // l'indicateur décrivent alors rigoureusement la même collecte. Deux appels
-    // séparés auraient produit deux instants de mesure, donc un écart possible
-    // entre ce que le score affirme et ce que la galerie montre.
-    res.json({
-      score,
-      signals: ingestion.signals,
-      // Annotées avec les fonctions qui produisent les signaux : la galerie
-      // affiche les mêmes durées et statuts que ceux comptés par le score.
-      ads: ingestion.ads
-        .slice(0, GALLERY_AD_LIMIT)
-        .map((ad) => annotateAd(ad, new Date(ingestion.collectedAt))),
-      adsTruncated: ingestion.ads.length > GALLERY_AD_LIMIT,
-      // La provenance voyage avec les chiffres et non à côté : c'est ce qui
-      // permet à l'interface de l'afficher sous chaque graphique sans la
-      // reconstituer, donc sans risquer de la faire diverger.
-      provenance: {
-        source: ingestion.sourceLabel,
-        collectedAt: ingestion.collectedAt,
-        sampleSize: ingestion.ads.length,
-        sampleUnit: 'publicités',
-        isDemonstration: ingestion.isDemonstration,
-        ...(ingestion.sourceUrl ? { sourceUrl: ingestion.sourceUrl } : {}),
-      },
-      advertiserCount: new Set(ingestion.ads.map((ad) => ad.advertiserId)).size,
-    });
   }),
 );
 
@@ -775,44 +637,6 @@ api.post(
     const apiKey = await chariowKeyOf(req);
     const { emails } = req.body as z.infer<typeof invitationSchema>;
     res.status(201).json(await sendChariowInvitations(apiKey, emails));
-  }),
-);
-
-/* -------------------------------------------------------------------------- */
-/*  Module 1 — Radar Marché                                                    */
-/* -------------------------------------------------------------------------- */
-
-const radarSchema = z.object({
-  category: z.string().trim().max(60).optional(),
-  customQuery: nicheQuerySchema.optional().or(z.literal('')),
-  market: marketSchema.optional(),
-});
-
-/**
- * Contrat conservé tel que consommé par le client existant.
- *
- * Tant que l'ingestion Meta Ad Library n'est pas branchée (Lot 2), cette route
- * répond 503 avec un message explicite plutôt qu'un jeu de données inventé.
- * Afficher des chiffres fabriqués comme s'ils venaient du marché contredirait
- * le §9.4 du cahier des charges — c'est précisément ce qui est reproché au
- * concurrent direct.
- */
-api.post(
-  '/radar-trends',
-  requireAuth,
-  requireFeature('radar_scan'),
-  aiLimiter,
-  validateBody(radarSchema),
-  asyncRoute(async (_req, _res) => {
-    if (!providers.meta) throw providerUnavailable('Meta Ad Library');
-    if (!providers.gemini) throw providerUnavailable('Gemini');
-
-    // À construire sur la bibliothèque publicitaire Meta : ingestion → score → synthèse.
-    throw new AppError(
-      501,
-      'Le scan de marché en direct n’est pas encore disponible : il attend l’accès à la bibliothèque publicitaire Meta. Analysez une niche précise en attendant.',
-      'NOT_IMPLEMENTED',
-    );
   }),
 );
 

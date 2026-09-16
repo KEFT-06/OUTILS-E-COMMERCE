@@ -7,7 +7,7 @@
  * illustration — sans source ni date, il emprunte une autorité qu'il n'a pas.
  */
 export interface DataProvenance {
-  /** D'où viennent les chiffres : « Meta Ad Library », « Recherche web »… */
+  /** D'où viennent les chiffres : « Recherche web (Perplexity), synthèse Gemini »… */
   source: string;
   /** Horodatage ISO de la collecte. */
   collectedAt: string;

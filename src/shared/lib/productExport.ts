@@ -10,10 +10,9 @@ import {
 } from '@/shared/lib/productDocument';
 import { renderProductPDF } from '@/shared/lib/productPdf';
 import { recordExport } from '@/shared/lib/usage';
-import { getSwipeEntries } from '@/shared/lib/useSwipeFile';
 import { DigitalProductIdea, MarketAnalysisReport } from '@/shared/types/analysis';
 import { ReportComplianceVerdict } from '@/shared/types/compliance';
-import { OriginalityReference, OriginalityVerdict } from '@/shared/types/originality';
+import { OriginalityVerdict } from '@/shared/types/originality';
 
 /**
  * Porte d'export d'un produit — feuilles de route 3.2 et 3.3.
@@ -40,32 +39,8 @@ export class ProductExportBlockedError extends Error {
   }
 }
 
-/** Plafonds alignés sur la validation de `POST /api/originality/check`. */
-const MAX_REFERENCES = 80;
-const MAX_REFERENCE_CHARS = 10_000;
+/** Plafond aligné sur la validation de `POST /api/originality/check`. */
 const MAX_TEXT_CHARS = 50_000;
-
-/**
- * Textes de tiers connus du client : les publicités sauvegardées dans le swipe file.
- *
- * Les textes « concurrents » du rapport sont volontairement exclus : positionnement,
- * forces et failles y sont rédigés par l'analyse de Smart Creator, pas par les
- * concurrents. Les comparer au produit signalerait comme plagiat la reprise de
- * notre propre analyse.
- */
-export function collectOriginalityReferences(): OriginalityReference[] {
-  return getSwipeEntries()
-    .flatMap((entry) =>
-      entry.ad.creativeBody
-        ? [{ label: `Swipe file — ${entry.ad.advertiserName}`, text: entry.ad.creativeBody }]
-        : [],
-    )
-    .slice(0, MAX_REFERENCES)
-    .map((reference) => ({
-      label: reference.label.slice(0, 200),
-      text: reference.text.slice(0, MAX_REFERENCE_CHARS),
-    }));
-}
 
 async function requestOriginality(
   productDocument: ProductDocument,
@@ -76,7 +51,7 @@ async function requestOriginality(
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         text: documentPlainText(productDocument).slice(0, MAX_TEXT_CHARS),
-        references: collectOriginalityReferences(),
+        references: [],
       }),
     });
 

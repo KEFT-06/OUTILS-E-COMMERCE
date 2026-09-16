@@ -1,10 +1,7 @@
 /**
- * Contrat du score d'intensité concurrentielle tel que le navigateur le lit
- * (server/services/scoring le produit). Types seulement : partagés par le serveur
- * et le navigateur sans qu'aucun code serveur ne parte dans le bundle.
- *
- * Le champ `methodologyVersion` garde sa raison d'être : si la méthode change,
- * le panneau de traçabilité signale qu'un score ancien n'est plus comparable.
+ * Trace du score d'intensité concurrentielle calculé par l'ancienne collecte
+ * publicitaire Meta, retirée du site. Types seulement : ils servent à afficher les
+ * rapports enregistrés avant ce retrait, tels qu'ils ont été produits.
  */
 
 export type ScoreLevel = 'Faible' | 'Moyen' | 'Élevé' | 'Très élevé';
@@ -51,13 +48,4 @@ export interface ScoreTrace {
   sampleSize: number;
   source: ScoreSource;
   breakdown: ScoreCriterion[];
-}
-
-/** Réponse de `GET /api/scoring/methodology` — la règle publiée, faisant foi. */
-export interface MethodologyDoc {
-  version: string;
-  criteria: { key: string; label: string; weight: number; highThreshold: number }[];
-  normalization: string;
-  levels: { from: number; to: number; label: string }[];
-  disclaimer: string;
 }

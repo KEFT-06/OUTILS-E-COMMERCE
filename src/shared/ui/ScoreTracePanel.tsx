@@ -1,8 +1,6 @@
-import { useEffect, useState } from 'react';
-import { AlertTriangle, FlaskConical, Info, Scale } from 'lucide-react';
+import { AlertTriangle, FlaskConical, Info } from 'lucide-react';
 import { FALLBACK_DISCLAIMER } from '@/shared/lib/legal';
 import type { MarketRate, WebGroundingSource } from '@/shared/types/analysis';
-import type { MethodologyDoc } from '@/shared/types/scoring';
 import { Alert, AlertDescription, AlertTitle } from '@/shared/ui/alert';
 import {
   Dialog,
@@ -31,10 +29,10 @@ import {
  *  1. On affiche la trace **telle qu'elle a été persistée**, jamais un recalcul.
  *  2. Sans trace, on le dit. Inventer une ventilation plausible serait pire que
  *     de ne rien afficher.
+ *
+ * Seuls les rapports produits avec l'ancienne collecte publicitaire portent une trace
+ * de calcul ; les taux actuels sont appréciés à partir des sources citées.
  */
-
-/** La méthodologie publiée ne change qu'au déploiement : un cache de module suffit. */
-let methodologyCache: MethodologyDoc | null = null;
 
 interface ScoreTracePanelProps {
   rate: MarketRate | null;
@@ -57,32 +55,9 @@ function formatMeasuredAt(iso: string): string {
 }
 
 export function ScoreTracePanel({ rate, sources, open, onOpenChange }: ScoreTracePanelProps) {
-  const [methodology, setMethodology] = useState<MethodologyDoc | null>(methodologyCache);
-
-  useEffect(() => {
-    if (!open || methodologyCache) return;
-
-    let cancelled = false;
-    // L'API peut être absente (front servi seul) : le panneau reste utile sans
-    // elle, on perd seulement le rappel de la règle publiée.
-    fetch('/api/scoring/methodology')
-      .then((response) => (response.ok ? response.json() : null))
-      .then((doc: MethodologyDoc | null) => {
-        if (cancelled || !doc) return;
-        methodologyCache = doc;
-        setMethodology(doc);
-      })
-      .catch(() => undefined);
-
-    return () => {
-      cancelled = true;
-    };
-  }, [open]);
-
   if (!rate) return null;
 
   const trace = rate.trace;
-  const versionDrift = trace && methodology ? methodology.version !== trace.methodologyVersion : false;
 
   const facts = trace
     ? [
@@ -114,9 +89,7 @@ export function ScoreTracePanel({ rate, sources, open, onOpenChange }: ScoreTrac
               <AlertDescription>
                 <p>{rate.description}</p>
                 <p>
-                  Ce niveau n’est pas un calcul : il résume ce que disent les pages citées. Seul le{' '}
-                  <strong>taux de saturation concurrentielle</strong> est calculé par le moteur de scoring, sur une collecte
-                  publicitaire.
+                  Ce niveau n’est pas un calcul : il résume ce que disent les pages citées, à relire avant de décider.
                 </p>
               </AlertDescription>
             </Alert>
@@ -134,13 +107,9 @@ export function ScoreTracePanel({ rate, sources, open, onOpenChange }: ScoreTrac
         ) : !trace ? (
           <Alert variant="warning">
             <AlertTriangle />
-            <AlertTitle>Méthodologie pas encore publiée</AlertTitle>
+            <AlertTitle>Taux indicatif</AlertTitle>
             <AlertDescription>
-              <p>
-                Ce taux est indicatif : sa méthode de calcul n’est pas encore formalisée, donc aucune ventilation ne peut
-                en être montrée. Seul le <strong>taux de saturation concurrentielle</strong> est aujourd’hui produit par
-                le moteur de scoring traçable (4 critères pondérés).
-              </p>
+              <p>Ce taux ne porte ni source ni calcul enregistré : aucune ventilation ne peut en être montrée.</p>
               <p>Afficher une ventilation reconstituée donnerait une fausse impression de rigueur.</p>
             </AlertDescription>
           </Alert>
@@ -162,18 +131,6 @@ export function ScoreTracePanel({ rate, sources, open, onOpenChange }: ScoreTrac
                 <AlertDescription>
                   Les signaux bruts ci-dessous sont fictifs, mais le calcul qui en découle est celui du moteur de
                   production.
-                </AlertDescription>
-              </Alert>
-            )}
-
-            {versionDrift && methodology && (
-              <Alert variant="danger">
-                <AlertTriangle />
-                <AlertTitle>Méthodologie modifiée depuis cette mesure</AlertTitle>
-                <AlertDescription>
-                  Le score a été calculé avec la v{trace.methodologyVersion}, le serveur applique aujourd’hui la v
-                  {methodology.version}. Ce chiffre n’est pas comparable aux scores récents tant que la niche n’a pas été
-                  remesurée.
                 </AlertDescription>
               </Alert>
             )}
@@ -224,23 +181,10 @@ export function ScoreTracePanel({ rate, sources, open, onOpenChange }: ScoreTrac
               </TableFooter>
             </Table>
 
-            {methodology && (
-              <div className="space-y-1.5 rounded-lg border bg-muted/50 p-3">
-                <p className="flex items-center gap-1.5 text-xs font-semibold tracking-wider text-muted-foreground uppercase">
-                  <Scale className="size-3.5 shrink-0" />
-                  Règle de normalisation publiée
-                </p>
-                <p className="text-sm leading-relaxed">{methodology.normalization}</p>
-                <p className="text-sm leading-relaxed text-muted-foreground">
-                  Paliers : {methodology.levels.map((level) => `${level.label} ${level.from}–${level.to}`).join(' · ')}
-                </p>
-              </div>
-            )}
-
             <div className="flex items-start gap-2 border-t pt-3">
               <Info className="mt-0.5 size-3.5 shrink-0 text-muted-foreground" />
               <p className="text-xs leading-relaxed text-muted-foreground">
-                {methodology?.disclaimer ?? FALLBACK_DISCLAIMER}
+                {FALLBACK_DISCLAIMER}
               </p>
             </div>
           </div>

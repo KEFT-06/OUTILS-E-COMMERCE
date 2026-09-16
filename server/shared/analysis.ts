@@ -7,7 +7,7 @@ import type { ScoreTrace } from '@server/shared/scoring';
  *
  * Deux natures de contenu, jamais confondues :
  *  - les faits de marché (concurrents, prix constatés, niveaux des taux) viennent
- *    d'une source : collecte publicitaire mesurée, ou page web numérotée et citée ;
+ *    d'une page web numérotée et citée ;
  *  - les propositions (produits, scripts, plan d'action) sont rédigées par l'IA,
  *    présentées comme telles et sans chiffre inventé.
  */
@@ -15,9 +15,10 @@ import type { ScoreTrace } from '@server/shared/scoring';
 export type TauxLevel = 'Faible' | 'Moyen' | 'Élevé' | 'Très élevé';
 
 /**
- * measured : calculé par le moteur de scoring sur une collecte ;
+ * measured : calculé sur l'ancienne collecte publicitaire Meta (rapports antérieurs à
+ *   son retrait, affichés tels quels) ;
  * assessment : appréciation qualitative de l'IA, fondée sur les sources citées ;
- * unavailable : non évalué, faute de mesure ou de source.
+ * unavailable : non évalué, faute de source.
  */
 export type RateBasis = 'measured' | 'assessment' | 'unavailable';
 
@@ -26,7 +27,7 @@ export interface MarketRate {
   label: string;
   /** null : non évalué. */
   level: TauxLevel | null;
-  /** Score sur 100, seulement quand le moteur de scoring l'a calculé. */
+  /** Score sur 100 : seulement sur les rapports calculés par l'ancienne collecte publicitaire. */
   score: number | null;
   description: string;
   trend: 'up' | 'stable' | 'down' | null;
@@ -207,41 +208,4 @@ export interface ReportSummary {
   nicheName: string;
   market: string | null;
   createdAt: string;
-}
-
-export interface RadarTrendingProduct {
-  title: string;
-  format: 'template' | 'ebook' | 'bundle' | 'masterclass' | 'micro_tool';
-  priceEstimated: number;
-  targetAudience: string;
-  keyFeature: string;
-}
-
-export interface RadarTrendingNiche {
-  id: string;
-  nicheName: string;
-  category: string;
-  explosionScore: number; // 0 to 100
-  growthSignal: string;
-  trendVelocity: 'breakout' | 'explosive' | 'steady';
-  saturationLevel: 'Faible' | 'Moyenne' | 'Forte';
-  estimatedMargin: string;
-  searchVolumeEstimated: string;
-  whyItExplodes: string;
-  socialPlatforms: ('Google Trends' | 'Meta Ads' | 'TikTok' | 'Gumroad' | 'Etsy' | 'Reddit')[];
-  viralAngles: string[];
-  topDigitalProducts: RadarTrendingProduct[];
-  sources?: WebGroundingSource[];
-  actionIdea?: string;
-}
-
-export interface RadarScanResult {
-  id: string;
-  timestamp: string;
-  searchFilter: string;
-  platformsScanned: string[];
-  totalNichesFound: number;
-  executiveTakeaway: string;
-  niches: RadarTrendingNiche[];
-  webQueriesUsed?: string[];
 }

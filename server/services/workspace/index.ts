@@ -5,7 +5,7 @@ import { AppError } from '@server/middleware';
 
 /**
  * Brouillons de l'espace de travail, conservés sur le compte : retouches des
- * produits, produits créés hors analyse, swipe file, kits de lancement et pages produits.
+ * produits, produits créés hors analyse, kits de lancement et pages produits.
  *
  * Le navigateur valide le détail de chaque brouillon à la lecture ; le serveur
  * garde la forme générale (objet ou liste) et une taille maximale, pour qu'un
@@ -19,7 +19,6 @@ import { AppError } from '@server/middleware';
 export const WORKSPACE_KINDS = {
   product_drafts: { shape: 'object', maxBytes: 4_000_000 },
   custom_products: { shape: 'array', maxBytes: 4_000_000 },
-  swipe_file: { shape: 'array', maxBytes: 512_000 },
   launch_kits: { shape: 'object', maxBytes: 512_000 },
   product_pages: { shape: 'object', maxBytes: 512_000 },
 } as const;

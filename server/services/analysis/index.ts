@@ -20,8 +20,6 @@ import {
 import { searchWeb, type WebSource } from '@server/services/analysis/webSearch';
 import { currencyForCountry, getRates } from '@server/services/currency';
 import { runBilledGeneration } from '@server/services/generations';
-import { getActiveAdapter, type IngestionResult } from '@server/services/ingestion';
-import { computeCompetitiveScore, type ScoreResult } from '@server/services/scoring';
 import type {
   CompetitorInsight,
   DigitalProductIdea,
@@ -35,8 +33,8 @@ import type {
 import { countryName } from '@server/shared/countries';
 
 /**
- * Analyse de niche (module 2) : recherche web, collecte publicitaire, rédaction
- * par Gemini, puis contrôle par le serveur de tout ce qui se présente comme un fait.
+ * Analyse de niche (module 2) : recherche web (Perplexity), rédaction par Gemini,
+ * puis contrôle par le serveur de tout ce qui se présente comme un fait.
  *
  * Le modèle reçoit la consigne de citer ses sources ; le serveur ne s'en contente
  * pas. Un concurrent sans source existante est écarté, un niveau de taux sans
@@ -78,11 +76,6 @@ const FRAMEWORK_NAMES = {
   BAB: 'Avant, Après, Pont',
 } as const;
 
-export interface AdMeasure {
-  ingestion: IngestionResult;
-  score: ScoreResult;
-}
-
 const clock = (seconds: number) => `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, '0')}`;
 
 function hostOf(value: string): string | null {
@@ -93,20 +86,9 @@ function hostOf(value: string): string | null {
   }
 }
 
-/** Mesure publicitaire décrite en une phrase, pour la consigne du modèle. */
-export function describeMeasure(measure: AdMeasure): string {
-  const { signals, sourceLabel, isDemonstration } = measure.ingestion;
-  return (
-    `${signals.uniqueAdvertisers} annonceurs distincts, ${signals.activeAds} publicités actives, ` +
-    `durée de diffusion moyenne de ${Math.round(signals.averageLifetimeDays)} jours, ` +
-    `${signals.establishedAds} publicités diffusées depuis plus de 14 jours ` +
-    `(source : ${sourceLabel}${isDemonstration ? ', jeu de démonstration' : ''}).`
-  );
-}
-
 /**
  * Assemble le rapport à partir de la réponse du modèle, en ne gardant comme fait
- * que ce que les sources ou la mesure établissent. Fonction pure.
+ * que ce que les sources établissent. Fonction pure.
  */
 export function assembleReport(input: {
   id: string;
@@ -116,13 +98,11 @@ export function assembleReport(input: {
   timeZone: string;
   sources: readonly WebSource[];
   webSearchConfigured: boolean;
-  measure: AdMeasure | null;
-  measureFailed: boolean;
   response: AnalysisResponse;
   model: string;
   currency: string;
 }): MarketAnalysisReport {
-  const { id, sources, measure, response } = input;
+  const { id, sources, response } = input;
   const validIds = new Set(sources.map((source) => source.id));
   const cite = (ids: readonly number[]) => ids.filter((sourceId) => validIds.has(sourceId));
   const noSource =
@@ -132,7 +112,7 @@ export function assembleReport(input: {
         ? 'la recherche web n’a trouvé aucune page sur cette niche'
         : 'aucune recherche web n’est branchée sur ce serveur';
 
-  const assessed = (key: Exclude<MarketRate['key'], 'saturation'>): MarketRate => {
+  const assessed = (key: MarketRate['key']): MarketRate => {
     const assessment = response[key];
     const sourceIds = cite(assessment.sourceIds);
     const level = (LEVELS as readonly string[]).includes(assessment.level) ? (assessment.level as TauxLevel) : null;
@@ -142,34 +122,9 @@ export function assembleReport(input: {
     return { key, label: RATE_LABELS[key], level: null, score: null, trend: null, basis: 'unavailable', description: `Non évalué : ${noSource}.` };
   };
 
-  const saturation: MarketRate = measure
-    ? {
-        key: 'saturation',
-        label: RATE_LABELS.saturation,
-        level: measure.score.level,
-        score: measure.score.score,
-        trend: null,
-        basis: 'measured',
-        description:
-          `${measure.ingestion.signals.uniqueAdvertisers} annonceurs et ${measure.ingestion.signals.activeAds} publicités actives relevés` +
-          (measure.ingestion.isDemonstration ? ' dans le jeu de démonstration.' : ` dans ${measure.ingestion.sourceLabel}.`),
-        trace: { ...measure.score, source: measure.ingestion.isDemonstration ? 'demonstration' : 'live' },
-      }
-    : {
-        key: 'saturation',
-        label: RATE_LABELS.saturation,
-        level: null,
-        score: null,
-        trend: null,
-        basis: 'unavailable',
-        description: input.measureFailed
-          ? 'Non mesuré : la collecte publicitaire a échoué pendant l’analyse.'
-          : 'Non mesuré : la bibliothèque publicitaire Meta n’est pas branchée sur ce serveur.',
-      };
-
   const rates = {
     demand: assessed('demand'),
-    saturation,
+    saturation: assessed('saturation'),
     profitability: assessed('profitability'),
     opportunity: assessed('opportunity'),
     virality: assessed('virality'),
@@ -301,15 +256,6 @@ export function assembleReport(input: {
             : 'Aucune recherche web n’est branchée : concurrents, prix et demande n’ont pas été étudiés.',
         ]
       : []),
-    ...(measure
-      ? measure.ingestion.isDemonstration
-        ? ['La saturation est calculée sur un jeu de publicités de démonstration, pas sur le marché réel.']
-        : []
-      : [
-          input.measureFailed
-            ? 'La collecte publicitaire a échoué : la saturation concurrentielle n’a pas été mesurée.'
-            : 'La bibliothèque publicitaire Meta n’est pas branchée : la saturation concurrentielle n’a pas été mesurée.',
-        ]),
     'Aucune source de volumes de recherche n’est branchée : les mots-clés sont des pistes, sans volume ni croissance.',
     'Idées de produits, scripts et plan d’action sont des propositions de l’IA, à relire avant usage.',
     ...response.limitations,
@@ -342,25 +288,14 @@ export function assembleReport(input: {
       ...(sources.length > 0
         ? {
             rates: {
-              source: 'Recherche web (Brave Search), synthèse Gemini',
+              source: 'Recherche web (Perplexity), synthèse Gemini',
               collectedAt,
               sampleSize: sources.length,
               sampleUnit: 'pages web consultées',
               isDemonstration: false,
             },
           }
-        : measure
-          ? {
-              rates: {
-                source: measure.ingestion.sourceLabel,
-                collectedAt: measure.ingestion.collectedAt,
-                sampleSize: measure.ingestion.ads.length,
-                sampleUnit: 'publicités',
-                isDemonstration: measure.ingestion.isDemonstration,
-                ...(measure.ingestion.sourceUrl ? { sourceUrl: measure.ingestion.sourceUrl } : {}),
-              },
-            }
-          : {}),
+        : {}),
       ...(adCampaigns.length > 0
         ? { adCampaigns: { source: `Scripts proposés par Gemini (${input.model})`, collectedAt, isDemonstration: false } }
         : {}),
@@ -370,23 +305,10 @@ export function assembleReport(input: {
       provider: 'Gemini',
       model: input.model,
       promptVersion: ANALYSIS_PROMPT_VERSION,
-      webSearch: sources.length > 0 ? 'Brave Search' : null,
+      webSearch: sources.length > 0 ? 'Perplexity' : null,
       generatedAt: collectedAt,
     },
   };
-}
-
-/** Collecte publicitaire quand une source est branchée ; son échec n'arrête pas l'analyse, il est dit. */
-async function measureAds(niche: string, market: string | null): Promise<{ measure: AdMeasure | null; measureFailed: boolean }> {
-  const adapter = getActiveAdapter();
-  if (!adapter.isAvailable().available) return { measure: null, measureFailed: false };
-  try {
-    const ingestion = await adapter.fetchAds({ niche, ...(market ? { market } : {}), limit: 500 });
-    return { measure: { ingestion, score: computeCompetitiveScore(ingestion.signals, new Date(ingestion.collectedAt)) }, measureFailed: false };
-  } catch (error) {
-    console.error('[analyse] collecte publicitaire impossible :', error instanceof Error ? error.message : error);
-    return { measure: null, measureFailed: true };
-  }
 }
 
 async function produceReport(auth: RequestAuth, request: AnalysisRequest): Promise<MarketAnalysisReport> {
@@ -394,8 +316,7 @@ async function produceReport(auth: RequestAuth, request: AnalysisRequest): Promi
   const market = request.market ?? null;
   const marketName = market ? countryName(market) : null;
 
-  const sources = providers.webSearch ? await searchWeb({ query: request.query, marketName }) : [];
-  const { measure, measureFailed } = await measureAds(request.query, market);
+  const sources = providers.webSearch ? await searchWeb({ query: request.query, market, marketName }) : [];
 
   const response = await generateJson({
     service: SERVICE,
@@ -405,7 +326,6 @@ async function produceReport(auth: RequestAuth, request: AnalysisRequest): Promi
       today: now.toLocaleDateString('fr-FR', { day: 'numeric', month: 'long', year: 'numeric', timeZone: env.REPORTING_TIMEZONE }),
       sources,
       webSearchConfigured: providers.webSearch,
-      adMeasure: measure ? describeMeasure(measure) : null,
     }),
     responseSchema: ANALYSIS_RESPONSE_SCHEMA,
     parse: parseAnalysisResponse,
@@ -420,8 +340,6 @@ async function produceReport(auth: RequestAuth, request: AnalysisRequest): Promi
     timeZone: env.REPORTING_TIMEZONE,
     sources,
     webSearchConfigured: providers.webSearch,
-    measure,
-    measureFailed,
     response,
     model: env.GEMINI_MODEL,
     currency: currencyForCountry(market ?? auth.account.user.country, await getRates()),

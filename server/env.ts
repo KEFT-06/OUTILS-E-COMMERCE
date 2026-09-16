@@ -42,13 +42,13 @@ const schema = z.object({
   /** Modèle Gemini des analyses de niche, des rédactions et des traductions. */
   GEMINI_MODEL: emptyAsUndefined(z.string().regex(/^[\w.-]+$/).default('gemini-3.5-flash')),
   /**
-   * Recherche web des analyses de niche (Brave Search API). La recherche Google
-   * intégrée à Gemini interdit de conserver ou d'exporter ses résultats : il faut un
-   * moteur dont l'offre autorise le stockage. Sans clé, l'analyse le dit et
-   * n'avance aucun fait de marché.
+   * Recherche web des analyses de niche (API Search de Perplexity) : pages brutes que
+   * Gemini rédige ensuite, sans rien avancer hors de ces sources. La recherche Google
+   * intégrée à Gemini n'est pas utilisée : ses conditions interdisent de conserver ou
+   * d'exporter les résultats. Sans clé, l'analyse le dit et n'avance aucun fait de marché.
    */
-  BRAVE_SEARCH_API_KEY: emptyAsUndefined(z.string().min(1).optional()),
-  BRAVE_SEARCH_API_URL: emptyAsUndefined(z.string().url().default('https://api.search.brave.com')),
+  PERPLEXITY_API_KEY: emptyAsUndefined(z.string().min(1).optional()),
+  PERPLEXITY_API_URL: emptyAsUndefined(z.string().url().default('https://api.perplexity.ai')),
   // Higgsfield authentifie par une paire identifiant + secret, envoyée sous la
   // forme `Authorization: Key ID:SECRET` (docs.higgsfield.ai/docs/authentication).
   // L'ancienne variable unique HIGGSFIELD_API_KEY ne pouvait fonctionner avec
@@ -79,11 +79,6 @@ const schema = z.object({
 
   /** Facultatif : boîte qui reçoit une copie de chaque message de la page Contact. */
   CONTACT_INBOX_EMAIL: emptyAsUndefined(z.string().email().optional()),
-
-  // Ingestion publicitaire (module 1)
-  META_APP_ID: z.string().optional(),
-  META_APP_SECRET: z.string().optional(),
-  META_ACCESS_TOKEN: z.string().optional(),
 
   /**
    * PostgreSQL (Supabase en production, obligatoire). Absente en développement :
@@ -164,14 +159,6 @@ const schema = z.object({
   /** Surchargeable pour tester le connecteur contre un serveur factice. */
   CHARIOW_API_URL: z.string().url().default('https://api.chariow.com/v1'),
 
-  /**
-   * Source d'ingestion publicitaire active : « meta » (défaut) ou « fixture ».
-   *
-   * `fixture` produit des publicités de démonstration et doit être demandé
-   * explicitement. Le laisser se déclencher par défaut ferait servir des
-   * chiffres fictifs à toute installation mal configurée.
-   */
-  AD_INGESTION_ADAPTER: z.enum(['meta', 'fixture']).optional(),
 
 });
 
@@ -193,12 +180,11 @@ export const listenHost = env.HOST || (isProd ? '0.0.0.0' : '127.0.0.1');
 /** Vrai si la clé du fournisseur est présente. Aucune route ne doit la lire directement. */
 export const providers = {
   gemini: Boolean(env.GEMINI_API_KEY),
-  webSearch: Boolean(env.BRAVE_SEARCH_API_KEY),
+  webSearch: Boolean(env.PERPLEXITY_API_KEY),
   email: Boolean(env.EMAIL_PROVIDER && env.EMAIL_API_KEY && env.EMAIL_FROM),
   payments: Boolean(env.STRIPE_API_KEY && !env.STRIPE_API_KEY.trim().startsWith('pk_')),
   higgsfield: Boolean(env.HIGGSFIELD_API_KEY_ID && env.HIGGSFIELD_API_KEY_SECRET),
   gamma: Boolean(env.GAMMA_API_KEY),
-  meta: Boolean(env.META_ACCESS_TOKEN),
   chariow: Boolean(env.CHARIOW_API_KEY),
 } as const;
 

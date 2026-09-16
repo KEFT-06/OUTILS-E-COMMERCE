@@ -8,7 +8,7 @@ import { apiRequest } from '@/shared/lib/api';
  * priver l'utilisateur de son fichier.
  */
 
-export type ExportKind = 'ebook' | 'product_page' | 'report_pdf' | 'swipe_file' | 'launch_kit';
+export type ExportKind = 'ebook' | 'product_page' | 'report_pdf' | 'launch_kit';
 
 export function recordExport(kind: ExportKind, format: 'pdf' | 'docx' | 'html' | 'csv' | 'txt'): void {
   void apiRequest('/api/account/exports', { method: 'POST', body: { kind, format } }).catch(() => undefined);
