@@ -3,7 +3,7 @@ import { ChevronsUpDown, Home, LogOut, ShieldCheck, UserRound } from 'lucide-rea
 import { ACCOUNT_PATH, ADMIN_PATH, MODULES, MODULE_GROUPS, visibleAdminSections } from '@/app/navigation';
 import { initialsOf, useAuth } from '@/features/auth/AuthContext';
 import { Avatar, AvatarFallback } from '@/shared/ui/avatar';
-import { BrandMark } from '@/shared/ui/BrandLogo';
+import { BrandMark } from '@/shared/components/BrandLogo';
 import {
   DropdownMenu,
   DropdownMenuContent,

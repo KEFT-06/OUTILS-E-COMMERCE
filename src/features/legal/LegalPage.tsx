@@ -1,10 +1,10 @@
 import { useEffect, type ReactNode } from 'react';
 import { Link } from 'react-router-dom';
-import { useTrackVisit } from '@/shared/lib/audience';
-import { usePublicPageMeta } from '@/shared/lib/pageMeta';
+import { useTrackVisit } from '@/shared/hooks/useTrackVisit';
+import { usePublicPageMeta } from '@/shared/hooks/usePublicPageMeta';
 import { AlertTriangle, ArrowLeft } from 'lucide-react';
 import { Alert, AlertDescription, AlertTitle } from '@/shared/ui/alert';
-import { BrandLogo } from '@/shared/ui/BrandLogo';
+import { BrandLogo } from '@/shared/components/BrandLogo';
 import { Button } from '@/shared/ui/button';
 
 /**

@@ -20,7 +20,7 @@ import { triggerDownload } from '@/shared/lib/download';
 import { formatDateFr, formatRelativeFr } from '@/shared/lib/formatDate';
 import { CREDIT_REASON_LABELS, labelOf } from '@/shared/lib/labels';
 import { usePlans } from '@/shared/lib/plans';
-import { useProviders } from '@/shared/lib/useProviders';
+import { useProviders } from '@/shared/hooks/useProviders';
 import { cn } from '@/shared/lib/utils';
 import type { Account, PlanDefinition } from '@/shared/types/auth';
 import { Alert, AlertDescription, AlertTitle } from '@/shared/ui/alert';

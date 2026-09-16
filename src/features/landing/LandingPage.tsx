@@ -1,7 +1,7 @@
 import { Suspense, lazy, useEffect, useState, type ReactNode } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { useTrackVisit } from '@/shared/lib/audience';
-import { usePublicPageMeta } from '@/shared/lib/pageMeta';
+import { useTrackVisit } from '@/shared/hooks/useTrackVisit';
+import { usePublicPageMeta } from '@/shared/hooks/usePublicPageMeta';
 import { ArrowRight, ExternalLink, Moon, Scale, ShieldCheck, Sun, Wallet } from 'lucide-react';
 import { MODULES, MODULE_GROUPS, type ModuleGroup } from '@/app/navigation';
 import { usePreferences } from '@/app/providers/PreferencesContext';
@@ -14,7 +14,7 @@ import { guessCountryCode } from '@/shared/lib/geo';
 import { usePlans } from '@/shared/lib/plans';
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from '@/shared/ui/accordion';
 import { Badge } from '@/shared/ui/badge';
-import { BrandLogo } from '@/shared/ui/BrandLogo';
+import { BrandLogo } from '@/shared/components/BrandLogo';
 import { Button } from '@/shared/ui/button';
 import { Card, CardContent, CardDescription, CardHeader } from '@/shared/ui/card';
 import { Marquee } from '@/shared/ui/magicui/marquee';

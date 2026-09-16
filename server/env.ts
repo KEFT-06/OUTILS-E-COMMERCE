@@ -93,7 +93,6 @@ const schema = z.object({
    * des tests.
    */
   DATABASE_URL: emptyAsUndefined(z.string().optional()),
-  REDIS_URL: z.string().optional(),
 
   /**
    * Clé de chiffrement des secrets stockés en base (double authentification, clés

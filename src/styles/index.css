@@ -8,7 +8,7 @@
 @custom-variant dark (&:where(.dark, .dark *));
 
 /* ---------------------------------------------------------------------------
-   Tokens — cf. docs/DESIGN-SYSTEM.md.
+   Tokens — cf. README.md, section « Charte graphique ».
    Chaque couleur est définie une fois sur :root puis redéfinie sous .dark :
    aucun écran ne code plus de couleur en dur, le thème sombre fonctionne par
    construction.

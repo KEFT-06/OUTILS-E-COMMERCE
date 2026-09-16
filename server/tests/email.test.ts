@@ -4,7 +4,7 @@ import type { AddressInfo } from 'node:net';
 import { after, before, describe, it } from 'node:test';
 import type { Express } from 'express';
 import request from 'supertest';
-import { STRONG_PASSWORD, closeTestApp, createTestApp, signUp } from './helpers';
+import { STRONG_PASSWORD, closeTestApp, createTestApp, signUp } from './support/helpers';
 
 /**
  * E-mails transactionnels contre un faux Brevo : confirmation d'adresse, mot de passe

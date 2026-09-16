@@ -1,8 +1,8 @@
 import assert from 'node:assert/strict';
 import { after, before, describe, it } from 'node:test';
 import type { Express } from 'express';
-import { type FakeProviders, signInWithPlan, startFakeProviders } from './analysis-fixtures';
-import { closeTestApp, createTestApp } from './helpers';
+import { type FakeProviders, signInWithPlan, startFakeProviders } from './support/analysis-fixtures';
+import { closeTestApp, createTestApp } from './support/helpers';
 
 /**
  * Analyse de niche avec recherche web, contre un faux Gemini et une fausse

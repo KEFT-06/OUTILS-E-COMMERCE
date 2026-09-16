@@ -5,7 +5,7 @@ import type { AddressInfo } from 'node:net';
 import { after, before, describe, it } from 'node:test';
 import type { Express } from 'express';
 import request from 'supertest';
-import { STRONG_PASSWORD, closeTestApp, createAdmin, createTestApp } from './helpers';
+import { STRONG_PASSWORD, closeTestApp, createAdmin, createTestApp } from './support/helpers';
 
 /**
  * Guides multilingues de bout en bout, contre un faux Gemini et un faux

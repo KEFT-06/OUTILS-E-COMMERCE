@@ -14,7 +14,7 @@ import * as schema from '@server/db/schema';
  *    `.data/pglite`, exclu de Git. Solution d'attente, sur le poste du développeur.
  *  - `memory://` : base éphémère, pour les tests.
  *
- * Les migrations du dossier drizzle/ sont appliquées à chaque démarrage : une base
+ * Les migrations du dossier server/db/migrations/ sont appliquées à chaque démarrage : une base
  * en retard sur le code refuserait des requêtes au premier utilisateur venu.
  */
 
@@ -46,7 +46,7 @@ export function isUniqueViolation(error: unknown): boolean {
   return false;
 }
 
-const MIGRATIONS_FOLDER = join(process.cwd(), 'drizzle');
+const MIGRATIONS_FOLDER = join(process.cwd(), 'server', 'db', 'migrations');
 
 let database: Database | null = null;
 let closeConnection: (() => Promise<void>) | null = null;

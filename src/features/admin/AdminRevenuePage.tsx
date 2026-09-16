@@ -19,13 +19,13 @@ import { PageHeader } from '@/shared/components/PageHeader';
 import { formatDateFr } from '@/shared/lib/formatDate';
 import { PAYMENT_METHOD_LABELS, labelOf } from '@/shared/lib/labels';
 import { formatFcfa } from '@/shared/lib/plans';
-import { useProviders } from '@/shared/lib/useProviders';
+import { useProviders } from '@/shared/hooks/useProviders';
 import { formatPaymentAmount } from '@/features/admin/format';
 import { Alert, AlertDescription, AlertTitle } from '@/shared/ui/alert';
 import { Badge } from '@/shared/ui/badge';
 import { Card, CardAction, CardContent, CardDescription, CardHeader, CardTitle } from '@/shared/ui/card';
 import { ChartContainer, ChartTooltip, ChartTooltipContent, type ChartConfig } from '@/shared/ui/chart';
-import { NoDataState } from '@/shared/ui/NoDataState';
+import { NoDataState } from '@/shared/components/NoDataState';
 import { Skeleton } from '@/shared/ui/skeleton';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/shared/ui/table';
 

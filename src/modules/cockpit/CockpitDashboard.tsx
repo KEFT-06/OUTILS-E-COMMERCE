@@ -9,10 +9,10 @@ import { cn } from '@/shared/lib/utils';
 import type { MarketAnalysisReport } from '@/shared/types/analysis';
 import { Button } from '@/shared/ui/button';
 import { Card, CardAction, CardContent, CardDescription, CardHeader, CardTitle } from '@/shared/ui/card';
-import { NoDataState } from '@/shared/ui/NoDataState';
+import { NoDataState } from '@/shared/components/NoDataState';
 import { Progress } from '@/shared/ui/progress';
-import { RateBadge } from '@/shared/ui/RateBadge';
-import { SalesSummaryCard } from '@/shared/ui/SalesSummaryCard';
+import { RateBadge } from '@/shared/components/RateBadge';
+import { SalesSummaryCard } from '@/shared/components/SalesSummaryCard';
 import { Skeleton } from '@/shared/ui/skeleton';
 
 interface CockpitDashboardProps {

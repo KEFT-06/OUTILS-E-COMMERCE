@@ -3,7 +3,7 @@ import { after, before, describe, it } from 'node:test';
 import { eq } from 'drizzle-orm';
 import type { Express } from 'express';
 import request from 'supertest';
-import { STRONG_PASSWORD, closeTestApp, createAdmin, createTestApp, signUp } from './helpers';
+import { STRONG_PASSWORD, closeTestApp, createAdmin, createTestApp, signUp } from './support/helpers';
 
 /** Copie des données et suppression du compte par son titulaire. */
 

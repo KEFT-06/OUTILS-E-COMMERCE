@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { after, before, describe, it } from 'node:test';
 import type { Express } from 'express';
-import { STRONG_PASSWORD, closeTestApp, createAdmin, createTestApp, signUp } from './helpers';
+import { STRONG_PASSWORD, closeTestApp, createAdmin, createTestApp, signUp } from './support/helpers';
 
 let app: Express;
 

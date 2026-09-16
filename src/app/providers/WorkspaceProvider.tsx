@@ -9,7 +9,7 @@ import { toApiError } from '@/shared/lib/apiError';
 import { ComplianceBlockedError, exportReportPDF } from '@/shared/lib/complianceGate';
 import type { MarketAnalysisReport, ReportSummary } from '@/shared/types/analysis';
 import type { ReportComplianceVerdict } from '@/shared/types/compliance';
-import { ComplianceBlockDialog } from '@/shared/ui/ComplianceBlockDialog';
+import { ComplianceBlockDialog } from '@/shared/components/ComplianceBlockDialog';
 
 /**
  * État de l'espace de travail partagé par tous les écrans : rapports du compte

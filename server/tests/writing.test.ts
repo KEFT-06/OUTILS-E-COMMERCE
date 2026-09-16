@@ -3,8 +3,8 @@ import { createServer } from 'node:http';
 import type { AddressInfo } from 'node:net';
 import { after, before, describe, it } from 'node:test';
 import type { Express } from 'express';
-import { signInWithPlan } from './analysis-fixtures';
-import { closeTestApp, createTestApp } from './helpers';
+import { signInWithPlan } from './support/analysis-fixtures';
+import { closeTestApp, createTestApp } from './support/helpers';
 
 /**
  * Rédaction par l'IA contre un faux Gemini : modules d'un produit et kit de

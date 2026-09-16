@@ -1,6 +1,0 @@
-{
-  "name": "Smart Creator — Veille Stratégique & Production E-Commerce",
-  "description": "Plateforme officielle Smart Creator : Radar web en direct, veille concurrentielle, analyse par 5 taux de marché, studio de conception de produits digitaux, rapports PDF illustrés et scripts publicitaires Meta Ads (AIDA & PAS).",
-  "requestFramePermissions": [],
-  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
-}

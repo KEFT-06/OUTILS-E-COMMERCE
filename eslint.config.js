@@ -10,7 +10,7 @@ import tseslint from 'typescript-eslint';
  * en mode strict, qui vérifie déjà les types.
  */
 export default tseslint.config(
-  { ignores: ['dist/**', 'node_modules/**', '_legacy/**', '.data/**', 'coverage/**', 'drizzle/**'] },
+  { ignores: ['dist/**', 'node_modules/**', '.data/**', 'coverage/**', 'server/db/migrations/**'] },
   {
     files: ['**/*.{ts,tsx}'],
     extends: [js.configs.recommended, ...tseslint.configs.recommended],

@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { Link, Navigate, useLocation, useSearchParams } from 'react-router-dom';
-import { useTrackVisit } from '@/shared/lib/audience';
-import { usePublicPageMeta } from '@/shared/lib/pageMeta';
+import { useTrackVisit } from '@/shared/hooks/useTrackVisit';
+import { usePublicPageMeta } from '@/shared/hooks/usePublicPageMeta';
 import { Controller, useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
@@ -14,7 +14,7 @@ import { PASSWORD_MIN_LENGTH, PasswordHints, PasswordInput } from '@/features/au
 import { passwordProblemsOf } from '@/shared/lib/api';
 import { type ApiError, toApiError } from '@/shared/lib/apiError';
 import { Alert, AlertDescription, AlertTitle } from '@/shared/ui/alert';
-import { BrandLogo } from '@/shared/ui/BrandLogo';
+import { BrandLogo } from '@/shared/components/BrandLogo';
 import { Button } from '@/shared/ui/button';
 import { Field, FieldDescription, FieldError, FieldGroup, FieldLabel } from '@/shared/ui/field';
 import { Input } from '@/shared/ui/input';

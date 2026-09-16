@@ -1,6 +1,6 @@
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react';
 import { SESSION_EXPIRED_EVENT, apiRequest } from '@/shared/lib/api';
-import { bindAccountStores, flushAccountStores } from '@/shared/lib/persistentStore';
+import { bindAccountStores, flushAccountStores } from '@/shared/stores/persistentStore';
 import type { Account, SecondFactorMethods } from '@/shared/types/auth';
 
 /**

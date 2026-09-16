@@ -4,8 +4,8 @@ import type { AddressInfo } from 'node:net';
 import { after, before, describe, it } from 'node:test';
 import type { Express } from 'express';
 import request from 'supertest';
-import { signInWithPlan } from './analysis-fixtures';
-import { closeTestApp, createTestApp } from './helpers';
+import { signInWithPlan } from './support/analysis-fixtures';
+import { closeTestApp, createTestApp } from './support/helpers';
 
 /**
  * Mode Vidéo → Produit contre un faux Gemini : lien YouTube et fichier audio. Vérifie

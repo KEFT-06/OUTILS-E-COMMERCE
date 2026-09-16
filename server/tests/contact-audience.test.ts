@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { after, before, describe, it } from 'node:test';
 import type { Express } from 'express';
 import request from 'supertest';
-import { closeTestApp, createAdmin, createTestApp, signUp } from './helpers';
+import { closeTestApp, createAdmin, createTestApp, signUp } from './support/helpers';
 
 /** Page Contact et mesure d'audience sans cookie. */
 

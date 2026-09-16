@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { after, before, describe, it } from 'node:test';
 import type { Express } from 'express';
 import request from 'supertest';
-import { closeTestApp, createTestApp, signUp } from './helpers';
+import { closeTestApp, createTestApp, signUp } from './support/helpers';
 
 /** Sans service d'e-mails configuré : le site le dit, sans rien promettre ni rien révéler. */
 

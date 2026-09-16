@@ -6,7 +6,7 @@ import { join } from 'node:path';
 import express, { type Express } from 'express';
 import request from 'supertest';
 
-import { closeTestApp, createTestApp } from './helpers';
+import { closeTestApp, createTestApp } from './support/helpers';
 
 const TEMPLATE = `<!doctype html><html><head>
 <!--seo-->

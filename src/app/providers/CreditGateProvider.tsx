@@ -1,7 +1,7 @@
 import React, { createContext, useCallback, useContext, useEffect, useRef, useState } from 'react';
 import { useAuth } from '@/features/auth/AuthContext';
 import { CreditCostTable, CreditQuote } from '@/shared/types/credits';
-import { CreditSimulatorDialog } from '@/shared/ui/CreditSimulatorDialog';
+import { CreditSimulatorDialog } from '@/shared/components/CreditSimulatorDialog';
 
 /**
  * Porte de crédits — module 8 du cahier des charges.

@@ -5,7 +5,7 @@ import { AdminErrorAlert, KpiCard } from '@/features/admin/components';
 import { PageHeader } from '@/shared/components/PageHeader';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/shared/ui/card';
 import { ChartContainer, ChartLegend, ChartLegendContent, ChartTooltip, ChartTooltipContent, type ChartConfig } from '@/shared/ui/chart';
-import { NoDataState } from '@/shared/ui/NoDataState';
+import { NoDataState } from '@/shared/components/NoDataState';
 import { Skeleton } from '@/shared/ui/skeleton';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/shared/ui/table';
 

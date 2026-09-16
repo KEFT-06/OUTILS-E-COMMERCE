@@ -42,7 +42,7 @@ import { Button } from '@/shared/ui/button';
 import { Card, CardAction, CardContent, CardDescription, CardHeader, CardTitle } from '@/shared/ui/card';
 import { Checkbox } from '@/shared/ui/checkbox';
 import { Label } from '@/shared/ui/label';
-import { NoDataState } from '@/shared/ui/NoDataState';
+import { NoDataState } from '@/shared/components/NoDataState';
 import { Progress } from '@/shared/ui/progress';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/shared/ui/select';
 import { Skeleton } from '@/shared/ui/skeleton';

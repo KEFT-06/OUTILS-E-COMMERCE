@@ -8,7 +8,7 @@ import { AppHeader } from './AppHeader';
 import { AppSidebar } from './AppSidebar';
 import { CommandPalette } from './CommandPalette';
 import { MobileNav } from './MobileNav';
-import { NicheAnalysisDialog } from './NicheAnalysisDialog';
+import { NicheAnalysisDialog } from '@/modules/analyse/NicheAnalysisDialog';
 
 /** Affiché le temps de télécharger un écran : la forme d'une page, sans contenu inventé. */
 function PageSkeleton() {

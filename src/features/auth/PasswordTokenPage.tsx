@@ -9,7 +9,7 @@ import { apiRequest, passwordProblemsOf } from '@/shared/lib/api';
 import { ApiError, toApiError } from '@/shared/lib/apiError';
 import { formatDateFr } from '@/shared/lib/formatDate';
 import { Alert, AlertDescription, AlertTitle } from '@/shared/ui/alert';
-import { BrandLogo } from '@/shared/ui/BrandLogo';
+import { BrandLogo } from '@/shared/components/BrandLogo';
 import { Button } from '@/shared/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/shared/ui/card';
 import { Field, FieldError, FieldGroup, FieldLabel } from '@/shared/ui/field';

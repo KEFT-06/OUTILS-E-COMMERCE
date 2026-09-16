@@ -5,7 +5,7 @@ import { useAuth } from '@/features/auth/AuthContext';
 import { apiRequest } from '@/shared/lib/api';
 import { toApiError } from '@/shared/lib/apiError';
 import { Alert, AlertDescription, AlertTitle } from '@/shared/ui/alert';
-import { BrandLogo } from '@/shared/ui/BrandLogo';
+import { BrandLogo } from '@/shared/components/BrandLogo';
 import { Button } from '@/shared/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/shared/ui/card';
 import { Skeleton } from '@/shared/ui/skeleton';

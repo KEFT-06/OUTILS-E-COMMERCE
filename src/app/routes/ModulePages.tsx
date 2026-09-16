@@ -5,7 +5,7 @@ import { ACCOUNT_PATH, pathOf, type ModuleId } from '@/app/navigation';
 import { useWorkspace } from '@/app/providers/WorkspaceProvider';
 import { AccountView } from '@/features/account/AccountView';
 import { PageHeader } from '@/shared/components/PageHeader';
-import { useCustomProducts } from '@/shared/lib/useCustomProducts';
+import { useCustomProducts } from '@/shared/stores/useCustomProducts';
 import type { DigitalProductIdea, MarketAnalysisReport } from '@/shared/types/analysis';
 import { Button } from '@/shared/ui/button';
 import { Empty, EmptyDescription, EmptyHeader, EmptyTitle } from '@/shared/ui/empty';
@@ -24,53 +24,53 @@ const CockpitDashboard = lazy(() =>
 );
 const NichesView = lazy(() => import('@/modules/niches/NichesView').then((module) => ({ default: module.NichesView })));
 const ReportPDFView = lazy(() =>
-  import('@/modules/m02-analyse/ReportPDFView').then((module) => ({ default: module.ReportPDFView })),
+  import('@/modules/analyse/ReportPDFView').then((module) => ({ default: module.ReportPDFView })),
 );
 const StrategicAnalysisView = lazy(() =>
-  import('@/modules/m02-analyse/StrategicAnalysisView').then((module) => ({ default: module.StrategicAnalysisView })),
+  import('@/modules/analyse/StrategicAnalysisView').then((module) => ({ default: module.StrategicAnalysisView })),
 );
 const DigitalProductsView = lazy(() =>
-  import('@/modules/m03-studio/DigitalProductsView').then((module) => ({ default: module.DigitalProductsView })),
+  import('@/modules/studio/DigitalProductsView').then((module) => ({ default: module.DigitalProductsView })),
 );
 const CreativeGeneratorPanel = lazy(() =>
-  import('@/modules/m04-creatifs/CreativeGeneratorPanel').then((module) => ({ default: module.CreativeGeneratorPanel })),
+  import('@/modules/creatifs/CreativeGeneratorPanel').then((module) => ({ default: module.CreativeGeneratorPanel })),
 );
 const MetaVideoStudioView = lazy(() =>
-  import('@/modules/m04-creatifs/MetaVideoStudioView').then((module) => ({ default: module.MetaVideoStudioView })),
+  import('@/modules/creatifs/MetaVideoStudioView').then((module) => ({ default: module.MetaVideoStudioView })),
 );
 const LaunchKitView = lazy(() =>
-  import('@/modules/m05-kit-lancement/LaunchKitView').then((module) => ({ default: module.LaunchKitView })),
+  import('@/modules/kit-lancement/LaunchKitView').then((module) => ({ default: module.LaunchKitView })),
 );
 const DistributionView = lazy(() =>
-  import('@/modules/m06-distribution/DistributionView').then((module) => ({ default: module.DistributionView })),
+  import('@/modules/distribution/DistributionView').then((module) => ({ default: module.DistributionView })),
 );
 const AffiliationView = lazy(() =>
-  import('@/modules/m07-affiliation/AffiliationView').then((module) => ({ default: module.AffiliationView })),
+  import('@/modules/affiliation/AffiliationView').then((module) => ({ default: module.AffiliationView })),
 );
 const StorybookView = lazy(() =>
-  import('@/modules/m08-storybook/StorybookView').then((module) => ({ default: module.StorybookView })),
+  import('@/modules/storybook/StorybookView').then((module) => ({ default: module.StorybookView })),
 );
 const ProductPageBuilderView = lazy(() =>
-  import('@/modules/m09-pages/ProductPageBuilderView').then((module) => ({ default: module.ProductPageBuilderView })),
+  import('@/modules/pages-produits/ProductPageBuilderView').then((module) => ({ default: module.ProductPageBuilderView })),
 );
 const CampaignBlueprintsView = lazy(() =>
-  import('@/modules/m11-campagnes/CampaignBlueprintsView').then((module) => ({ default: module.CampaignBlueprintsView })),
+  import('@/modules/campagnes/CampaignBlueprintsView').then((module) => ({ default: module.CampaignBlueprintsView })),
 );
 const MultilingualGuidesView = lazy(() =>
-  import('@/modules/m10-multilingue/MultilingualGuidesView').then((module) => ({ default: module.MultilingualGuidesView })),
+  import('@/modules/multilingue/MultilingualGuidesView').then((module) => ({ default: module.MultilingualGuidesView })),
 );
 const GuideWorkspaceView = lazy(() =>
-  import('@/modules/m10-multilingue/GuideWorkspaceView').then((module) => ({ default: module.GuideWorkspaceView })),
+  import('@/modules/multilingue/GuideWorkspaceView').then((module) => ({ default: module.GuideWorkspaceView })),
 );
 const TranslationEditorView = lazy(() =>
-  import('@/modules/m10-multilingue/TranslationEditorView').then((module) => ({ default: module.TranslationEditorView })),
+  import('@/modules/multilingue/TranslationEditorView').then((module) => ({ default: module.TranslationEditorView })),
 );
 const ReviewEditorView = lazy(() =>
-  import('@/modules/m10-multilingue/ReviewEditorView').then((module) => ({ default: module.ReviewEditorView })),
+  import('@/modules/multilingue/ReviewEditorView').then((module) => ({ default: module.ReviewEditorView })),
 );
 /** Page d'impression d'un guide, hors de la mise en page de l'espace de travail. */
 export const GuidePrintPage = lazy(() =>
-  import('@/modules/m10-multilingue/GuidePrintView').then((module) => ({ default: module.GuidePrintView })),
+  import('@/modules/multilingue/GuidePrintView').then((module) => ({ default: module.GuidePrintView })),
 );
 
 function useGoTo() {

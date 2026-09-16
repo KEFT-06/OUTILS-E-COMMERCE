@@ -6,7 +6,7 @@ import { after, before, describe, it } from 'node:test';
 import { eq } from 'drizzle-orm';
 import type { Express } from 'express';
 import request from 'supertest';
-import { closeTestApp, createTestApp, signUp } from './helpers';
+import { closeTestApp, createTestApp, signUp } from './support/helpers';
 
 /**
  * Paiement en ligne contre un faux Stripe : aucune vraie carte, aucun vrai compte.

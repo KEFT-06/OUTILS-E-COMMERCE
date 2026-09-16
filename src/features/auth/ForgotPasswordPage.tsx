@@ -1,15 +1,15 @@
 import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { useTrackVisit } from '@/shared/lib/audience';
+import { useTrackVisit } from '@/shared/hooks/useTrackVisit';
 import { Controller, useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 import { ArrowLeft, MailCheck, KeyRound, TriangleAlert } from 'lucide-react';
 import { apiRequest } from '@/shared/lib/api';
 import { type ApiError, toApiError } from '@/shared/lib/apiError';
-import { useProviders } from '@/shared/lib/useProviders';
+import { useProviders } from '@/shared/hooks/useProviders';
 import { Alert, AlertDescription, AlertTitle } from '@/shared/ui/alert';
-import { BrandLogo } from '@/shared/ui/BrandLogo';
+import { BrandLogo } from '@/shared/components/BrandLogo';
 import { Button } from '@/shared/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/shared/ui/card';
 import { Field, FieldError, FieldGroup, FieldLabel } from '@/shared/ui/field';

@@ -31,7 +31,7 @@ export default defineConfig(({ mode }) => {
       port: 5173,
       strictPort: false,
       // Le front n'appelle JAMAIS un fournisseur IA directement : tout passe
-      // par le backend, qui seul détient les clés. Cf. docs/ARCHITECTURE.md.
+      // par le backend, qui seul détient les clés. Cf. README.md, section « Architecture ».
       proxy: {
         '/api': {
           // IPv4 explicite : l'API n'écoute que sur 127.0.0.1 en développement,

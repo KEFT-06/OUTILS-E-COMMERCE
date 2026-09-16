@@ -6,7 +6,7 @@ import { searchKey } from '@server/shared/countries';
 import { ACCOUNT_PATH } from '@/app/navigation';
 import { useWorkspace } from '@/app/providers/WorkspaceProvider';
 import { useAuth } from '@/features/auth/AuthContext';
-import { NICHE_COUNT, NICHE_SECTORS } from '@/data/nicheCatalog';
+import { NICHE_COUNT, NICHE_SECTORS } from '@/modules/niches/nicheCatalog';
 import { PageHeader } from '@/shared/components/PageHeader';
 import { toApiError } from '@/shared/lib/apiError';
 import { cn } from '@/shared/lib/utils';

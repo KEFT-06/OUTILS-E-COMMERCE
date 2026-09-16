@@ -33,5 +33,5 @@
     "forceConsistentCasingInFileNames": true
   },
   "include": ["src", "server", "vite.config.ts", "drizzle.config.ts"],
-  "exclude": ["node_modules", "dist", "_legacy"]
+  "exclude": ["node_modules", "dist"]
 }

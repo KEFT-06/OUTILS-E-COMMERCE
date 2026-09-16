@@ -26,7 +26,7 @@ import {
  *    publique « anon » : seul le serveur, connecté avec le rôle propriétaire, accède
  *    aux données.
  *  - Ce fichier n'importe que drizzle : drizzle-kit le lit tel quel pour générer
- *    les migrations SQL du dossier drizzle/.
+ *    les migrations SQL du dossier server/db/migrations/.
  */
 
 export const PLAN_IDS = ['free', 'plus', 'pro', 'max', 'elite'] as const;

@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { after, before, describe, it } from 'node:test';
 import type { Express } from 'express';
 import request from 'supertest';
-import { STRONG_PASSWORD, TotpDevice, closeTestApp, createAdmin, createTestApp, signUp } from './helpers';
+import { STRONG_PASSWORD, TotpDevice, closeTestApp, createAdmin, createTestApp, signUp } from './support/helpers';
 
 let app: Express;
 

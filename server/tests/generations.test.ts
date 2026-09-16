@@ -5,7 +5,7 @@ import type { AddressInfo } from 'node:net';
 import { after, before, describe, it } from 'node:test';
 import type { Express } from 'express';
 import request from 'supertest';
-import { STRONG_PASSWORD, closeTestApp, createTestApp, signUp } from './helpers';
+import { STRONG_PASSWORD, closeTestApp, createTestApp, signUp } from './support/helpers';
 
 /**
  * Faux Higgsfield et faux Chariow : les générations et les boutiques sont testées
