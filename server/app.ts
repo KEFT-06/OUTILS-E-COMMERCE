@@ -24,9 +24,10 @@ export function createApp() {
   // offerte à un attaquant qui cherche des versions vulnérables.
   app.disable('x-powered-by');
 
-  // Nécessaire derrière un reverse proxy pour que la limitation de débit voie
-  // la vraie IP cliente et non celle du proxy.
-  app.set('trust proxy', 1);
+  // Derrière un reverse proxy, la limitation de débit doit voir la vraie IP cliente et non
+  // celle du proxy. Sans proxy, faire confiance à X-Forwarded-For laisserait chacun choisir
+  // son adresse : en développement, seule la boucle locale (proxy de Vite) est crue.
+  app.set('trust proxy', env.TRUST_PROXY ?? (isProd ? 1 : 'loopback'));
 
   app.use(
     helmet({
@@ -68,7 +69,6 @@ export function createApp() {
   app.use((req, res, next) =>
     (req.path === '/api/billing/webhook' ? webhookBody : req.path.startsWith('/api/workspace/') ? workspaceJson : defaultJson)(req, res, next),
   );
-  app.use(express.urlencoded({ extended: false, limit: '1mb' }));
 
   /* ------------------------------------------------------------------------ */
   /*  API                                                                      */

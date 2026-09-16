@@ -5,6 +5,7 @@ import {
   aiLimiter,
   asyncRoute,
   providerUnavailable,
+  routeLimiter,
   validateBody,
 } from '@server/middleware';
 import { authenticate, requireAuth, requireFeature } from '@server/middleware/auth';
@@ -83,6 +84,13 @@ export const api = Router();
 
 // Attache le compte de la session à chaque requête ; les refus se font route par route.
 api.use(authenticate);
+
+// Aucune réponse de l'API n'est gardée en cache par le navigateur ou un proxy : comptes,
+// ventes, affiliés. Les fichiers qui peuvent l'être le précisent eux-mêmes.
+api.use((_req, res, next) => {
+  res.setHeader('Cache-Control', 'no-store');
+  next();
+});
 
 api.use('/auth', authRouter);
 api.use('/account', accountRouter);
@@ -215,6 +223,8 @@ const complianceSchema = z.object({
 
 api.post(
   '/compliance/check',
+  requireAuth,
+  routeLimiter(1, 60),
   validateBody(complianceSchema),
   asyncRoute(async (req, res) => {
     const { text } = req.body as z.infer<typeof complianceSchema>;
@@ -280,6 +290,8 @@ const originalitySchema = z.object({
 
 api.post(
   '/originality/check',
+  requireAuth,
+  routeLimiter(1, 20),
   validateBody(originalitySchema),
   asyncRoute(async (req, res) => {
     const { text, references } = req.body as z.infer<typeof originalitySchema>;

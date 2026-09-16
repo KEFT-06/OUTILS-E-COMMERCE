@@ -252,6 +252,17 @@ const EXTENSIONS: Record<string, string> = {
 };
 
 /**
+ * Type servi pour un fichier relayé. Seuls les types image et vidéo attendus passent : une
+ * page HTML ou un SVG renvoyé par le fournisseur s'exécuterait sinon sur l'origine du site,
+ * avec la session du visiteur.
+ */
+export function servedMediaType(announced: string | null, mediaType: 'image' | 'video'): string {
+  const type = announced?.split(';')[0]?.trim().toLowerCase() ?? '';
+  if (Object.hasOwn(EXTENSIONS, type)) return type;
+  return mediaType === 'video' ? 'video/mp4' : 'image/png';
+}
+
+/**
  * Relaie le fichier généré au navigateur.
  *
  * Servi depuis notre propre origine : la politique de sécurité du navigateur n'a
@@ -269,12 +280,12 @@ export async function streamCreativeFile(
   }
 
   const upstream = await fetchMedia(media.url);
-  const contentType =
-    upstream.headers.get('content-type')?.split(';')[0]?.trim() ??
-    (media.mediaType === 'video' ? 'video/mp4' : 'image/png');
-  const extension = EXTENSIONS[contentType] ?? (media.mediaType === 'video' ? 'mp4' : 'png');
+  const contentType = servedMediaType(upstream.headers.get('content-type'), media.mediaType);
+  const extension = EXTENSIONS[contentType]!;
 
   res.setHeader('Content-Type', contentType);
+  res.setHeader('X-Content-Type-Options', 'nosniff');
+  res.setHeader('Content-Security-Policy', "default-src 'none'; sandbox");
   const length = upstream.headers.get('content-length');
   if (length) res.setHeader('Content-Length', length);
   res.setHeader('Content-Disposition', `${disposition}; filename="creatif-${requestId.slice(0, 8)}.${extension}"`);

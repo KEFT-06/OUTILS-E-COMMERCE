@@ -34,7 +34,7 @@ const MARKETPLACES: Record<string, MarketplaceAdapter> = {
 };
 
 export function getMarketplace(id: string): MarketplaceAdapter {
-  const adapter = MARKETPLACES[id];
+  const adapter = Object.hasOwn(MARKETPLACES, id) ? MARKETPLACES[id] : undefined;
   if (!adapter) throw new AppError(404, `Marketplace inconnue : « ${id} ».`, 'MARKETPLACE_UNKNOWN');
   return adapter;
 }

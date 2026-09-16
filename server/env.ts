@@ -22,6 +22,13 @@ const schema = z.object({
    * les hébergeurs exigent.
    */
   HOST: z.string().optional(),
+  /**
+   * Proxys placés devant le serveur, pour lire la vraie adresse IP du visiteur (limites de
+   * débit, journal de sécurité). « 1 » derrière un hébergeur ou un répartiteur de charge ;
+   * « 0 » quand le serveur est joint directement, sinon n'importe qui pourrait se forger une
+   * adresse avec l'en-tête X-Forwarded-For. Vide : 1 en production, boucle locale sinon.
+   */
+  TRUST_PROXY: emptyAsUndefined(z.coerce.number().int().min(0).max(5).optional()),
   APP_URL: z.string().url().default('http://localhost:5173'),
 
   // Origines CORS autorisées, séparées par des virgules.
