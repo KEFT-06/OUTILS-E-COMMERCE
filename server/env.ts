@@ -6,6 +6,9 @@ function emptyAsUndefined<T extends z.ZodTypeAny>(schema: T) {
   return z.preprocess((value) => (value === '' ? undefined : value), schema);
 }
 
+/** Adresse publique attribuée par l'hébergeur (Render), utilisée quand APP_URL n'est pas renseignée. */
+const hostedUrl = process.env.RENDER_EXTERNAL_URL || undefined;
+
 /**
  * Validation de l'environnement au démarrage.
  *
@@ -29,16 +32,15 @@ const schema = z.object({
    * adresse avec l'en-tête X-Forwarded-For. Vide : 1 en production, boucle locale sinon.
    */
   TRUST_PROXY: emptyAsUndefined(z.coerce.number().int().min(0).max(5).optional()),
-  APP_URL: z.string().url().default('http://localhost:5173'),
+  APP_URL: emptyAsUndefined(z.string().url().default(hostedUrl ?? 'http://localhost:5173')),
 
-  // Origines CORS autorisées, séparées par des virgules.
-  CORS_ORIGINS: z
-    .string()
-    .default('http://localhost:5173')
+  // Origines CORS autorisées, séparées par des virgules. Vide : l'adresse publique.
+  CORS_ORIGINS: emptyAsUndefined(z.string().default(process.env.APP_URL || hostedUrl || 'http://localhost:5173'))
     .transform((v) =>
       v
         .split(',')
-        .map((s) => s.trim())
+        // Une origine envoyée par le navigateur ne finit jamais par « / ».
+        .map((s) => s.trim().replace(/\/+$/, ''))
         .filter(Boolean),
     ),
 
@@ -94,6 +96,13 @@ const schema = z.object({
   STRIPE_API_KEY: emptyAsUndefined(z.string().min(1).optional()),
   STRIPE_WEBHOOK_SECRET: emptyAsUndefined(z.string().min(1).optional()),
   STRIPE_API_URL: emptyAsUndefined(z.string().url().default('https://api.stripe.com')),
+
+  /**
+   * Premier administrateur d'une nouvelle installation (hébergeur sans terminal) : créé au
+   * démarrage tant qu'aucun administrateur n'existe, avec un lien à usage unique dans le journal
+   * du serveur. Sans effet ensuite. Voir server/services/admin/bootstrap.ts.
+   */
+  ADMIN_BOOTSTRAP_EMAIL: emptyAsUndefined(z.string().email().optional()),
 
   /** Facultatif : boîte de l'équipe, qui reçoit une copie de chaque message de la page Contact et un avis à chaque paiement en ligne. */
   CONTACT_INBOX_EMAIL: emptyAsUndefined(z.string().email().optional()),
@@ -211,6 +220,10 @@ export const providers = {
  * contributeur ; optionnelles en production, ce serait une faille.
  */
 if (isProd) {
+  // Sans adresse publique en https, les liens envoyés (paiement, mot de passe) pointeraient ailleurs.
+  if (!env.APP_URL.startsWith('https://')) {
+    console.warn(`\n⚠️  APP_URL vaut ${env.APP_URL} : indiquez l'adresse publique du site en https (liens de paiement et de mot de passe).\n`);
+  }
   const missing = (['DATABASE_URL', 'DATA_ENCRYPTION_KEY'] as const).filter((k) => !env[k]);
   if (missing.length > 0) {
     console.error(`\n❌ En production, ces secrets sont obligatoires : ${missing.join(', ')}`);

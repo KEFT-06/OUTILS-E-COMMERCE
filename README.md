@@ -507,18 +507,47 @@ types, relecture, tests, construction, et la recherche de toute variable `VITE_`
 
 ## 15. Mise en production
 
-1. **Hébergement** : un serveur Node.js (`npm run build` puis `npm start`), lancé depuis la racine du
-   projet (les migrations et les tables de configuration sont lues depuis `server/`).
-2. **Variables obligatoires** : `NODE_ENV=production`, `DATABASE_URL`, `DATA_ENCRYPTION_KEY`,
-   `APP_URL` (adresse publique en `https://`), `CORS_ORIGINS` (cette même adresse).
-3. **Réseau** : `TRUST_PROXY=1` derrière l'hébergeur ou un répartiteur de charge ; `HOST` vide
-   (écoute sur `0.0.0.0`).
-4. **Fournisseurs** : les clés de la section 4, avec des identifiants distincts de ceux du
-   développement.
-5. **Stripe** : activer les paiements réels sur le compte, passer à la clé `sk_live_…` et configurer le
-   webhook (section 9).
-6. **E-mails** : vérifier le domaine d'envoi chez Brevo ou Resend.
-7. **Premier administrateur** : `npm run admin:create` sur la base de production.
+### Choix de l'hébergement (vérifié le 16 septembre 2026)
+
+| Offre gratuite | Verdict pour ce site |
+| --- | --- |
+| **Render** (retenu) | Fait tourner le serveur tel quel, paiements autorisés, HTTPS inclus. Mise en veille après 15 minutes sans visite : la visite suivante attend environ une minute. 750 heures par mois. Passer à *Starter* (environ 7 $/mois) pour un site toujours éveillé |
+| Vercel *Hobby* | Exclu : usage non commercial seulement (« any method of requesting or processing payment »), fichiers limités à 4,5 Mo, tâches planifiées une fois par jour |
+| Netlify | Exclu : 60 secondes par requête (Vidéo → Produit et certaines analyses dépassent), envois limités à 6 Mo, serveur à réécrire en fonctions |
+| **Supabase** (base, retenu) | 500 Mo, région Paris ; un projet gratuit est mis en pause après une semaine sans activité (à relancer depuis son tableau de bord) |
+
+### Mise en ligne sur Render avec Supabase
+
+`render.yaml` décrit le service : Node 22, région Francfort (la plus proche de Supabase Paris),
+construction `npm ci --include=dev && npm run build`, démarrage `npm start`, sonde `/api/health`,
+déploiement automatique à chaque envoi sur la branche `main`.
+
+1. **Code** : un dépôt GitHub **privé** contenant ce projet (`.env` et `.data/` n'y partent jamais).
+2. **Base** : sur supabase.com, créer un projet en région *West EU (Paris)*, puis copier la chaîne
+   *Connect → Session pooler*, mot de passe de la base inclus. Les tables se créent au premier démarrage.
+3. **Clé de chiffrement de production** : dans un terminal,
+   `node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"`. La garder dans un
+   gestionnaire de mots de passe : la perdre rend illisibles les seconds facteurs et les clés Chariow.
+4. **Render** : se connecter avec GitHub, *New → Blueprint*, choisir le dépôt. Render demande les
+   valeurs secrètes :
+   - `DATABASE_URL` (étape 2), `DATA_ENCRYPTION_KEY` (étape 3) ;
+   - `ADMIN_BOOTSTRAP_EMAIL` : l'adresse du premier administrateur ;
+   - `CONTACT_INBOX_EMAIL` : la boîte de l'équipe ;
+   - les clés des fournisseurs, recopiées depuis `.env` (section 4) ;
+   - `APP_URL` et `CORS_ORIGINS` : vides tant qu'il n'y a pas de nom de domaine, l'adresse
+     `https://….onrender.com` attribuée par Render est alors utilisée.
+5. **Premier administrateur** : une fois le déploiement terminé, *Logs* du service → lien
+   « Lien à usage unique pour choisir le mot de passe » (24 h). Choisir le mot de passe, puis
+   *Mon compte → Sécurité* pour le second facteur. `ADMIN_BOOTSTRAP_EMAIL` n'a plus d'effet ensuite.
+6. **Stripe** : webhook `https://<adresse du site>/api/billing/webhook` (section 9), puis
+   `STRIPE_WEBHOOK_SECRET` dans Render.
+7. **Plus tard** : nom de domaine (*Settings → Custom Domains* de Render, puis `APP_URL` et
+   `CORS_ORIGINS`), service d'e-mails avec un domaine vérifié, paiements réels (`sk_live_…`).
+
+Autre hébergeur : un serveur Node.js lancé depuis la racine du projet (`npm run build` puis
+`npm start`), avec `NODE_ENV=production`, `DATABASE_URL`, `DATA_ENCRYPTION_KEY`, `APP_URL` en
+`https://`, `TRUST_PROXY=1` derrière un proxy, et `npm run admin:create` ou
+`ADMIN_BOOTSTRAP_EMAIL` pour le premier administrateur.
 
 ---
 

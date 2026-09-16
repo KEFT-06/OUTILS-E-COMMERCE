@@ -1,0 +1,66 @@
+# Déploiement sur Render (Blueprint) : un seul service web Node.js, qui sert l'API et le site.
+# Mode d'emploi : README.md, section « Mise en production ».
+#
+# Les valeurs marquées « sync: false » sont des secrets : Render les demande à la création du
+# Blueprint, puis les garde dans le tableau de bord. Elles ne sont jamais écrites dans Git.
+services:
+  - type: web
+    name: smart-creator
+    runtime: node
+    # Francfort : la région Render la plus proche de Supabase Paris.
+    region: frankfurt
+    # Offre gratuite : mise en veille après 15 minutes sans visite (réveil en une minute environ).
+    # Passer à « starter » pour un site toujours éveillé.
+    plan: free
+    branch: main
+    # Les outils de construction (Vite, esbuild) sont des dépendances de développement.
+    buildCommand: npm ci --include=dev && npm run build
+    startCommand: npm start
+    healthCheckPath: /api/health
+    autoDeploy: true
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: NODE_VERSION
+        value: "22"
+      # Un proxy de Render devant le serveur : la vraie adresse IP est lue derrière lui.
+      - key: TRUST_PROXY
+        value: "1"
+      - key: REPORTING_TIMEZONE
+        value: Africa/Douala
+      # Adresse publique : vide, celle attribuée par Render (RENDER_EXTERNAL_URL) ; à renseigner
+      # avec un nom de domaine, tout comme CORS_ORIGINS.
+      - key: APP_URL
+        sync: false
+      - key: CORS_ORIGINS
+        sync: false
+      # Base Supabase (région Paris), chaîne « Session pooler ».
+      - key: DATABASE_URL
+        sync: false
+      # 64 caractères hexadécimaux, propres à la production : ne pas réutiliser la clé du développement.
+      - key: DATA_ENCRYPTION_KEY
+        sync: false
+      - key: ADMIN_BOOTSTRAP_EMAIL
+        sync: false
+      - key: CONTACT_INBOX_EMAIL
+        sync: false
+      - key: GEMINI_API_KEY
+        sync: false
+      - key: PERPLEXITY_API_KEY
+        sync: false
+      - key: HIGGSFIELD_API_KEY_ID
+        sync: false
+      - key: HIGGSFIELD_API_KEY_SECRET
+        sync: false
+      - key: STRIPE_API_KEY
+        sync: false
+      - key: STRIPE_WEBHOOK_SECRET
+        sync: false
+      - key: CHARIOW_API_KEY
+        sync: false
+      - key: EMAIL_PROVIDER
+        sync: false
+      - key: EMAIL_API_KEY
+        sync: false
+      - key: EMAIL_FROM
+        sync: false

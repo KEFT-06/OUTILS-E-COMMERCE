@@ -4,6 +4,7 @@ import { createApp } from '@server/app';
 import { startExchangeRateRefresher, stopExchangeRateRefresher } from '@server/services/currency';
 import { startSessionSweeper } from '@server/services/auth/sessions';
 import { startGenerationSweeper } from '@server/services/generations/sweeper';
+import { bootstrapFirstAdmin } from '@server/services/admin/bootstrap';
 
 /* -------------------------------------------------------------------------- */
 /*  Démarrage                                                                  */
@@ -16,6 +17,12 @@ try {
 } catch (error) {
   console.error('\n❌ Base de données inaccessible :', error instanceof Error ? error.message : error);
   process.exit(1);
+}
+
+if (env.ADMIN_BOOTSTRAP_EMAIL) {
+  await bootstrapFirstAdmin(env.ADMIN_BOOTSTRAP_EMAIL).catch((error: unknown) => {
+    console.error('\n❌ Premier administrateur impossible à créer :', error instanceof Error ? error.message : error);
+  });
 }
 
 const app = createApp();
