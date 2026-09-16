@@ -5,7 +5,7 @@ import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 
 import { env, isProd } from '@server/env';
-import { apiLimiter, corsMiddleware, errorHandler, notFoundHandler } from '@server/middleware';
+import { apiLimiter, corsMiddleware, errorHandler, httpsRedirect, ipCeilingLimiter, notFoundHandler } from '@server/middleware';
 import { api } from '@server/routes';
 import { mountClient, mountSeoRoutes } from '@server/services/seo';
 
@@ -29,6 +29,9 @@ export function createApp() {
   // son adresse : en développement, seule la boucle locale (proxy de Vite) est crue.
   app.set('trust proxy', env.TRUST_PROXY ?? (isProd ? 1 : 'loopback'));
 
+  // En production, jamais de page servie en clair : le protocole est lu derrière le proxy de l'hébergeur.
+  if (isProd) app.use(httpsRedirect(env.APP_URL));
+
   app.use(
     helmet({
       contentSecurityPolicy: {
@@ -38,8 +41,9 @@ export function createApp() {
           // neutralise réellement le XSS injecté.
           scriptSrc: ["'self'"],
           // Tailwind injecte des styles au runtime ; inline reste nécessaire ici.
-          styleSrc: ["'self'", "'unsafe-inline'", 'https://fonts.googleapis.com'],
-          fontSrc: ["'self'", 'https://fonts.gstatic.com', 'data:'],
+          styleSrc: ["'self'", "'unsafe-inline'"],
+          // Polices servies par le site (paquets @fontsource), jamais par un serveur tiers.
+          fontSrc: ["'self'", 'data:'],
           imgSrc: ["'self'", 'data:', 'blob:', 'https:'],
           mediaSrc: ["'self'", 'blob:', 'https:'],
           connectSrc: ["'self'", ...env.CORS_ORIGINS],
@@ -74,7 +78,7 @@ export function createApp() {
   /*  API                                                                      */
   /* ------------------------------------------------------------------------ */
 
-  app.use('/api', apiLimiter, api);
+  app.use('/api', ipCeilingLimiter, apiLimiter, api);
 
   /* ------------------------------------------------------------------------ */
   /*  Client statique en production                                            */

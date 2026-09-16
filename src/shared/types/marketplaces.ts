@@ -40,8 +40,7 @@ export interface SalesSummary {
   collectedAt: string;
 }
 
-export interface SalesSummaryResponse {
-  days: number;
-  range: { from: string; to: string };
-  summaries: SalesSummary[];
-}
+export type SalesSummaryResponse =
+  | { days: number; connected: true; range: { from: string; to: string }; summaries: SalesSummary[] }
+  /** Aucune boutique reliée au compte. */
+  | { days: number; connected: false; range: null; summaries: [] };

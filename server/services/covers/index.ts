@@ -5,7 +5,7 @@ import { getDb } from '@server/db/client';
 import { covers, guides } from '@server/db/schema';
 import { AppError } from '@server/middleware';
 import type { RequestAuth } from '@server/middleware/auth';
-import { VISUAL_MODEL_PATH, generationStateOf } from '@server/services/creatives';
+import { VISUAL_MODEL_PATH, VISUAL_RESOLUTION, generationStateOf } from '@server/services/creatives';
 import { findOwnedGeneration, runBilledGeneration, settleGeneration } from '@server/services/generations';
 import { fetchMedia, getGenerationStatus, submitGeneration } from '@server/services/higgsfield';
 
@@ -92,7 +92,7 @@ export async function createCover(auth: RequestAuth, input: CoverRequest): Promi
     actionId: 'cover_generation',
     kind: 'cover',
     provider: 'higgsfield',
-    run: () => submitGeneration(VISUAL_MODEL_PATH, { prompt, num_images: 1, resolution: '2K', aspect_ratio: '9:16' }),
+    run: () => submitGeneration(VISUAL_MODEL_PATH, { prompt, num_images: 1, resolution: VISUAL_RESOLUTION, aspect_ratio: '9:16' }),
     describe: (status) => ({ providerRef: status.request_id, state: generationStateOf(status.status), fileFormat: null }),
   });
 

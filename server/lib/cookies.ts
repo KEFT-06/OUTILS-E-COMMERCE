@@ -1,6 +1,9 @@
 import type { CookieOptions, Request, Response } from 'express';
 import { isProd } from '@server/env';
 
+/** Cookie de session. Préfixe __Host- en production : lié à l'origine exacte, envoyé en HTTPS seulement. */
+export const SESSION_COOKIE = isProd ? '__Host-sc_session' : 'sc_session';
+
 /** Lit un cookie sans dépendance : l'en-tête est court et son format, simple. */
 export function readCookie(req: Request, name: string): string | undefined {
   const header = req.headers.cookie;

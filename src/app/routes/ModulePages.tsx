@@ -68,10 +68,6 @@ const TranslationEditorView = lazy(() =>
 const ReviewEditorView = lazy(() =>
   import('@/modules/multilingue/ReviewEditorView').then((module) => ({ default: module.ReviewEditorView })),
 );
-/** Page d'impression d'un guide, hors de la mise en page de l'espace de travail. */
-export const GuidePrintPage = lazy(() =>
-  import('@/modules/multilingue/GuidePrintView').then((module) => ({ default: module.GuidePrintView })),
-);
 
 function useGoTo() {
   const navigate = useNavigate();

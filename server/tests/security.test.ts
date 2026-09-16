@@ -7,7 +7,7 @@ import { closeTestApp, createTestApp, signUp } from './support/helpers';
 /**
  * Correctifs de l'audit de sécurité : routes coûteuses réservées aux comptes, réponses
  * jamais gardées en cache, corps encodés en formulaire ignorés, registre protégé contre
- * les clés héritées, fichiers relayés limités aux types image et vidéo.
+ * les clés héritées, fichiers relayés limités aux types image et vidéo, HTTPS obligatoire.
  */
 
 let app: Express;
@@ -59,5 +59,33 @@ describe('Audit de sécurité', () => {
     assert.equal(servedMediaType('image/svg+xml', 'image'), 'image/png');
     assert.equal(servedMediaType('application/javascript', 'video'), 'video/mp4');
     assert.equal(servedMediaType(null, 'video'), 'video/mp4');
+  });
+
+  it('redirige HTTP vers HTTPS sur l’adresse publique, jamais vers l’hôte annoncé par le visiteur', async () => {
+    const { default: express } = await import('express');
+    const { httpsRedirect } = await import('@server/middleware');
+    const site = express();
+    site.set('trust proxy', 1);
+    site.use(httpsRedirect('https://smart-creator.example'));
+    site.all('*', (_req, res) => {
+      res.status(200).send('servi');
+    });
+
+    const redirected = await request(site)
+      .post('/api/contact?sujet=aide')
+      .set('X-Forwarded-Proto', 'http')
+      .set('Host', 'site-piege.example')
+      .expect(308);
+    assert.equal(redirected.headers.location, 'https://smart-creator.example/api/contact?sujet=aide');
+
+    await request(site).get('/conditions').set('X-Forwarded-Proto', 'https').expect(200);
+    await request(site).get('/api/health').set('X-Forwarded-Proto', 'http').expect(200);
+
+    const local = express();
+    local.use(httpsRedirect('http://localhost:3001'));
+    local.all('*', (_req, res) => {
+      res.status(200).send('servi');
+    });
+    await request(local).get('/').expect(200);
   });
 });

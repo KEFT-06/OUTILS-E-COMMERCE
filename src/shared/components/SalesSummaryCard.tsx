@@ -58,7 +58,7 @@ export function SalesSummaryCard() {
         <div>
           <h2 className="text-base font-semibold">Ventes encaissées</h2>
           <p className="text-xs text-muted-foreground">
-            {data
+            {data?.connected
               ? `${PERIOD_DAYS} derniers jours · ${data.summaries.map((summary) => summary.source).join(', ')}`
               : 'Sur vos marketplaces connectées'}
           </p>
@@ -72,19 +72,17 @@ export function SalesSummaryCard() {
           <Skeleton className="h-20" />
         </div>
       ) : error ? (
-        error.code === 'NO_SALES_SOURCE' ? (
-          <NoDataState
-            title="Vos ventes s’afficheront ici"
-            reason="Aucune boutique n’est reliée à votre compte. Ajoutez votre clé API Chariow dans Mon compte : vos ventes réelles apparaîtront ici, jamais une estimation."
-          >
-            <ConnectChariowLink />
-          </NoDataState>
-        ) : (
-          <Alert variant="danger">
-            <AlertTriangle />
-            <AlertDescription>{error.message}</AlertDescription>
-          </Alert>
-        )
+        <Alert variant="danger">
+          <AlertTriangle />
+          <AlertDescription>{error.message}</AlertDescription>
+        </Alert>
+      ) : data && !data.connected ? (
+        <NoDataState
+          title="Vos ventes s’afficheront ici"
+          reason="Aucune boutique n’est reliée à votre compte. Ajoutez votre clé API Chariow dans Mon compte : vos ventes réelles apparaîtront ici, jamais une estimation."
+        >
+          <ConnectChariowLink />
+        </NoDataState>
       ) : (
         data?.summaries.map((summary) => (
           <div key={summary.source} className="space-y-3">

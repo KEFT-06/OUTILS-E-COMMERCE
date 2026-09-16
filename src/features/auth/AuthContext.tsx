@@ -19,7 +19,7 @@ interface AuthContextType {
   account: Account | null;
   status: AuthStatus;
   isAuthenticated: boolean;
-  signup: (input: { name: string; email: string; password: string; country: string }) => Promise<void>;
+  signup: (input: { name: string; email: string; password: string; country: string; website?: string }) => Promise<void>;
   /** `mfaRequired` : le mot de passe est bon, le second facteur est attendu (`methods` dit lequel). */
   login: (input: { email: string; password: string }) => Promise<{ mfaRequired: boolean; methods: SecondFactorMethods | null }>;
   verifyMfa: (code: string) => Promise<void>;
@@ -54,8 +54,28 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   }, []);
 
   useEffect(() => {
-    void refresh().finally(() => setStatus('ready'));
-  }, [refresh]);
+    let cancelled = false;
+    // Premier chargement : un refus passager (limite de débit, réseau coupé) ne doit pas renvoyer
+    // vers la page de connexion un visiteur dont la session est valide. Trois essais, puis la
+    // page s'affiche avec l'état obtenu.
+    void (async () => {
+      for (const waitMs of [0, 1_500, 4_000]) {
+        if (waitMs > 0) await new Promise((resolve) => setTimeout(resolve, waitMs));
+        if (cancelled) return;
+        try {
+          const { account: current } = await apiRequest<{ account: Account | null }>('/api/auth/me');
+          if (!cancelled) setAccount(current);
+          break;
+        } catch {
+          // Nouvel essai.
+        }
+      }
+      if (!cancelled) setStatus('ready');
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   const accountId = account?.id;
 
@@ -83,7 +103,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     return () => window.removeEventListener(SESSION_EXPIRED_EVENT, onExpired);
   }, []);
 
-  const signup = useCallback(async (input: { name: string; email: string; password: string; country: string }) => {
+  const signup = useCallback(async (input: { name: string; email: string; password: string; country: string; website?: string }) => {
     const { account: created } = await apiRequest<{ account: Account }>('/api/auth/signup', { method: 'POST', body: input });
     setAccount(created);
   }, []);

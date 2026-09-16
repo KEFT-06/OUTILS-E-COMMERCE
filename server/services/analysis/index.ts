@@ -318,6 +318,7 @@ async function produceReport(auth: RequestAuth, request: AnalysisRequest): Promi
 
   const sources = providers.webSearch ? await searchWeb({ query: request.query, market, marketName }) : [];
 
+  let model = env.GEMINI_MODEL;
   const response = await generateJson({
     service: SERVICE,
     prompt: buildAnalysisPrompt({
@@ -330,6 +331,9 @@ async function produceReport(auth: RequestAuth, request: AnalysisRequest): Promi
     responseSchema: ANALYSIS_RESPONSE_SCHEMA,
     parse: parseAnalysisResponse,
     timeoutMs: TIMEOUT_MS,
+    onModel: (used) => {
+      model = used;
+    },
   });
 
   const report = assembleReport({
@@ -341,7 +345,7 @@ async function produceReport(auth: RequestAuth, request: AnalysisRequest): Promi
     sources,
     webSearchConfigured: providers.webSearch,
     response,
-    model: env.GEMINI_MODEL,
+    model,
     currency: currencyForCountry(market ?? auth.account.user.country, await getRates()),
   });
 

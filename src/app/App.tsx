@@ -1,37 +1,11 @@
 import { Suspense } from 'react';
 import { BrowserRouter, Navigate, Route, Routes } from 'react-router-dom';
 import { AuthProvider } from '@/features/auth/AuthContext';
-import { LoginPage } from '@/features/auth/LoginPage';
-import { ForgotPasswordPage } from '@/features/auth/ForgotPasswordPage';
-import { PasswordTokenPage } from '@/features/auth/PasswordTokenPage';
-import { VerifyEmailPage } from '@/features/auth/VerifyEmailPage';
 import { LandingPage } from '@/features/landing/LandingPage';
-import { ContactPage } from '@/features/contact/ContactPage';
-import { LegalPage } from '@/features/legal/LegalPage';
-import { AppLayout } from '@/app/layout/AppLayout';
 import { RequireAuth } from '@/app/layout/RequireAuth';
 import { CreditGateProvider } from '@/app/providers/CreditGateProvider';
 import { PreferencesProvider } from '@/app/providers/PreferencesContext';
-import {
-  AccountPage,
-  AffiliationPage,
-  AnalysePage,
-  CampagnesPage,
-  CockpitPage,
-  CreatifsPage,
-  DistributionPage,
-  DossierPdfPage,
-  GuidePage,
-  GuidePrintPage,
-  GuideReviewPage,
-  GuideTranslationPage,
-  KitLancementPage,
-  MultilinguePage,
-  NichesPage,
-  PagesProduitsPage,
-  StorybookPage,
-  StudioPage,
-} from '@/app/routes/ModulePages';
+import { lazyPage } from '@/app/routes/lazyPage';
 import {
   AdminConnectionsPage,
   AdminAudiencePage,
@@ -47,7 +21,52 @@ import {
 import { NotFoundPage } from '@/app/routes/NotFoundPage';
 import { ErrorBoundary } from '@/shared/components/ErrorBoundary';
 import { Toaster } from '@/shared/ui/sonner';
+import { Spinner } from '@/shared/ui/spinner';
 import { TooltipProvider } from '@/shared/ui/tooltip';
+
+/*
+ * Seul l'accueil part avec le premier téléchargement. Les autres pages publiques, le cadre de
+ * l'espace de travail et chaque module arrivent à l'ouverture de leur adresse : sur une connexion
+ * mobile, l'accueil s'affiche sans attendre le code des outils.
+ */
+const LoginPage = lazyPage(() => import('@/features/auth/LoginPage'), 'LoginPage');
+const ForgotPasswordPage = lazyPage(() => import('@/features/auth/ForgotPasswordPage'), 'ForgotPasswordPage');
+const PasswordTokenPage = lazyPage(() => import('@/features/auth/PasswordTokenPage'), 'PasswordTokenPage');
+const VerifyEmailPage = lazyPage(() => import('@/features/auth/VerifyEmailPage'), 'VerifyEmailPage');
+const ContactPage = lazyPage(() => import('@/features/contact/ContactPage'), 'ContactPage');
+const LegalPage = lazyPage(() => import('@/features/legal/LegalPage'), 'LegalPage');
+/** Page d'impression d'un guide, hors de la mise en page de l'espace de travail. */
+const GuidePrintPage = lazyPage(() => import('@/modules/multilingue/GuidePrintView'), 'GuidePrintView');
+const AppLayout = lazyPage(() => import('@/app/layout/AppLayout'), 'AppLayout');
+
+const modulePages = () => import('@/app/routes/ModulePages');
+const AccountPage = lazyPage(modulePages, 'AccountPage');
+const AffiliationPage = lazyPage(modulePages, 'AffiliationPage');
+const AnalysePage = lazyPage(modulePages, 'AnalysePage');
+const CampagnesPage = lazyPage(modulePages, 'CampagnesPage');
+const CockpitPage = lazyPage(modulePages, 'CockpitPage');
+const CreatifsPage = lazyPage(modulePages, 'CreatifsPage');
+const DistributionPage = lazyPage(modulePages, 'DistributionPage');
+const DossierPdfPage = lazyPage(modulePages, 'DossierPdfPage');
+const GuidePage = lazyPage(modulePages, 'GuidePage');
+const GuideReviewPage = lazyPage(modulePages, 'GuideReviewPage');
+const GuideTranslationPage = lazyPage(modulePages, 'GuideTranslationPage');
+const KitLancementPage = lazyPage(modulePages, 'KitLancementPage');
+const MultilinguePage = lazyPage(modulePages, 'MultilinguePage');
+const NichesPage = lazyPage(modulePages, 'NichesPage');
+const PagesProduitsPage = lazyPage(modulePages, 'PagesProduitsPage');
+const StorybookPage = lazyPage(modulePages, 'StorybookPage');
+const StudioPage = lazyPage(modulePages, 'StudioPage');
+
+/**
+ * Pendant le téléchargement d'un écran : le fond du thème (pas de flash blanc en sombre) et un
+ * indicateur, pour qu'un chargement lent sur mobile ne passe pas pour une page vide.
+ */
+const loadingScreen = (
+  <div className="flex min-h-dvh items-center justify-center bg-background" aria-busy="true">
+    <Spinner className="size-6 text-muted-foreground" />
+  </div>
+);
 
 /**
  * Chaque écran a sa propre adresse : le bouton Retour du navigateur, le
@@ -62,6 +81,7 @@ export default function App() {
           <CreditGateProvider>
             <TooltipProvider delayDuration={200}>
               <ErrorBoundary>
+              <Suspense fallback={loadingScreen}>
               <Routes>
                 <Route path="/" element={<LandingPage />} />
                 <Route path="/connexion" element={<LoginPage />} />
@@ -121,6 +141,7 @@ export default function App() {
 
                 <Route path="*" element={<NotFoundPage />} />
               </Routes>
+              </Suspense>
               </ErrorBoundary>
               <Toaster position="bottom-right" mobileOffset={{ bottom: 88 }} closeButton />
             </TooltipProvider>

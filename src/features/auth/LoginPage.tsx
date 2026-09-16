@@ -46,6 +46,8 @@ const signupSchema = z
       .max(128, '128 caractères au plus.'),
     confirmation: z.string(),
     country: z.string().min(2, 'Choisissez votre pays : la devise des prix en dépend.'),
+    /** Champ piège invisible : un robot le remplit, une personne jamais. */
+    website: z.string().optional(),
   })
   .refine((values) => values.password === values.confirmation, {
     message: 'Les deux mots de passe ne correspondent pas.',
@@ -237,14 +239,14 @@ function SignupForm() {
   const [error, setError] = useState<ApiError | null>(null);
   const form = useForm<z.infer<typeof signupSchema>>({
     resolver: zodResolver(signupSchema),
-    defaultValues: { name: '', email: '', password: '', confirmation: '', country: guessCountryCode() ?? '' },
+    defaultValues: { name: '', email: '', password: '', confirmation: '', country: guessCountryCode() ?? '', website: '' },
   });
   const password = form.watch('password');
 
-  const onSubmit = form.handleSubmit(async ({ name, email, password: chosen, country }) => {
+  const onSubmit = form.handleSubmit(async ({ name, email, password: chosen, country, website }) => {
     setError(null);
     try {
-      await signup({ name, email, password: chosen, country });
+      await signup({ name, email, password: chosen, country, ...(website ? { website } : {}) });
     } catch (caught) {
       setError(toApiError(caught, 'La création du compte a échoué.'));
     }
@@ -327,6 +329,11 @@ function SignupForm() {
             </Field>
           )}
         />
+        {/* Piège à robots : invisible et hors du parcours clavier. */}
+        <div aria-hidden="true" className="absolute -left-[9999px] h-px w-px overflow-hidden">
+          <label htmlFor="signup-website">Site web</label>
+          <input id="signup-website" tabIndex={-1} autoComplete="off" {...form.register('website')} />
+        </div>
         <Button type="submit" className="w-full" disabled={form.formState.isSubmitting}>
           {form.formState.isSubmitting && <Spinner />}
           Créer mon compte gratuit

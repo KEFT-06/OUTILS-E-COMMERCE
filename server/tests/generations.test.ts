@@ -18,6 +18,7 @@ const USER_KEY = 'sk_test_cle_utilisateur_valide_1234';
 const creativeStatuses = new Map<string, Record<string, unknown>>();
 const chariowAuthorizations: string[] = [];
 let submissionFails = false;
+let outOfCredits = false;
 
 const fakeProviders = createServer((req, res) => {
   const url = new URL(req.url ?? '/', 'http://fournisseurs.test');
@@ -29,6 +30,8 @@ const fakeProviders = createServer((req, res) => {
   if (url.pathname.startsWith('/higgsfield/')) {
     if (req.method === 'POST') {
       if (submissionFails) return send(500, { detail: 'panne simulée' });
+      // Réponse réelle d'un compte Higgsfield sans crédits (relevée le 16 septembre 2026).
+      if (outOfCredits) return send(403, { detail: 'not_enough_credits' });
       const requestId = randomUUID();
       creativeStatuses.set(requestId, { status: 'queued' });
       return send(200, { request_id: requestId, status: 'queued' });
@@ -139,6 +142,17 @@ describe('Générations facturées', () => {
     assert.equal(await balanceOf(owner.agent), 2);
   });
 
+  it('dit clairement que le compte Higgsfield du serveur n’a plus de crédits, et rend les points', async () => {
+    outOfCredits = true;
+    try {
+      const refused = await owner.agent.post('/api/creatives/visuals').send(visualBrief).expect(503);
+      assert.equal(refused.body.error.code, 'HIGGSFIELD_INSUFFICIENT_CREDITS');
+    } finally {
+      outOfCredits = false;
+    }
+    assert.equal(await balanceOf(owner.agent), 2);
+  });
+
   it('refuse sans solde suffisant, et une fonction absente du palier', async () => {
     const { getDb } = await import('@server/db/client');
     const { users } = await import('@server/db/schema');
@@ -208,8 +222,8 @@ describe('Clés Chariow personnelles', () => {
     const marketplaces = await seller.agent.get('/api/marketplaces').expect(200);
     const chariow = marketplaces.body.marketplaces.find((entry: { id: string }) => entry.id === 'chariow');
     assert.equal(chariow.available, false);
-    const noSource = await seller.agent.get('/api/marketplaces/sales-summary').expect(503);
-    assert.equal(noSource.body.error.code, 'NO_SALES_SOURCE');
+    const noSource = await seller.agent.get('/api/marketplaces/sales-summary').expect(200);
+    assert.deepEqual(noSource.body, { days: 30, connected: false, range: null, summaries: [] }, 'pas une erreur : aucune boutique reliée');
     await seller.agent.get('/api/affiliation/chariow/affiliates/CODE1').expect(503);
     assert.equal(chariowAuthorizations.length, before, 'aucun appel à Chariow avec la clé du propriétaire');
   });

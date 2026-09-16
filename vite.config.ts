@@ -47,16 +47,15 @@ export default defineConfig(({ mode }) => {
       sourcemap: mode !== 'production',
       rollupOptions: {
         output: {
-          // Découpage manuel : recharts + jspdf pèsent lourd et ne sont pas
-          // nécessaires au premier rendu. Les primitives d'interface (Radix,
-          // palette de commandes, notifications) changent rarement : un
-          // fichier séparé reste en cache d'un déploiement à l'autre.
-          manualChunks: {
-            'vendor-react': ['react', 'react-dom', 'react-router-dom'],
-            'vendor-charts': ['recharts'],
-            'vendor-pdf': ['jspdf'],
-            'vendor-motion': ['motion'],
-            'vendor-ui': ['radix-ui', 'cmdk', 'sonner'],
+          // Seul le noyau React est regroupé à la main : il change rarement et reste en cache d'un
+          // déploiement à l'autre. Tout le reste (graphiques, PDF, briques d'interface) est
+          // découpé par Rollup selon les pages qui s'en servent. Les regrouper à la main les
+          // attachait au premier téléchargement : l'accueil chargeait 1,8 Mo de JavaScript.
+          manualChunks(id) {
+            if (/[\\/]node_modules[\\/](react|react-dom|scheduler|react-router|react-router-dom|cookie|set-cookie-parser)[\\/]/.test(id)) {
+              return 'vendor-react';
+            }
+            return undefined;
           },
         },
       },

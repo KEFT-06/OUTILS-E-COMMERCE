@@ -43,7 +43,7 @@ function Section({ title, children }: { title: string; children: ReactNode }) {
 
 function ContactLink({ topic, children }: { topic?: 'data'; children: ReactNode }) {
   return (
-    <Link to={topic ? `/contact?sujet=${topic}` : '/contact'} className="font-medium text-primary underline underline-offset-4">
+    <Link to={topic ? `/contact?sujet=${topic}` : '/contact'} className="font-medium text-brand-green-text underline underline-offset-4">
       {children}
     </Link>
   );
@@ -162,9 +162,8 @@ function Confidentialite() {
           <li>Stripe : votre adresse e-mail, l’identifiant de votre compte, le palier et le montant, lors d’un paiement ;</li>
           <li>
             Service d’envoi d’e-mails (Brevo ou Resend) : votre adresse et le contenu des e-mails de sécurité (lien de
-            nouveau mot de passe, confirmation d’adresse, alerte de changement de mot de passe) ;
+            nouveau mot de passe, confirmation d’adresse, alerte de changement de mot de passe).
           </li>
-          <li>Google Fonts : les polices du site sont chargées depuis les serveurs de Google, qui reçoivent votre adresse IP.</li>
         </ul>
         <p>
           Plusieurs de ces services sont établis hors de l’Union européenne.{' '}

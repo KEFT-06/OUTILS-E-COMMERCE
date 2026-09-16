@@ -1,7 +1,9 @@
+import { createHash } from 'node:crypto';
 import type { NextFunction, Request, RequestHandler, Response } from 'express';
 import rateLimit from 'express-rate-limit';
 import { z, type ZodType } from 'zod';
 import { env, isProd } from '@server/env';
+import { SESSION_COOKIE, readCookie } from '@server/lib/cookies';
 import { isCountryCode } from '@server/shared/countries';
 
 /* -------------------------------------------------------------------------- */
@@ -144,10 +146,31 @@ export function routeLimiter(windowMinutes: number, limit: number) {
   });
 }
 
-/** Limite générale sur toute l'API. */
+/**
+ * Limite générale sur toute l'API, comptée par session pour un visiteur connecté et par adresse
+ * IP sinon. Les opérateurs mobiles font souvent partager une même adresse IP publique à de
+ * nombreux abonnés : comptée par adresse, la limite atteinte par l'un bloquerait ses voisins.
+ */
 export const apiLimiter = rateLimit({
   windowMs: 60_000,
-  limit: 120,
+  limit: 240,
+  keyGenerator: (req) => {
+    const session = readCookie(req, SESSION_COOKIE);
+    return session ? `session:${createHash('sha256').update(session).digest('hex')}` : `ip:${req.ip}`;
+  },
+  standardHeaders: 'draft-7',
+  legacyHeaders: false,
+  skip: skipDuringTests,
+  message: limiterMessage,
+});
+
+/**
+ * Plafond par adresse IP, large pour les réseaux partagés : il borne ce qu'obtiendrait un poste
+ * qui changerait de cookie de session à chaque requête pour échapper à la limite générale.
+ */
+export const ipCeilingLimiter = rateLimit({
+  windowMs: 60_000,
+  limit: 1_200,
   standardHeaders: 'draft-7',
   legacyHeaders: false,
   skip: skipDuringTests,
@@ -166,6 +189,31 @@ export const aiLimiter = rateLimit({
   skip: skipDuringTests,
   message: limiterMessage,
 });
+
+/* -------------------------------------------------------------------------- */
+/*  HTTPS obligatoire                                                          */
+/* -------------------------------------------------------------------------- */
+
+/**
+ * Redirige toute requête arrivée en HTTP vers la même page en HTTPS. L'en-tête HSTS ne protège
+ * qu'à partir de la deuxième visite : la toute première doit aussi basculer en HTTPS.
+ *
+ * - La destination est bâtie sur l'adresse publique (APP_URL), jamais sur l'en-tête Host envoyé
+ *   par le visiteur : sinon n'importe qui fabriquerait un lien qui redirige vers son propre site.
+ * - 308 garde la méthode et le corps (un POST reste un POST).
+ * - La sonde de santé de l'hébergeur, souvent en HTTP interne, n'est pas redirigée.
+ * - Sans adresse publique en https (essai local de la version de production), rien ne change.
+ */
+export function httpsRedirect(appUrl: string): RequestHandler {
+  const publicUrl = new URL(appUrl);
+  return (req, res, next) => {
+    if (publicUrl.protocol !== 'https:' || req.secure || req.path === '/api/health') {
+      next();
+      return;
+    }
+    res.redirect(308, `https://${publicUrl.host}${req.originalUrl}`);
+  };
+}
 
 /* -------------------------------------------------------------------------- */
 /*  CORS — liste blanche stricte                                               */

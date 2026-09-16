@@ -131,6 +131,8 @@ export function LandingPage() {
     navigate(isAuthenticated ? '/app/cockpit' : '/connexion?mode=inscription');
   };
 
+  // Une seule action principale sur toute la page, toujours nommée pareil. La connexion reste un lien
+  // discret : un visiteur déjà inscrit la trouve, sans qu'elle concurrence l'inscription.
   const primaryLabel = isAuthenticated ? 'Ouvrir mon espace' : 'Créer mon compte gratuit';
 
   return (
@@ -138,7 +140,9 @@ export function LandingPage() {
       <header className="sticky top-0 z-40 border-b bg-background/85 backdrop-blur supports-[backdrop-filter]:bg-background/70">
         <div className="mx-auto flex h-16 max-w-6xl items-center justify-between gap-4 px-4 sm:px-6">
           <Link to="/" className="rounded-md" aria-label="Accueil Smart Creator">
-            <BrandLogo size="md" className="lg:hidden" />
+            {/* Sur mobile, le symbole seul : l'action principale reste entière à côté. */}
+            <BrandLogo size="md" showText={false} className="sm:hidden" />
+            <BrandLogo size="md" className="hidden sm:inline-flex lg:hidden" />
             <BrandLogo size="md" showTagline className="hidden lg:inline-flex" />
           </Link>
 
@@ -171,7 +175,7 @@ export function LandingPage() {
                 <Link to="/connexion">Connexion</Link>
               </Button>
             )}
-            <Button onClick={openWorkspace}>{isAuthenticated ? 'Mon espace' : 'Commencer'}</Button>
+            <Button onClick={openWorkspace}>{isAuthenticated ? 'Mon espace' : 'Créer mon compte'}</Button>
           </div>
         </div>
       </header>
@@ -199,19 +203,21 @@ export function LandingPage() {
                 Smart Creator relie la lecture du marché, la création de vos produits digitaux et leur mise en vente. Avec
                 une règle : aucun chiffre affiché sans sa source.
               </p>
-              <div className="flex flex-wrap gap-3">
-                <Button size="lg" onClick={openWorkspace}>
-                  {primaryLabel}
-                  <ArrowRight />
-                </Button>
-                {!isAuthenticated && (
-                  <Button size="lg" variant="outline" asChild>
-                    <Link to="/connexion">Se connecter</Link>
-                  </Button>
-                )}
-              </div>
+              <Button size="lg" onClick={openWorkspace}>
+                {primaryLabel}
+                <ArrowRight />
+              </Button>
               <p className="text-sm text-muted-foreground">
                 Gratuit pour commencer, sans carte bancaire. Prix affichés dans la devise de votre pays.
+                {!isAuthenticated && (
+                  <>
+                    {' '}
+                    Déjà inscrit ?{' '}
+                    <Link to="/connexion" className="font-medium text-brand-green-text underline underline-offset-4">
+                      Se connecter
+                    </Link>
+                  </>
+                )}
               </p>
             </div>
 
@@ -223,19 +229,18 @@ export function LandingPage() {
                   <span className="size-2.5 rounded-full bg-muted-foreground/30" />
                   <span className="ml-3 truncate text-xs text-muted-foreground">Smart Creator · Niches</span>
                 </div>
+                {/* Une seule capture, celle du thème affiché, et à la taille de l'écran : un mobile
+                    télécharge 26 Ko au lieu des deux captures en pleine taille (184 Ko). */}
                 <img
-                  src="/captures/niches-clair.jpg"
+                  key={theme}
+                  src={`/captures/niches-${theme === 'dark' ? 'sombre' : 'clair'}-1440.webp`}
+                  srcSet={`/captures/niches-${theme === 'dark' ? 'sombre' : 'clair'}-720.webp 720w, /captures/niches-${theme === 'dark' ? 'sombre' : 'clair'}-1440.webp 1440w`}
+                  sizes="(min-width: 1024px) 50vw, 100vw"
                   alt="Écran Niches de Smart Creator : niches enregistrées et catalogue des niches par secteur"
                   width={1440}
                   height={900}
-                  className="block w-full dark:hidden"
-                />
-                <img
-                  src="/captures/niches-sombre.jpg"
-                  alt="Écran Niches de Smart Creator en thème sombre"
-                  width={1440}
-                  height={900}
-                  className="hidden w-full dark:block"
+                  decoding="async"
+                  className="block w-full"
                 />
                 {!reduceMotion && (
                   <Suspense fallback={null}>
@@ -421,20 +426,18 @@ export function LandingPage() {
                 Analysez une niche, construisez le produit qui y répond et préparez son lancement, sans changer d’outil.
               </p>
             </div>
-            <div className="flex flex-wrap gap-3">
+            <div className="flex flex-col items-start gap-3">
               <Button size="lg" onClick={openWorkspace}>
                 {primaryLabel}
                 <ArrowRight />
               </Button>
               {!isAuthenticated && (
-                <Button
-                  size="lg"
-                  variant="outline"
-                  asChild
-                  className="border-background/30 bg-transparent text-background hover:bg-background/10 hover:text-background dark:border-background/30 dark:bg-transparent"
-                >
-                  <Link to="/connexion">Se connecter</Link>
-                </Button>
+                <p className="text-sm">
+                  Déjà inscrit ?{' '}
+                  <Link to="/connexion" className="font-medium underline underline-offset-4">
+                    Se connecter
+                  </Link>
+                </p>
               )}
             </div>
           </div>

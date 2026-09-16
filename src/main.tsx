@@ -1,6 +1,10 @@
 import { StrictMode } from 'react';
 import { createRoot } from 'react-dom/client';
 import App from '@/app/App';
+// Polices servies par le site lui-même : aucune adresse IP de visiteur n'est transmise à Google,
+// et aucun serveur tiers n'est contacté avant l'affichage. Seuls les alphabets utilisés sont téléchargés.
+import '@fontsource-variable/outfit';
+import '@fontsource-variable/plus-jakarta-sans';
 import '@/styles/index.css';
 
 // Thème appliqué avant le premier rendu : sans cela, un utilisateur en thème

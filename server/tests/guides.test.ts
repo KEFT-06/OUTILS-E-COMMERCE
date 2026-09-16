@@ -14,6 +14,7 @@ import { STRONG_PASSWORD, closeTestApp, createAdmin, createTestApp } from './sup
 
 const geminiCalls: { key: string | undefined; prompt: string }[] = [];
 const higgsfieldPrompts: string[] = [];
+const higgsfieldResolutions: string[] = [];
 const coverRequests = new Set<string>();
 
 /** Faux traducteur : préfixe chaque texte par la langue visée, sans toucher chiffres ni liens. */
@@ -49,6 +50,7 @@ const fakeProviders = createServer((req, res) => {
 
     if (url.pathname === '/higgsfield/higgsfield-ai/soul/standard' && req.method === 'POST') {
       higgsfieldPrompts.push(String(body.prompt));
+      higgsfieldResolutions.push(String(body.resolution));
       const requestId = randomUUID();
       coverRequests.add(requestId);
       return send(200, { request_id: requestId, status: 'queued' });
@@ -207,6 +209,7 @@ describe('Guides multilingues', () => {
       .expect(202);
     assert.equal(submitted.body.cover.status, 'pending');
     assert.match(higgsfieldPrompts.at(-1)!, /no text, letters, numbers/);
+    assert.equal(higgsfieldResolutions.at(-1), '1080p', 'seule résolution acceptée par l’API réelle avec 720p');
 
     const originalFetch = globalThis.fetch;
     globalThis.fetch = (async (input: string | URL | Request, init?: RequestInit) => {

@@ -5,9 +5,11 @@ import { AppError, providerUnavailable } from '@server/middleware';
 /**
  * Client de l'API publique Higgsfield — feuille de route 4.1 et 4.2.
  *
- * ⚠️ Écrit d'après la spécification OpenAPI et la documentation publiques
- * (docs.higgsfield.ai), consultées le 14 septembre 2026, et NON vérifié contre
- * l'API réelle faute d'identifiants.
+ * Écrit d'après la spécification OpenAPI et la documentation publiques (docs.higgsfield.ai),
+ * puis vérifié contre l'API réelle le 16 septembre 2026 : authentification, adresses des
+ * modèles, corps des demandes et réponse « not_enough_credits » d'un compte sans crédits.
+ * La spécification publiée n'est pas toujours à jour (résolution des images : voir
+ * VISUAL_RESOLUTION dans server/services/creatives).
  *
  * Règles de la documentation appliquées ici :
  *  - Une soumission n'accepte pas de clé d'idempotence. Un POST n'est donc jamais
@@ -67,6 +69,7 @@ function detailMessage(payload: unknown): string | undefined {
  * des erreurs de l'utilisateur.
  */
 function higgsfieldFailure(status: number, detail: string | undefined): AppError {
+  console.error('[higgsfield] le fournisseur a répondu', status, detail?.slice(0, 300) ?? '');
   if (status === 401) {
     return new AppError(
       503,
@@ -74,12 +77,15 @@ function higgsfieldFailure(status: number, detail: string | undefined): AppError
       'HIGGSFIELD_ACCESS_DENIED',
     );
   }
-  if (status === 403) {
+  if (status === 403 && (!detail || /credit/i.test(detail))) {
     return new AppError(
       503,
-      "Le compte Higgsfield du serveur n'a plus assez de crédits.",
+      "Le compte Higgsfield du serveur n'a plus assez de crédits. Aucun point ne vous est retiré.",
       'HIGGSFIELD_INSUFFICIENT_CREDITS',
     );
+  }
+  if (status === 403) {
+    return new AppError(503, `Higgsfield refuse cette demande au compte du serveur : ${detail}`, 'HIGGSFIELD_FORBIDDEN');
   }
   if (status === 404) {
     return new AppError(404, 'Génération ou modèle introuvable chez Higgsfield.', 'HIGGSFIELD_NOT_FOUND');

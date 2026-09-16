@@ -64,6 +64,8 @@ const signupSchema = z.object({
   password: passwordInputSchema,
   /** Pays de l'utilisateur : il fixe la devise des prix affichés. */
   country: countrySchema.optional(),
+  /** Champ piège invisible : un robot le remplit, une personne jamais. */
+  website: z.string().max(200).optional(),
 });
 
 authRouter.post(
@@ -71,7 +73,8 @@ authRouter.post(
   routeLimiter(60, 10),
   validateBody(signupSchema),
   asyncRoute(async (req, res) => {
-    const { name, email, password, country } = req.body as z.infer<typeof signupSchema>;
+    const { name, email, password, country, website } = req.body as z.infer<typeof signupSchema>;
+    if (website) throw new AppError(400, 'L’inscription n’a pas pu aboutir.', 'SIGNUP_REJECTED');
     const client = clientInfo(req);
     const user = await registerUser({ name, email, password, country, client });
     await respondWithSession(req, res, await openSession(user, false, client), 201);

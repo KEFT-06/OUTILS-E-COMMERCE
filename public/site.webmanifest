@@ -1,0 +1,14 @@
+{
+  "name": "Smart Creator",
+  "short_name": "Smart Creator",
+  "description": "Lire le marché, produire le bon produit digital et le vendre.",
+  "lang": "fr",
+  "start_url": "/",
+  "display": "browser",
+  "background_color": "#f7f8f6",
+  "theme_color": "#f7f8f6",
+  "icons": [
+    { "src": "/icon-192.png", "sizes": "192x192", "type": "image/png" },
+    { "src": "/icon-512.png", "sizes": "512x512", "type": "image/png" }
+  ]
+}

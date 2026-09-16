@@ -84,6 +84,7 @@ export function renderIndexHtml(template: string, appUrl: string, path: string):
     `<meta property="og:image" content="${escapeMarkup(url)}/og-image.png" />`,
     '<meta property="og:image:width" content="1200" />',
     '<meta property="og:image:height" content="630" />',
+    '<meta property="og:image:alt" content="Smart Creator : lire le marché, produire le bon produit digital, le vendre." />',
     '<meta name="twitter:card" content="summary_large_image" />',
     page
       ? `<link rel="canonical" href="${escapeMarkup(url + page.path)}" /><meta property="og:url" content="${escapeMarkup(url + page.path)}" />`

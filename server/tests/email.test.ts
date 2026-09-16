@@ -92,6 +92,26 @@ describe('E-mails transactionnels', () => {
     await agent.post('/api/account/verify-email/send').expect(409);
   });
 
+  it('réserve les points gratuits à une adresse confirmée, et refuse un robot à l’inscription', async () => {
+    const { account } = await signUp(app, { name: 'Robot Suspect', email: 'suspect@exemple.com' });
+    const { debitCredits } = await import('@server/services/accounts');
+    await assert.rejects(
+      debitCredits({ userId: account.id, cost: 1, actionId: 'image_generation', unlimited: false }),
+      (error: { code?: string }) => error.code === 'EMAIL_VERIFICATION_REQUIRED',
+    );
+
+    const token = tokenIn(await nextEmail('suspect@exemple.com', /Confirmez votre adresse/), '/verifier-email');
+    await request(app).post('/api/auth/verify-email').send({ token }).expect(204);
+    const debit = await debitCredits({ userId: account.id, cost: 1, actionId: 'image_generation', unlimited: false });
+    assert.equal(debit.charged, 1, 'adresse confirmée : les points gratuits servent');
+
+    const robot = await request(app)
+      .post('/api/auth/signup')
+      .send({ name: 'Robot', email: 'robot@exemple.com', password: STRONG_PASSWORD, website: 'https://spam.example' })
+      .expect(400);
+    assert.equal(robot.body.error.code, 'SIGNUP_REJECTED');
+  });
+
   it('envoie un lien de mot de passe sans révéler si l’adresse est inscrite', async () => {
     await signUp(app, { name: 'Oumar Oublie', email: 'oumar@exemple.com' });
 

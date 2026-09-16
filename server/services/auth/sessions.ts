@@ -11,8 +11,7 @@ import {
   type SessionRow,
   type UserRow,
 } from '@server/db/schema';
-import { isProd } from '@server/env';
-import { authCookieOptions, clearAuthCookie } from '@server/lib/cookies';
+import { SESSION_COOKIE, authCookieOptions, clearAuthCookie } from '@server/lib/cookies';
 import { randomToken, sha256 } from '@server/lib/crypto';
 import { describeDevice, maskIp } from '@server/lib/device';
 import type { ClientInfo } from '@server/services/audit';
@@ -31,7 +30,7 @@ import type { SessionEndReason } from '@server/shared/sessions';
  * déconnexion. Toute fin de session passe donc par ce module.
  */
 
-export const SESSION_COOKIE = isProd ? '__Host-sc_session' : 'sc_session';
+export { SESSION_COOKIE };
 
 const HOUR_MS = 3_600_000;
 const DAY_MS = 24 * HOUR_MS;

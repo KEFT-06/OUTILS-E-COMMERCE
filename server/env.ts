@@ -49,6 +49,17 @@ const schema = z.object({
   /** Modèle Gemini des analyses de niche, des rédactions et des traductions. */
   GEMINI_MODEL: emptyAsUndefined(z.string().regex(/^[\w.-]+$/).default('gemini-3.5-flash')),
   /**
+   * Modèle de secours quand le modèle principal est saturé chez Google (réponse 503, « high
+   * demand »), après une seconde tentative. « off » : pas de modèle de secours.
+   */
+  GEMINI_FALLBACK_MODEL: emptyAsUndefined(
+    z
+      .string()
+      .regex(/^[\w.-]+$/)
+      .default('gemini-2.5-flash')
+      .transform((model) => (model === 'off' ? null : model)),
+  ),
+  /**
    * Recherche web des analyses de niche (API Search de Perplexity) : pages brutes que
    * Gemini rédige ensuite, sans rien avancer hors de ces sources. La recherche Google
    * intégrée à Gemini n'est pas utilisée : ses conditions interdisent de conserver ou

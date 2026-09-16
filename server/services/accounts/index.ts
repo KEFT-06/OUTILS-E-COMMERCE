@@ -8,6 +8,7 @@ import {
   type PlanId,
   type UserRow,
 } from '@server/db/schema';
+import { providers } from '@server/env';
 import { AppError } from '@server/middleware';
 import { effectivePermissions, type Permission } from '@server/services/auth/permissions';
 import {
@@ -234,6 +235,16 @@ export async function debitCredits(input: {
     if (!user) throw new AppError(401, 'Compte introuvable.', 'AUTH_REQUIRED');
 
     const charged = input.unlimited ? 0 : Math.max(0, input.cost);
+    // Points du palier Gratuit : réservés à une adresse confirmée, sinon un robot créerait des comptes en
+    // série pour les dépenser chez les fournisseurs payants. Sans service d'e-mails, personne ne pourrait
+    // confirmer son adresse : la règle attend qu'il soit branché.
+    if (charged > 0 && providers.email && user.plan === 'free' && !user.emailVerifiedAt) {
+      throw new AppError(
+        403,
+        'Confirmez d’abord votre adresse e-mail pour utiliser vos points gratuits : ouvrez le lien reçu, ou renvoyez-le depuis Mon compte.',
+        'EMAIL_VERIFICATION_REQUIRED',
+      );
+    }
     const available = user.planCredits + user.bonusCredits;
     if (charged > available) throw insufficientCredits(charged, available);
 

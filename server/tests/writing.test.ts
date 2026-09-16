@@ -14,6 +14,7 @@ import { closeTestApp, createTestApp } from './support/helpers';
  */
 
 const prompts: string[] = [];
+const models: string[] = [];
 
 const fakeGemini = createServer((req, res) => {
   const chunks: Buffer[] = [];
@@ -25,8 +26,14 @@ const fakeGemini = createServer((req, res) => {
     };
     const body = JSON.parse(Buffer.concat(chunks).toString('utf8')) as { contents: { parts: { text: string }[] }[] };
     const prompt = body.contents[0]!.parts[0]!.text;
+    const model = decodeURIComponent(/\/models\/([^:]+):generateContent/.exec(req.url ?? '')?.[1] ?? '');
     prompts.push(prompt);
+    models.push(model);
     if (prompt.includes('Titre : Panne')) return send(500, {});
+    // Réponse réelle de Google quand le modèle est saturé (relevée le 16 septembre 2026).
+    const overloaded = { error: { code: 503, message: 'This model is currently experiencing high demand.', status: 'UNAVAILABLE' } };
+    if (prompt.includes('Titre : Saturé partout')) return send(503, overloaded);
+    if (prompt.includes('Titre : Saturé') && model === 'gemini-3.5-flash') return send(503, overloaded);
 
     let answer: unknown;
     if (prompt.includes('Rédige le contenu complet')) {
@@ -139,5 +146,24 @@ describe('Rédaction par l’IA', () => {
     assert.equal(await balance(agent), start);
 
     await agent.post('/api/writing/product').send({ product: { ...PRODUCT, modules: [] } }).expect(400);
+  });
+
+  it('réessaie quand Google est saturé, puis passe au modèle de secours', async () => {
+    const { agent } = await signInWithPlan(app, 'patiente@exemple.com', 'pro');
+    const start = await balance(agent);
+
+    models.length = 0;
+    const rescued = await agent.post('/api/writing/product').send({ product: { ...PRODUCT, title: 'Saturé' } }).expect(200);
+    assert.equal(rescued.body.modules.length, PRODUCT.modules.length);
+    assert.deepEqual(models, ['gemini-3.5-flash', 'gemini-3.5-flash', 'gemini-2.5-flash']);
+    assert.ok(start > (await balance(agent)), 'rédaction facturée une fois');
+
+    models.length = 0;
+    const before = await balance(agent);
+    const overloaded = await agent.post('/api/writing/product').send({ product: { ...PRODUCT, title: 'Saturé partout' } }).expect(503);
+    assert.equal(overloaded.body.error.code, 'WRITING_OVERLOADED');
+    assert.match(overloaded.body.error.message, /surchargé/);
+    assert.equal(models.length, 4, 'deux tentatives par modèle, pas davantage');
+    assert.equal(await balance(agent), before, 'points rendus');
   });
 });

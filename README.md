@@ -191,9 +191,9 @@ l'annonce à l'écran et répond 503 : rien ne casse.
 
 | Service | Rôle | Variables | Sans clé |
 | --- | --- | --- | --- |
-| **Gemini** | Rédaction du rapport d'analyse, rédaction des produits et du kit, traduction des guides, Vidéo → Produit | `GEMINI_API_KEY`, `GEMINI_MODEL` (défaut `gemini-3.5-flash`) | Analyse, rédaction et traduction fermées |
+| **Gemini** | Rédaction du rapport d'analyse, rédaction des produits et du kit, traduction des guides, Vidéo → Produit | `GEMINI_API_KEY`, `GEMINI_MODEL` (défaut `gemini-3.5-flash`), `GEMINI_FALLBACK_MODEL` (défaut `gemini-2.5-flash`) | Analyse, rédaction et traduction fermées |
 | **Perplexity** (API Search) | Sources web des analyses de niche | `PERPLEXITY_API_KEY` | L'analyse fonctionne mais n'avance aucun fait de marché et le dit |
-| **Higgsfield** | Visuels, vidéos publicitaires, couvertures de guides | `HIGGSFIELD_API_KEY_ID`, `HIGGSFIELD_API_KEY_SECRET` | Créatifs et couvertures fermés |
+| **Higgsfield** | Visuels (Soul, 1080p), vidéos publicitaires (Kling v2.1, 5 ou 10 s), couvertures de guides | `HIGGSFIELD_API_KEY_ID`, `HIGGSFIELD_API_KEY_SECRET` ; le compte des clés doit avoir des crédits | Créatifs et couvertures fermés ; sans crédits, le site l'annonce et rend les points |
 | **Gamma** | Storybooks illustrés | `GAMMA_API_KEY` | Storybook fermé |
 | **Stripe** | Paiement des paliers par carte | `STRIPE_API_KEY` (clé secrète `sk_…`), `STRIPE_WEBHOOK_SECRET` | Paiement en ligne masqué ; paiements saisis par l'équipe |
 | **Brevo** ou **Resend** | E-mails de sécurité | `EMAIL_PROVIDER`, `EMAIL_API_KEY`, `EMAIL_FROM` | Mot de passe oublié via l'équipe, pas de confirmation d'adresse |
@@ -203,6 +203,18 @@ l'annonce à l'écran et répond 503 : rien ne casse.
 **Pourquoi ce partage.** La recherche Google intégrée à Gemini interdit de conserver ou d'exporter
 ses résultats, alors qu'un rapport est enregistré et exporté en PDF : la recherche passe donc par
 Perplexity, et Gemini rédige à partir des pages trouvées.
+
+**Saturation de Gemini.** Google répond parfois 503 (« high demand »). Le serveur réessaie le modèle
+principal, puis passe au modèle de secours ; si tout reste saturé, l'utilisateur lit « surchargé chez
+Google, réessayez dans quelques minutes » et ses points sont rendus. Le rapport d'analyse indique le
+modèle qui l'a réellement rédigé.
+
+**Vérifié contre les vrais services (16 septembre 2026).** Gemini : analyse, rédaction des modules,
+kit de lancement, Vidéo → Produit (lien YouTube) et traduction répondent. Higgsfield : identifiants
+acceptés, adresses des modèles et corps des demandes conformes ; la spécification publiée annonce une
+résolution « 2K » que l'API refuse, le site envoie donc « 1080p ». Chariow : catalogue et ventes lus
+avec la clé administrateur. Perplexity : format conforme à la documentation, à essayer dès que la clé
+est fournie.
 
 **Retirés du site.** La bibliothèque publicitaire Meta (radar marché, galerie de publicités, swipe
 file, score d'intensité concurrentielle) et Brave Search ne sont plus utilisés. Les campagnes
@@ -278,9 +290,11 @@ devise du compte. Les parités fixes (XAF, XOF, KMF, CVE, BAM) sont imposées pa
 | Second facteur | Code de sécurité (haché) ou application d'authentification TOTP avec anti-rejeu et 10 codes de secours ; code frais exigé pour les actions sensibles |
 | Liens à usage unique | Jeton après `#` (jamais envoyé au serveur ni aux sites tiers) ; création 24 h, réinitialisation par l'équipe 2 h, mot de passe oublié 1 h, confirmation d'adresse 48 h |
 | Secrets | Clés des fournisseurs sur le serveur seulement ; secrets d'authentification et clés Chariow chiffrés en AES-256-GCM (`DATA_ENCRYPTION_KEY`) ; aucune clé dans les journaux |
-| En-têtes | helmet : CSP sans `unsafe-inline` pour les scripts, `frame-ancestors 'none'`, HSTS en production, `nosniff` ; aucune réponse de l'API en cache |
+| HTTPS | En production, toute requête en HTTP est redirigée (308) vers la même page en HTTPS, sur l'adresse `APP_URL` et jamais sur l'hôte annoncé par le visiteur ; HSTS (1 an, préchargement) ; la sonde `/api/health` n'est pas redirigée |
+| En-têtes | helmet : CSP sans `unsafe-inline` pour les scripts, polices et styles servis par le site seul, `frame-ancestors 'none'`, `nosniff` ; aucune réponse de l'API en cache |
 | Requêtes | Validation zod de chaque corps ; CORS en liste blanche ; écriture refusée depuis une origine étrangère ; corps encodés en formulaire ignorés ; tailles plafonnées (1 Mo, 5 Mo pour les brouillons, 14 Mo pour une vidéo) |
-| Limites de débit | 120 requêtes par minute par IP sur l'API, 10 par minute sur les générations payantes, limites propres aux routes sensibles (connexion, contact, vérificateurs, suppression de compte) |
+| Limites de débit | 240 requêtes par minute par session (par IP sans session), pour ne pas bloquer entre eux les abonnés mobiles qui partagent une même adresse IP ; plafond de 1 200 par minute par IP ; 10 par minute sur les générations payantes ; limites propres aux routes sensibles (inscription, connexion, contact, vérificateurs, suppression de compte). Un refus passager au chargement ne déconnecte pas : le site réessaie avant d'afficher la page de connexion |
+| Robots et abus | Champ piège invisible sur l'inscription et le contact ; dès que le service d'e-mails est branché, les points du palier Gratuit ne se dépensent qu'avec une adresse confirmée, pour qu'un robot ne crée pas des comptes en série afin de consommer les fournisseurs payants |
 | Adresse IP | `TRUST_PROXY` : nombre de proxys de confiance (1 derrière un hébergeur, 0 en accès direct) ; hors production, seule la boucle locale est crue |
 | Fichiers relayés | Visuels et vidéos servis uniquement sous un type image ou vidéo attendu, avec une politique de sécurité en bac à sable |
 | Paiements | Montants fixés par le serveur ; webhook Stripe vérifié par signature HMAC (tolérance 5 min) sur le corps brut ; activation idempotente |
@@ -404,16 +418,25 @@ HTML. La couverture, générée sans texte par Higgsfield, est recopiée en base
   par heure au plus, réponse identique que l'adresse existe ou non), confirmation d'adresse à
   l'inscription, alerte après un changement de mot de passe. `EMAIL_FROM` doit appartenir à un
   domaine vérifié chez le fournisseur.
-- **Contact** : formulaire public avec piège à robots, 5 messages par heure par IP ; les messages
-  arrivent dans *Administration → Messages*. Le lien des pages légales préremplit le sujet
+- **Contact** : formulaire public avec piège à robots, 5 messages par heure par IP, et les règles du
+  serveur affichées sous chaque champ fautif ; les messages arrivent dans *Administration → Messages*. Le lien des pages légales préremplit le sujet
   « Mes données personnelles ».
 - **Audience sans cookie** : une visite comptée par affichage d'une page publique ; visiteurs uniques
   comptés par une empreinte à clé quotidienne, effacée le lendemain ; Do Not Track et Global Privacy
-  Control respectés ; robots ignorés.
+  Control respectés ; robots ignorés. Aucun outil tiers (Google Analytics…) : il déposerait des cookies
+  et imposerait un bandeau de consentement.
+- **Cookies** : uniquement ceux nécessaires au fonctionnement (session, second facteur, barre
+  latérale), décrits dans la politique de confidentialité. Exemptés de consentement, ils n'appellent
+  aucun bandeau, qui gênerait sans rien protéger. Ajouter un cookie non nécessaire (mesure d'audience
+  tierce, publicité) imposerait un bandeau avec un refus aussi simple que l'acceptation.
 - **Référencement** : `robots.txt` et `sitemap.xml` ne proposent que les pages publiques. En
   production, le serveur écrit pour chaque adresse le titre, la description, l'adresse canonique et
-  l'image de partage (`public/og-image.png`, 1200 × 630) ; l'espace de travail reçoit `noindex` ; une
-  adresse inconnue répond 404. Titres et descriptions : `server/shared/publicPages.ts`.
+  l'image de partage (`public/og-image.png`, 1200 × 630, avec son texte alternatif) ; l'espace de
+  travail reçoit `noindex` ; une adresse inconnue répond 404 avec la page « Page introuvable ». Titres
+  et descriptions : `server/shared/publicPages.ts`.
+- **Icônes** : `favicon.svg`, `favicon.ico` (anciens navigateurs, résultats de recherche),
+  `apple-touch-icon.png` (écran d'accueil d'un iPhone), `icon-192.png` et `icon-512.png` déclarées
+  dans `site.webmanifest` (Android).
 
 ---
 
@@ -427,15 +450,23 @@ HTML. La couverture, générée sans texte par Higgsfield, est recopiée en base
   Surfaces, texte, traits, action (`primary`), états (`success`, `warning`, `info`, `danger`),
   taux (`rate-*`, réservés aux niveaux de marché), graphiques (`chart-1` à `chart-5`). Aucune couleur
   en dur dans les écrans.
-- **Typographie** : Outfit pour les titres, Plus Jakarta Sans pour le texte, 12 px minimum, chiffres
-  en `tabular-nums`.
+- **Typographie** : Outfit pour les titres, Plus Jakarta Sans pour le texte (polices variables des
+  paquets `@fontsource-variable`, servies par le site : aucune adresse IP transmise à Google), 12 px
+  minimum, chiffres en `tabular-nums`.
+- **Poids des pages** : la première visite de l'accueil télécharge environ 200 Ko compressés
+  (JavaScript et CSS). Seul le noyau React est regroupé à la main (`vite.config.ts`) ; les autres
+  pages, le cadre de l'espace de travail, les graphiques et le PDF arrivent à l'ouverture de leur page
+  (`src/app/routes/lazyPage.ts`). Les captures de l'accueil sont en WebP, en deux tailles, et seule
+  celle du thème affiché est téléchargée.
 - **Mise en page** : barre latérale VOIR / CRÉER / VENDRE, en-tête avec fil d'Ariane et recherche ⌘K,
   barre de raccourcis sur mobile ; la liste des écrans vit dans `src/app/navigation.ts`. Chaque écran
   a son adresse et se charge à la demande.
 - **Données** : titre qui dit ce qui est mesuré, provenance sous chaque graphique, état vide explicite
   plutôt qu'un graphique à zéro, badge sur toute donnée de démonstration.
-- **Accessibilité** : contraste AA dans les deux thèmes, étiquette sur chaque champ, nom accessible sur
-  chaque bouton icône, focus retenu dans les fenêtres, `prefers-reduced-motion` respecté.
+- **Accessibilité** : contraste AA dans les deux thèmes (contrôlé avec axe-core sur chaque page, en
+  clair, en sombre et à 390 px de large ; le mot-symbole du logo, marqué `data-brand-wordmark`, est
+  exempté comme tout logotype), texte alternatif sur chaque image, étiquette sur chaque champ, nom
+  accessible sur chaque bouton icône, focus retenu dans les fenêtres, `prefers-reduced-motion` respecté.
 - **Composants shadcn** : `npx shadcn add` échoue (dépendance `socks@^2.8.8` absente de npm). Les
   composants se récupèrent depuis `ui.shadcn.com/r/styles/new-york-v4/<nom>.json`, imports réécrits
   vers `@/shared/…` (alias décrits dans `components.json`). `radix-ui` est épinglé en 1.4.3,
@@ -488,6 +519,7 @@ types, relecture, tests, construction, et la recherche de toute variable `VITE_`
 | Identité de l'éditeur, hébergeurs, durée de conservation comptable, rétractation et remboursement, droit applicable | Pages légales (`À compléter`) |
 | `DATABASE_URL` Supabase (région Paris) | `.env` / secrets de l'hébergeur |
 | `PERPLEXITY_API_KEY` | `.env` |
+| Crédits API Higgsfield : le compte des clés actuelles est à zéro, aucune vidéo ni aucun visuel ne peut être créé | Compte Higgsfield des clés API |
 | Service d'e-mails et domaine vérifié | `.env` |
 | `STRIPE_WEBHOOK_SECRET` et activation des paiements réels | Tableau de bord Stripe |
 | Prix définitifs des paliers | `server/config/plans.json` |

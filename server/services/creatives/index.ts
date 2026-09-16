@@ -53,6 +53,11 @@ const AWARENESS_DIRECTION: Record<AwarenessLevel, string> = {
 export const CREATIVE_FORMATS = ['1:1', '9:16', '16:9'] as const;
 
 export const VISUAL_MODEL_PATH = '/higgsfield-ai/soul/standard';
+/**
+ * Résolution des visuels et des couvertures. La spécification publiée annonce « 2K » ou « 4K »,
+ * mais l'API réelle les refuse et n'accepte que « 720p » ou « 1080p » (vérifié le 16 septembre 2026).
+ */
+export const VISUAL_RESOLUTION = '1080p';
 export const VIDEO_MODEL_PATH = '/kling-video/v2.1/master/text-to-video';
 
 /** Longueur maximale du prompt acceptée par Kling v2.1. */
@@ -163,7 +168,7 @@ export function buildVisualInput(brief: VisualBrief) {
   return {
     prompt: buildPrompt(brief, { maxLength: VISUAL_PROMPT_MAX }),
     num_images: 1,
-    resolution: '2K',
+    resolution: VISUAL_RESOLUTION,
     aspect_ratio: brief.format,
   };
 }

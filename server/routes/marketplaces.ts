@@ -37,7 +37,9 @@ const salesPeriodSchema = z.coerce.number().int().min(1).max(365).catch(30);
 
 /**
  * Ventes encaissées sur les N derniers jours, pour chaque marketplace disponible.
- * Agrégats seulement : aucune donnée client ne quitte le serveur.
+ * Agrégats seulement : aucune donnée client ne quitte le serveur. Sans boutique reliée, la
+ * réponse le dit (« connected: false ») : ce n'est pas une erreur, et le cockpit de chaque
+ * nouveau compte ne doit pas laisser une requête en échec dans la console du navigateur.
  */
 marketplacesRouter.get(
   '/sales-summary',
@@ -48,11 +50,8 @@ marketplacesRouter.get(
     const sources = availableMarketplaces(context).filter((adapter) => adapter.capabilities.readSales);
 
     if (sources.length === 0) {
-      throw new AppError(
-        503,
-        'Aucune boutique connectée à votre compte : ajoutez votre clé API Chariow dans Mon compte → Connexions.',
-        'NO_SALES_SOURCE',
-      );
+      res.json({ days, connected: false, range: null, summaries: [] });
+      return;
     }
 
     const to = new Date();
@@ -60,7 +59,7 @@ marketplacesRouter.get(
     const range = { from: from.toISOString().slice(0, 10), to: to.toISOString().slice(0, 10) };
 
     const summaries = await Promise.all(sources.map((adapter) => adapter.salesSummary(context, range)));
-    res.json({ days, range, summaries });
+    res.json({ days, connected: true, range, summaries });
   }),
 );
 
