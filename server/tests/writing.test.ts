@@ -155,7 +155,7 @@ describe('Rédaction par l’IA', () => {
     models.length = 0;
     const rescued = await agent.post('/api/writing/product').send({ product: { ...PRODUCT, title: 'Saturé' } }).expect(200);
     assert.equal(rescued.body.modules.length, PRODUCT.modules.length);
-    assert.deepEqual(models, ['gemini-3.5-flash', 'gemini-3.5-flash', 'gemini-2.5-flash']);
+    assert.deepEqual(models, ['gemini-3.5-flash', 'gemini-3.5-flash', 'gemini-3.6-flash']);
     assert.ok(start > (await balance(agent)), 'rédaction facturée une fois');
 
     models.length = 0;

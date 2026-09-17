@@ -191,7 +191,7 @@ l'annonce à l'écran et répond 503 : rien ne casse.
 
 | Service | Rôle | Variables | Sans clé |
 | --- | --- | --- | --- |
-| **Gemini** | Rédaction du rapport d'analyse, rédaction des produits et du kit, traduction des guides, Vidéo → Produit | `GEMINI_API_KEY`, `GEMINI_MODEL` (défaut `gemini-3.5-flash`), `GEMINI_FALLBACK_MODEL` (défaut `gemini-2.5-flash`) | Analyse, rédaction et traduction fermées |
+| **Gemini** | Rédaction du rapport d'analyse, rédaction des produits et du kit, traduction des guides, Vidéo → Produit | `GEMINI_API_KEY`, `GEMINI_MODEL` (défaut `gemini-3.5-flash`), `GEMINI_FALLBACK_MODEL` (défaut `gemini-3.6-flash`) | Analyse, rédaction et traduction fermées |
 | **Perplexity** (API Search) | Sources web des analyses de niche | `PERPLEXITY_API_KEY` | L'analyse fonctionne mais n'avance aucun fait de marché et le dit |
 | **Higgsfield** | Visuels (Soul, 1080p), vidéos publicitaires (Kling v2.1, 5 ou 10 s), couvertures de guides | `HIGGSFIELD_API_KEY_ID`, `HIGGSFIELD_API_KEY_SECRET` ; le compte des clés doit avoir des crédits | Créatifs et couvertures fermés ; sans crédits, le site l'annonce et rend les points |
 | **Gamma** | Storybooks illustrés | `GAMMA_API_KEY` | Storybook fermé |

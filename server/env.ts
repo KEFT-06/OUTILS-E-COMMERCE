@@ -58,7 +58,7 @@ const schema = z.object({
     z
       .string()
       .regex(/^[\w.-]+$/)
-      .default('gemini-2.5-flash')
+      .default('gemini-3.6-flash')
       .transform((model) => (model === 'off' ? null : model)),
   ),
   /**
