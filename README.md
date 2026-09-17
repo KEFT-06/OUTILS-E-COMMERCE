@@ -557,7 +557,6 @@ Autre hébergeur : un serveur Node.js lancé depuis la racine du projet (`npm ru
 | --- | --- |
 | Identité de l'éditeur, hébergeurs, durée de conservation comptable, rétractation et remboursement, droit applicable | Pages légales (`À compléter`) |
 | `DATABASE_URL` Supabase (région Paris) | `.env` / secrets de l'hébergeur |
-| `PERPLEXITY_API_KEY` | `.env` |
 | Crédits API Higgsfield : le compte des clés actuelles est à zéro, aucune vidéo ni aucun visuel ne peut être créé | Compte Higgsfield des clés API |
 | Service d'e-mails et domaine vérifié | `.env` |
 | `STRIPE_WEBHOOK_SECRET` et activation du compte Stripe pour les paiements réels (profil d'entreprise, puis clé `sk_live_…`) | Tableau de bord Stripe |
