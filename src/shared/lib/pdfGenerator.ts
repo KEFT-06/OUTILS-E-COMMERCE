@@ -1,5 +1,6 @@
 import { jsPDF } from 'jspdf';
 import { toPdfSafe } from '@/shared/lib/pdfText';
+import { blockProvenance, researchLine, writerLine } from '@/shared/lib/reportProvenance';
 import { safeHttpUrl } from '@/shared/lib/safeUrl';
 import type { MarketAnalysisReport, MarketRate } from '@/shared/types/analysis';
 
@@ -351,9 +352,24 @@ export async function generateAnalysisPDF(report: MarketAnalysisReport, stamp: P
   const sources = report.groundingSources ?? [];
   const limitations = report.limitations ?? [];
 
+  // Provenance : qui a cherché, qui a rédigé, d'où vient chaque bloc.
+  checkPageBreak(30);
+  sectionHeading('7. Provenance du rapport');
+  doc.setFont('helvetica', 'normal');
+  doc.setFontSize(8.5);
+  doc.setTextColor(30, 41, 59);
+  for (const line of [researchLine(report), writerLine(report), ...blockProvenance(report).map((entry) => `${entry.label} : ${entry.source}`)]) {
+    if (!line) continue;
+    const lines = doc.splitTextToSize(toPdfSafe(line), contentWidth);
+    checkPageBreak(lines.length * 4 + 2);
+    doc.text(lines, margin, currentY);
+    currentY += lines.length * 4 + 1.5;
+  }
+  currentY += 4;
+
   if (sources.length > 0) {
     checkPageBreak(24);
-    sectionHeading('7. Sources citées');
+    sectionHeading('8. Sources citées');
     sources.forEach((source, index) => {
       const title = doc.splitTextToSize(toPdfSafe(`[${source.id ?? index + 1}] ${source.title}`), contentWidth);
       checkPageBreak(title.length * 4 + 6);
@@ -375,7 +391,7 @@ export async function generateAnalysisPDF(report: MarketAnalysisReport, stamp: P
 
   if (limitations.length > 0) {
     checkPageBreak(24);
-    sectionHeading(`${sources.length > 0 ? '8' : '7'}. Limites du rapport`);
+    sectionHeading(`${sources.length > 0 ? '9' : '8'}. Points à vérifier avant de lancer`);
     doc.setFont('helvetica', 'normal');
     doc.setFontSize(8.5);
     doc.setTextColor(71, 85, 105);

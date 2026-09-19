@@ -3,6 +3,7 @@ import { toast } from 'sonner';
 import { BarChart3, BookOpen, Download, Globe, Image as ImageIcon, Printer, Sparkles, Users, Video } from 'lucide-react';
 import { PageHeader } from '@/shared/components/PageHeader';
 import { ComplianceBlockedError, checkReportCompliance, exportReportPDF } from '@/shared/lib/complianceGate';
+import { blockProvenance, researchLine, writerLine } from '@/shared/lib/reportProvenance';
 import { safeHttpUrl } from '@/shared/lib/safeUrl';
 import type { MarketAnalysisReport, MarketRate } from '@/shared/types/analysis';
 import type { ReportComplianceVerdict } from '@/shared/types/compliance';
@@ -257,8 +258,20 @@ export function ReportPDFView({ report }: ReportPDFViewProps) {
           <section className="space-y-3">
             <h3 className={sectionTitle}>
               <Globe className="size-4 text-brand-green-text" aria-hidden="true" />
-              {numbered('Sources et limites')}
+              {numbered('Provenance, sources et points à vérifier')}
             </h3>
+            <div className="space-y-1.5 rounded-lg border bg-muted/40 p-4 text-xs">
+              <p className="font-medium">
+                {researchLine(report)} {writerLine(report)}
+              </p>
+              <ul className="space-y-0.5 text-muted-foreground">
+                {blockProvenance(report).map((entry) => (
+                  <li key={entry.label}>
+                    <span className="font-medium text-foreground">{entry.label} :</span> {entry.source}
+                  </li>
+                ))}
+              </ul>
+            </div>
             {sources.length > 0 && (
               <ol className="space-y-1.5 text-xs">
                 {sources.map((source, index) => {

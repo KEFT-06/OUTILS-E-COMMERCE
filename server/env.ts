@@ -62,13 +62,26 @@ const schema = z.object({
       .transform((model) => (model === 'off' ? null : model)),
   ),
   /**
-   * Recherche web des analyses de niche (API Search de Perplexity) : pages brutes que
-   * Gemini rédige ensuite, sans rien avancer hors de ces sources. La recherche Google
-   * intégrée à Gemini n'est pas utilisée : ses conditions interdisent de conserver ou
-   * d'exporter les résultats. Sans clé, l'analyse le dit et n'avance aucun fait de marché.
+   * Étude de marché des analyses de niche : Perplexity cherche et lit le web (Agent API, repli
+   * sur l'API Search), Gemini rédige ensuite le rapport sans rien avancer hors des sources citées.
+   * La recherche Google intégrée à Gemini n'est pas utilisée : ses conditions interdisent de
+   * conserver ou d'exporter les résultats. Sans clé, l'analyse de niche est refusée.
    */
   PERPLEXITY_API_KEY: emptyAsUndefined(z.string().min(1).optional()),
   PERPLEXITY_API_URL: emptyAsUndefined(z.string().url().default('https://api.perplexity.ai')),
+  /**
+   * Profondeur de l'étude menée par l'Agent API de Perplexity (préréglages de Perplexity) :
+   * « medium » = recherche approfondie (défaut, environ une minute), « high » = la plus complète,
+   * « low »/« fast » = plus rapides. « off » : seulement l'API Search (pages brutes, sans étude).
+   */
+  PERPLEXITY_RESEARCH_PRESET: emptyAsUndefined(z.enum(['fast', 'low', 'medium', 'high', 'off']).default('medium')),
+  /**
+   * Modèle d'image de Gemini (couvertures des guides et des ebooks). Exige la facturation activée
+   * sur le projet Google de la clé : l'offre gratuite n'autorise aucune image.
+   */
+  GEMINI_IMAGE_MODEL: emptyAsUndefined(z.string().regex(/^[\w.-]+$/).default('gemini-3.1-flash-image')),
+  /** Modèle d'image que Gamma utilise pour illustrer les storybooks (liste : developers.gamma.app, « Image models »). */
+  GAMMA_IMAGE_MODEL: emptyAsUndefined(z.string().regex(/^[\w.-]+$/).default('gemini-3.1-flash-image')),
   // Higgsfield authentifie par une paire identifiant + secret, envoyée sous la
   // forme `Authorization: Key ID:SECRET` (docs.higgsfield.ai/docs/authentication).
   // L'ancienne variable unique HIGGSFIELD_API_KEY ne pouvait fonctionner avec
@@ -76,7 +89,9 @@ const schema = z.object({
   HIGGSFIELD_API_KEY_ID: z.string().min(1).optional(),
   HIGGSFIELD_API_KEY_SECRET: z.string().min(1).optional(),
   HIGGSFIELD_API_URL: z.string().url().default('https://api.higgsfield.ai'),
-  GAMMA_API_KEY: z.string().min(1).optional(),
+  GAMMA_API_KEY: emptyAsUndefined(z.string().min(1).optional()),
+  /** Surchargeable pour tester contre un serveur factice. */
+  GAMMA_API_URL: emptyAsUndefined(z.string().url().default('https://public-api.gamma.app')),
 
   /**
    * E-mails transactionnels (mot de passe oublié, confirmation d'adresse, alertes de
@@ -103,6 +118,16 @@ const schema = z.object({
    * du serveur. Sans effet ensuite. Voir server/services/admin/bootstrap.ts.
    */
   ADMIN_BOOTSTRAP_EMAIL: emptyAsUndefined(z.string().email().optional()),
+
+  /**
+   * SebPay (Mobile Money, Afrique de l'Ouest et centrale) : clés publique et secrète du tableau de bord.
+   * Les clés sont limitées aux adresses IP autorisées chez SebPay ; l'administration affiche celle du serveur.
+   */
+  SEBPAY_PUBLIC_KEY: emptyAsUndefined(z.string().min(1).optional()),
+  SEBPAY_SECRET_KEY: emptyAsUndefined(z.string().min(1).optional()),
+  SEBPAY_API_URL: emptyAsUndefined(z.string().url().default('https://newapi.sebpay.bj/api/v1')),
+  /** Service qui renvoie l'adresse IP publique du serveur (page « État des services ») ; « off » pour ne pas l'interroger. */
+  PUBLIC_IP_URL: emptyAsUndefined(z.string().default('https://api.ipify.org?format=json')),
 
   /** Facultatif : boîte de l'équipe, qui reçoit une copie de chaque message de la page Contact et un avis à chaque paiement en ligne. */
   CONTACT_INBOX_EMAIL: emptyAsUndefined(z.string().email().optional()),

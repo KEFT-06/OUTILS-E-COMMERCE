@@ -147,6 +147,19 @@ export interface WebGroundingSource {
   publishedAt?: string | null;
 }
 
+/** Étude de marché qui fonde le rapport. */
+export interface ReportResearch {
+  provider: string;
+  /** deep_research : étude approfondie (Agent API) ; search : pages brutes (API Search). */
+  mode: 'deep_research' | 'search';
+  preset: string | null;
+  model: string | null;
+  searches: number;
+  pagesConsulted: number;
+  sourcesCited: number;
+  durationSeconds: number;
+}
+
 /** Qui a produit le rapport, avec quelle consigne et quelles sources. */
 export interface ReportGenerator {
   provider: string;
@@ -154,6 +167,8 @@ export interface ReportGenerator {
   promptVersion: string;
   /** Moteur de recherche web consulté ; null : aucun. */
   webSearch: string | null;
+  /** Absente des rapports antérieurs à l'étude approfondie. */
+  research?: ReportResearch;
   generatedAt: string;
 }
 
@@ -208,4 +223,16 @@ export interface ReportSummary {
   nicheName: string;
   market: string | null;
   createdAt: string;
+}
+
+/** Analyse lancée sur le serveur (étude puis rédaction), suivie par le navigateur jusqu'au rapport. */
+export interface AnalysisJob {
+  id: string;
+  query: string;
+  market: string | null;
+  status: 'queued' | 'research' | 'writing' | 'completed' | 'failed';
+  reportId: string | null;
+  error: { code: string; message: string } | null;
+  createdAt: string;
+  updatedAt: string;
 }

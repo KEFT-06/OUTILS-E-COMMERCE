@@ -50,7 +50,7 @@ export function researchQueries(query: string, marketName: string | null): strin
   return [`${query}${where}`, `${query} ebook formation prix${where}`, `${query} avis clients difficultés`];
 }
 
-function plainText(value: string): string {
+export function plainText(value: string): string {
   return value
     .replace(/<[^>]*>/g, '')
     .replace(/&quot;/g, '"')
@@ -62,7 +62,7 @@ function plainText(value: string): string {
     .trim();
 }
 
-function normalizedUrl(value: string): string | null {
+export function normalizedUrl(value: string): string | null {
   try {
     const url = new URL(value);
     if (url.protocol !== 'https:' && url.protocol !== 'http:') return null;

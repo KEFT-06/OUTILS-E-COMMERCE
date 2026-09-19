@@ -280,6 +280,75 @@ export const reports = pgTable(
 ).enableRLS();
 
 /**
+ * Analyses de niche en cours ou terminées. L'étude de Perplexity dure une à plusieurs minutes :
+ * l'analyse tourne en arrière-plan sur le serveur, le navigateur suit son avancement, et son
+ * identifiant chez Perplexity permet de reprendre le suivi après un redémarrage du serveur.
+ */
+export const analysisJobs = pgTable(
+  'analysis_jobs',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    userId: uuid('user_id')
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
+    query: text('query').notNull(),
+    market: text('market'),
+    /** queued · research · writing · completed · failed */
+    status: text('status').notNull(),
+    /** Identifiant de l'étude chez Perplexity. */
+    researchRef: text('research_ref'),
+    reportId: uuid('report_id'),
+    errorCode: text('error_code'),
+    errorMessage: text('error_message'),
+    creditsCharged: integer('credits_charged').notNull().default(0),
+    debitTransactionId: uuid('debit_transaction_id'),
+    refunded: boolean('refunded').notNull().default(false),
+    createdAt: createdAt(),
+    updatedAt: moment('updated_at').notNull().defaultNow(),
+    completedAt: moment('completed_at'),
+  },
+  (table) => [
+    index('analysis_jobs_user_idx').on(table.userId, table.createdAt),
+    // Une seule analyse en cours par compte : deux clics rapides ne paient pas deux fois.
+    uniqueIndex('analysis_jobs_one_active').on(table.userId).where(sql`${table.status} in ('queued', 'research', 'writing')`),
+  ],
+).enableRLS();
+
+/**
+ * Storybooks créés : conte rédigé par Gemini, mis en page et illustré par Gamma. Le lien
+ * d'export PDF de Gamma est un secret qui expire : il n'est jamais gardé ni envoyé au
+ * navigateur, le serveur le redemande à chaque téléchargement.
+ */
+export const storybooks = pgTable(
+  'storybooks',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    userId: uuid('user_id')
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
+    /** Identifiant de la génération chez Gamma. */
+    generationRef: text('generation_ref').notNull(),
+    /** Identifiant du document chez Gamma, connu une fois la génération terminée. */
+    gammaId: text('gamma_id'),
+    gammaUrl: text('gamma_url'),
+    title: text('title').notNull(),
+    language: text('language').notNull(),
+    country: text('country').notNull(),
+    pages: integer('pages').notNull(),
+    /** Texte du conte tel que Gemini l'a rédigé. */
+    story: jsonb('story').$type<Record<string, unknown>>().notNull(),
+    /** pending · completed · failed */
+    status: text('status').notNull(),
+    createdAt: createdAt(),
+    completedAt: moment('completed_at'),
+  },
+  (table) => [
+    index('storybooks_user_idx').on(table.userId, table.createdAt),
+    uniqueIndex('storybooks_generation_unique').on(table.generationRef),
+  ],
+).enableRLS();
+
+/**
  * Brouillons de l'espace de travail, un document par type et par compte : retouches
  * des produits, produits créés hors analyse, kits de lancement, pages produits. Voir
  * server/services/workspace.

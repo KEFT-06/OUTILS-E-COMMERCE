@@ -7,7 +7,7 @@ import { useAuth } from '@/features/auth/AuthContext';
 import { apiRequest } from '@/shared/lib/api';
 import { toApiError } from '@/shared/lib/apiError';
 import { ComplianceBlockedError, exportReportPDF } from '@/shared/lib/complianceGate';
-import type { MarketAnalysisReport, ReportSummary } from '@/shared/types/analysis';
+import type { AnalysisJob, MarketAnalysisReport, ReportSummary } from '@/shared/types/analysis';
 import type { ReportComplianceVerdict } from '@/shared/types/compliance';
 import { ComplianceBlockDialog } from '@/shared/components/ComplianceBlockDialog';
 
@@ -24,6 +24,8 @@ interface WorkspaceContextType {
   selectReport: (id: string) => void;
   deleteReport: (id: string) => Promise<void>;
   isAnalyzing: boolean;
+  /** Analyse en cours du compte (étude puis rédaction), suivie jusqu'à son terme. */
+  analysisJob: AnalysisJob | null;
   analyzeNiche: (query: string, market?: string | null) => Promise<void>;
   isExportingPdf: boolean;
   exportPdf: () => Promise<void>;
@@ -65,16 +67,29 @@ const summaryOf = (report: MarketAnalysisReport): ReportSummary => ({
 
 const fetchReport = (id: string) => apiRequest<{ report: MarketAnalysisReport }>(`/api/reports/${encodeURIComponent(id)}`);
 
+/** Cadence du suivi d'une analyse : l'étude dure une à plusieurs minutes. */
+const JOB_POLL_MS = 3_000;
+
+const JOB_STEPS: Record<AnalysisJob['status'], string> = {
+  queued: 'Préparation de l’analyse…',
+  research: 'Perplexity mène l’étude de marché sur le web : comptez 1 à 3 minutes.',
+  writing: 'Gemini rédige le rapport à partir des sources trouvées…',
+  completed: 'Rapport prêt.',
+  failed: 'L’analyse n’a pas abouti.',
+};
+
+export const analysisStepLabel = (status: AnalysisJob['status']) => JOB_STEPS[status];
+
 export const WorkspaceProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const navigate = useNavigate();
   const { runWithCredits } = useCreditGate();
-  const { account } = useAuth();
+  const { account, refresh } = useAuth();
   const accountId = account?.id;
 
   const [reports, setReports] = useState<ReportSummary[]>([]);
   const [currentReport, setCurrentReport] = useState<MarketAnalysisReport | null>(null);
   const [isLoadingReport, setIsLoadingReport] = useState(true);
-  const [isAnalyzing, setIsAnalyzing] = useState(false);
+  const [analysisJob, setAnalysisJob] = useState<AnalysisJob | null>(null);
   const [isExportingPdf, setIsExportingPdf] = useState(false);
   const [analysisDialogOpen, setAnalysisDialogOpen] = useState(false);
   const [commandOpen, setCommandOpen] = useState(false);
@@ -99,6 +114,22 @@ export const WorkspaceProvider: React.FC<{ children: React.ReactNode }> = ({ chi
       })
       .finally(() => {
         if (!cancelled) setIsLoadingReport(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [accountId]);
+
+  // Analyse lancée avant un rechargement de la page : le suivi reprend.
+  useEffect(() => {
+    if (!accountId) return;
+    let cancelled = false;
+    apiRequest<{ job: AnalysisJob | null }>('/api/analyze-niche/jobs/active')
+      .then(({ job }) => {
+        if (!cancelled && job) setAnalysisJob(job);
+      })
+      .catch(() => {
+        // Sans réponse, rien à reprendre : l'analyse éventuelle continue sur le serveur.
       });
     return () => {
       cancelled = true;
@@ -150,36 +181,83 @@ export const WorkspaceProvider: React.FC<{ children: React.ReactNode }> = ({ chi
   );
 
   /**
-   * Analyse d'une nouvelle niche, derrière la porte de crédits : le coût
-   * s'affiche avant l'appel et les points sont rendus si l'analyse échoue.
-   * Aucun rapport de repli n'est fabriqué : l'erreur du serveur est montrée telle
-   * quelle, elle dit ce qui manque.
+   * Analyse d'une nouvelle niche, derrière la porte de crédits : le coût s'affiche avant le
+   * lancement, les points sont rendus par le serveur si l'analyse échoue. Le serveur répond
+   * tout de suite ; le suivi ci-dessous affiche chaque étape jusqu'au rapport. Aucun rapport de
+   * repli n'est fabriqué : l'erreur du serveur est montrée telle quelle, elle dit ce qui manque.
    */
   const analyzeNiche = useCallback(
     async (query: string, market?: string | null) => {
       try {
         await runWithCredits('niche_analysis', async () => {
-          setIsAnalyzing(true);
-          try {
-            const report = await apiRequest<MarketAnalysisReport>('/api/analyze-niche', {
-              method: 'POST',
-              body: { query, ...(market ? { market } : {}) },
-            });
+          const { job } = await apiRequest<{ job: AnalysisJob }>('/api/analyze-niche', {
+            method: 'POST',
+            body: { query, ...(market ? { market } : {}) },
+          });
+          if (job.query !== query) {
+            toast.info('Une analyse est déjà en cours', { description: `« ${job.query} » : son rapport arrive d’abord.` });
+          }
+          setAnalysisJob(job);
+        });
+      } catch (error) {
+        toast.error('L’analyse n’a pas pu être lancée', { description: toApiError(error, 'Erreur inconnue.').message });
+      }
+    },
+    [runWithCredits],
+  );
+
+  // Suivi de l'analyse en cours, étape par étape, jusqu'au rapport.
+  const analysisJobId = analysisJob?.id;
+  const analysisJobStatus = analysisJob?.status;
+  useEffect(() => {
+    if (!analysisJobId || analysisJobStatus === 'completed' || analysisJobStatus === 'failed') return;
+    const toastId = `analyse-${analysisJobId}`;
+    toast.loading('Analyse en cours', { id: toastId, description: JOB_STEPS[analysisJobStatus ?? 'queued'], duration: Infinity });
+
+    let cancelled = false;
+    let failures = 0;
+    const timer = setInterval(() => {
+      apiRequest<{ job: AnalysisJob }>(`/api/analyze-niche/jobs/${encodeURIComponent(analysisJobId)}`)
+        .then(async ({ job }) => {
+          if (cancelled) return;
+          failures = 0;
+          if (job.status === 'completed' && job.reportId) {
+            cancelled = true;
+            clearInterval(timer);
+            const { report } = await fetchReport(job.reportId);
             setReports((previous) => [summaryOf(report), ...previous.filter((entry) => entry.id !== report.id)]);
             setCurrentReport(report);
             if (accountId) rememberActiveReport(accountId, report.id);
+            setAnalysisJob(null);
             navigate(pathOf('analyse'));
-            toast.success(`Analyse terminée pour « ${report.nicheName} »`);
-          } finally {
-            setIsAnalyzing(false);
+            toast.success(`Analyse terminée pour « ${report.nicheName} »`, { id: toastId, description: undefined, duration: 6_000 });
+            void refresh();
+            return;
+          }
+          if (job.status === 'failed') {
+            cancelled = true;
+            clearInterval(timer);
+            setAnalysisJob(null);
+            toast.error('L’analyse n’a pas abouti', { id: toastId, description: job.error?.message ?? 'Erreur inconnue.', duration: 12_000 });
+            void refresh();
+            return;
+          }
+          if (job.status !== analysisJobStatus) setAnalysisJob(job);
+        })
+        .catch(() => {
+          // Coupure passagère : l'analyse continue sur le serveur, le suivi réessaie.
+          failures += 1;
+          if (failures === 5) {
+            toast.loading('Analyse en cours', { id: toastId, description: 'Connexion instable : le suivi réessaie, l’analyse continue sur le serveur.' });
           }
         });
-      } catch (error) {
-        toast.error('L’analyse n’a pas abouti', { description: toApiError(error, 'Erreur inconnue.').message });
-      }
-    },
-    [accountId, navigate, runWithCredits],
-  );
+    }, JOB_POLL_MS);
+
+    return () => {
+      cancelled = true;
+      clearInterval(timer);
+    };
+  }, [accountId, analysisJobId, analysisJobStatus, navigate, refresh]);
 
   // Export PDF : passe obligatoirement par la porte de conformité.
   const exportPdf = useCallback(async () => {
@@ -217,7 +295,8 @@ export const WorkspaceProvider: React.FC<{ children: React.ReactNode }> = ({ chi
       isLoadingReport,
       selectReport,
       deleteReport,
-      isAnalyzing,
+      isAnalyzing: analysisJob !== null,
+      analysisJob,
       analyzeNiche,
       isExportingPdf,
       exportPdf,
@@ -232,7 +311,7 @@ export const WorkspaceProvider: React.FC<{ children: React.ReactNode }> = ({ chi
       isLoadingReport,
       selectReport,
       deleteReport,
-      isAnalyzing,
+      analysisJob,
       analyzeNiche,
       isExportingPdf,
       exportPdf,

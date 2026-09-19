@@ -3,8 +3,8 @@ import { and, desc, eq, inArray } from 'drizzle-orm';
 import { z } from 'zod';
 import { getDb } from '@server/db/client';
 import { reports } from '@server/db/schema';
-import { env, providers } from '@server/env';
-import { AppError, marketSchema, nicheQuerySchema, providerUnavailable } from '@server/middleware';
+import { env } from '@server/env';
+import { AppError, marketSchema, nicheQuerySchema } from '@server/middleware';
 import type { RequestAuth } from '@server/middleware/auth';
 import { generateJson } from '@server/services/ai/gemini';
 import {
@@ -17,9 +17,10 @@ import {
   parseAnalysisResponse,
   type AnalysisResponse,
 } from '@server/services/analysis/prompt';
-import { searchWeb, type WebSource } from '@server/services/analysis/webSearch';
+import type { ResearchEngine, ResearchOutcome } from '@server/services/analysis/research';
+import type { WebSource } from '@server/services/analysis/webSearch';
 import { currencyForCountry, getRates } from '@server/services/currency';
-import { runBilledGeneration } from '@server/services/generations';
+import type { DataProvenance } from '@server/shared/provenance';
 import type {
   CompetitorInsight,
   DigitalProductIdea,
@@ -33,8 +34,9 @@ import type {
 import { countryName } from '@server/shared/countries';
 
 /**
- * Analyse de niche (module 2) : recherche web (Perplexity), rédaction par Gemini,
- * puis contrôle par le serveur de tout ce qui se présente comme un fait.
+ * Analyse de niche (module 2) : étude de marché menée par Perplexity, rédaction par Gemini,
+ * puis contrôle par le serveur de tout ce qui se présente comme un fait. L'enchaînement en
+ * arrière-plan (suivi, reprise, facturation) est dans server/services/analysis/jobs.ts.
  *
  * Le modèle reçoit la consigne de citer ses sources ; le serveur ne s'en contente
  * pas. Un concurrent sans source existante est écarté, un niveau de taux sans
@@ -98,6 +100,8 @@ export function assembleReport(input: {
   timeZone: string;
   sources: readonly WebSource[];
   webSearchConfigured: boolean;
+  /** Étude qui a fourni les sources ; null : aucune. */
+  research: ResearchEngine | null;
   response: AnalysisResponse;
   model: string;
   currency: string;
@@ -248,6 +252,7 @@ export function assembleReport(input: {
     .slice(0, 8)
     .map((keyword) => ({ keyword: keyword.keyword, intent: keyword.intent, volume: null, growthRate: null, growthType: null }));
 
+  // La nature de chaque bloc (fait sourcé ou proposition de l'IA) est dite par sa provenance, pas ici.
   const limitations = [
     ...(sources.length === 0
       ? [
@@ -256,12 +261,24 @@ export function assembleReport(input: {
             : 'Aucune recherche web n’est branchée : concurrents, prix et demande n’ont pas été étudiés.',
         ]
       : []),
-    'Aucune source de volumes de recherche n’est branchée : les mots-clés sont des pistes, sans volume ni croissance.',
-    'Idées de produits, scripts et plan d’action sont des propositions de l’IA, à relire avant usage.',
     ...response.limitations,
   ];
 
   const collectedAt = input.now.toISOString();
+  const research = input.research;
+  const study =
+    research?.mode === 'deep_research'
+      ? `Étude approfondie Perplexity (${research.searches} recherches, ${research.pagesConsulted} pages lues)`
+      : 'Recherche web Perplexity';
+  const writer = `Gemini (${input.model})`;
+  const cited = (source: string): DataProvenance => ({
+    source,
+    collectedAt,
+    sampleSize: sources.length,
+    sampleUnit: 'sources citées',
+    isDemonstration: false,
+  });
+  const proposed = (source: string): DataProvenance => ({ source, collectedAt, isDemonstration: false });
 
   return {
     id,
@@ -287,18 +304,18 @@ export function assembleReport(input: {
     dataProvenance: {
       ...(sources.length > 0
         ? {
-            rates: {
-              source: 'Recherche web (Perplexity), synthèse Gemini',
-              collectedAt,
-              sampleSize: sources.length,
-              sampleUnit: 'pages web consultées',
-              isDemonstration: false,
-            },
+            rates: cited(`${study}, niveaux fixés par ${writer} d’après les sources citées`),
+            competitors: cited(`${study} ; seuls les concurrents présents dans les sources sont retenus`),
           }
         : {}),
-      ...(adCampaigns.length > 0
-        ? { adCampaigns: { source: `Scripts proposés par Gemini (${input.model})`, collectedAt, isDemonstration: false } }
+      ...(searchTrends.length > 0
+        ? { searchTrends: proposed(`Expressions proposées par ${writer}${sources.length > 0 ? ' d’après l’étude' : ''} ; volumes de recherche non mesurés`) }
         : {}),
+      ...(digitalProducts.length > 0
+        ? { digitalProducts: proposed(`Idées proposées par ${writer}${sources.length > 0 ? ' d’après l’étude ; prix repris des seules sources citées' : ''}`) }
+        : {}),
+      ...(adCampaigns.length > 0 ? { adCampaigns: proposed(`Scripts proposés par ${writer}`) } : {}),
+      ...(response.actionPlan.length > 0 ? { strategicActionPlan: proposed(`Plan proposé par ${writer}${sources.length > 0 ? ' d’après l’étude' : ''}`) } : {}),
     },
     limitations: [...new Set(limitations)].slice(0, 8),
     generator: {
@@ -306,17 +323,26 @@ export function assembleReport(input: {
       model: input.model,
       promptVersion: ANALYSIS_PROMPT_VERSION,
       webSearch: sources.length > 0 ? 'Perplexity' : null,
+      ...(research && sources.length > 0 ? { research: { ...research, sourcesCited: sources.length } } : {}),
       generatedAt: collectedAt,
     },
   };
 }
 
-async function produceReport(auth: RequestAuth, request: AnalysisRequest): Promise<MarketAnalysisReport> {
-  const now = new Date();
+/**
+ * Rédige le rapport à partir de l'étude, le contrôle et l'enregistre sur le compte. Au-delà de
+ * REPORTS_KEPT rapports, les plus anciens sont effacés.
+ */
+export async function writeReport(input: {
+  userId: string;
+  userCountry: string | null;
+  request: AnalysisRequest;
+  now: Date;
+  research: ResearchOutcome;
+}): Promise<MarketAnalysisReport> {
+  const { request, now, research } = input;
   const market = request.market ?? null;
   const marketName = market ? countryName(market) : null;
-
-  const sources = providers.webSearch ? await searchWeb({ query: request.query, market, marketName }) : [];
 
   let model = env.GEMINI_MODEL;
   const response = await generateJson({
@@ -324,9 +350,10 @@ async function produceReport(auth: RequestAuth, request: AnalysisRequest): Promi
     prompt: buildAnalysisPrompt({
       query: request.query,
       marketName,
-      today: now.toLocaleDateString('fr-FR', { day: 'numeric', month: 'long', year: 'numeric', timeZone: env.REPORTING_TIMEZONE }),
-      sources,
-      webSearchConfigured: providers.webSearch,
+      today: todayLabel(now),
+      sources: research.sources,
+      webSearchConfigured: true,
+      memo: research.memo,
     }),
     responseSchema: ANALYSIS_RESPONSE_SCHEMA,
     parse: parseAnalysisResponse,
@@ -342,18 +369,18 @@ async function produceReport(auth: RequestAuth, request: AnalysisRequest): Promi
     market,
     now,
     timeZone: env.REPORTING_TIMEZONE,
-    sources,
-    webSearchConfigured: providers.webSearch,
+    sources: research.sources,
+    webSearchConfigured: true,
+    research: research.engine,
     response,
     model,
-    currency: currencyForCountry(market ?? auth.account.user.country, await getRates()),
+    currency: currencyForCountry(market ?? input.userCountry, await getRates()),
   });
 
-  const userId = auth.account.user.id;
   const db = getDb();
   await db.insert(reports).values({
     id: report.id,
-    userId,
+    userId: input.userId,
     query: report.query,
     nicheName: report.nicheName,
     market,
@@ -364,28 +391,19 @@ async function produceReport(auth: RequestAuth, request: AnalysisRequest): Promi
   const overflow = await db
     .select({ id: reports.id })
     .from(reports)
-    .where(eq(reports.userId, userId))
+    .where(eq(reports.userId, input.userId))
     .orderBy(desc(reports.createdAt))
     .offset(REPORTS_KEPT);
   if (overflow.length > 0) {
-    await db.delete(reports).where(and(eq(reports.userId, userId), inArray(reports.id, overflow.map((row) => row.id))));
+    await db.delete(reports).where(and(eq(reports.userId, input.userId), inArray(reports.id, overflow.map((row) => row.id))));
   }
 
   return report;
 }
 
-/** Analyse facturée : points réservés au lancement, rendus si une étape échoue. */
-export async function analyzeNiche(auth: RequestAuth, request: AnalysisRequest): Promise<MarketAnalysisReport> {
-  if (!providers.gemini) throw providerUnavailable('Gemini');
-  const { result } = await runBilledGeneration({
-    auth,
-    actionId: 'niche_analysis',
-    kind: 'niche_analysis',
-    provider: 'gemini',
-    run: () => produceReport(auth, request),
-    describe: () => ({ providerRef: null, state: 'completed' }),
-  });
-  return result;
+/** Date lisible du jour, dans le fuseau des rapports. */
+export function todayLabel(now: Date): string {
+  return now.toLocaleDateString('fr-FR', { day: 'numeric', month: 'long', year: 'numeric', timeZone: env.REPORTING_TIMEZONE });
 }
 
 const reportIdSchema = z.string().uuid();

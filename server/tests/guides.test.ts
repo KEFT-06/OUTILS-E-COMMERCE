@@ -1,5 +1,4 @@
 import assert from 'node:assert/strict';
-import { randomUUID } from 'node:crypto';
 import { createServer } from 'node:http';
 import type { AddressInfo } from 'node:net';
 import { after, before, describe, it } from 'node:test';
@@ -8,14 +7,12 @@ import request from 'supertest';
 import { STRONG_PASSWORD, closeTestApp, createAdmin, createTestApp } from './support/helpers';
 
 /**
- * Guides multilingues de bout en bout, contre un faux Gemini et un faux
- * Higgsfield : aucune vraie traduction ni image n'est produite.
+ * Guides multilingues de bout en bout, contre un faux Gemini (texte et images) : aucune vraie
+ * traduction ni image n'est produite.
  */
 
 const geminiCalls: { key: string | undefined; prompt: string }[] = [];
-const higgsfieldPrompts: string[] = [];
-const higgsfieldResolutions: string[] = [];
-const coverRequests = new Set<string>();
+const imageCalls: { model: string; prompt: string; aspectRatio: string | undefined; modalities: string[] }[] = [];
 
 /** Faux traducteur : préfixe chaque texte par la langue visée, sans toucher chiffres ni liens. */
 function fakeTranslation(prompt: string) {
@@ -29,6 +26,9 @@ function fakeTranslation(prompt: string) {
   return { title: mark(source.title ?? ''), sections: source.sections.map((section) => ({ id: section.id, heading: mark(section.heading), body: mark(section.body) })) };
 }
 
+/** Une image PNG minimale : la signature suffit, le serveur ne la décode pas. */
+const PNG = Buffer.from('89504e470d0a1a0a0000000d4948445200000001000000010806000000', 'hex');
+
 const fakeProviders = createServer((req, res) => {
   const chunks: Buffer[] = [];
   req.on('data', (chunk: Buffer) => chunks.push(chunk));
@@ -40,6 +40,17 @@ const fakeProviders = createServer((req, res) => {
     };
     const body = chunks.length > 0 ? (JSON.parse(Buffer.concat(chunks).toString('utf8')) as Record<string, unknown>) : {};
 
+    const imageModel = /^\/gemini\/v1beta\/models\/([\w.-]*image[\w.-]*):generateContent$/.exec(url.pathname);
+    if (imageModel && req.method === 'POST') {
+      const prompt = (body.contents as { parts: { text: string }[] }[])[0]!.parts[0]!.text;
+      const config = body.generationConfig as { responseModalities: string[]; imageConfig?: { aspectRatio?: string } };
+      imageCalls.push({ model: imageModel[1]!, prompt, aspectRatio: config.imageConfig?.aspectRatio, modalities: config.responseModalities });
+      if (prompt.includes('Facturation absente')) {
+        return send(429, { error: { code: 429, status: 'RESOURCE_EXHAUSTED', message: 'Quota exceeded for metric: generate_content_free_tier_requests, limit: 0' } });
+      }
+      return send(200, { candidates: [{ content: { parts: [{ inlineData: { mimeType: 'image/png', data: PNG.toString('base64') } }] } }] });
+    }
+
     if (url.pathname.startsWith('/gemini/v1beta/models/') && req.method === 'POST') {
       const key = req.headers['x-goog-api-key'] as string | undefined;
       const prompt = (body.contents as { parts: { text: string }[] }[])[0]!.parts[0]!.text;
@@ -48,30 +59,16 @@ const fakeProviders = createServer((req, res) => {
       return send(200, { candidates: [{ content: { parts: [{ text: JSON.stringify(fakeTranslation(prompt)) }] } }] });
     }
 
-    if (url.pathname === '/higgsfield/higgsfield-ai/soul/standard' && req.method === 'POST') {
-      higgsfieldPrompts.push(String(body.prompt));
-      higgsfieldResolutions.push(String(body.resolution));
-      const requestId = randomUUID();
-      coverRequests.add(requestId);
-      return send(200, { request_id: requestId, status: 'queued' });
-    }
-    const status = /^\/higgsfield\/requests\/([^/]+)\/status$/.exec(url.pathname);
-    if (status && coverRequests.has(status[1]!)) {
-      return send(200, { request_id: status[1], status: 'completed', images: [{ url: `https://media.test/${status[1]}.png` }] });
-    }
     send(404, {});
   });
 });
-
-/** Une image PNG minimale : la signature suffit, le serveur ne la décode pas. */
-const PNG = Buffer.from('89504e470d0a1a0a0000000d4948445200000001000000010806000000', 'hex');
 
 let app: Express;
 
 before(async () => {
   await new Promise<void>((resolve) => fakeProviders.listen(0, '127.0.0.1', resolve));
   const base = `http://127.0.0.1:${(fakeProviders.address() as AddressInfo).port}`;
-  app = await createTestApp({ GEMINI_API_URL: `${base}/gemini`, HIGGSFIELD_API_URL: `${base}/higgsfield` });
+  app = await createTestApp({ GEMINI_API_URL: `${base}/gemini` });
 });
 
 after(async () => {
@@ -206,23 +203,13 @@ describe('Guides multilingues', () => {
     const submitted = await agent
       .post('/api/covers')
       .send({ subject: 'guide', subjectId: guideId, title: GUIDE.title, style: 'illustration' })
-      .expect(202);
-    assert.equal(submitted.body.cover.status, 'pending');
-    assert.match(higgsfieldPrompts.at(-1)!, /no text, letters, numbers/);
-    assert.equal(higgsfieldResolutions.at(-1), '1080p', 'seule résolution acceptée par l’API réelle avec 720p');
-
-    const originalFetch = globalThis.fetch;
-    globalThis.fetch = (async (input: string | URL | Request, init?: RequestInit) => {
-      const url = typeof input === 'string' ? input : input instanceof URL ? input.href : input.url;
-      if (url.startsWith('https://media.test/')) return new Response(PNG, { status: 200, headers: { 'content-type': 'image/png' } });
-      return originalFetch(input, init);
-    }) as typeof fetch;
-    try {
-      const ready = await agent.get(`/api/covers/${submitted.body.cover.id}`).expect(200);
-      assert.equal(ready.body.cover.status, 'ready');
-    } finally {
-      globalThis.fetch = originalFetch;
-    }
+      .expect(201);
+    assert.equal(submitted.body.cover.status, 'ready', 'Gemini renvoie l’image dans la réponse');
+    const call = imageCalls.at(-1)!;
+    assert.equal(call.model, 'gemini-3.1-flash-image');
+    assert.deepEqual(call.modalities, ['IMAGE']);
+    assert.equal(call.aspectRatio, '9:16', 'format portrait des exports');
+    assert.match(call.prompt, /no text, letters, numbers/);
 
     const image = await agent.get(`/api/covers/${submitted.body.cover.id}/image`).buffer(true).expect(200);
     assert.equal(image.headers['content-type'], 'image/png');
@@ -235,6 +222,13 @@ describe('Guides multilingues', () => {
     const stranger = await author('voisine@exemple.com', 'pro');
     await stranger.get(`/api/covers/${submitted.body.cover.id}/image`).expect(404);
     await stranger.post('/api/covers').send({ subject: 'guide', subjectId: guideId, title: 'Vol de guide' }).expect(404);
+
+    // Sans facturation Google, l'offre gratuite refuse toute image : message clair, points rendus, rien d'enregistré.
+    const refused = await agent.post('/api/covers').send({ subject: 'guide', subjectId: guideId, title: 'Facturation absente' }).expect(503);
+    assert.equal(refused.body.error.code, 'GEMINI_IMAGE_BILLING_REQUIRED');
+    assert.match(refused.body.error.message, /points ont été rendus/);
+    assert.equal((await agent.get('/api/auth/me').expect(200)).body.account.credits.total, before - 1);
+    assert.equal((await agent.get(`/api/guides/${guideId}`).expect(200)).body.guide.cover.id, submitted.body.cover.id, 'la couverture précédente reste');
   });
 
   it('contrôle chiffres, liens et sections quelle que soit l’écriture', async () => {

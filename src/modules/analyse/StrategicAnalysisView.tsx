@@ -27,6 +27,7 @@ import {
 } from '@tanstack/react-table';
 import { Bar, BarChart, CartesianGrid, PolarAngleAxis, PolarGrid, PolarRadiusAxis, Radar, RadarChart, XAxis, YAxis } from 'recharts';
 import { countryName } from '@server/shared/countries';
+import { researchLine, writerLine } from '@/shared/lib/reportProvenance';
 import { safeHttpUrl } from '@/shared/lib/safeUrl';
 import type { MarketAnalysisReport, MarketRate, OverallVerdict, SearchTrendKeyword, TauxLevel } from '@/shared/types/analysis';
 import { Alert, AlertDescription, AlertTitle } from '@/shared/ui/alert';
@@ -322,10 +323,16 @@ export function StrategicAnalysisView({ report, onNavigateToProducts, onNavigate
           {generatedBy && (
             <Alert variant="info">
               <Info />
-              <AlertTitle>Comment lire ce rapport</AlertTitle>
+              <AlertTitle>Provenance du rapport</AlertTitle>
               <AlertDescription>
-                Les faits de marché (concurrents, prix constatés, niveaux des taux) renvoient chacun à leurs sources, numérotées.
-                Les idées de produits, les scripts et le plan d’action sont des propositions de l’IA, à relire avant usage.
+                <p>
+                  {researchLine(report)} {writerLine(report)}
+                </p>
+                <p>
+                  Les faits de marché (concurrents, prix constatés, niveaux des taux) renvoient chacun à leurs sources, numérotées.
+                  Les idées de produits, les scripts et le plan d’action sont des propositions de l’IA fondées sur l’étude, à relire
+                  avant usage.
+                </p>
               </AlertDescription>
             </Alert>
           )}
@@ -333,7 +340,7 @@ export function StrategicAnalysisView({ report, onNavigateToProducts, onNavigate
           {limitations.length > 0 && (
             <Alert variant="warning">
               <TriangleAlert />
-              <AlertTitle>Ce que ce rapport n’a pas pu établir</AlertTitle>
+              <AlertTitle>Points à vérifier avant de lancer</AlertTitle>
               <AlertDescription>
                 <ul className="list-disc space-y-1 pl-4">
                   {limitations.map((limitation) => (
@@ -506,7 +513,7 @@ export function StrategicAnalysisView({ report, onNavigateToProducts, onNavigate
               <CardDescription>
                 {hasVolumes
                   ? 'Triez par volume ou par croissance.'
-                  : 'Expressions que vos acheteurs pourraient taper, à vérifier dans un outil de mots-clés : aucune source de volumes de recherche n’est branchée, donc ni volume ni croissance.'}
+                  : 'Expressions que vos acheteurs pourraient taper. Les volumes de recherche ne sont pas publiés : mesurez-les dans un outil de mots-clés avant d’investir en publicité.'}
               </CardDescription>
             </CardHeader>
             <CardContent>
@@ -541,6 +548,7 @@ export function StrategicAnalysisView({ report, onNavigateToProducts, onNavigate
                   </TableBody>
                 </Table>
               )}
+              {!hasVolumes && <ChartProvenance provenance={report.dataProvenance?.searchTrends} />}
             </CardContent>
           </Card>
         </TabsContent>
@@ -634,6 +642,7 @@ export function StrategicAnalysisView({ report, onNavigateToProducts, onNavigate
                   );
                 })}
               </div>
+              <ChartProvenance provenance={report.dataProvenance?.competitors} />
             </>
           )}
         </TabsContent>
@@ -670,6 +679,7 @@ export function StrategicAnalysisView({ report, onNavigateToProducts, onNavigate
               ))}
             </div>
           )}
+          {report.strategicActionPlan.length > 0 && <ChartProvenance provenance={report.dataProvenance?.strategicActionPlan} />}
         </TabsContent>
 
         {sources.length > 0 && (
@@ -681,9 +691,7 @@ export function StrategicAnalysisView({ report, onNavigateToProducts, onNavigate
                   Sources citées par l’analyse
                 </CardTitle>
                 <CardDescription>
-                  {generatedBy
-                    ? `Pages trouvées par ${generatedBy.webSearch ?? 'la recherche web'} le ${report.dateCreated}, lues et résumées par ${generatedBy.provider} (${generatedBy.model}).`
-                    : 'Pages web consultées pour ce rapport.'}
+                  {generatedBy ? `${researchLine(report)} ${writerLine(report) ?? ''}` : 'Pages web consultées pour ce rapport.'}
                 </CardDescription>
               </CardHeader>
               <CardContent>

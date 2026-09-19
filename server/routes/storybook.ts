@@ -1,28 +1,31 @@
 import { Router } from 'express';
 import { providers } from '@server/env';
-import { AppError, aiLimiter, asyncRoute, providerUnavailable, validateBody } from '@server/middleware';
+import { AppError, aiLimiter, asyncRoute, providerUnavailable, routeLimiter, validateBody } from '@server/middleware';
 import { requireAuth, requireFeature } from '@server/middleware/auth';
 import { assertCompliantBrief } from '@server/services/compliance/guard';
 import { findOwnedGeneration, runBilledGeneration, settleGeneration } from '@server/services/generations';
 import {
   type StorybookBrief,
   briefText,
-  createStorybookGeneration,
+  createStorybook,
   generationIdSchema,
   getStorybookGeneration,
+  listStorybooks,
+  recordStorybook,
+  sendStorybookPdf,
   storybookBriefSchema,
 } from '@server/services/storybook';
 
-/** Storybook africain via Gamma (feuille de route 3.4). */
+/** Storybook africain : conte rédigé par Gemini, mis en page et illustré par Gamma (server/services/storybook). */
 
 export const storybookRouter = Router();
 
 /**
- * Lance la génération d'un conte.
+ * Lance la création d'un conte.
  *
- * Ordre des contrôles : compte et palier, validation, conformité du brief, puis
- * disponibilité de Gamma. La conformité passe avant le fournisseur pour que
- * l'auteur puisse corriger son brief même sur un serveur sans clé Gamma.
+ * Ordre des contrôles : compte et palier, validation, conformité du brief, puis disponibilité de
+ * Gemini et de Gamma. La conformité passe avant les fournisseurs pour que l'auteur puisse corriger
+ * son brief même sur un serveur sans clé.
  */
 storybookRouter.post(
   '/generations',
@@ -38,6 +41,7 @@ storybookRouter.post(
       'Le brief contient des formulations non conformes : corrigez-les avant de lancer la génération.',
     );
 
+    if (!providers.gemini) throw providerUnavailable('Gemini');
     if (!providers.gamma) throw providerUnavailable('Gamma');
 
     const { result } = await runBilledGeneration({
@@ -45,11 +49,32 @@ storybookRouter.post(
       actionId: 'storybook_generation',
       kind: 'storybook',
       provider: 'gamma',
-      run: () => createStorybookGeneration(brief),
-      describe: (created) => ({ providerRef: created.generationId, state: 'pending', fileFormat: 'lien' }),
+      run: () => createStorybook(brief),
+      describe: (created) => ({ providerRef: created.generationId, state: 'pending', fileFormat: 'pdf' }),
     });
+    const storybookId = await recordStorybook(req.auth!, brief, result.generationId, result.story);
 
-    res.status(202).json(result);
+    res.status(202).json({ generationId: result.generationId, storybookId, title: result.story.title });
+  }),
+);
+
+/** Contes du compte, du plus récent au plus ancien. */
+storybookRouter.get(
+  '/books',
+  requireAuth,
+  asyncRoute(async (req, res) => {
+    res.json({ storybooks: await listStorybooks(req.auth!) });
+  }),
+);
+
+/** PDF d'un conte terminé. Le lien d'export de Gamma, secret, ne quitte jamais le serveur. */
+storybookRouter.get(
+  '/books/:storybookId/pdf',
+  requireAuth,
+  routeLimiter(10, 60),
+  asyncRoute(async (req, res) => {
+    if (!providers.gamma) throw providerUnavailable('Gamma');
+    await sendStorybookPdf(req.auth!, req.params.storybookId, res);
   }),
 );
 

@@ -1,0 +1,42 @@
+# Graphify project index rules.
+# Keep the graph focused on source, docs, config, and schema files.
+
+# Dependencies and package-manager caches
+node_modules/
+.pnp
+.pnp.js
+
+# Build and generated outputs
+dist/
+build/
+.next/
+out/
+coverage/
+uploads/
+generated/
+*.tsbuildinfo
+
+# Local secrets and runtime state
+.env
+.env.*
+!.env.example
+.data/
+
+# Tool caches and graph outputs
+.cache/
+.turbo/
+.eslintcache
+graphify-out/
+graph.json
+
+# Editor and OS noise
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+
+# Logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+pnpm-debug.log*

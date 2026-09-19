@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { AlertTriangle, BookOpen, CheckCircle2, ExternalLink, PenLine, Sparkles } from 'lucide-react';
+import { AlertTriangle, BookOpen, CheckCircle2, Download, ExternalLink, PenLine, Sparkles } from 'lucide-react';
 import { useCreditGate } from '@/app/providers/CreditGateProvider';
 import { PageHeader } from '@/shared/components/PageHeader';
 import { ApiError, readApiError, toApiError } from '@/shared/lib/apiError';
@@ -7,7 +7,8 @@ import { useAuth } from '@/features/auth/AuthContext';
 import { CountryCombobox } from '@/shared/components/CountryCombobox';
 import { guessCountryCode } from '@/shared/lib/geo';
 import { safeHttpUrl } from '@/shared/lib/safeUrl';
-import type { StorybookBrief, StorybookStatus } from '@/shared/types/storybook';
+import { type StorybookBrief, type StorybookStatus, storybookPdfPath } from '@/shared/types/storybook';
+import { StorybookLibrary } from '@/modules/storybook/StorybookLibrary';
 import { Alert, AlertDescription, AlertTitle } from '@/shared/ui/alert';
 import { Button } from '@/shared/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/shared/ui/card';
@@ -18,7 +19,8 @@ import { Spinner } from '@/shared/ui/spinner';
 import { Textarea } from '@/shared/ui/textarea';
 
 /**
- * Storybook africain.
+ * Storybook africain : Gemini rédige le conte, Gamma le met en page et génère une illustration
+ * par page (modèle d'image Gemini), le PDF se télécharge depuis le site.
  *
  * Trois engagements visibles à l'écran, parce qu'ils conditionnent ce que l'auteur
  * peut promettre à ses propres lecteurs :
@@ -59,6 +61,9 @@ export function StorybookView() {
   const [elapsedSeconds, setElapsedSeconds] = useState(0);
   const [result, setResult] = useState<StorybookStatus | null>(null);
   const [error, setError] = useState<ApiError | null>(null);
+  const [title, setTitle] = useState<string | null>(null);
+  /** Change à chaque conte créé : la liste « Mes contes » se recharge. */
+  const [libraryVersion, setLibraryVersion] = useState(0);
 
   // Le suivi s'arrête si l'écran est quitté. Remis à false au montage (mode strict).
   const unmountedRef = useRef(false);
@@ -103,6 +108,7 @@ export function StorybookView() {
 
     setError(null);
     setResult(null);
+    setTitle(null);
 
     try {
       // Points réservés par le serveur au lancement, rendus automatiquement si le conte échoue.
@@ -116,7 +122,13 @@ export function StorybookView() {
           });
           if (!created.ok) throw await readApiError(created, `La demande a échoué (${created.status}).`);
 
-          const { generationId } = (await created.json()) as { generationId: string };
+          const {
+            generationId,
+            storybookId,
+            title: storyTitle,
+          } = (await created.json()) as { generationId: string; storybookId: string; title: string };
+          setTitle(storyTitle);
+          setLibraryVersion((version) => version + 1);
           const deadline = Date.now() + MAX_WAIT_MS;
 
           while (Date.now() < deadline) {
@@ -130,10 +142,12 @@ export function StorybookView() {
 
             const status = (await polled.json()) as StorybookStatus;
             if (status.status === 'completed') {
-              setResult(status);
+              setResult({ ...status, storybookId: status.storybookId ?? storybookId });
+              setLibraryVersion((version) => version + 1);
               return;
             }
             if (status.status === 'failed') {
+              setLibraryVersion((version) => version + 1);
               throw new ApiError(status.errorMessage ?? 'La génération a échoué chez Gamma.');
             }
           }
@@ -157,15 +171,15 @@ export function StorybookView() {
       <PageHeader
         eyebrow="Créer"
         title="Storybook illustré"
-        description="Des contes illustrés ancrés dans le pays de vos lecteurs, générés avec Gamma à partir de votre brief."
+        description="Des contes illustrés ancrés dans le pays de vos lecteurs : Gemini rédige, Gamma met en page et illustre chaque page, vous téléchargez le PDF."
       />
 
       <Alert variant="warning">
         <AlertTriangle />
         <AlertTitle>Cohérence du personnage non garantie</AlertTitle>
         <AlertDescription>
-          Gamma ne permet pas de fixer l’apparence d’un personnage d’une illustration à l’autre : Smart Creator le demande
-          explicitement, sans pouvoir l’imposer. Vérifiez chaque page avant de publier.
+          Gamma ne permet pas de fixer l’apparence d’un personnage d’une illustration à l’autre : Smart Creator transmet la même
+          fiche du personnage pour chaque page, sans pouvoir l’imposer. Vérifiez chaque page avant de publier.
         </AlertDescription>
       </Alert>
 
@@ -270,7 +284,7 @@ export function StorybookView() {
                   placeholder="prénoms, lieux, plats, fêtes, proverbes que vous connaissez et souhaitez voir figurer"
                 />
                 <FieldDescription>
-                  Gamma reçoit la consigne de n’utiliser comme références culturelles précises que ces éléments, et
+                  Gemini reçoit la consigne de n’utiliser comme références culturelles précises que ces éléments, et
                   d’éviter caricatures et stéréotypes. Rien n’est inventé à votre place.
                 </FieldDescription>
               </Field>
@@ -305,7 +319,10 @@ export function StorybookView() {
         <Alert variant="info" role="status">
           <Spinner />
           <AlertDescription className="tabular-nums">
-            Gamma rédige et illustre le conte : {elapsedSeconds} s écoulées. Comptez en général 1 à 3 minutes.
+            {title
+              ? `« ${title} » est rédigé : Gamma le met en page et génère une illustration par page`
+              : 'Gemini rédige le conte, page par page'}{' '}
+            — {elapsedSeconds} s écoulées. Comptez en général 2 à 5 minutes.
           </AlertDescription>
         </Alert>
       )}
@@ -343,12 +360,22 @@ export function StorybookView() {
             </CardTitle>
           </CardHeader>
           <CardContent className="space-y-4">
-            <Button asChild>
-              <a href={storyUrl} target="_blank" rel="noopener noreferrer">
-                Ouvrir le conte dans Gamma
-                <ExternalLink />
-              </a>
-            </Button>
+            <div className="flex flex-wrap gap-2">
+              {result.storybookId && (
+                <Button asChild>
+                  <a href={storybookPdfPath(result.storybookId)} download>
+                    <Download />
+                    Télécharger le PDF
+                  </a>
+                </Button>
+              )}
+              <Button asChild variant="outline">
+                <a href={storyUrl} target="_blank" rel="noopener noreferrer">
+                  Ouvrir le conte dans Gamma
+                  <ExternalLink />
+                </a>
+              </Button>
+            </div>
             <ul className="list-disc space-y-1 pl-4 text-sm text-muted-foreground">
               <li>Le texte généré n’a pas été relu par le vérificateur de conformité : relisez-le avant toute diffusion.</li>
               <li>Vérifiez que le personnage reste reconnaissable d’une page à l’autre.</li>
@@ -357,6 +384,8 @@ export function StorybookView() {
           </CardContent>
         </Card>
       )}
+
+      <StorybookLibrary version={libraryVersion} />
     </div>
   );
 }

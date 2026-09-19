@@ -49,6 +49,7 @@ import { convertAmount, getRates, toMinorUnits } from '@server/services/currency
 import { FEATURES, getPlan, getPlanConfig, isFeature } from '@server/services/plans';
 import { audienceSummary } from '@server/services/audience';
 import { creativeListQuerySchema, findCreativeFile, listCreatives } from '@server/services/admin/creatives';
+import { checkServices } from '@server/services/admin/services';
 import { streamCreativeFile } from '@server/services/creatives';
 import { contactListQuerySchema, contactStatusSchema, listContactMessages, setContactMessageStatus } from '@server/services/contact';
 import { formatMoney } from '@server/shared/currency';
@@ -902,5 +903,16 @@ adminRouter.get(
   requirePermission('admin.dashboard.read'),
   asyncRoute(async (_req, res) => {
     res.json(await audienceSummary(30));
+  }),
+);
+
+/** État des services branchés (clés, crédits, adresse IP du serveur), vérifié en direct sans rien consommer. */
+adminRouter.get(
+  '/services',
+  requirePermission('admin.security.read'),
+  routeLimiter(1, 12),
+  asyncRoute(async (req, res) => {
+    res.setHeader('Cache-Control', 'no-store');
+    res.json(await checkServices({ refresh: req.query.refresh === '1' }));
   }),
 );

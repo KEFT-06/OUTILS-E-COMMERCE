@@ -1,5 +1,6 @@
 import type { LucideIcon } from 'lucide-react';
 import {
+  PlugZap,
   Banknote,
   BookOpen,
   Clapperboard,
@@ -200,7 +201,7 @@ export const ACCOUNT_PATH = '/app/compte';
  * fermée.
  */
 export interface AdminSection {
-  id: 'overview' | 'users' | 'connections' | 'messages' | 'audience' | 'revenue' | 'content' | 'security';
+  id: 'overview' | 'users' | 'connections' | 'messages' | 'audience' | 'revenue' | 'content' | 'services' | 'security';
   path: `/app/admin${string}`;
   label: string;
   description: string;
@@ -266,6 +267,14 @@ export const ADMIN_SECTIONS: readonly AdminSection[] = [
     description: 'Vidéos, visuels, ebooks, storybooks et fichiers',
     icon: Film,
     permission: 'admin.dashboard.read',
+  },
+  {
+    id: 'services',
+    path: '/app/admin/services',
+    label: 'État des services',
+    description: 'IA et services branchés, clés, crédits et adresse IP',
+    icon: PlugZap,
+    permission: 'admin.security.read',
   },
   {
     id: 'security',

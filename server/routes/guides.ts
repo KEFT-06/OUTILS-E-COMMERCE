@@ -176,8 +176,8 @@ coversRouter.post(
   asyncRoute(async (req, res) => {
     const input = req.body as CoverRequest;
     if (input.subject === 'guide') await ownedGuide(req.auth!, input.subjectId);
-    if (!providers.higgsfield) throw providerUnavailable('Higgsfield');
-    res.status(202).json({ cover: await createCover(req.auth!, input) });
+    if (!providers.gemini) throw providerUnavailable('Gemini');
+    res.status(201).json({ cover: await createCover(req.auth!, input) });
   }),
 );
 

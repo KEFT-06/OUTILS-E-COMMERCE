@@ -5,6 +5,7 @@ import { startExchangeRateRefresher, stopExchangeRateRefresher } from '@server/s
 import { startSessionSweeper } from '@server/services/auth/sessions';
 import { startGenerationSweeper } from '@server/services/generations/sweeper';
 import { bootstrapFirstAdmin } from '@server/services/admin/bootstrap';
+import { resumeAnalysisJobs } from '@server/services/analysis/jobs';
 
 /* -------------------------------------------------------------------------- */
 /*  Démarrage                                                                  */
@@ -49,6 +50,13 @@ const server = app.listen(env.PORT, listenHost, () => {
   }
   console.log('');
 });
+
+// Analyses de niche interrompues par un redémarrage : l'étude continue chez Perplexity, le suivi reprend.
+void resumeAnalysisJobs()
+  .then((count) => {
+    if (count > 0) console.log(`  Analyses reprises après redémarrage : ${count}`);
+  })
+  .catch((error: unknown) => console.error('❌ Reprise des analyses impossible :', error instanceof Error ? error.message : error));
 
 // Reprend le suivi des générations dont l'écran a été fermé avant la fin.
 const stopSweeper = startGenerationSweeper();

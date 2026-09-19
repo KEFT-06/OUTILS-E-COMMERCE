@@ -4,6 +4,7 @@ import { Compass, PenSquare, Sparkles } from 'lucide-react';
 import { ACCOUNT_PATH, pathOf, type ModuleId } from '@/app/navigation';
 import { useWorkspace } from '@/app/providers/WorkspaceProvider';
 import { AccountView } from '@/features/account/AccountView';
+import { AnalysisProgress } from '@/modules/analyse/AnalysisProgress';
 import { PageHeader } from '@/shared/components/PageHeader';
 import { useCustomProducts } from '@/shared/stores/useCustomProducts';
 import type { DigitalProductIdea, MarketAnalysisReport } from '@/shared/types/analysis';
@@ -199,20 +200,23 @@ export function AnalysePage() {
   const goTo = useGoTo();
   const { deleteReport } = useWorkspace();
   return (
-    <RequireReport
-      eyebrow="Voir"
-      title="Analyse stratégique"
-      description="Les 5 taux, la concurrence et le plan d’action de la niche analysée."
-    >
-      {(report) => (
-        <StrategicAnalysisView
-          report={report}
-          onNavigateToProducts={() => goTo('studio')}
-          onNavigateToMetaAds={() => goTo('creatifs')}
-          onDelete={() => deleteReport(report.id)}
-        />
-      )}
-    </RequireReport>
+    <div className="space-y-6">
+      <AnalysisProgress />
+      <RequireReport
+        eyebrow="Voir"
+        title="Analyse stratégique"
+        description="Les 5 taux, la concurrence et le plan d’action de la niche analysée."
+      >
+        {(report) => (
+          <StrategicAnalysisView
+            report={report}
+            onNavigateToProducts={() => goTo('studio')}
+            onNavigateToMetaAds={() => goTo('creatifs')}
+            onDelete={() => deleteReport(report.id)}
+          />
+        )}
+      </RequireReport>
+    </div>
   );
 }
 

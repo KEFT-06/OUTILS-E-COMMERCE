@@ -9,7 +9,7 @@
   },
   "scripts": {
     "dev": "concurrently -n api,web -c cyan,magenta \"npm:dev:api\" \"npm:dev:web\"",
-    "dev:api": "tsx watch server/index.ts",
+    "dev:api": "tsx watch --include .env server/index.ts",
     "dev:web": "vite",
     "build": "npm run build:web && npm run build:api",
     "build:web": "vite build",

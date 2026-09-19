@@ -5,17 +5,18 @@ import { getDb } from '@server/db/client';
 import { covers, guides } from '@server/db/schema';
 import { AppError } from '@server/middleware';
 import type { RequestAuth } from '@server/middleware/auth';
-import { VISUAL_MODEL_PATH, VISUAL_RESOLUTION, generationStateOf } from '@server/services/creatives';
+import { generateImage } from '@server/services/ai/geminiImage';
+import { generationStateOf } from '@server/services/creatives';
 import { findOwnedGeneration, runBilledGeneration, settleGeneration } from '@server/services/generations';
-import { fetchMedia, getGenerationStatus, submitGeneration } from '@server/services/higgsfield';
+import { fetchMedia, getGenerationStatus } from '@server/services/higgsfield';
 
 /**
  * Images de couverture des guides et des ebooks du Studio.
  *
- * Générées par le modèle d'image de Higgsfield, sans aucun texte : le titre est
- * posé ensuite par la mise en page, dans la langue de chaque export. L'image est
- * recopiée en base dès qu'elle est prête, car le fournisseur efface ses fichiers
- * après environ sept jours.
+ * Générées par le modèle d'image de Gemini (GEMINI_IMAGE_MODEL), sans aucun texte : le titre
+ * est posé ensuite par la mise en page, dans la langue de chaque export. L'image arrive dans la
+ * réponse et reste en base : elle est disponible à chaque nouvel export. Les couvertures plus
+ * anciennes, créées chez Higgsfield et encore en cours, sont suivies jusqu'au bout.
  */
 
 export const COVER_STYLES = ['illustration', 'photo', 'minimal'] as const;
@@ -87,27 +88,39 @@ async function ownedCover(auth: RequestAuth, coverId: string | undefined): Promi
 
 export async function createCover(auth: RequestAuth, input: CoverRequest): Promise<CoverView> {
   const prompt = buildCoverPrompt(input);
+  // Format portrait des exports (PDF, DOCX) : l'image n'y est pas déformée.
   const { result } = await runBilledGeneration({
     auth,
     actionId: 'cover_generation',
     kind: 'cover',
-    provider: 'higgsfield',
-    run: () => submitGeneration(VISUAL_MODEL_PATH, { prompt, num_images: 1, resolution: VISUAL_RESOLUTION, aspect_ratio: '9:16' }),
-    describe: (status) => ({ providerRef: status.request_id, state: generationStateOf(status.status), fileFormat: null }),
+    provider: 'gemini',
+    run: () => generateImage({ prompt, aspectRatio: '9:16' }),
+    describe: (image) => ({ providerRef: null, state: 'completed', fileFormat: image.mimeType === 'image/jpeg' ? 'jpg' : image.mimeType.split('/')[1] }),
   });
 
-  const [row] = await getDb()
-    .insert(covers)
-    .values({
-      userId: auth.account.user.id,
-      subject: input.subject,
-      subjectId: input.subjectId,
-      prompt,
-      status: generationStateOf(result.status) === 'failed' ? 'failed' : 'pending',
-      providerRef: result.request_id,
-    })
-    .returning();
-  return serializeCover(row!);
+  const row = await getDb().transaction(async (tx) => {
+    const [inserted] = await tx
+      .insert(covers)
+      .values({
+        userId: auth.account.user.id,
+        subject: input.subject,
+        subjectId: input.subjectId,
+        prompt,
+        status: 'ready',
+        mimeType: result.mimeType,
+        data: result.bytes.toString('base64'),
+      })
+      .returning();
+    // Une seule couverture par sujet : la précédente est remplacée.
+    await tx
+      .delete(covers)
+      .where(and(eq(covers.userId, inserted!.userId), eq(covers.subject, inserted!.subject), eq(covers.subjectId, inserted!.subjectId), ne(covers.id, inserted!.id)));
+    if (inserted!.subject === 'guide') {
+      await tx.update(guides).set({ coverId: inserted!.id }).where(and(eq(guides.userId, inserted!.userId), eq(guides.id, inserted!.subjectId)));
+    }
+    return inserted!;
+  });
+  return serializeCover(row);
 }
 
 /** Dernière couverture d'un guide ou d'un produit (prête, ou en cours). */

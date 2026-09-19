@@ -15,6 +15,7 @@ import {
   AdminOverviewPage,
   AdminRevenuePage,
   AdminSecurityPage,
+  AdminServicesPage,
   AdminUserDetailPage,
   AdminUsersPage,
 } from '@/app/routes/AdminPages';
@@ -122,6 +123,7 @@ export default function App() {
                       <Route path="audience" element={<AdminAudiencePage />} />
                       <Route path="revenus" element={<AdminRevenuePage />} />
                       <Route path="contenus" element={<AdminContentPage />} />
+                      <Route path="services" element={<AdminServicesPage />} />
                       <Route path="securite" element={<AdminSecurityPage />} />
                     </Route>
                     <Route path="*" element={<Navigate to="cockpit" replace />} />

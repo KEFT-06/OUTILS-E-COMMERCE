@@ -71,6 +71,13 @@
       "when": 1789507939537,
       "tag": "0009_paiements_en_ligne",
       "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "7",
+      "when": 1789661172842,
+      "tag": "0010_analyses_etudes_storybooks",
+      "breakpoints": true
     }
   ]
 }

@@ -28,5 +28,8 @@ export interface DataProvenance {
 export interface ReportDataProvenance {
   rates?: DataProvenance;
   searchTrends?: DataProvenance;
+  competitors?: DataProvenance;
+  digitalProducts?: DataProvenance;
   adCampaigns?: DataProvenance;
+  strategicActionPlan?: DataProvenance;
 }
