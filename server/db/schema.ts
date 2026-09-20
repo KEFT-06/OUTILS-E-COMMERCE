@@ -297,6 +297,8 @@ export const analysisJobs = pgTable(
     status: text('status').notNull(),
     /** Identifiant de l'étude chez le moteur de recherche. */
     researchRef: text('research_ref'),
+    /** Pages retenues par l'étude, affichées pendant que le rapport se rédige. */
+    sources: jsonb('sources'),
     reportId: uuid('report_id'),
     errorCode: text('error_code'),
     errorMessage: text('error_message'),

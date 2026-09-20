@@ -12,8 +12,8 @@ import { BrandLogo } from '@/shared/components/BrandLogo';
 import { Button } from '@/shared/ui/button';
 import { ComplianceBlockDialog } from '@/shared/components/ComplianceBlockDialog';
 import { LegalNotice } from '@/modules/analyse/LegalNotice';
+import { usageBySource } from '@/shared/lib/sourceUsage';
 import { RateBadge } from '@/shared/components/RateBadge';
-import { SourceRefs } from '@/modules/analyse/SourceRefs';
 import { Spinner } from '@/shared/ui/spinner';
 
 interface ReportPDFViewProps {
@@ -34,6 +34,7 @@ export function ReportPDFView({ report }: ReportPDFViewProps) {
 
   const isExampleReport = report.dataProvenance?.rates?.isDemonstration ?? false;
   const sources = report.groundingSources ?? [];
+  const sourceUsage = usageBySource(report);
   const limitations = report.limitations ?? [];
   const rates: MarketRate[] = [
     report.rates.demand,
@@ -123,7 +124,6 @@ export function ReportPDFView({ report }: ReportPDFViewProps) {
           <div className="space-y-2 rounded-lg border bg-muted/50 p-4">
             <p className="text-sm leading-relaxed">{report.executiveSummary}</p>
             {report.verdictRationale && <p className="text-xs text-muted-foreground">{report.verdictRationale}</p>}
-            <SourceRefs ids={report.summarySourceIds} sources={sources} />
           </div>
         </section>
 
@@ -143,7 +143,6 @@ export function ReportPDFView({ report }: ReportPDFViewProps) {
                   {rateValue(rate)}
                 </span>
                 <p className="line-clamp-3 text-xs text-muted-foreground">{rate.description}</p>
-                <SourceRefs ids={rate.sourceIds} sources={sources} />
               </div>
             ))}
           </div>
@@ -188,7 +187,6 @@ export function ReportPDFView({ report }: ReportPDFViewProps) {
                       Angle à exploiter : <span className="font-medium">{competitor.exploitableGaps[0]}</span>
                     </p>
                   )}
-                  <SourceRefs ids={competitor.sourceIds} sources={sources} />
                 </div>
               ))}
             </div>
@@ -276,9 +274,11 @@ export function ReportPDFView({ report }: ReportPDFViewProps) {
               <ol className="space-y-1.5 text-xs">
                 {sources.map((source, index) => {
                   const url = safeHttpUrl(source.url);
+                  const number = source.id ?? index + 1;
+                  const supports = sourceUsage.get(number) ?? [];
                   return (
-                    <li key={`${source.id ?? index}-${source.url}`} className="break-words">
-                      <span className="font-semibold tabular-nums">[{source.id ?? index + 1}]</span> {source.title}
+                    <li key={`${number}-${source.url}`} className="break-words">
+                      <span className="font-semibold tabular-nums">{number}.</span> {source.title}
                       {url && (
                         <>
                           {' — '}
@@ -286,6 +286,9 @@ export function ReportPDFView({ report }: ReportPDFViewProps) {
                             {url}
                           </a>
                         </>
+                      )}
+                      {supports.length > 0 && (
+                        <span className="block text-muted-foreground">Fonde : {supports.join(', ')}</span>
                       )}
                     </li>
                   );

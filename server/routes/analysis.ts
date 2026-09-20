@@ -2,11 +2,11 @@ import { Router } from 'express';
 import { aiLimiter, asyncRoute, validateBody } from '@server/middleware';
 import { requireAuth, requireFeature } from '@server/middleware/auth';
 import { type AnalysisRequest, analysisRequestSchema } from '@server/services/analysis';
-import { getActiveAnalysisJob, getAnalysisJob, startAnalysis } from '@server/services/analysis/jobs';
+import { cancelAnalysis, getActiveAnalysisJob, getAnalysisJob, startAnalysis } from '@server/services/analysis/jobs';
 
 /**
- * Analyse stratégique d'une niche : étude Perplexity, rapport rédigé par Gemini, faits sourcés et
- * propositions de l'IA dites comme telles (server/services/analysis). L'analyse tourne en
+ * Analyse stratégique d'une niche : étude du web, rapport rédigé par l'IA, faits sourcés et
+ * propositions dites comme telles (server/services/analysis). L'analyse tourne en
  * arrière-plan : le lancement répond tout de suite, le navigateur suit ensuite son avancement.
  * Les rapports enregistrés se lisent par server/routes/reports.ts.
  */
@@ -40,5 +40,14 @@ analysisRouter.get(
   requireAuth,
   asyncRoute(async (req, res) => {
     res.json({ job: await getAnalysisJob(req.auth!, req.params.jobId) });
+  }),
+);
+
+/** Renoncer à une analyse en cours : points rendus, le compte est libéré tout de suite. */
+analysisRouter.delete(
+  '/analyze-niche/jobs/:jobId',
+  requireAuth,
+  asyncRoute(async (req, res) => {
+    res.json({ job: await cancelAnalysis(req.auth!, req.params.jobId) });
   }),
 );

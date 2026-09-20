@@ -2,6 +2,7 @@ import { jsPDF } from 'jspdf';
 import { toPdfSafe } from '@/shared/lib/pdfText';
 import { blockProvenance, researchLine, writerLine } from '@/shared/lib/reportProvenance';
 import { safeHttpUrl } from '@/shared/lib/safeUrl';
+import { usageBySource } from '@/shared/lib/sourceUsage';
 import type { MarketAnalysisReport, MarketRate } from '@/shared/types/analysis';
 
 /**
@@ -28,7 +29,6 @@ function rateLine(rate: MarketRate): string {
   return toPdfSafe(`${value} — ${rate.description}`);
 }
 
-const refs = (ids: readonly number[] | undefined) => (ids && ids.length > 0 ? ` Sources : ${ids.map((id) => `[${id}]`).join(' ')}` : '');
 
 export async function generateAnalysisPDF(report: MarketAnalysisReport, stamp: PDFComplianceStamp): Promise<void> {
   const doc = new jsPDF({
@@ -118,7 +118,7 @@ export async function generateAnalysisPDF(report: MarketAnalysisReport, stamp: P
   doc.setFontSize(9.5);
   doc.setTextColor(51, 65, 85);
   const summaryLines = doc.splitTextToSize(
-    toPdfSafe(`${report.executiveSummary}${refs(report.summarySourceIds)}${report.verdictRationale ? `\n${report.verdictRationale}` : ''}`),
+    toPdfSafe(`${report.executiveSummary}${report.verdictRationale ? `\n${report.verdictRationale}` : ''}`),
     contentWidth,
   );
   checkPageBreak(summaryLines.length * 4.8);
@@ -249,9 +249,6 @@ export async function generateAnalysisPDF(report: MarketAnalysisReport, stamp: P
     doc.setTextColor(71, 85, 105);
     doc.text(doc.splitTextToSize(toPdfSafe(competitor.exploitableGaps[0] || '—'), contentWidth - 45).slice(0, 1), margin + 36, currentY + 22);
 
-    doc.setTextColor(100, 116, 139);
-    doc.text(toPdfSafe(refs(competitor.sourceIds).trim() || ' '), margin + 5, currentY + 27);
-
     currentY += 35;
   });
 
@@ -350,6 +347,7 @@ export async function generateAnalysisPDF(report: MarketAnalysisReport, stamp: P
 
   // === 7. SOURCES ET LIMITES ===
   const sources = report.groundingSources ?? [];
+  const sourceUsage = usageBySource(report);
   const limitations = report.limitations ?? [];
 
   // Provenance : qui a cherché, qui a rédigé, d'où vient chaque bloc.
@@ -371,8 +369,9 @@ export async function generateAnalysisPDF(report: MarketAnalysisReport, stamp: P
     checkPageBreak(24);
     sectionHeading('8. Sources citées');
     sources.forEach((source, index) => {
-      const title = doc.splitTextToSize(toPdfSafe(`[${source.id ?? index + 1}] ${source.title}`), contentWidth);
-      checkPageBreak(title.length * 4 + 6);
+      const number = source.id ?? index + 1;
+      const title = doc.splitTextToSize(toPdfSafe(`${number}. ${source.title}`), contentWidth);
+      checkPageBreak(title.length * 4 + 10);
       doc.setFont('helvetica', 'normal');
       doc.setFontSize(8.5);
       doc.setTextColor(30, 41, 59);
@@ -383,8 +382,18 @@ export async function generateAnalysisPDF(report: MarketAnalysisReport, stamp: P
         doc.setFontSize(7.5);
         doc.setTextColor(3, 105, 161);
         doc.textWithLink(url.length > 110 ? `${url.slice(0, 107)}...` : url, margin + 4, currentY, { url });
+        currentY += 4;
       }
-      currentY += 6;
+      // Les numéros ne figurent plus dans le corps du rapport : le lien se lit ici.
+      const supports = sourceUsage.get(number) ?? [];
+      if (supports.length > 0) {
+        doc.setFontSize(7.5);
+        doc.setTextColor(100, 116, 139);
+        const fonde = doc.splitTextToSize(toPdfSafe(`Fonde : ${supports.join(', ')}`), contentWidth - 4);
+        doc.text(fonde.slice(0, 2), margin + 4, currentY);
+        currentY += Math.min(fonde.length, 2) * 4;
+      }
+      currentY += 3;
     });
     currentY += 2;
   }

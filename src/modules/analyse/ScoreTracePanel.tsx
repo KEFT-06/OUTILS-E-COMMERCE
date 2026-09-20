@@ -10,7 +10,7 @@ import {
   DialogTitle,
 } from '@/shared/ui/dialog';
 import { RateBadge } from '@/shared/components/RateBadge';
-import { SourceRefs } from '@/modules/analyse/SourceRefs';
+import { CitedSources } from '@/modules/analyse/CitedSources';
 import {
   Table,
   TableBody,
@@ -93,7 +93,7 @@ export function ScoreTracePanel({ rate, sources, open, onOpenChange }: ScoreTrac
                 </p>
               </AlertDescription>
             </Alert>
-            <SourceRefs ids={rate.sourceIds} sources={sources} className="text-sm" />
+            <CitedSources ids={rate.sourceIds} sources={sources} />
           </div>
         ) : !trace && rate.basis === 'unavailable' ? (
           <Alert variant="warning">

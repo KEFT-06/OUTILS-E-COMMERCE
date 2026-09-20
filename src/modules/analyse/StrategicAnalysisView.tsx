@@ -52,7 +52,7 @@ import { NoDataState } from '@/shared/components/NoDataState';
 import { Progress } from '@/shared/ui/progress';
 import { RateBadge } from '@/shared/components/RateBadge';
 import { ScoreTracePanel } from '@/modules/analyse/ScoreTracePanel';
-import { SourceRefs } from '@/modules/analyse/SourceRefs';
+import { usageBySource } from '@/shared/lib/sourceUsage';
 import { Spinner } from '@/shared/ui/spinner';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/shared/ui/table';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/shared/ui/tabs';
@@ -234,6 +234,7 @@ export function StrategicAnalysisView({ report, onNavigateToProducts, onNavigate
 
   const isExampleReport = report.dataProvenance?.rates?.isDemonstration ?? false;
   const sources = report.groundingSources ?? [];
+  const sourceUsage = useMemo(() => usageBySource(report), [report]);
   const limitations = report.limitations ?? [];
 
   const rates: MarketRate[] = [
@@ -318,7 +319,6 @@ export function StrategicAnalysisView({ report, onNavigateToProducts, onNavigate
 
           <div className="max-w-4xl space-y-2">
             <p className="leading-relaxed">{report.executiveSummary}</p>
-            <SourceRefs ids={report.summarySourceIds} sources={sources} />
           </div>
 
           {generatedBy && (
@@ -429,7 +429,6 @@ export function StrategicAnalysisView({ report, onNavigateToProducts, onNavigate
                         <p className="text-xs font-medium text-muted-foreground">{basisLabel(rate)}</p>
                       )}
                       <p className="text-sm leading-relaxed text-muted-foreground">{rate.description}</p>
-                      <SourceRefs ids={rate.sourceIds} sources={sources} />
                       {trend && TrendIcon && (
                         <p className="flex items-center justify-between border-t pt-3 text-xs text-muted-foreground">
                           Orientation
@@ -652,7 +651,6 @@ export function StrategicAnalysisView({ report, onNavigateToProducts, onNavigate
                             <p className="text-sm">{competitor.exploitableGaps[0]}</p>
                           </div>
                         )}
-                        <SourceRefs ids={competitor.sourceIds} sources={sources} />
                       </CardContent>
                     </Card>
                   );
@@ -711,14 +709,15 @@ export function StrategicAnalysisView({ report, onNavigateToProducts, onNavigate
                 </CardDescription>
               </CardHeader>
               <CardContent>
-                <ol className="space-y-2">
+                <ol className="space-y-3">
                   {sources.map((source, index) => {
                     const url = safeHttpUrl(source.url);
                     const number = source.id ?? index + 1;
+                    const supports = sourceUsage.get(number) ?? [];
                     return (
                       <li key={`${number}-${source.url}`} className="flex items-start gap-3 text-sm">
-                        <span className="mt-0.5 w-8 shrink-0 font-semibold text-muted-foreground tabular-nums">[{number}]</span>
-                        <span className="min-w-0 space-y-0.5">
+                        <span className="mt-0.5 w-8 shrink-0 font-semibold text-muted-foreground tabular-nums">{number}.</span>
+                        <span className="min-w-0 space-y-1">
                           {url ? (
                             <a
                               href={url}
@@ -736,6 +735,20 @@ export function StrategicAnalysisView({ report, onNavigateToProducts, onNavigate
                             {hostnameOf(source.url)}
                             {source.publishedAt ? ` · ${source.publishedAt}` : ''}
                           </span>
+                          {/*
+                            Le renvoi est inversé : les numéros ayant quitté le texte, c'est ici
+                            que le lien entre un fait et sa page se lit.
+                          */}
+                          {supports.length > 0 && (
+                            <span className="flex flex-wrap items-center gap-1 text-xs">
+                              <span className="text-muted-foreground">Fonde :</span>
+                              {supports.map((label) => (
+                                <Badge key={label} variant="secondary" className="font-normal">
+                                  {label}
+                                </Badge>
+                              ))}
+                            </span>
+                          )}
                         </span>
                       </li>
                     );

@@ -152,7 +152,10 @@ async function runSlice(jobId: string): Promise<void> {
     // ---- Plan : une seule fois, gardé en base pour toutes les tranches suivantes.
     let outline = job.outline as unknown as Outline | null;
     if (!outline) {
-      await db.update(ebookJobs).set({ status: 'outline', updatedAt: new Date() }).where(eq(ebookJobs.id, jobId));
+      await db
+        .update(ebookJobs)
+        .set({ status: 'outline', updatedAt: new Date() })
+        .where(and(eq(ebookJobs.id, jobId), inArray(ebookJobs.status, ACTIVE)));
       outline = await buildOutline({
         kind: request.kind,
         title: request.title,
@@ -165,7 +168,11 @@ async function runSlice(jobId: string): Promise<void> {
         targetPages: request.targetPages,
         ...(request.findings ? { findings: request.findings } : {}),
       });
-      await db
+      // La condition sur le statut n'est pas une précaution de style : l'utilisateur a pu
+      // renoncer pendant la construction du plan. Sans elle, cette écriture ramènerait le
+      // travail à « en cours » alors qu'il a été annulé et remboursé, et le compte
+      // resterait bloqué sur une rédaction fantôme.
+      const [stillRunning] = await db
         .update(ebookJobs)
         .set({
           outline: outline as unknown as Record<string, unknown>,
@@ -173,7 +180,9 @@ async function runSlice(jobId: string): Promise<void> {
           status: 'writing',
           updatedAt: new Date(),
         })
-        .where(eq(ebookJobs.id, jobId));
+        .where(and(eq(ebookJobs.id, jobId), inArray(ebookJobs.status, ACTIVE)))
+        .returning();
+      if (!stillRunning) return;
     }
 
     // ---- Rédaction : lot par lot, tant que le budget de la tranche le permet.
@@ -208,7 +217,7 @@ async function runSlice(jobId: string): Promise<void> {
       const wordsWritten = written.reduce((total, section) => total + section.words, 0);
 
       // Enregistré après chaque lot : une coupure ne coûte que le lot en cours.
-      await db
+      const [saved] = await db
         .update(ebookJobs)
         .set({
           sections: written as unknown as Record<string, unknown>[],
@@ -216,7 +225,12 @@ async function runSlice(jobId: string): Promise<void> {
           wordsWritten,
           updatedAt: new Date(),
         })
-        .where(and(eq(ebookJobs.id, jobId), inArray(ebookJobs.status, ACTIVE)));
+        .where(and(eq(ebookJobs.id, jobId), inArray(ebookJobs.status, ACTIVE)))
+        .returning();
+
+      // Plus rien à mettre à jour : l'utilisateur a renoncé pendant ce lot. Poursuivre
+      // ferait payer au propriétaire des appels dont personne ne verra jamais le texte.
+      if (!saved) return;
     }
 
     // ---- Fin, ou tranche suivante.
@@ -329,6 +343,33 @@ export async function getEbookJob(auth: RequestAuth, jobId: string | undefined):
     }
   }
   return viewOf(job);
+}
+
+/**
+ * Renonce à une rédaction en cours et rend les points.
+ *
+ * Une rédaction longue occupe le compte jusqu'à une demi-heure. Sans cette sortie, une
+ * longueur mal choisie ou un titre erroné obligeait à attendre la fin pour recommencer.
+ * Les sections déjà écrites sont perdues : l'utilisateur ne reçoit rien, il ne paie rien.
+ */
+export async function cancelEbook(auth: RequestAuth, jobId: string | undefined): Promise<EbookJobView> {
+  const parsed = jobIdSchema.safeParse(jobId);
+  if (!parsed.success) throw new AppError(404, 'Rédaction introuvable sur votre compte.', 'EBOOK_JOB_NOT_FOUND');
+
+  const [job] = await getDb()
+    .select()
+    .from(ebookJobs)
+    .where(and(eq(ebookJobs.id, parsed.data), eq(ebookJobs.userId, auth.account.user.id)))
+    .limit(1);
+  if (!job) throw new AppError(404, 'Rédaction introuvable sur votre compte.', 'EBOOK_JOB_NOT_FOUND');
+
+  // Terminée entre l'affichage du bouton et le clic : mieux vaut rendre le texte qu'une erreur.
+  if (!ACTIVE.includes(job.status as EbookJobStatus)) return viewOf(job);
+
+  await failJob(job.id, new AppError(200, 'Rédaction annulée à votre demande : vos points ont été rendus.', 'EBOOK_CANCELLED'));
+
+  const [cancelled] = await getDb().select().from(ebookJobs).where(eq(ebookJobs.id, job.id)).limit(1);
+  return viewOf(cancelled ?? job);
 }
 
 export async function getActiveEbookJob(auth: RequestAuth): Promise<EbookJobView | null> {

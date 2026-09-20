@@ -19,6 +19,7 @@ import {
 import {
   type EbookRequest,
   ebookRequestSchema,
+  cancelEbook,
   getActiveEbookJob,
   getEbookJob,
   getEbookResult,
@@ -90,6 +91,15 @@ writingRouter.get(
   requireAuth,
   asyncRoute(async (req, res) => {
     res.json({ job: await getEbookJob(req.auth!, req.params.id) });
+  }),
+);
+
+/** Renoncer à une rédaction en cours : points rendus, le compte est libéré tout de suite. */
+writingRouter.delete(
+  '/ebook/:id',
+  requireAuth,
+  asyncRoute(async (req, res) => {
+    res.json({ job: await cancelEbook(req.auth!, req.params.id) });
   }),
 );
 

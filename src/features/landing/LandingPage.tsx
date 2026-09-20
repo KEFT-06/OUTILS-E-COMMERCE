@@ -2,7 +2,7 @@ import { Suspense, lazy, useEffect, useState, type ReactNode } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useTrackVisit } from '@/shared/hooks/useTrackVisit';
 import { usePublicPageMeta } from '@/shared/hooks/usePublicPageMeta';
-import { ArrowRight, ExternalLink, Moon, Scale, ShieldCheck, Sun, Wallet } from 'lucide-react';
+import { ArrowRight, ExternalLink, Menu, Moon, Scale, ShieldCheck, Sun, Wallet } from 'lucide-react';
 import { MODULES, MODULE_GROUPS, type ModuleGroup } from '@/app/navigation';
 import { usePreferences } from '@/app/providers/PreferencesContext';
 import { useAuth } from '@/features/auth/AuthContext';
@@ -17,7 +17,16 @@ import { Badge } from '@/shared/ui/badge';
 import { BrandLogo } from '@/shared/components/BrandLogo';
 import { Button } from '@/shared/ui/button';
 import { Card, CardContent, CardDescription, CardHeader } from '@/shared/ui/card';
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/shared/ui/dropdown-menu';
 import { Marquee } from '@/shared/ui/magicui/marquee';
+
+/** Sections de l'accueil, servies à la fois par la barre large et par le menu compact. */
+const SECTIONS = [
+  { href: '#parcours', label: 'Le parcours' },
+  { href: '#engagements', label: 'Engagements' },
+  { href: '#paliers', label: 'Paliers' },
+  { href: '#questions', label: 'Questions' },
+] as const;
 
 // Effet décoratif : chargé après la page, il ne retarde pas le premier affichage.
 const BorderBeam = lazy(() => import('@/shared/ui/magicui/border-beam').then((module) => ({ default: module.BorderBeam })));
@@ -153,22 +162,41 @@ export function LandingPage() {
             <BrandLogo size="md" showTagline className="hidden lg:inline-flex" />
           </Link>
 
-          <nav aria-label="Sections" className="hidden items-center gap-6 text-sm font-medium text-muted-foreground md:flex">
-            <a href="#parcours" className="hover:text-foreground">
-              Le parcours
-            </a>
-            <a href="#engagements" className="hover:text-foreground">
-              Engagements
-            </a>
-            <a href="#paliers" className="hover:text-foreground">
-              Paliers
-            </a>
-            <a href="#questions" className="hover:text-foreground">
-              Questions
-            </a>
+          {/*
+            Les liens de sections n'apparaissent qu'à partir de 1024 px. En dessous, la
+            barre portait à la fois le nom complet, quatre liens, le thème, la connexion et
+            l'action principale : sur une tablette de 768 px, le bouton « Créer mon compte »
+            sortait de l'écran. Plus bas, le même choix est offert par le menu ci-dessous.
+          */}
+          <nav aria-label="Sections" className="hidden items-center gap-6 text-sm font-medium text-muted-foreground lg:flex">
+            {SECTIONS.map((section) => (
+              <a key={section.href} href={section.href} className="inline-flex min-h-6 items-center hover:text-foreground">
+                {section.label}
+              </a>
+            ))}
           </nav>
 
           <div className="flex items-center gap-2">
+            {/* Même parcours sur petit écran : sans ce menu, les sections n'étaient atteignables qu'en faisant défiler toute la page. */}
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button variant="ghost" size="icon" className="lg:hidden" aria-label="Ouvrir le menu des sections">
+                  <Menu />
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end" className="w-52">
+                {SECTIONS.map((section) => (
+                  <DropdownMenuItem key={section.href} asChild>
+                    <a href={section.href}>{section.label}</a>
+                  </DropdownMenuItem>
+                ))}
+                {!isAuthenticated && (
+                  <DropdownMenuItem asChild className="sm:hidden">
+                    <Link to="/connexion">Connexion</Link>
+                  </DropdownMenuItem>
+                )}
+              </DropdownMenuContent>
+            </DropdownMenu>
             <Button
               variant="ghost"
               size="icon"
@@ -463,19 +491,22 @@ export function LandingPage() {
               Smart Creator fournit des analyses fondées sur des données publiques. Aucun résultat financier n’est garanti.
             </p>
           </div>
-          <nav aria-label="Informations légales" className="flex flex-col gap-2 text-sm text-muted-foreground">
-            <Link to="/mentions-legales" className="hover:text-foreground">
-              Mentions légales
-            </Link>
-            <Link to="/confidentialite" className="hover:text-foreground">
-              Confidentialité
-            </Link>
-            <Link to="/conditions" className="hover:text-foreground">
-              Conditions d’utilisation
-            </Link>
-            <Link to="/contact" className="hover:text-foreground">
-              Contact
-            </Link>
+          {/*
+            Chaque lien occupe au moins 24 px de haut : empilés au ras du texte, ils
+            mesuraient 20 px et se touchaient presque, ce qui fait viser le mauvais lien
+            sur un téléphone.
+          */}
+          <nav aria-label="Informations légales" className="flex flex-col gap-1 text-sm text-muted-foreground">
+            {[
+              { to: '/mentions-legales', label: 'Mentions légales' },
+              { to: '/confidentialite', label: 'Confidentialité' },
+              { to: '/conditions', label: 'Conditions d’utilisation' },
+              { to: '/contact', label: 'Contact' },
+            ].map((entry) => (
+              <Link key={entry.to} to={entry.to} className="inline-flex min-h-6 w-fit items-center hover:text-foreground">
+                {entry.label}
+              </Link>
+            ))}
           </nav>
         </div>
         <p className="border-t px-4 py-4 text-center text-xs text-muted-foreground">

@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { BookOpen, Loader2 } from 'lucide-react';
+import { BookOpen, Loader2, X } from 'lucide-react';
 import { toast } from 'sonner';
 import { useAuth } from '@/features/auth/AuthContext';
 import { useCreditGate } from '@/app/providers/CreditGateProvider';
@@ -150,6 +150,21 @@ export function LongformEbookPanel({ product, market, onWritten }: LongformEbook
     }
   };
 
+  /**
+   * Sortie de secours : une rédaction longue occupe le compte plusieurs minutes. Sans ce
+   * bouton, il fallait attendre la fin d'un texte dont on ne voulait plus. Points rendus.
+   */
+  const cancel = async () => {
+    if (!job) return;
+    try {
+      await ebookApi.cancel(job.id);
+      setJob(null);
+      toast.success('Rédaction annulée', { description: 'Vos points ont été rendus.' });
+    } catch (error) {
+      toast.error('L’annulation a échoué', { description: toApiError(error, 'Réessayez dans un moment.').message });
+    }
+  };
+
   const isRunning = job !== null && job.status !== 'completed' && job.status !== 'failed';
   const progress = job && job.sectionsTotal > 0 ? Math.round((job.sectionsDone / job.sectionsTotal) * 100) : 0;
   // Un ouvrage long demande plusieurs minutes : le dire évite de croire à un blocage.
@@ -188,6 +203,13 @@ export function LongformEbookPanel({ product, market, onWritten }: LongformEbook
             </AlertDescription>
           </Alert>
           <Progress value={progress} aria-label="Avancement de la rédaction" />
+            <div className="flex items-center justify-between gap-3">
+              <p className="text-xs text-muted-foreground">Longueur mal choisie, ou titre à revoir ?</p>
+              <Button variant="outline" size="sm" onClick={() => void cancel()}>
+                <X />
+                Annuler la rédaction
+              </Button>
+            </div>
         </div>
       ) : (
         <>

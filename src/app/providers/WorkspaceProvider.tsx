@@ -27,6 +27,8 @@ interface WorkspaceContextType {
   /** Analyse en cours du compte (étude puis rédaction), suivie jusqu'à son terme. */
   analysisJob: AnalysisJob | null;
   analyzeNiche: (query: string, market?: string | null) => Promise<void>;
+  /** Renonce à l'analyse en cours : points rendus, compte libéré immédiatement. */
+  cancelAnalysis: () => Promise<void>;
   isExportingPdf: boolean;
   exportPdf: () => Promise<void>;
   analysisDialogOpen: boolean;
@@ -206,6 +208,23 @@ export const WorkspaceProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     [runWithCredits],
   );
 
+  /**
+   * Renoncer à l'analyse en cours. Sans cette sortie, une niche mal saisie coûtait
+   * plusieurs minutes d'attente avant de pouvoir en relancer une autre : une seule analyse
+   * tourne à la fois par compte. Les points sont rendus par le serveur.
+   */
+  const cancelAnalysis = useCallback(async () => {
+    if (!analysisJob) return;
+    try {
+      await apiRequest(`/api/analyze-niche/jobs/${encodeURIComponent(analysisJob.id)}`, { method: 'DELETE' });
+      setAnalysisJob(null);
+      toast.success('Analyse annulée', { description: 'Vos points ont été rendus.', id: `analyse-${analysisJob.id}`, duration: 6_000 });
+      void refresh();
+    } catch (error) {
+      toast.error('L’analyse n’a pas pu être annulée', { description: toApiError(error, 'Réessayez dans un moment.').message });
+    }
+  }, [analysisJob, refresh]);
+
   // Suivi de l'analyse en cours, étape par étape, jusqu'au rapport.
   const analysisJobId = analysisJob?.id;
   const analysisJobStatus = analysisJob?.status;
@@ -298,6 +317,7 @@ export const WorkspaceProvider: React.FC<{ children: React.ReactNode }> = ({ chi
       isAnalyzing: analysisJob !== null,
       analysisJob,
       analyzeNiche,
+      cancelAnalysis,
       isExportingPdf,
       exportPdf,
       analysisDialogOpen,
@@ -313,6 +333,7 @@ export const WorkspaceProvider: React.FC<{ children: React.ReactNode }> = ({ chi
       deleteReport,
       analysisJob,
       analyzeNiche,
+      cancelAnalysis,
       isExportingPdf,
       exportPdf,
       analysisDialogOpen,

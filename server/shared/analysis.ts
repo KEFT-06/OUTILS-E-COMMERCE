@@ -235,4 +235,11 @@ export interface AnalysisJob {
   error: { code: string; message: string } | null;
   createdAt: string;
   updatedAt: string;
+  /**
+   * Pages retenues par l'étude, dès qu'elle se termine et avant que le rapport soit écrit.
+   *
+   * La rédaction prend encore une minute : sans cela, l'écran n'aurait rien à montrer
+   * alors que le travail le plus long est déjà fait et que ses résultats existent.
+   */
+  sources?: WebGroundingSource[];
 }

@@ -89,6 +89,9 @@ export const ebookApi = {
   /** Le suivi renvoie l'avancement, et relance au passage la tranche suivante. */
   follow: (id: string) => apiRequest<{ job: EbookJob }>(`/api/writing/ebook/${encodeURIComponent(id)}`),
 
+  /** Renonce à une rédaction en cours : points rendus, compte libéré tout de suite. */
+  cancel: (id: string) => apiRequest<{ job: EbookJob }>(`/api/writing/ebook/${encodeURIComponent(id)}`, { method: 'DELETE' }),
+
   result: (id: string) => apiRequest<EbookResult>(`/api/writing/ebook/${encodeURIComponent(id)}/result`),
 };
 

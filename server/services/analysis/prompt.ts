@@ -10,7 +10,7 @@ import type { WebSource } from '@server/services/analysis/webSearch';
  * la respecter : il écarte ensuite tout fait dont les sources citées n'existent pas.
  */
 
-export const ANALYSIS_PROMPT_VERSION = '2026.09.3';
+export const ANALYSIS_PROMPT_VERSION = '2026.09.4';
 
 export const VERDICTS = ['Opportunité Exceptionnelle', 'Opportunité Forte', 'Marché Compétitif', 'Niche Risquée'] as const;
 export const LEVELS = ['Faible', 'Moyen', 'Élevé', 'Très élevé'] as const;
@@ -42,6 +42,7 @@ export function buildAnalysisPrompt(input: {
     '',
     'RÈGLES ABSOLUES',
     '1. Les faits de marché (concurrents, prix pratiqués, avis et difficultés des clients, signes de demande, réalités locales) ne viennent QUE de l’ÉTUDE et des SOURCES numérotées ci-dessous. Chaque fait porte dans « sourceIds » les numéros des sources qui l’établissent (les marqueurs [n] de l’étude). Ce que les sources ne disent pas, tu ne l’écris pas.',
+    '1 bis. Les numéros de source vont dans « sourceIds », et nulle part ailleurs : aucun marqueur du type [3], (source 3) ou « Sources : 3 » dans le texte rédigé. Ils sont présentés à part, et dans une phrase ils ne feraient que gêner la lecture.',
     '2. N’invente aucun chiffre : ni volume de recherche, ni croissance, ni marge, ni chiffre d’affaires, ni nombre de ventes, ni taux de conversion, ni prix. Un chiffre n’apparaît que s’il figure dans une source citée.',
     '3. N’invente aucun concurrent, aucune marque, aucun lien, aucun témoignage.',
     '4. Les propositions (idées de produits, sommaires, scripts publicitaires, plan d’action) sont des recommandations : elles n’ont pas besoin de source, mais ne contiennent ni chiffre inventé, ni promesse de gain, ni résultat garanti, ni transformation miraculeuse.',
@@ -235,11 +236,36 @@ export const ANALYSIS_RESPONSE_SCHEMA = {
 /*  Lecture tolérante de la réponse                                            */
 /* -------------------------------------------------------------------------- */
 
+/**
+ * Marqueurs de source recopiés dans la prose.
+ *
+ * L'étude porte des marqueurs « [n] » et la consigne demande de les reporter dans
+ * « sourceIds » ; le rédacteur en laisse malgré tout filer dans les phrases. Les numéros
+ * ne s'affichant plus dans le corps du rapport, ils n'y seraient que du bruit.
+ *
+ * Seules les formes sans ambiguïté sont retirées : des crochets ne contenant que des
+ * chiffres, et « (source 2) » en toutes lettres. Les parenthèses purement numériques sont
+ * laissées telles quelles — « (1) le prix, (2) la distribution » est une énumération
+ * légitime, qu'un filtre trop large mutilerait.
+ */
+export function stripSourceMarkers(value: string): string {
+  return value
+    .replace(/\[(?:web:)?\s*\d+(?:\s*[,;]\s*\d+)*\s*\]/g, '')
+    .replace(/\(\s*sources?\s*:?\s*\d+(?:\s*[,;et]+\s*\d+)*\s*\)/gi, '')
+    .replace(/\s*(?:sources?|réf\.?)\s*:\s*(?:\d+(?:\s*[,;]\s*)?)+\s*$/i, '')
+    // Le marqueur retiré laisse un blanc avant le point ou la virgule, qui n'en veulent
+    // pas. Le deux-points, le point-virgule, le point d'exclamation et d'interrogation en
+    // exigent un en français : y toucher abîmerait tout le rapport.
+    .replace(/\s+([.,])/g, '$1')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
 const text = (max: number) =>
   z
     .string()
     .catch('')
-    .transform((value) => value.replace(/\s+/g, ' ').trim().slice(0, max));
+    .transform((value) => stripSourceMarkers(value).slice(0, max));
 
 const texts = (maxItems: number, maxLength: number) =>
   z
@@ -247,7 +273,7 @@ const texts = (maxItems: number, maxLength: number) =>
     .catch([])
     .transform((values) =>
       values
-        .map((value) => value.replace(/\s+/g, ' ').trim().slice(0, maxLength))
+        .map((value) => stripSourceMarkers(value).slice(0, maxLength))
         .filter(Boolean)
         .slice(0, maxItems),
     );

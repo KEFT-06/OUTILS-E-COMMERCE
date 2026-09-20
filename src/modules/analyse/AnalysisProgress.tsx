@@ -1,10 +1,12 @@
 import { useEffect, useState } from 'react';
-import { CheckCircle2, Circle } from 'lucide-react';
+import { CheckCircle2, Circle, ExternalLink, X } from 'lucide-react';
 import { useWorkspace } from '@/app/providers/WorkspaceProvider';
 import { countryName } from '@server/shared/countries';
 import type { AnalysisJob } from '@/shared/types/analysis';
 import { Badge } from '@/shared/ui/badge';
+import { Button } from '@/shared/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/shared/ui/card';
+import { safeHttpUrl } from '@/shared/lib/safeUrl';
 import { Spinner } from '@/shared/ui/spinner';
 
 /**
@@ -34,7 +36,7 @@ function elapsedLabel(since: string, now: number): string {
 }
 
 export function AnalysisProgress() {
-  const { analysisJob } = useWorkspace();
+  const { analysisJob, cancelAnalysis } = useWorkspace();
   const [now, setNow] = useState(() => Date.now());
 
   useEffect(() => {
@@ -45,6 +47,7 @@ export function AnalysisProgress() {
 
   if (!analysisJob) return null;
   const current = activeStep(analysisJob.status);
+  const sources = analysisJob.sources ?? [];
 
   return (
     <Card role="status" aria-live="polite" className="border-primary/30">
@@ -85,6 +88,60 @@ export function AnalysisProgress() {
             );
           })}
         </ol>
+
+        {/*
+          L'étude est le temps long ; la rédaction qui suit en prend encore une bonne partie.
+          Montrer dès maintenant les pages retenues occupe cette attente avec la matière même
+          du rapport, au lieu d'une barre qui avance sans rien dire.
+        */}
+        {sources.length > 0 && (
+          <section className="mt-4 space-y-2 rounded-lg border bg-muted/30 p-3">
+            <h3 className="text-sm font-medium">
+              {sources.length} page{sources.length > 1 ? 's' : ''} retenue{sources.length > 1 ? 's' : ''} par l’étude
+              <span className="ml-1.5 font-normal text-muted-foreground">— le rapport est en cours de rédaction à partir d’elles.</span>
+            </h3>
+            <ul className="space-y-1">
+              {sources.slice(0, 8).map((source) => {
+                const url = safeHttpUrl(source.url);
+                return (
+                  <li key={source.url} className="truncate text-xs">
+                    {url ? (
+                      <a
+                        href={url}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="inline-flex min-h-6 items-center gap-1.5 underline-offset-4 hover:underline"
+                      >
+                        <ExternalLink className="size-3 shrink-0 text-muted-foreground" aria-hidden="true" />
+                        <span className="truncate">{source.title}</span>
+                      </a>
+                    ) : (
+                      <span className="truncate text-muted-foreground">{source.title}</span>
+                    )}
+                  </li>
+                );
+              })}
+            </ul>
+            {sources.length > 8 && (
+              <p className="text-xs text-muted-foreground">
+                et {sources.length - 8} autre{sources.length - 8 > 1 ? 's' : ''}, toutes listées dans l’onglet Sources du rapport.
+              </p>
+            )}
+          </section>
+        )}
+
+        {/*
+          Sortie de secours : une seule analyse tourne par compte, et elle dure plusieurs
+          minutes. Sans ce bouton, une niche mal saisie obligeait à attendre la fin d'un
+          rapport dont on ne voulait plus.
+        */}
+        <div className="mt-4 flex items-center justify-between gap-3">
+          <p className="text-xs text-muted-foreground">Vous vous êtes trompé de niche ou de marché ?</p>
+          <Button variant="outline" size="sm" onClick={() => void cancelAnalysis()}>
+            <X />
+            Annuler l’analyse
+          </Button>
+        </div>
       </CardContent>
     </Card>
   );

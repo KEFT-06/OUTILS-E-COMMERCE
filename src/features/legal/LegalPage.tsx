@@ -376,18 +376,18 @@ export function LegalPage({ kind }: { kind: LegalKind }) {
           aria-label="Pages légales"
           className="mx-auto flex max-w-3xl flex-wrap gap-x-6 gap-y-2 px-4 py-6 text-sm text-muted-foreground sm:px-6"
         >
-          <Link to="/mentions-legales" className="hover:text-foreground">
-            Mentions légales
-          </Link>
-          <Link to="/confidentialite" className="hover:text-foreground">
-            Confidentialité
-          </Link>
-          <Link to="/conditions" className="hover:text-foreground">
-            Conditions d’utilisation
-          </Link>
-          <Link to="/contact" className="hover:text-foreground">
-            Contact
-          </Link>
+          {/* Chaque lien occupe au moins 24 px de haut : au ras du texte, ils étaient trop
+              serrés pour être visés sûrement du doigt. */}
+          {[
+            { to: '/mentions-legales', label: 'Mentions légales' },
+            { to: '/confidentialite', label: 'Confidentialité' },
+            { to: '/conditions', label: 'Conditions d’utilisation' },
+            { to: '/contact', label: 'Contact' },
+          ].map((entry) => (
+            <Link key={entry.to} to={entry.to} className="inline-flex min-h-6 items-center hover:text-foreground">
+              {entry.label}
+            </Link>
+          ))}
         </nav>
       </footer>
     </div>

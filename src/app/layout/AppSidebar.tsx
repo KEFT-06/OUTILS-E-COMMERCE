@@ -132,10 +132,15 @@ export function AppSidebar() {
             {!credits.unlimited && credits.bonus > 0 && (
               <p className="mt-1.5 text-xs text-muted-foreground tabular-nums">dont {credits.bonus} bonus</p>
             )}
+            {/*
+              « inline-flex » et une hauteur minimale de 24 px : ce lien est une commande à
+              part entière, pas un mot dans une phrase. Au ras du texte, il mesurait 16 px
+              de haut — en dessous du minimum tactile, un doigt le manquait.
+            */}
             <Link
               to={`${ACCOUNT_PATH}#paliers`}
               onClick={closeOnMobile}
-              className="mt-2 inline-block text-xs font-medium text-brand-green-text underline-offset-4 hover:underline"
+              className="mt-1 inline-flex min-h-6 items-center text-xs font-medium text-brand-green-text underline-offset-4 hover:underline"
             >
               Changer de palier
             </Link>

@@ -313,7 +313,7 @@ export function CreativeGeneratorPanel() {
 
             <fieldset className="space-y-2">
               <legend className="mb-2 text-sm font-medium">Format</legend>
-              <div className="flex gap-1.5">
+              <div className="flex flex-wrap gap-1.5">
                 {FORMAT_OPTIONS.map((option) => (
                   <Button
                     key={option.value}
@@ -369,7 +369,7 @@ export function CreativeGeneratorPanel() {
             {kind === 'video' ? (
               <fieldset className="space-y-2">
                 <legend className="mb-2 text-sm font-medium">Durée</legend>
-                <div className="flex gap-1.5">
+                <div className="flex flex-wrap gap-1.5">
                   {([5, 10] as const).map((value) => (
                     <Button
                       key={value}

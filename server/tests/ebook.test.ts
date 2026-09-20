@@ -193,6 +193,22 @@ describe('Rédaction d’un ebook long', () => {
     );
   });
 
+  it('laisse renoncer à une rédaction en cours et rend les points', async () => {
+    const { agent } = await signInWithPlan(app, 'autrice-annule@exemple.com', 'pro');
+    const start = await balance(agent);
+
+    const launch = await agent.post('/api/writing/ebook').send(REQUEST).expect(202);
+    const jobId = (launch.body as { job: { id: string } }).job.id;
+
+    const cancelled = await agent.delete(`/api/writing/ebook/${jobId}`).expect(200);
+    assert.equal((cancelled.body as { job: { status: string } }).job.status, 'failed', 'la rédaction ne tourne plus');
+
+    assert.equal(await balance(agent), start, 'les points sont rendus intégralement');
+
+    // Le compte est libéré tout de suite : on peut relancer sans attendre.
+    await agent.post('/api/writing/ebook').send(REQUEST).expect(202);
+  });
+
   it('refuse une longueur au-dessus du palier, sans retirer de points', async () => {
     const { agent } = await signInWithPlan(app, 'autrice-limite@exemple.com', 'free');
     const start = await balance(agent);

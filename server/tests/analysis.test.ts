@@ -38,6 +38,7 @@ interface Job {
   status: string;
   reportId: string | null;
   error: { code: string; message: string } | null;
+  sources?: { title: string; url: string }[];
 }
 
 interface Report {
@@ -109,6 +110,16 @@ describe('Analyse de niche', () => {
 
     const job = await waitForJob(agent, launchedJob.id);
     assert.equal(job.status, 'completed', JSON.stringify(job.error));
+
+    /*
+      Les sources sont portées par l'analyse elle-même, pas seulement par le rapport final :
+      c'est ce qui permet de les afficher pendant la minute de rédaction qui reste.
+    */
+    assert.ok(job.sources && job.sources.length > 0, 'l’analyse garde les pages retenues par l’étude');
+    assert.ok(
+      job.sources.every((source) => source.title && source.url),
+      'chaque page gardée est affichable : un titre et un lien',
+    );
     assert.equal((await agent.get('/api/analyze-niche/jobs/active').expect(200)).body.job, null);
     const report = (await agent.get(`/api/reports/${job.reportId}`).expect(200)).body.report as Report;
 
@@ -309,5 +320,56 @@ describe('Étude Perplexity : sources citées', () => {
         [3, 'https://c.example/', 'c.example', 'extrait', '2026-02-03'],
       ],
     );
+  });
+});
+
+describe('Renvois de sources hors du texte', () => {
+  it('retire les marqueurs recopiés dans la prose sans toucher aux énumérations', async () => {
+    const { stripSourceMarkers } = await import('@server/services/analysis/prompt');
+
+    assert.equal(
+      stripSourceMarkers('La demande est réelle [2][5]. Les prix tournent autour de 15 000 FCFA [web:3].'),
+      'La demande est réelle. Les prix tournent autour de 15 000 FCFA.',
+      'crochets numériques retirés, ponctuation recollée',
+    );
+    assert.equal(stripSourceMarkers('Trois offres existent (source 4).'), 'Trois offres existent.');
+    assert.equal(stripSourceMarkers('Deux boutiques vendent ce guide. Sources : 1, 2'), 'Deux boutiques vendent ce guide.');
+
+    // Une énumération n'est pas une citation : un filtre trop large la mutilerait.
+    assert.equal(
+      stripSourceMarkers('Deux leviers : (1) le prix, (2) la distribution.'),
+      'Deux leviers : (1) le prix, (2) la distribution.',
+      'les parenthèses numériques restent intactes',
+    );
+    assert.equal(stripSourceMarkers('Le pack coûte 12 000 FCFA (1 500 par module).'), 'Le pack coûte 12 000 FCFA (1 500 par module).');
+  });
+
+  it('dit, pour chaque source, ce qu’elle fonde dans le rapport', async () => {
+    const { usageBySource } = await import('../../src/shared/lib/sourceUsage');
+    const rate = (label: string, sourceIds: number[]) => ({
+      key: 'demand' as const,
+      label,
+      level: null,
+      score: null,
+      description: '',
+      trend: null,
+      sourceIds,
+    });
+
+    const usage = usageBySource({
+      summarySourceIds: [1],
+      rates: {
+        demand: rate('Demande', [1, 2]),
+        saturation: rate('Saturation', [2]),
+        profitability: rate('Rentabilité', []),
+        opportunity: rate('Opportunité', []),
+        virality: rate('Viralité', []),
+      },
+      competitors: [{ id: 'c1', name: 'Boutique A', urlOrHandle: '', priceRange: '', positioning: '', strengths: [], weaknesses: [], exploitableGaps: [], sourceIds: [2] }],
+    } as never);
+
+    assert.deepEqual(usage.get(1), ['Synthèse', 'Demande']);
+    assert.deepEqual(usage.get(2), ['Demande', 'Saturation', 'Boutique A'], 'une même page peut fonder plusieurs passages, sans doublon');
+    assert.equal(usage.get(3), undefined, 'une source que rien ne cite ne se voit attribuer aucun passage');
   });
 });

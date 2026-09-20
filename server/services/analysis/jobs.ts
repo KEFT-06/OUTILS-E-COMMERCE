@@ -10,7 +10,7 @@ import { type AnalysisRequest, todayLabel, writeReport } from '@server/services/
 import { researchMarket } from '@server/services/analysis/research';
 import { getActionCost } from '@server/services/credits';
 import { ensureReady } from '@server/services/preflight';
-import type { AnalysisJob } from '@server/shared/analysis';
+import type { AnalysisJob, WebGroundingSource } from '@server/shared/analysis';
 import { runInBackground } from '@server/shared/backgroundWork';
 import { countryName } from '@server/shared/countries';
 
@@ -46,6 +46,7 @@ function viewOf(row: JobRow): AnalysisJobView {
     error: row.errorCode ? { code: row.errorCode, message: row.errorMessage ?? 'L’analyse a échoué.' } : null,
     createdAt: row.createdAt.toISOString(),
     updatedAt: row.updatedAt.toISOString(),
+    ...(row.sources ? { sources: row.sources as WebGroundingSource[] } : {}),
   };
 }
 
@@ -105,7 +106,15 @@ async function runJob(jobId: string): Promise<void> {
       },
     });
 
-    await setStatus(jobId, 'writing');
+    /*
+      Les sources sont enregistrées avec le passage en rédaction : le travail le plus long
+      est fini, ses résultats sont connus, et l'écran peut les montrer au lieu de laisser
+      l'utilisateur devant une barre immobile une minute de plus.
+    */
+    await db
+      .update(analysisJobs)
+      .set({ status: 'writing', sources: research.sources, updatedAt: new Date() })
+      .where(and(eq(analysisJobs.id, jobId), inArray(analysisJobs.status, ACTIVE)));
     const report = await writeReport({ userId: job.userId, userCountry: owner?.country ?? null, request, now, research });
 
     await db.transaction(async (tx) => {
@@ -216,6 +225,39 @@ export async function getAnalysisJob(auth: RequestAuth, jobId: string | undefine
     runInBackground(() => resumeJob(job), `reprise de l’analyse ${job.id}`);
   }
   return viewOf(job);
+}
+
+/**
+ * Renonce à une analyse en cours et rend les points.
+ *
+ * Sans cette sortie, une erreur de saisie coûtait plusieurs minutes d'attente : une seule
+ * analyse peut tourner par compte, et rien ne permettait d'y renoncer. Le travail engagé
+ * chez le moteur de recherche n'est pas récupérable, mais l'utilisateur n'en reçoit rien :
+ * lui faire payer une analyse qu'il n'aura jamais serait injuste.
+ */
+export async function cancelAnalysis(auth: RequestAuth, jobId: string | undefined): Promise<AnalysisJobView> {
+  const parsed = jobIdSchema.safeParse(jobId);
+  if (!parsed.success) throw new AppError(404, 'Analyse introuvable sur votre compte.', 'ANALYSIS_JOB_NOT_FOUND');
+
+  const [job] = await getDb()
+    .select()
+    .from(analysisJobs)
+    .where(and(eq(analysisJobs.id, parsed.data), eq(analysisJobs.userId, auth.account.user.id)))
+    .limit(1);
+  if (!job) throw new AppError(404, 'Analyse introuvable sur votre compte.', 'ANALYSIS_JOB_NOT_FOUND');
+
+  if (!ACTIVE.includes(job.status as AnalysisJobStatus)) {
+    // Terminée entre l'affichage du bouton et le clic : son résultat vaut mieux qu'une erreur.
+    return viewOf(job);
+  }
+
+  await failJob(
+    job.id,
+    new AppError(200, 'Analyse annulée à votre demande : vos points ont été rendus.', 'ANALYSIS_CANCELLED'),
+  );
+
+  const [cancelled] = await getDb().select().from(analysisJobs).where(eq(analysisJobs.id, job.id)).limit(1);
+  return viewOf(cancelled ?? job);
 }
 
 export async function getActiveAnalysisJob(auth: RequestAuth): Promise<AnalysisJobView | null> {

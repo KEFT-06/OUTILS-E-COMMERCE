@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { FileText, Loader2 } from 'lucide-react';
+import { FileText, Loader2, X } from 'lucide-react';
 import { toast } from 'sonner';
 import { useAuth } from '@/features/auth/AuthContext';
 import { useCreditGate } from '@/app/providers/CreditGateProvider';
@@ -136,6 +136,21 @@ export function MarketReportPanel({ reportId, nicheName }: MarketReportPanelProp
     }
   };
 
+  /**
+   * Sortie de secours : une rédaction longue occupe le compte plusieurs minutes. Sans ce
+   * bouton, il fallait attendre la fin d'un texte dont on ne voulait plus. Points rendus.
+   */
+  const cancel = async () => {
+    if (!job) return;
+    try {
+      await ebookApi.cancel(job.id);
+      setJob(null);
+      toast.success('Rédaction annulée', { description: 'Vos points ont été rendus.' });
+    } catch (error) {
+      toast.error('L’annulation a échoué', { description: toApiError(error, 'Réessayez dans un moment.').message });
+    }
+  };
+
   const isRunning = job !== null && job.status !== 'completed' && job.status !== 'failed';
   const progress = job && job.sectionsTotal > 0 ? Math.round((job.sectionsDone / job.sectionsTotal) * 100) : 0;
   const minutes = Math.max(2, Math.round((targetPages / 10) * 1.5));
@@ -171,6 +186,13 @@ export function MarketReportPanel({ reportId, nicheName }: MarketReportPanelProp
               </AlertDescription>
             </Alert>
             <Progress value={progress} aria-label="Avancement du dossier" />
+            <div className="flex items-center justify-between gap-3">
+              <p className="text-xs text-muted-foreground">Longueur mal choisie ?</p>
+              <Button variant="outline" size="sm" onClick={() => void cancel()}>
+                <X />
+                Annuler le dossier
+              </Button>
+            </div>
           </div>
         ) : (
           <>
