@@ -158,16 +158,18 @@ describe('Analyse de niche', () => {
     assert.equal(report.adCampaigns[0]!.scenes.at(-1)!.timing.split(' - ')[1], '0:30');
 
     // Provenance : chaque bloc dit d'où il vient ; plus aucune limite générique.
-    assert.match(report.dataProvenance.rates!.source, /Étude approfondie Perplexity \(3 recherches, 4 pages lues\)/);
+    // Le rapport ne nomme aucun fournisseur : il dit l'ampleur de l'étude, pas qui l'a menée.
+    assert.match(report.dataProvenance.rates!.source, /Étude approfondie du web \(3 recherches, 4 pages lues\)/);
+    assert.doesNotMatch(report.dataProvenance.rates!.source, /Perplexity|Gemini/, 'aucun nom de fournisseur dans un rapport');
     assert.equal(report.dataProvenance.rates!.sampleSize, 3);
     assert.match(report.dataProvenance.competitors!.source, /seuls les concurrents présents dans les sources/);
     assert.match(report.dataProvenance.searchTrends!.source, /volumes de recherche non mesurés/);
-    assert.match(report.dataProvenance.digitalProducts!.source, /Gemini/);
-    assert.match(report.dataProvenance.adCampaigns!.source, /Gemini/);
+    assert.match(report.dataProvenance.digitalProducts!.source, /l’IA de rédaction/);
+    assert.match(report.dataProvenance.adCampaigns!.source, /l’IA de rédaction/);
     assert.match(report.dataProvenance.strategicActionPlan!.source, /d’après l’étude/);
     assert.ok(Object.values(report.dataProvenance).every((entry) => entry!.isDemonstration === false));
     assert.deepEqual(report.limitations, ['Aucune donnée de ventes.']);
-    assert.equal(report.generator.webSearch, 'Perplexity');
+    assert.equal(report.generator.webSearch, 'Recherche web');
     assert.deepEqual(report.generator.research, {
       provider: 'Perplexity',
       mode: 'deep_research',
@@ -208,7 +210,7 @@ describe('Analyse de niche', () => {
         report.groundingSources.map((source) => source.url),
         ['https://agri.example/poulets', 'https://pouletpro.example/formation', 'https://forum.example/eleveurs'],
       );
-      assert.match(report.dataProvenance.rates!.source, /^Recherche web Perplexity/);
+      assert.match(report.dataProvenance.rates!.source, /^Recherche web/);
     }
   });
 

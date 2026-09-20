@@ -35,6 +35,16 @@ export function isFeature(value: string): value is FeatureId {
 
 const currencyCode = z.string().regex(/^[A-Z]{3}$/, 'Code de devise ISO 4217 attendu (ex. XAF).');
 
+/**
+ * Longueur maximale d'un ebook, tous paliers confondus. Au-delà, la cohérence d'ensemble
+ * se dégrade (répétitions, plan qui se délite) et le temps de rédaction devient tel que
+ * l'auteur abandonne avant la fin.
+ */
+export const EBOOK_PAGES_CEILING = 250;
+
+/** Mots par page d'ebook au format A4, corps de texte aéré : sert à convertir pages ⇄ mots. */
+export const WORDS_PER_PAGE = 300;
+
 const limitsSchema = z.object({
   /** Niches qu'un compte peut enregistrer ; null : illimité. */
   savedNiches: z.number().int().min(0).nullable(),
@@ -42,6 +52,12 @@ const limitsSchema = z.object({
   adFrameworks: z.number().int().min(0).max(AD_FRAMEWORKS.length).nullable(),
   /** Langues de traduction par guide ; null : illimité. */
   guideLanguages: z.number().int().min(0).nullable(),
+  /**
+   * Pages au plus pour un ebook rédigé par l'IA. Le plafond absolu de 250 vaut pour tous
+   * les paliers : au-delà, la rédaction perd le fil et le lecteur aussi. Jamais null —
+   * un ebook « illimité » n'aurait aucun sens et coûterait sans borne.
+   */
+  ebookPages: z.number().int().min(1).max(EBOOK_PAGES_CEILING),
 });
 
 const planSchema = z.object({
@@ -81,7 +97,12 @@ export type PlanDefinition = z.infer<typeof planSchema>;
 export type PlanLimits = z.infer<typeof limitsSchema>;
 export type PlanConfig = z.infer<typeof configSchema>;
 
-export const UNLIMITED: PlanLimits = { savedNiches: null, adFrameworks: null, guideLanguages: null };
+export const UNLIMITED: PlanLimits = {
+  savedNiches: null,
+  adFrameworks: null,
+  guideLanguages: null,
+  ebookPages: EBOOK_PAGES_CEILING,
+};
 
 export class PlansUnavailableError extends Error {
   constructor(

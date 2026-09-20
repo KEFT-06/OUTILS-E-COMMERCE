@@ -112,7 +112,12 @@ export function mountSeoRoutes(app: Express, appUrl: string, lastModified: strin
  * Client construit (dist/client) : fichiers versionnés en cache long, index.html
  * réécrit pour chaque adresse. Le modèle brut n'est jamais servi tel quel.
  */
-export function mountClient(app: Express, clientDir: string, appUrl: string): void {
+export function mountClient(
+  app: Express,
+  clientDir: string,
+  appUrl: string,
+  options: { serveStaticFiles?: boolean } = {},
+): void {
   const templatePath = join(clientDir, 'index.html');
   const template = existsSync(templatePath) ? readFileSync(templatePath, 'utf8') : null;
   const lastModified = (template ? statSync(templatePath).mtime : new Date()).toISOString().slice(0, 10);
@@ -120,17 +125,21 @@ export function mountClient(app: Express, clientDir: string, appUrl: string): vo
   mountSeoRoutes(app, appUrl, lastModified);
   app.get('/index.html', (_req, res) => res.redirect(301, '/'));
 
-  app.use(
-    express.static(clientDir, {
-      maxAge: '1y',
-      index: false,
-      setHeaders(res, path) {
-        // Le HTML ne doit jamais être mis en cache longtemps : c'est lui qui
-        // référence les bundles versionnés.
-        if (path.endsWith('.html')) res.setHeader('Cache-Control', 'no-cache');
-      },
-    }),
-  );
+  // Chez un hébergeur qui distribue lui-même les fichiers (Vercel), cette couche n'est
+  // jamais atteinte : seul le HTML ci-dessous est rendu ici, pour ses balises par adresse.
+  if (options.serveStaticFiles ?? true) {
+    app.use(
+      express.static(clientDir, {
+        maxAge: '1y',
+        index: false,
+        setHeaders(res, path) {
+          // Le HTML ne doit jamais être mis en cache longtemps : c'est lui qui
+          // référence les bundles versionnés.
+          if (path.endsWith('.html')) res.setHeader('Cache-Control', 'no-cache');
+        },
+      }),
+    );
+  }
 
   app.get('*', (req, res, next) => {
     // Un fichier absent (ancien bundle, image supprimée) reste une vraie 404 :

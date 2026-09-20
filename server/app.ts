@@ -9,11 +9,28 @@ import { apiLimiter, corsMiddleware, errorHandler, httpsRedirect, ipCeilingLimit
 import { api } from '@server/routes';
 import { mountClient, mountSeoRoutes } from '@server/services/seo';
 
+export interface CreateAppOptions {
+  /**
+   * Dossier du site construit. Par défaut `client/`, à côté du serveur construit
+   * (`dist/server.js` + `dist/client/`). En hébergement sans serveur, le serveur est
+   * empaqueté ailleurs que le site : le chemin est alors donné explicitement.
+   */
+  clientDir?: string;
+  /**
+   * Sert les fichiers du site (scripts, images, polices) depuis ce serveur. Faux quand
+   * l'hébergeur les distribue lui-même par son réseau de diffusion : Vercel ignore de
+   * toute façon `express.static`, et le HTML reste rendu ici pour garder ses balises
+   * de référencement propres à chaque adresse.
+   */
+  serveStaticFiles?: boolean;
+}
+
 /**
  * Application Express, sans démarrage : le serveur (server/index.ts) l'écoute sur
- * un port, les tests l'interrogent directement.
+ * un port, l'hébergement sans serveur (server/vercel.ts) l'appelle par requête, et
+ * les tests l'interrogent directement.
  */
-export function createApp() {
+export function createApp(options: CreateAppOptions = {}) {
   const app = express();
 
   /* ------------------------------------------------------------------------ */
@@ -86,7 +103,9 @@ export function createApp() {
 
   if (isProd) {
     const here = dirname(fileURLToPath(import.meta.url));
-    mountClient(app, join(here, 'client'), env.APP_URL);
+    mountClient(app, options.clientDir ?? join(here, 'client'), env.APP_URL, {
+      serveStaticFiles: options.serveStaticFiles ?? true,
+    });
   } else {
     mountSeoRoutes(app, env.APP_URL, new Date().toISOString().slice(0, 10));
   }

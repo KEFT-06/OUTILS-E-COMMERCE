@@ -63,7 +63,7 @@ export async function generateJson<T>(input: {
   onModel?: (model: string) => void;
 }): Promise<T> {
   const apiKey = env.GEMINI_API_KEY;
-  if (!apiKey) throw providerUnavailable('Gemini');
+  if (!apiKey) throw providerUnavailable('rédaction par IA');
   const { service } = input;
   const body = JSON.stringify({
     contents: [{ role: 'user', parts: [...(input.media ? [input.media] : []), { text: input.prompt }] }],
@@ -109,7 +109,7 @@ export async function generateJson<T>(input: {
     if (status === 503) {
       throw new AppError(
         503,
-        `Le ${service.name} est surchargé chez Google en ce moment. Réessayez dans quelques minutes : vos points ont été rendus.`,
+        `Le ${service.name} est surchargé en ce moment. Réessayez dans quelques minutes : vos points ont été rendus.`,
         `${service.code}_OVERLOADED`,
       );
     }

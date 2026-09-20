@@ -47,6 +47,7 @@ import {
   DialogTrigger,
 } from '@/shared/ui/dialog';
 import { LegalNotice } from '@/modules/analyse/LegalNotice';
+import { MarketReportPanel } from '@/modules/analyse/MarketReportPanel';
 import { NoDataState } from '@/shared/components/NoDataState';
 import { Progress } from '@/shared/ui/progress';
 import { RateBadge } from '@/shared/components/RateBadge';
@@ -447,7 +448,13 @@ export function StrategicAnalysisView({ report, onNavigateToProducts, onNavigate
             <Card>
               <CardContent className="grid items-center gap-6 lg:grid-cols-12">
                 <div className="lg:col-span-7">
-                  <ChartContainer config={radarConfig} className="mx-auto aspect-square max-h-80 w-full">
+                  {/*
+                    La largeur est plafonnée, pas la hauteur : « aspect-square » impose déjà
+                    hauteur = largeur. Plafonner la hauteur en plus donnait deux règles
+                    contradictoires, que le graphique tentait de satisfaire tour à tour en
+                    se remesurant sans fin — l'onglet finissait par se figer à l'affichage.
+                  */}
+                  <ChartContainer config={radarConfig} className="mx-auto aspect-square w-full max-w-80">
                     <RadarChart data={radarData} outerRadius="72%">
                       <PolarGrid />
                       <PolarAngleAxis dataKey="subject" />
@@ -486,7 +493,16 @@ export function StrategicAnalysisView({ report, onNavigateToProducts, onNavigate
                 <CardDescription>Recherches mensuelles estimées, du plus recherché au moins recherché.</CardDescription>
               </CardHeader>
               <CardContent>
-                <ChartContainer config={volumeConfig} className="w-full" style={{ height: `${Math.max(160, volumeChartData.length * 52 + 40)}px` }}>
+                {/*
+                  « aspect-auto » annule le format 16:9 que le gabarit applique par défaut :
+                  la hauteur est ici calculée à partir du nombre de mots-clés, et laisser les
+                  deux règles en place faisait osciller la largeur mesurée par le graphique.
+                */}
+                <ChartContainer
+                  config={volumeConfig}
+                  className="aspect-auto w-full"
+                  style={{ height: `${Math.max(160, volumeChartData.length * 52 + 40)}px` }}
+                >
                   <BarChart data={volumeChartData} layout="vertical" margin={{ top: 0, right: 16, bottom: 0, left: 0 }}>
                     <CartesianGrid horizontal={false} />
                     <XAxis type="number" tickLine={false} axisLine={false} tickFormatter={(value: number) => compact.format(value)} />
@@ -730,6 +746,8 @@ export function StrategicAnalysisView({ report, onNavigateToProducts, onNavigate
           </TabsContent>
         )}
       </Tabs>
+
+      <MarketReportPanel reportId={report.id} nicheName={report.nicheName} />
 
       <LegalNotice variant="block" />
 

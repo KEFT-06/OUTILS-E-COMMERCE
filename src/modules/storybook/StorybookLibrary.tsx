@@ -12,8 +12,8 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/sha
 import { Spinner } from '@/shared/ui/spinner';
 
 /**
- * « Mes contes » : les storybooks du compte, avec le texte rédigé par Gemini, le lien Gamma et le
- * téléchargement du PDF (servi par le serveur, jamais par le lien secret de Gamma).
+ * « Mes contes » : les storybooks du compte, avec leur texte, leur lien de consultation et le
+ * téléchargement du PDF (servi par le serveur, jamais par le lien secret d'export).
  */
 
 const STATUS: Record<StorybookEntry['status'], { label: string; variant: 'success' | 'info' | 'danger' }> = {
@@ -52,7 +52,7 @@ export function StorybookLibrary({ version }: { version: number }) {
           <BookOpen className="size-4 text-brand-green-text" aria-hidden="true" />
           Mes contes
         </CardTitle>
-        <CardDescription>Relisez le texte de chaque page, ouvrez le conte dans Gamma ou téléchargez son PDF.</CardDescription>
+        <CardDescription>Relisez le texte de chaque page, ouvrez le conte en ligne ou téléchargez son PDF.</CardDescription>
       </CardHeader>
       <CardContent>
         {error ? (
@@ -94,7 +94,7 @@ export function StorybookLibrary({ version }: { version: number }) {
                         {gammaUrl && (
                           <Button asChild size="sm" variant="outline">
                             <a href={gammaUrl} target="_blank" rel="noopener noreferrer">
-                              Ouvrir dans Gamma
+                              Ouvrir en ligne
                               <ExternalLink />
                             </a>
                           </Button>
@@ -111,7 +111,7 @@ export function StorybookLibrary({ version }: { version: number }) {
                         </li>
                       ))}
                     </ol>
-                    <p className="text-xs text-muted-foreground">Texte rédigé par Gemini, mise en page et illustrations par Gamma.</p>
+                    <p className="text-xs text-muted-foreground">Texte, mise en page et illustrations produits par l’IA.</p>
                   </AccordionContent>
                 </AccordionItem>
               );

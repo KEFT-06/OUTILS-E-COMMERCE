@@ -14,7 +14,7 @@ import { Tabs, TabsList, TabsTrigger } from '@/shared/ui/tabs';
 
 /**
  * Vidéos et visuels générés par les comptes, avec lecture et téléchargement. Le fichier est relayé
- * par le serveur depuis Higgsfield, qui ne le garde qu'environ sept jours ; chaque ouverture est
+ * par le serveur depuis le fournisseur, qui ne le garde qu'environ sept jours ; chaque ouverture est
  * inscrite au journal d'audit.
  */
 

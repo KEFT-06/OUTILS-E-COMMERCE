@@ -1,6 +1,6 @@
 {
-  "version": "2026.09.7",
-  "updatedAt": "2026-09-16",
+  "version": "2026.09.8",
+  "updatedAt": "2026-09-20",
   "note": "Grille tarifaire des research points (CdC §8). Table de configuration éditable sans déploiement, au même titre que la table de conformité. À migrer en base lors du Lot 2, avec un historique de versions : un coût qui change doit rester traçable pour les factures déjà émises.",
   "currency": "FCFA",
   "pointValueFcfa": 250,
@@ -16,13 +16,21 @@
       "id": "storybook_generation",
       "label": "Génération d'un conte illustré",
       "cost": 15,
-      "description": "Conte illustré généré avec Gamma à partir de votre brief. Points réservés au lancement et rendus automatiquement si la génération échoue."
+      "description": "Conte illustré généré à partir de votre brief. Points réservés au lancement et rendus automatiquement si la génération échoue."
     },
     {
       "id": "product_generation",
       "label": "Rédaction du contenu d’un produit",
       "cost": 4,
       "description": "Chaque module d’un produit rédigé par l’IA et enregistré comme brouillon à relire, avec contrôle de conformité immédiat. Points rendus si la rédaction échoue."
+    },
+    {
+      "id": "ebook_longform",
+      "label": "Rédaction d’un ebook long",
+      "cost": 2,
+      "perUnit": 10,
+      "unitLabel": "pages",
+      "description": "Ebook rédigé chapitre par chapitre à partir d’un plan détaillé, jusqu’à la longueur permise par votre palier. Le coût est annoncé avant le lancement et compté par tranche de 10 pages entamée. Points rendus si la rédaction échoue."
     },
     {
       "id": "video_to_product",

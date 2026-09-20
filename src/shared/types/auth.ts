@@ -42,6 +42,8 @@ export interface PlanLimits {
   adFrameworks: number | null;
   /** Langues de traduction par guide ; null : illimité. */
   guideLanguages: number | null;
+  /** Pages au plus pour un ebook rédigé par l'IA. Jamais illimité : le plafond absolu est 250. */
+  ebookPages: number;
 }
 
 export interface SecondFactorMethods {

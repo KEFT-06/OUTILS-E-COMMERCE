@@ -8,13 +8,16 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/sha
 import { Spinner } from '@/shared/ui/spinner';
 
 /**
- * Avancement de l'analyse en cours : étude Perplexity, rédaction Gemini, vérification. L'analyse
+ * Avancement de l'analyse en cours : étude du web, rédaction, vérification. L'analyse
  * tourne sur le serveur : quitter la page ne l'interrompt pas.
+ *
+ * Les moteurs employés ne sont jamais nommés devant l'utilisateur : ils peuvent changer
+ * sans que rien ne bouge à l'écran.
  */
 
 const STEPS = [
-  { title: 'Étude de marché sur le web', detail: 'Perplexity cherche et lit les pages sur la niche : comptez 1 à 3 minutes.' },
-  { title: 'Rédaction du rapport', detail: 'Gemini rédige à partir des seules sources citées par l’étude.' },
+  { title: 'Étude de marché sur le web', detail: 'Les pages publiées sur la niche sont cherchées et lues : comptez 1 à 3 minutes.' },
+  { title: 'Rédaction du rapport', detail: 'Le rapport est rédigé à partir des seules sources citées par l’étude.' },
   { title: 'Vérification et enregistrement', detail: 'Tout fait sans source existante est écarté avant l’enregistrement.' },
 ] as const;
 

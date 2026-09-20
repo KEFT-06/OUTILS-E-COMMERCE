@@ -60,7 +60,7 @@ creativesRouter.post(
       creativeText(brief),
       'Le brief du visuel contient des formulations non conformes : corrigez-les avant de lancer la génération.',
     );
-    if (!providers.higgsfield) throw providerUnavailable('Higgsfield');
+    if (!providers.higgsfield) throw providerUnavailable('création de visuels et vidéos');
 
     const { result } = await runBilledGeneration({
       auth: req.auth!,
@@ -92,7 +92,7 @@ creativesRouter.post(
       creativeText(brief),
       'Le brief de la vidéo contient des formulations non conformes : corrigez-les avant de lancer la génération.',
     );
-    if (!providers.higgsfield) throw providerUnavailable('Higgsfield');
+    if (!providers.higgsfield) throw providerUnavailable('création de visuels et vidéos');
 
     const { result } = await runBilledGeneration({
       auth: req.auth!,
@@ -117,7 +117,7 @@ creativesRouter.get(
   requireAuth,
   asyncRoute(async (req, res) => {
     const requestId = parseCreativeRequestId(req.params.requestId);
-    if (!providers.higgsfield) throw providerUnavailable('Higgsfield');
+    if (!providers.higgsfield) throw providerUnavailable('création de visuels et vidéos');
 
     const generation = await findOwnedGeneration(req.auth!, 'higgsfield', requestId);
     const status = await getCreativeStatus(requestId);
@@ -132,7 +132,7 @@ creativesRouter.get(
   requireAuth,
   asyncRoute(async (req, res) => {
     const requestId = parseCreativeRequestId(req.params.requestId);
-    if (!providers.higgsfield) throw providerUnavailable('Higgsfield');
+    if (!providers.higgsfield) throw providerUnavailable('création de visuels et vidéos');
 
     await findOwnedGeneration(req.auth!, 'higgsfield', requestId);
     const disposition = req.query.disposition === 'attachment' ? 'attachment' : 'inline';

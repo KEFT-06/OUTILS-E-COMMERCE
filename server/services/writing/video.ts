@@ -138,7 +138,7 @@ function mediaOf(source: VideoSource): GeminiMedia {
 }
 
 export async function videoToProduct(auth: RequestAuth, source: VideoSource) {
-  if (!providers.gemini) throw providerUnavailable('Gemini');
+  if (!providers.gemini) throw providerUnavailable('rédaction par IA');
   if (source.kind === 'file' && source.data.length > VIDEO_FILE_MAX_BYTES) {
     throw new AppError(413, 'Ce fichier dépasse 14 Mo : envoyez un extrait, la bande son seule, ou un lien YouTube.', 'VIDEO_TOO_LARGE');
   }

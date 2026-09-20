@@ -1,15 +1,15 @@
 import { useEffect, useState } from 'react';
 
 export interface ServerProviders {
-  /** Gemini : analyse, rédaction et traduction. */
+  /** Analyse, rédaction et traduction. */
   text: boolean;
-  /** Higgsfield : visuels, vidéos et couvertures. */
+  /** Visuels, vidéos et couvertures. */
   images: boolean;
   /** Recherche web des analyses de niche. */
   webSearch: boolean;
   /** Envoi des e-mails (mot de passe oublié, confirmation d'adresse). */
   email: boolean;
-  /** Paiement en ligne des paliers (Stripe). */
+  /** Paiement en ligne des paliers. */
   payments: boolean;
   /** test : aucune carte réelle débitée ; null : paiement non configuré. */
   paymentMode: 'test' | 'live' | null;

@@ -19,8 +19,8 @@ import { Spinner } from '@/shared/ui/spinner';
 import { Textarea } from '@/shared/ui/textarea';
 
 /**
- * Storybook africain : Gemini rédige le conte, Gamma le met en page et génère une illustration
- * par page (modèle d'image Gemini), le PDF se télécharge depuis le site.
+ * Storybook africain : le conte est rédigé, mis en page et illustré une page à la fois ;
+ * le PDF se télécharge depuis le site.
  *
  * Trois engagements visibles à l'écran, parce qu'ils conditionnent ce que l'auteur
  * peut promettre à ses propres lecteurs :
@@ -30,7 +30,7 @@ import { Textarea } from '@/shared/ui/textarea';
  *  - le conte généré n'a pas été relu par le vérificateur de conformité.
  */
 
-/** Cadence de sondage recommandée par la documentation Gamma. */
+/** Cadence de sondage recommandée par le service de mise en page. */
 const POLL_INTERVAL_MS = 5_000;
 /** Au-delà, l'écran cesse de suivre ; le serveur continue de vérifier la génération et rend les points si elle échoue. */
 const MAX_WAIT_MS = 10 * 60_000;
@@ -148,12 +148,12 @@ export function StorybookView() {
             }
             if (status.status === 'failed') {
               setLibraryVersion((version) => version + 1);
-              throw new ApiError(status.errorMessage ?? 'La génération a échoué chez Gamma.');
+              throw new ApiError(status.errorMessage ?? 'La génération a échoué.');
             }
           }
 
           throw new ApiError(
-            'La génération dépasse 10 minutes : suivi abandonné sur cet écran. Si le conte échoue chez Gamma, vos points vous seront rendus automatiquement.',
+            'La génération dépasse 10 minutes : suivi abandonné sur cet écran. Si le conte échoue, vos points vous seront rendus automatiquement.',
           );
         } finally {
           if (!unmountedRef.current) setIsGenerating(false);
@@ -171,14 +171,14 @@ export function StorybookView() {
       <PageHeader
         eyebrow="Créer"
         title="Storybook illustré"
-        description="Des contes illustrés ancrés dans le pays de vos lecteurs : Gemini rédige, Gamma met en page et illustre chaque page, vous téléchargez le PDF."
+        description="Des contes illustrés ancrés dans le pays de vos lecteurs : le texte est rédigé, mis en page et illustré page par page, vous téléchargez le PDF."
       />
 
       <Alert variant="warning">
         <AlertTriangle />
         <AlertTitle>Cohérence du personnage non garantie</AlertTitle>
         <AlertDescription>
-          Gamma ne permet pas de fixer l’apparence d’un personnage d’une illustration à l’autre : Smart Creator transmet la même
+          La mise en page ne permet pas de fixer l’apparence d’un personnage d’une illustration à l’autre : Smart Creator transmet la même
           fiche du personnage pour chaque page, sans pouvoir l’imposer. Vérifiez chaque page avant de publier.
         </AlertDescription>
       </Alert>
@@ -284,7 +284,7 @@ export function StorybookView() {
                   placeholder="prénoms, lieux, plats, fêtes, proverbes que vous connaissez et souhaitez voir figurer"
                 />
                 <FieldDescription>
-                  Gemini reçoit la consigne de n’utiliser comme références culturelles précises que ces éléments, et
+                  L’IA reçoit la consigne de n’utiliser comme références culturelles précises que ces éléments, et
                   d’éviter caricatures et stéréotypes. Rien n’est inventé à votre place.
                 </FieldDescription>
               </Field>
@@ -320,8 +320,8 @@ export function StorybookView() {
           <Spinner />
           <AlertDescription className="tabular-nums">
             {title
-              ? `« ${title} » est rédigé : Gamma le met en page et génère une illustration par page`
-              : 'Gemini rédige le conte, page par page'}{' '}
+              ? `« ${title} » est rédigé : mise en page et illustration de chaque page en cours`
+              : 'Le conte est rédigé, page par page'}{' '}
             — {elapsedSeconds} s écoulées. Comptez en général 2 à 5 minutes.
           </AlertDescription>
         </Alert>
@@ -371,7 +371,7 @@ export function StorybookView() {
               )}
               <Button asChild variant="outline">
                 <a href={storyUrl} target="_blank" rel="noopener noreferrer">
-                  Ouvrir le conte dans Gamma
+                  Ouvrir le conte en ligne
                   <ExternalLink />
                 </a>
               </Button>

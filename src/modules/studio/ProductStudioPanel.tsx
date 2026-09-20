@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { toast } from 'sonner';
 import { AlertTriangle, FileDown, FileText, PenSquare, Sparkles } from 'lucide-react';
 import { useCreditGate } from '@/app/providers/CreditGateProvider';
+import { LongformEbookPanel } from '@/modules/studio/LongformEbookPanel';
 import { ProductExpertEditor } from '@/modules/studio/ProductExpertEditor';
 import { CoverGenerator } from '@/shared/components/CoverGenerator';
 import { WritingFindings } from '@/shared/components/WritingFindings';
@@ -66,6 +67,8 @@ export function ProductStudioPanel({ baseProduct, report, initialExpertOpen = fa
   const [generateOpen, setGenerateOpen] = useState(false);
   const [isWriting, setIsWriting] = useState(false);
   const [findings, setFindings] = useState<WritingFinding[]>([]);
+  /** Pages du dernier ebook long rédigé : sert à proposer de l'allonger. */
+  const [writtenPages, setWrittenPages] = useState<number | null>(null);
 
   const textReady = providers?.text ?? false;
   const generativeReason = providers && !textReady ? 'La rédaction par IA n’est pas configurée sur le serveur.' : null;
@@ -202,6 +205,38 @@ export function ProductStudioPanel({ baseProduct, report, initialExpertOpen = fa
             <AlertTriangle />
             <AlertTitle>L’export a échoué</AlertTitle>
             <AlertDescription>{exportError}</AlertDescription>
+          </Alert>
+        )}
+
+        {textReady && (
+          <LongformEbookPanel
+            product={product}
+            market={report?.market ?? null}
+            onWritten={(chapters, pages) => {
+              // Le plan de l'ouvrage fait foi : ses chapitres remplacent la table des matières
+              // du brouillon, en gardant la numérotation attendue par l'éditeur et l'export.
+              drafts.saveDraft({
+                ...product,
+                tableOfContents: chapters.map((chapter, index) => ({
+                  moduleNumber: index + 1,
+                  title: chapter.title,
+                  details: chapter.content,
+                })),
+              });
+              setFindings([]);
+              setEditorRevision((revision) => revision + 1);
+              setIsExpertOpen(true);
+              setWrittenPages(pages);
+            }}
+          />
+        )}
+
+        {writtenPages !== null && (
+          <Alert variant="info">
+            <AlertDescription>
+              Environ {writtenPages} pages rédigées. Trop court à votre goût ? Relancez la rédaction avec une longueur
+              plus grande : le brouillon actuel sera remplacé.
+            </AlertDescription>
           </Alert>
         )}
 

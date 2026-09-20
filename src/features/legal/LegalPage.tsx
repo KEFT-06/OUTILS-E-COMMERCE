@@ -152,10 +152,10 @@ function Confidentialite() {
           navigateur.
         </p>
         <ul className="list-disc space-y-1.5 pl-5">
-          <li>Google Gemini : la niche et le marché d’une analyse avec l’étude et les sources trouvées, les textes à rédiger ou à traduire, le brief d’un storybook, la description d’une couverture, la vidéo ou le lien YouTube d’un produit créé à partir d’une vidéo ;</li>
-          <li>Perplexity : l’étude de marché d’une analyse (niche et marché), sans aucune donnée de compte ;</li>
-          <li>Higgsfield : le brief d’un visuel ou d’une vidéo ;</li>
-          <li>Gamma : le texte d’un storybook rédigé par Gemini et la description de ses illustrations ;</li>
+          <li>Prestataires de rédaction et de traduction par intelligence artificielle : la niche et le marché d’une analyse avec l’étude et les sources trouvées, les textes à rédiger ou à traduire, le brief d’un storybook, la description d’une couverture, la vidéo ou le lien YouTube d’un produit créé à partir d’une vidéo ;</li>
+          <li>Prestataire de recherche sur le web : la niche et le marché d’une analyse, sans aucune donnée de compte ;</li>
+          <li>Prestataire de création de visuels et de vidéos : le brief d’un visuel ou d’une vidéo ;</li>
+          <li>Prestataire de mise en page illustrée : le texte d’un storybook et la description de ses illustrations ;</li>
           <li>
             Chariow : avec votre propre clé, la consultation de votre catalogue, de vos ventes et de vos affiliés, et les
             adresses e-mail que vous saisissez pour inviter des affiliés — Chariow leur envoie alors un e-mail ;
@@ -169,6 +169,10 @@ function Confidentialite() {
         <p>
           Plusieurs de ces services sont établis hors de l’Union européenne.{' '}
           <ToComplete>garanties encadrant ces transferts (clauses contractuelles types, cadre de protection des données)</ToComplete>
+        </p>
+        <p>
+          L’identité de chacun de ces prestataires vous est communiquée sur simple demande écrite, à l’adresse de
+          contact indiquée dans les mentions légales.
         </p>
       </Section>
 

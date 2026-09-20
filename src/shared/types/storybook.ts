@@ -16,13 +16,13 @@ export interface StorybookBrief {
 export interface StorybookStatus {
   generationId: string;
   status: 'pending' | 'completed' | 'failed';
-  /** Lien de consultation Gamma. Le lien d'export PDF, secret, ne quitte jamais le serveur. */
+  /** Lien de consultation en ligne. Le lien d'export PDF, secret, ne quitte jamais le serveur. */
   gammaUrl?: string;
   storybookId?: string;
   errorMessage?: string;
 }
 
-/** Conte rédigé par Gemini : une page = un titre, un texte et la scène à illustrer. */
+/** Conte rédigé par l'IA : une page = un titre, un texte et la scène à illustrer. */
 export interface StoryDraft {
   title: string;
   characterSheet: string;

@@ -61,8 +61,27 @@ export function databaseKind(): 'postgres' | 'embedded' | null {
   return kind;
 }
 
-export async function initDatabase(url: string | undefined = env.DATABASE_URL): Promise<Database> {
+export interface InitDatabaseOptions {
+  /**
+   * Applique les migrations en attente. Vrai par défaut : un serveur classique démarre
+   * une fois et garde la main. Faux en hébergement sans serveur, où chaque instance
+   * démarrerait la même migration en même temps : elles sont alors passées une seule
+   * fois pendant la construction (`npm run db:migrate`).
+   */
+  migrate?: boolean;
+  /**
+   * Connexions ouvertes vers PostgreSQL. Une seule en hébergement sans serveur : chaque
+   * instance a son propre pool, et le pooler de Supabase les compte toutes.
+   */
+  maxConnections?: number;
+}
+
+export async function initDatabase(
+  url: string | undefined = env.DATABASE_URL,
+  options: InitDatabaseOptions = {},
+): Promise<Database> {
   if (database) return database;
+  const { migrate: runMigrations = true, maxConnections = 10 } = options;
 
   if (url && !url.startsWith('memory://') && !url.startsWith('pglite://')) {
     const { default: postgres } = await import('postgres');
@@ -71,13 +90,13 @@ export async function initDatabase(url: string | undefined = env.DATABASE_URL): 
 
     const isLocal = /@(localhost|127\.0\.0\.1)[:/]/.test(url);
     const client = postgres(url, {
-      max: 10,
+      max: maxConnections,
       prepare: false,
       ssl: isLocal ? false : 'require',
       onnotice: () => undefined,
     });
     const db = drizzle(client, { schema });
-    await migrate(db, { migrationsFolder: MIGRATIONS_FOLDER });
+    if (runMigrations) await migrate(db, { migrationsFolder: MIGRATIONS_FOLDER });
 
     database = db as unknown as Database;
     closeConnection = () => client.end();

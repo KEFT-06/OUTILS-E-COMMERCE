@@ -235,7 +235,7 @@ function gammaFailure(status: number, gammaMessage: string | undefined): AppErro
 
 async function gammaFetch(path: string, init: { method?: string; body?: string } = {}): Promise<unknown> {
   const apiKey = env.GAMMA_API_KEY;
-  if (!apiKey) throw providerUnavailable('Gamma');
+  if (!apiKey) throw providerUnavailable('mise en page illustrée');
 
   let response: Response;
   try {

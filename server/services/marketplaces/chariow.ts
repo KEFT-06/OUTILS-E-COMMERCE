@@ -137,7 +137,7 @@ export async function chariowRequest(
   path: string,
   options: { method?: 'GET' | 'POST'; query?: Record<string, string>; body?: unknown } = {},
 ): Promise<unknown> {
-  if (!apiKey) throw providerUnavailable('Chariow');
+  if (!apiKey) throw providerUnavailable('distribution');
 
   const url = new URL(`${BASE_URL}${path}`);
   Object.entries(options.query ?? {}).forEach(([key, value]) => url.searchParams.set(key, value));

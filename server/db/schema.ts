@@ -295,7 +295,7 @@ export const analysisJobs = pgTable(
     market: text('market'),
     /** queued · research · writing · completed · failed */
     status: text('status').notNull(),
-    /** Identifiant de l'étude chez Perplexity. */
+    /** Identifiant de l'étude chez le moteur de recherche. */
     researchRef: text('research_ref'),
     reportId: uuid('report_id'),
     errorCode: text('error_code'),
@@ -315,8 +315,69 @@ export const analysisJobs = pgTable(
 ).enableRLS();
 
 /**
- * Storybooks créés : conte rédigé par Gemini, mis en page et illustré par Gamma. Le lien
- * d'export PDF de Gamma est un secret qui expire : il n'est jamais gardé ni envoyé au
+ * Rédaction d'un ebook long, menée par tranches.
+ *
+ * Un ouvrage de deux cents pages demande des dizaines d'appels au service de rédaction :
+ * bien plus que le temps accordé à une requête. Le travail avance donc par tranches, et
+ * son état vit ici plutôt qu'en mémoire — le suivi du navigateur le reprend là où la
+ * tranche précédente s'est arrêtée, y compris après un redémarrage ou un changement
+ * d'instance.
+ *
+ * `outline` garde le plan, `sections` les textes déjà rédigés : une tranche interrompue
+ * ne fait jamais recommencer ce qui était écrit, et les points déjà payés ne le sont
+ * pas deux fois.
+ */
+export const ebookJobs = pgTable(
+  'ebook_jobs',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    userId: uuid('user_id')
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
+    /**
+     * Ce qui est rédigé : « ebook » (contenu d'un produit à vendre) ou « market_report »
+     * (dossier stratégique développant une analyse de niche). Même moteur, mêmes tranches,
+     * mais des consignes et des garde-fous différents : un dossier de marché n'avance
+     * aucun fait qui ne vienne des sources de l'analyse.
+     */
+    kind: text('kind').notNull().default('ebook'),
+    /** Produit du brouillon auquel le texte revient ; pour un dossier, le rapport d'origine. */
+    productId: text('product_id').notNull(),
+    title: text('title').notNull(),
+    market: text('market'),
+    /** queued · outline · writing · completed · failed */
+    status: text('status').notNull(),
+    /** Pages visées, dans la limite du palier au moment du lancement. */
+    targetPages: integer('target_pages').notNull(),
+    /** Consigne de départ, pour reprendre le plan sans redemander au navigateur. */
+    request: jsonb('request').$type<Record<string, unknown>>().notNull(),
+    /** Plan validé : chapitres et sections avec leur angle. */
+    outline: jsonb('outline').$type<Record<string, unknown> | null>(),
+    /** Sections déjà rédigées, indexées par leur numéro d'ordre. */
+    sections: jsonb('sections').$type<Record<string, unknown>[]>().notNull().default(sql`'[]'::jsonb`),
+    /** Sections rédigées et total attendu : de quoi afficher une progression honnête. */
+    sectionsDone: integer('sections_done').notNull().default(0),
+    sectionsTotal: integer('sections_total').notNull().default(0),
+    wordsWritten: integer('words_written').notNull().default(0),
+    errorCode: text('error_code'),
+    errorMessage: text('error_message'),
+    creditsCharged: integer('credits_charged').notNull().default(0),
+    debitTransactionId: uuid('debit_transaction_id'),
+    refunded: boolean('refunded').notNull().default(false),
+    createdAt: createdAt(),
+    updatedAt: moment('updated_at').notNull().defaultNow(),
+    completedAt: moment('completed_at'),
+  },
+  (table) => [
+    index('ebook_jobs_user_idx').on(table.userId, table.createdAt),
+    // Une seule rédaction en cours par compte : elle mobilise déjà tout le débit disponible.
+    uniqueIndex('ebook_jobs_one_active').on(table.userId).where(sql`${table.status} in ('queued', 'outline', 'writing')`),
+  ],
+).enableRLS();
+
+/**
+ * Storybooks créés : conte rédigé, mis en page et illustré par l'IA. Le lien
+ * d'export PDF est un secret qui expire : il n'est jamais gardé ni envoyé au
  * navigateur, le serveur le redemande à chaque téléchargement.
  */
 export const storybooks = pgTable(

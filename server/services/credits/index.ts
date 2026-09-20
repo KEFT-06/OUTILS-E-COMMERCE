@@ -19,6 +19,14 @@ const actionSchema = z.object({
   id: z.string().min(1),
   label: z.string().min(1),
   cost: z.number().int().min(0),
+  /**
+   * Quantité couverte par `cost`, pour une action dont le prix suit la taille demandée
+   * (un ebook de 200 pages coûte plus qu'un de 20). Absent : prix unique par action.
+   * Toute tranche entamée est due : c'est ce que le simulateur annonce avant le lancement.
+   */
+  perUnit: z.number().int().positive().optional(),
+  /** Ce que compte `perUnit`, tel qu'affiché : « pages »… */
+  unitLabel: z.string().min(1).optional(),
   description: z.string().min(1),
 });
 
@@ -81,7 +89,7 @@ export function reloadCreditCosts(): void {
  * Coût d'une action pour un débit réel. Grille illisible : 503, et aucune action
  * facturée ne part — même règle d'échec fermé que pour la conformité.
  */
-export async function getActionCost(actionId: string): Promise<number> {
+export async function getActionCost(actionId: string, quantity = 1): Promise<number> {
   let config: CreditConfig;
   try {
     config = await getConfig();
@@ -97,7 +105,10 @@ export async function getActionCost(actionId: string): Promise<number> {
   if (!action) {
     throw new AppError(500, `L'action « ${actionId} » ne figure pas dans la grille tarifaire.`, 'CREDIT_ACTION_UNKNOWN');
   }
-  return action.cost;
+  // Action à prix unique : la quantité demandée ne change rien.
+  if (!action.perUnit) return action.cost;
+  // Toute tranche entamée est due, et une action en coûte toujours au moins une.
+  return action.cost * Math.max(1, Math.ceil(quantity / action.perUnit));
 }
 
 /** Grille complète, servie au client pour qu'il puisse simuler sans aller-retour. */

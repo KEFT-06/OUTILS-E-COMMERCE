@@ -51,7 +51,7 @@ const noStore: RequestHandler = (_req, res, next) => {
 };
 
 const requireTranslator: RequestHandler = (_req, _res, next) => {
-  next(providers.gemini ? undefined : providerUnavailable('Gemini'));
+  next(providers.gemini ? undefined : providerUnavailable('rédaction par IA'));
 };
 
 /* -------------------------------------------------------------------------- */
@@ -176,7 +176,7 @@ coversRouter.post(
   asyncRoute(async (req, res) => {
     const input = req.body as CoverRequest;
     if (input.subject === 'guide') await ownedGuide(req.auth!, input.subjectId);
-    if (!providers.gemini) throw providerUnavailable('Gemini');
+    if (!providers.gemini) throw providerUnavailable('rédaction par IA');
     res.status(201).json({ cover: await createCover(req.auth!, input) });
   }),
 );

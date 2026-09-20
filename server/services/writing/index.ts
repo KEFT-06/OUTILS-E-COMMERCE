@@ -139,7 +139,7 @@ const productResponseSchema = z.object({
 });
 
 export async function writeProduct(auth: RequestAuth, request: ProductWritingRequest) {
-  if (!providers.gemini) throw providerUnavailable('Gemini');
+  if (!providers.gemini) throw providerUnavailable('rédaction par IA');
 
   const { result } = await runBilledGeneration({
     auth,
@@ -303,7 +303,7 @@ const launchKitResponseSchema = z.object({
 });
 
 export async function writeLaunchKit(auth: RequestAuth, request: LaunchKitWritingRequest) {
-  if (!providers.gemini) throw providerUnavailable('Gemini');
+  if (!providers.gemini) throw providerUnavailable('rédaction par IA');
 
   let config: LaunchKitConfig;
   try {

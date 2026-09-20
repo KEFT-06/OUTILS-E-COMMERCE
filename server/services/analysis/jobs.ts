@@ -9,15 +9,17 @@ import { debitCredits, refundDebit } from '@server/services/accounts';
 import { type AnalysisRequest, todayLabel, writeReport } from '@server/services/analysis';
 import { researchMarket } from '@server/services/analysis/research';
 import { getActionCost } from '@server/services/credits';
+import { ensureReady } from '@server/services/preflight';
 import type { AnalysisJob } from '@server/shared/analysis';
+import { runInBackground } from '@server/shared/backgroundWork';
 import { countryName } from '@server/shared/countries';
 
 /**
  * Analyses de niche en arrière-plan.
  *
  * 1. Lancement : points réservés, analyse enregistrée (une seule en cours par compte).
- * 2. Étude : Perplexity cherche et lit le web (une à plusieurs minutes).
- * 3. Rédaction : Gemini écrit le rapport à partir de l'étude ; le serveur écarte tout fait sans source.
+ * 2. Étude : le moteur de recherche cherche et lit le web (une à plusieurs minutes).
+ * 3. Rédaction : le rapport est écrit à partir de l'étude ; le serveur écarte tout fait sans source.
  * 4. Fin : rapport enregistré ; en cas d'échec, message clair et points rendus, une seule fois.
  *
  * Le navigateur suit l'avancement : quitter la page ou perdre la connexion n'interrompt rien.
@@ -118,7 +120,7 @@ async function runJob(jobId: string): Promise<void> {
         .values({
           userId: done.userId,
           kind: 'niche_analysis',
-          provider: 'perplexity-gemini',
+          provider: 'smart-creator',
           providerRef: report.id,
           status: 'completed',
           fileFormat: null,
@@ -139,14 +141,17 @@ async function runJob(jobId: string): Promise<void> {
  * nouvelle réservation de points.
  */
 export async function startAnalysis(auth: RequestAuth, request: AnalysisRequest): Promise<{ job: AnalysisJobView; created: boolean }> {
-  if (!providers.gemini) throw providerUnavailable('Gemini');
+  if (!providers.gemini) throw providerUnavailable('rédaction par IA');
   if (!providers.webSearch) {
     throw new AppError(
       503,
-      'L’analyse de niche exige l’étude de marché de Perplexity, qui n’est pas branchée sur ce serveur : l’administrateur doit ajouter sa clé. Aucun point n’a été retiré.',
+      'L’analyse de niche exige l’étude de marché sur le web, qui n’est pas branchée sur ce serveur : l’administrateur doit la configurer. Aucun point n’a été retiré.',
       'WEB_SEARCH_NOT_CONFIGURED',
     );
   }
+  // Un service déjà relevé en panne : on refuse maintenant, avant tout débit, plutôt que
+  // de faire attendre puis de rembourser.
+  ensureReady(['writing', 'webSearch', 'database']);
 
   const userId = auth.account.user.id;
   const db = getDb();
@@ -190,7 +195,7 @@ export async function startAnalysis(auth: RequestAuth, request: AnalysisRequest)
     throw error;
   }
 
-  void runJob(job!.id);
+  runInBackground(() => runJob(job!.id), `analyse ${job!.id}`);
   return { job: viewOf(job!), created: true };
 }
 
@@ -205,8 +210,11 @@ export async function getAnalysisJob(auth: RequestAuth, jobId: string | undefine
     .where(and(eq(analysisJobs.id, parsed.data), eq(analysisJobs.userId, auth.account.user.id)))
     .limit(1);
   if (!job) throw new AppError(404, 'Analyse introuvable sur votre compte.', 'ANALYSIS_JOB_NOT_FOUND');
-  // Filet de sécurité : une analyse orpheline (processus arrêté) est relancée par le suivi.
-  if (ACTIVE.includes(job.status as AnalysisJobStatus) && !running.has(job.id)) void resumeJob(job);
+  // Filet de sécurité : une analyse orpheline (processus arrêté, instance sans serveur gelée)
+  // est relancée par le suivi. C'est elle qui fait avancer le travail d'une instance à l'autre.
+  if (ACTIVE.includes(job.status as AnalysisJobStatus) && !running.has(job.id)) {
+    runInBackground(() => resumeJob(job), `reprise de l’analyse ${job.id}`);
+  }
   return viewOf(job);
 }
 

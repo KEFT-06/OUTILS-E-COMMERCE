@@ -38,7 +38,7 @@ export const FILE_FORMAT_LABELS: Record<string, string> = {
   html: 'Page HTML',
   csv: 'Tableur CSV',
   txt: 'Texte',
-  lien: 'Lien Gamma',
+  lien: 'Lien de consultation',
 };
 
 export const PAYMENT_METHOD_LABELS: Record<string, string> = {

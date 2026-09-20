@@ -41,7 +41,7 @@ export const requestIdSchema = z.string().uuid('Identifiant de génération inva
 function authorization(): string {
   const keyId = env.HIGGSFIELD_API_KEY_ID;
   const keySecret = env.HIGGSFIELD_API_KEY_SECRET;
-  if (!keyId || !keySecret) throw providerUnavailable('Higgsfield');
+  if (!keyId || !keySecret) throw providerUnavailable('création de visuels et vidéos');
   return `Key ${keyId}:${keySecret}`;
 }
 

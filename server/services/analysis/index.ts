@@ -266,11 +266,14 @@ export function assembleReport(input: {
 
   const collectedAt = input.now.toISOString();
   const research = input.research;
+  // Les moteurs ne sont jamais nommés dans un rapport : ils peuvent changer d'une version à
+  // l'autre, et le lecteur a besoin de savoir d'où vient un chiffre, pas quel fournisseur l'a
+  // produit. Le modèle exact reste tracé côté serveur (table « generations » et journaux).
   const study =
     research?.mode === 'deep_research'
-      ? `Étude approfondie Perplexity (${research.searches} recherches, ${research.pagesConsulted} pages lues)`
-      : 'Recherche web Perplexity';
-  const writer = `Gemini (${input.model})`;
+      ? `Étude approfondie du web (${research.searches} recherches, ${research.pagesConsulted} pages lues)`
+      : 'Recherche web';
+  const writer = 'l’IA de rédaction';
   const cited = (source: string): DataProvenance => ({
     source,
     collectedAt,
@@ -319,10 +322,10 @@ export function assembleReport(input: {
     },
     limitations: [...new Set(limitations)].slice(0, 8),
     generator: {
-      provider: 'Gemini',
-      model: input.model,
+      provider: 'Smart Creator',
+      model: ANALYSIS_PROMPT_VERSION,
       promptVersion: ANALYSIS_PROMPT_VERSION,
-      webSearch: sources.length > 0 ? 'Perplexity' : null,
+      webSearch: sources.length > 0 ? 'Recherche web' : null,
       ...(research && sources.length > 0 ? { research: { ...research, sourcesCited: sources.length } } : {}),
       generatedAt: collectedAt,
     },

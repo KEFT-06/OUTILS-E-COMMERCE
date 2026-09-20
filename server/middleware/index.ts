@@ -23,12 +23,17 @@ export class AppError extends Error {
 }
 
 /** 503 explicite quand une clé de fournisseur manque — jamais un échec muet. */
-export const providerUnavailable = (provider: string) =>
+/**
+ * Une capacité manquante se nomme par ce qu'elle fait — « rédaction par IA », « création
+ * vidéo » — jamais par le fournisseur qui la rend. Le nom du prestataire n'apprend rien à
+ * l'utilisateur, et il changerait au premier changement de contrat.
+ */
+export const providerUnavailable = (capability: string) =>
   new AppError(
     503,
-    `Le fournisseur « ${provider} » n'est pas configuré sur ce serveur.`,
+    `Le service de ${capability} n'est pas disponible sur ce serveur : l'administrateur doit le configurer.`,
     'PROVIDER_NOT_CONFIGURED',
-    { provider },
+    { capability },
   );
 
 /**

@@ -72,8 +72,8 @@ const JOB_POLL_MS = 3_000;
 
 const JOB_STEPS: Record<AnalysisJob['status'], string> = {
   queued: 'Préparation de l’analyse…',
-  research: 'Perplexity mène l’étude de marché sur le web : comptez 1 à 3 minutes.',
-  writing: 'Gemini rédige le rapport à partir des sources trouvées…',
+  research: 'Étude de marché sur le web en cours : comptez 1 à 3 minutes.',
+  writing: 'Rédaction du rapport à partir des sources trouvées…',
   completed: 'Rapport prêt.',
   failed: 'L’analyse n’a pas abouti.',
 };

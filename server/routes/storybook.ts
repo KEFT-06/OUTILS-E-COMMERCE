@@ -41,8 +41,8 @@ storybookRouter.post(
       'Le brief contient des formulations non conformes : corrigez-les avant de lancer la génération.',
     );
 
-    if (!providers.gemini) throw providerUnavailable('Gemini');
-    if (!providers.gamma) throw providerUnavailable('Gamma');
+    if (!providers.gemini) throw providerUnavailable('rédaction par IA');
+    if (!providers.gamma) throw providerUnavailable('mise en page illustrée');
 
     const { result } = await runBilledGeneration({
       auth: req.auth!,
@@ -73,7 +73,7 @@ storybookRouter.get(
   requireAuth,
   routeLimiter(10, 60),
   asyncRoute(async (req, res) => {
-    if (!providers.gamma) throw providerUnavailable('Gamma');
+    if (!providers.gamma) throw providerUnavailable('mise en page illustrée');
     await sendStorybookPdf(req.auth!, req.params.storybookId, res);
   }),
 );
@@ -87,7 +87,7 @@ storybookRouter.get(
     if (!parsed.success) {
       throw new AppError(400, 'Identifiant de génération invalide.', 'INVALID_GENERATION_ID');
     }
-    if (!providers.gamma) throw providerUnavailable('Gamma');
+    if (!providers.gamma) throw providerUnavailable('mise en page illustrée');
 
     const generation = await findOwnedGeneration(req.auth!, 'gamma', parsed.data);
     const status = await getStorybookGeneration(parsed.data);

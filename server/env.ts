@@ -6,8 +6,13 @@ function emptyAsUndefined<T extends z.ZodTypeAny>(schema: T) {
   return z.preprocess((value) => (value === '' ? undefined : value), schema);
 }
 
-/** Adresse publique attribuée par l'hébergeur (Render), utilisée quand APP_URL n'est pas renseignée. */
-const hostedUrl = process.env.RENDER_EXTERNAL_URL || undefined;
+/**
+ * Adresse publique attribuée par l'hébergeur, utilisée quand APP_URL n'est pas renseignée.
+ * Render la donne entière ; Vercel donne un domaine nu, et deux variables : celle du
+ * domaine de production, stable, et celle du déploiement courant, propre à chaque envoi.
+ */
+const vercelHost = process.env.VERCEL_PROJECT_PRODUCTION_URL || process.env.VERCEL_URL || undefined;
+const hostedUrl = process.env.RENDER_EXTERNAL_URL || (vercelHost ? `https://${vercelHost}` : undefined);
 
 /**
  * Validation de l'environnement au démarrage.
@@ -33,6 +38,11 @@ const schema = z.object({
    */
   TRUST_PROXY: emptyAsUndefined(z.coerce.number().int().min(0).max(5).optional()),
   APP_URL: emptyAsUndefined(z.string().url().default(hostedUrl ?? 'http://localhost:5173')),
+  /**
+   * Dossier du site construit, quand il n'est pas à côté du serveur construit. Utile en
+   * hébergement sans serveur, où le serveur est empaqueté séparément du site.
+   */
+  CLIENT_DIR: emptyAsUndefined(z.string().optional()),
 
   // Origines CORS autorisées, séparées par des virgules. Vide : l'adresse publique.
   CORS_ORIGINS: emptyAsUndefined(z.string().default(process.env.APP_URL || hostedUrl || 'http://localhost:5173'))

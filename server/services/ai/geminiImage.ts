@@ -73,7 +73,7 @@ async function produceImage(input: {
   aspectRatio: ImageAspectRatio;
   imageSize?: '1K' | '2K';
 }): Promise<{ mimeType: string; bytes: Buffer; model: string }> {
-  if (!env.GEMINI_API_KEY) throw providerUnavailable('Gemini');
+  if (!env.GEMINI_API_KEY) throw providerUnavailable('rédaction par IA');
   const imageSize = input.imageSize ?? '1K';
 
   let { status, payload } = await callOnce(input.prompt, input.aspectRatio, imageSize);

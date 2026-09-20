@@ -34,6 +34,64 @@ export interface LaunchKitWritingResult {
   findings: WritingFinding[];
 }
 
+/** Plafond absolu, tous paliers confondus (server/services/plans). */
+export const EBOOK_PAGES_CEILING = 250;
+
+/** Rédaction d'un ebook long, menée par tranches sur le serveur. */
+export interface EbookJob {
+  id: string;
+  /** « ebook » : contenu d'un produit. « market_report » : dossier développant une analyse. */
+  kind: 'ebook' | 'market_report';
+  title: string;
+  productId: string;
+  status: 'queued' | 'outline' | 'writing' | 'completed' | 'failed';
+  targetPages: number;
+  sectionsDone: number;
+  sectionsTotal: number;
+  wordsWritten: number;
+  pagesWritten: number;
+  outline: { chapters: { index: number; title: string }[] } | null;
+  error: { code: string; message: string } | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface EbookResult {
+  title: string;
+  productId: string;
+  chapters: { title: string; content: string }[];
+  words: number;
+  pages: number;
+}
+
+/** Au-delà, un dossier de marché se répète : l'étude n'a pas plus de matière. */
+export const MARKET_REPORT_PAGES_CEILING = 100;
+
+export const ebookApi = {
+  /** Dossier stratégique développant une analyse : les faits sont relus côté serveur. */
+  startMarketReport: (body: { reportId: string; targetPages: number }) =>
+    apiRequest<{ job: EbookJob }>('/api/writing/market-report', { method: 'POST', body }),
+
+  start: (body: {
+    productId: string;
+    title: string;
+    subtitle: string;
+    typeName: string;
+    targetAudience: string;
+    transformationPromise: string;
+    chapters: { title: string; details: string }[];
+    market: string | null;
+    targetPages: number;
+  }) => apiRequest<{ job: EbookJob }>('/api/writing/ebook', { method: 'POST', body }),
+
+  active: () => apiRequest<{ job: EbookJob | null }>('/api/writing/ebook/active'),
+
+  /** Le suivi renvoie l'avancement, et relance au passage la tranche suivante. */
+  follow: (id: string) => apiRequest<{ job: EbookJob }>(`/api/writing/ebook/${encodeURIComponent(id)}`),
+
+  result: (id: string) => apiRequest<EbookResult>(`/api/writing/ebook/${encodeURIComponent(id)}/result`),
+};
+
 export const writingApi = {
   product: (body: {
     product: {

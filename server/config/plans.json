@@ -1,7 +1,7 @@
 {
-  "version": "2026.09.3",
-  "updatedAt": "2026-09-15",
-  "note": "Paliers d'abonnement, éditables sans redéploiement. « prices » : prix mensuel par devise ; une devise absente est convertie depuis la devise de base puis arrondie. null : prix pas encore fixé. « limits » : null = illimité. « guideLanguages » : langues de traduction par guide. Une fonction absente de « features » est ouverte ; false la ferme pour le palier.",
+  "version": "2026.09.4",
+  "updatedAt": "2026-09-20",
+  "note": "Paliers d'abonnement, éditables sans redéploiement. « prices » : prix mensuel par devise ; une devise absente est convertie depuis la devise de base puis arrondie. null : prix pas encore fixé. « limits » : null = illimité. « guideLanguages » : langues de traduction par guide. « ebookPages » : pages au plus pour un ebook rédigé par l'IA (plafond absolu 250). Une fonction absente de « features » est ouverte ; false la ferme pour le palier.",
   "pricing": {
     "baseCurrency": "EUR",
     "yearlyMonthsCharged": 10,
@@ -13,27 +13,58 @@
       "label": "Gratuit",
       "tagline": "Pour découvrir l’outil",
       "monthlyCredits": 3,
-      "prices": { "EUR": 0 },
-      "limits": { "savedNiches": 3, "adFrameworks": 2, "guideLanguages": 1 },
-      "features": { "video_generation": false, "storybook_generation": false, "native_review": false }
+      "prices": {
+        "EUR": 0
+      },
+      "limits": {
+        "savedNiches": 3,
+        "adFrameworks": 2,
+        "guideLanguages": 1,
+        "ebookPages": 15
+      },
+      "features": {
+        "video_generation": false,
+        "storybook_generation": false,
+        "native_review": false
+      }
     },
     {
       "id": "plus",
       "label": "Plus",
       "tagline": "Pour lancer un premier produit",
       "monthlyCredits": 20,
-      "prices": { "EUR": 7.99, "XAF": 4900, "XOF": 4900 },
-      "limits": { "savedNiches": 15, "adFrameworks": 4, "guideLanguages": 3 },
-      "features": { "native_review": false }
+      "prices": {
+        "EUR": 7.99,
+        "XAF": 4900,
+        "XOF": 4900
+      },
+      "limits": {
+        "savedNiches": 15,
+        "adFrameworks": 4,
+        "guideLanguages": 3,
+        "ebookPages": 40
+      },
+      "features": {
+        "native_review": false
+      }
     },
     {
       "id": "pro",
       "label": "Pro",
       "tagline": "Pour vendre chaque mois",
       "monthlyCredits": 60,
-      "prices": { "EUR": 14.99, "XAF": 9900, "XOF": 9900 },
+      "prices": {
+        "EUR": 14.99,
+        "XAF": 9900,
+        "XOF": 9900
+      },
       "highlight": true,
-      "limits": { "savedNiches": 50, "adFrameworks": 7, "guideLanguages": 5 },
+      "limits": {
+        "savedNiches": 50,
+        "adFrameworks": 7,
+        "guideLanguages": 5,
+        "ebookPages": 100
+      },
       "features": {}
     },
     {
@@ -41,8 +72,17 @@
       "label": "Max",
       "tagline": "Pour plusieurs produits et marchés",
       "monthlyCredits": 150,
-      "prices": { "EUR": 29.99, "XAF": 19900, "XOF": 19900 },
-      "limits": { "savedNiches": 150, "adFrameworks": 10, "guideLanguages": 10 },
+      "prices": {
+        "EUR": 29.99,
+        "XAF": 19900,
+        "XOF": 19900
+      },
+      "limits": {
+        "savedNiches": 150,
+        "adFrameworks": 10,
+        "guideLanguages": 10,
+        "ebookPages": 180
+      },
       "features": {}
     },
     {
@@ -50,8 +90,17 @@
       "label": "Elite Enterprise",
       "tagline": "Pour les agences et les équipes",
       "monthlyCredits": null,
-      "prices": { "EUR": 74.99, "XAF": 49900, "XOF": 49900 },
-      "limits": { "savedNiches": null, "adFrameworks": null, "guideLanguages": null },
+      "prices": {
+        "EUR": 74.99,
+        "XAF": 49900,
+        "XOF": 49900
+      },
+      "limits": {
+        "savedNiches": null,
+        "adFrameworks": null,
+        "guideLanguages": null,
+        "ebookPages": 250
+      },
       "features": {}
     }
   ]

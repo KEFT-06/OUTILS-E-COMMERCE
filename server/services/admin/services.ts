@@ -346,6 +346,15 @@ async function publicIp(): Promise<string | null> {
 
 let cached: { at: number; report: ServicesReport } | null = null;
 
+/**
+ * Dernier relevé, s'il est plus récent que `maxAgeMs`. Sert au contrôle avant lancement
+ * (services/preflight), qui refuse une génération quand un service est connu en panne
+ * mais ne doit surtout pas déclencher d'appel réseau sur le chemin d'une requête.
+ */
+export function cachedServicesReport(maxAgeMs: number): ServicesReport | null {
+  return cached && Date.now() - cached.at < maxAgeMs ? cached.report : null;
+}
+
 export async function checkServices(options: { refresh?: boolean } = {}): Promise<ServicesReport> {
   if (!options.refresh && cached && Date.now() - cached.at < CACHE_MS) return cached.report;
 

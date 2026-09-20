@@ -16,6 +16,15 @@ import {
   writeLaunchKit,
   writeProduct,
 } from '@server/services/writing';
+import {
+  type EbookRequest,
+  ebookRequestSchema,
+  getActiveEbookJob,
+  getEbookJob,
+  getEbookResult,
+  startEbook,
+} from '@server/services/writing/ebookJobs';
+import { type MarketReportRequest, marketReportRequestSchema, startMarketReport } from '@server/services/writing/marketReport';
 
 /** Rédaction par l'IA : modules d'un produit et textes du kit de lancement. Facturée, points rendus en cas d'échec. */
 
@@ -29,6 +38,66 @@ writingRouter.post(
   validateBody(productWritingSchema),
   asyncRoute(async (req, res) => {
     res.json(await writeProduct(req.auth!, req.body as ProductWritingRequest));
+  }),
+);
+
+/* -------------------------------------------------------------------------- */
+/*  Ebook long : plan détaillé puis rédaction par tranches                     */
+/* -------------------------------------------------------------------------- */
+
+/**
+ * La rédaction ne tient pas dans une requête : le lancement répond tout de suite, et le
+ * suivi ci-dessous renvoie l'avancement — c'est lui aussi qui relance la tranche suivante.
+ */
+writingRouter.post(
+  '/ebook',
+  requireAuth,
+  requireFeature('ai_writing'),
+  aiLimiter,
+  validateBody(ebookRequestSchema),
+  asyncRoute(async (req, res) => {
+    const { job, created } = await startEbook(req.auth!, req.body as EbookRequest);
+    res.status(created ? 202 : 200).json({ job });
+  }),
+);
+
+/**
+ * Dossier stratégique : développe une analyse de niche déjà enregistrée. Les faits sont
+ * relus sur le serveur depuis le rapport, jamais repris de la requête.
+ */
+writingRouter.post(
+  '/market-report',
+  requireAuth,
+  requireFeature('ai_writing'),
+  aiLimiter,
+  validateBody(marketReportRequestSchema),
+  asyncRoute(async (req, res) => {
+    const { job, created } = await startMarketReport(req.auth!, req.body as MarketReportRequest);
+    res.status(created ? 202 : 200).json({ job });
+  }),
+);
+
+writingRouter.get(
+  '/ebook/active',
+  requireAuth,
+  asyncRoute(async (req, res) => {
+    res.json({ job: await getActiveEbookJob(req.auth!) });
+  }),
+);
+
+writingRouter.get(
+  '/ebook/:id',
+  requireAuth,
+  asyncRoute(async (req, res) => {
+    res.json({ job: await getEbookJob(req.auth!, req.params.id) });
+  }),
+);
+
+writingRouter.get(
+  '/ebook/:id/result',
+  requireAuth,
+  asyncRoute(async (req, res) => {
+    res.json(await getEbookResult(req.auth!, req.params.id!));
   }),
 );
 

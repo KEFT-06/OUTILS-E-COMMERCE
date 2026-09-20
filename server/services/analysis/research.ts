@@ -217,14 +217,14 @@ async function agentFetch(url: string, init: { method: 'GET' | 'POST'; body?: st
     if (response.status === 402 || (denied && /credit|balance|billing|insufficient/i.test(detail))) {
       throw new AppError(
         503,
-        'Le crédit API Perplexity du site est épuisé : l’administrateur doit le recharger. Vos points ont été rendus.',
+        'Le crédit d’étude de marché du site est épuisé : l’administrateur doit le recharger. Vos points ont été rendus.',
         'WEB_SEARCH_INSUFFICIENT_CREDITS',
       );
     }
     if (denied) {
       throw new AppError(
         503,
-        'Perplexity refuse la clé du serveur : l’administrateur doit la vérifier. Vos points ont été rendus.',
+        'L’étude de marché est momentanément indisponible : l’administrateur en a été informé. Vos points ont été rendus.',
         'WEB_SEARCH_ACCESS_DENIED',
       );
     }
