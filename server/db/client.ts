@@ -94,6 +94,16 @@ export async function initDatabase(
       prepare: false,
       ssl: isLocal ? false : 'require',
       onnotice: () => undefined,
+      /*
+        Une base injoignable doit échouer vite, pas faire attendre.
+
+        Sans délai, une adresse qui ne répond pas — un hôte joignable seulement en IPv6
+        depuis un hébergeur qui n'a que de l'IPv4, par exemple — laissait la requête
+        pendue une demi-minute : le visiteur voyait une page qui tourne indéfiniment, et
+        la surveillance elle-même n'obtenait pas de réponse à interpréter. Dix secondes
+        suffisent largement à une connexion saine, et au-delà mieux vaut un 503 net.
+      */
+      connect_timeout: isLocal ? 0 : 10,
     });
     const db = drizzle(client, { schema });
     if (runMigrations) await migrate(db, { migrationsFolder: MIGRATIONS_FOLDER });
