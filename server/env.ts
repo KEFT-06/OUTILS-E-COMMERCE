@@ -1,9 +1,29 @@
 import 'dotenv/config';
 import { z } from 'zod';
 
-/** Une ligne `NOM=` recopiée de .env.example vaut « non renseigné », pas « chaîne vide ». */
-function emptyAsUndefined<T extends z.ZodTypeAny>(schema: T) {
-  return z.preprocess((value) => (value === '' ? undefined : value), schema);
+/**
+ * Une variable vide vaut « non renseignée », jamais « chaîne vide ».
+ *
+ * Le cas est la règle, pas l'exception : une ligne `NOM=` recopiée de .env.example, et
+ * surtout un hébergeur où l'on crée les variables avant de connaître leurs valeurs —
+ * Vercel les envoie alors toutes à vide. Sans ce filtre, `PORT=` devient 0, `NODE_ENV=`
+ * ne correspond à aucune valeur attendue, et la construction s'arrête sur une liste
+ * d'erreurs qui accuse à tort des variables facultatives.
+ *
+ * Le nettoyage est fait ici, sur l'ensemble, plutôt que champ par champ : appliqué
+ * schéma par schéma, il finit toujours par être oublié quelque part.
+ */
+function withoutEmptyValues(source: NodeJS.ProcessEnv): NodeJS.ProcessEnv {
+  return Object.fromEntries(Object.entries(source).filter(([, value]) => value !== undefined && value.trim() !== ''));
+}
+
+/**
+ * Les hébergeurs annoncent la production par leur propre variable. Si NODE_ENV a été
+ * créée vide, la retirer ferait retomber sur « development » : le serveur relâcherait
+ * alors ses garde-fous de production sur un site public.
+ */
+function hostedEnvironment(source: NodeJS.ProcessEnv): 'production' | undefined {
+  return source.VERCEL || source.RENDER ? 'production' : undefined;
 }
 
 /**
@@ -36,16 +56,16 @@ const schema = z.object({
    * « 0 » quand le serveur est joint directement, sinon n'importe qui pourrait se forger une
    * adresse avec l'en-tête X-Forwarded-For. Vide : 1 en production, boucle locale sinon.
    */
-  TRUST_PROXY: emptyAsUndefined(z.coerce.number().int().min(0).max(5).optional()),
-  APP_URL: emptyAsUndefined(z.string().url().default(hostedUrl ?? 'http://localhost:5173')),
+  TRUST_PROXY: z.coerce.number().int().min(0).max(5).optional(),
+  APP_URL: z.string().url().default(hostedUrl ?? 'http://localhost:5173'),
   /**
    * Dossier du site construit, quand il n'est pas à côté du serveur construit. Utile en
    * hébergement sans serveur, où le serveur est empaqueté séparément du site.
    */
-  CLIENT_DIR: emptyAsUndefined(z.string().optional()),
+  CLIENT_DIR: z.string().optional(),
 
   // Origines CORS autorisées, séparées par des virgules. Vide : l'adresse publique.
-  CORS_ORIGINS: emptyAsUndefined(z.string().default(process.env.APP_URL || hostedUrl || 'http://localhost:5173'))
+  CORS_ORIGINS: z.string().default(process.env.APP_URL || hostedUrl || 'http://localhost:5173')
     .transform((v) =>
       v
         .split(',')
@@ -59,39 +79,37 @@ const schema = z.object({
   GEMINI_API_KEY: z.string().min(1).optional(),
   GEMINI_API_URL: z.string().url().default('https://generativelanguage.googleapis.com'),
   /** Modèle Gemini des analyses de niche, des rédactions et des traductions. */
-  GEMINI_MODEL: emptyAsUndefined(z.string().regex(/^[\w.-]+$/).default('gemini-3.5-flash')),
+  GEMINI_MODEL: z.string().regex(/^[\w.-]+$/).default('gemini-3.5-flash'),
   /**
    * Modèle de secours quand le modèle principal est saturé chez Google (réponse 503, « high
    * demand »), après une seconde tentative. « off » : pas de modèle de secours.
    */
-  GEMINI_FALLBACK_MODEL: emptyAsUndefined(
-    z
-      .string()
-      .regex(/^[\w.-]+$/)
-      .default('gemini-3.6-flash')
-      .transform((model) => (model === 'off' ? null : model)),
-  ),
+  GEMINI_FALLBACK_MODEL: z
+    .string()
+    .regex(/^[\w.-]+$/)
+    .default('gemini-3.6-flash')
+    .transform((model) => (model === 'off' ? null : model)),
   /**
    * Étude de marché des analyses de niche : Perplexity cherche et lit le web (Agent API, repli
    * sur l'API Search), Gemini rédige ensuite le rapport sans rien avancer hors des sources citées.
    * La recherche Google intégrée à Gemini n'est pas utilisée : ses conditions interdisent de
    * conserver ou d'exporter les résultats. Sans clé, l'analyse de niche est refusée.
    */
-  PERPLEXITY_API_KEY: emptyAsUndefined(z.string().min(1).optional()),
-  PERPLEXITY_API_URL: emptyAsUndefined(z.string().url().default('https://api.perplexity.ai')),
+  PERPLEXITY_API_KEY: z.string().min(1).optional(),
+  PERPLEXITY_API_URL: z.string().url().default('https://api.perplexity.ai'),
   /**
    * Profondeur de l'étude menée par l'Agent API de Perplexity (préréglages de Perplexity) :
    * « medium » = recherche approfondie (défaut, environ une minute), « high » = la plus complète,
    * « low »/« fast » = plus rapides. « off » : seulement l'API Search (pages brutes, sans étude).
    */
-  PERPLEXITY_RESEARCH_PRESET: emptyAsUndefined(z.enum(['fast', 'low', 'medium', 'high', 'off']).default('medium')),
+  PERPLEXITY_RESEARCH_PRESET: z.enum(['fast', 'low', 'medium', 'high', 'off']).default('medium'),
   /**
    * Modèle d'image de Gemini (couvertures des guides et des ebooks). Exige la facturation activée
    * sur le projet Google de la clé : l'offre gratuite n'autorise aucune image.
    */
-  GEMINI_IMAGE_MODEL: emptyAsUndefined(z.string().regex(/^[\w.-]+$/).default('gemini-3.1-flash-image')),
+  GEMINI_IMAGE_MODEL: z.string().regex(/^[\w.-]+$/).default('gemini-3.1-flash-image'),
   /** Modèle d'image que Gamma utilise pour illustrer les storybooks (liste : developers.gamma.app, « Image models »). */
-  GAMMA_IMAGE_MODEL: emptyAsUndefined(z.string().regex(/^[\w.-]+$/).default('gemini-3.1-flash-image')),
+  GAMMA_IMAGE_MODEL: z.string().regex(/^[\w.-]+$/).default('gemini-3.1-flash-image'),
   // Higgsfield authentifie par une paire identifiant + secret, envoyée sous la
   // forme `Authorization: Key ID:SECRET` (docs.higgsfield.ai/docs/authentication).
   // L'ancienne variable unique HIGGSFIELD_API_KEY ne pouvait fonctionner avec
@@ -99,82 +117,78 @@ const schema = z.object({
   HIGGSFIELD_API_KEY_ID: z.string().min(1).optional(),
   HIGGSFIELD_API_KEY_SECRET: z.string().min(1).optional(),
   HIGGSFIELD_API_URL: z.string().url().default('https://api.higgsfield.ai'),
-  GAMMA_API_KEY: emptyAsUndefined(z.string().min(1).optional()),
+  GAMMA_API_KEY: z.string().min(1).optional(),
   /** Surchargeable pour tester contre un serveur factice. */
-  GAMMA_API_URL: emptyAsUndefined(z.string().url().default('https://public-api.gamma.app')),
+  GAMMA_API_URL: z.string().url().default('https://public-api.gamma.app'),
 
   /**
    * E-mails transactionnels (mot de passe oublié, confirmation d'adresse, alertes de
    * sécurité) : Brevo ou Resend. EMAIL_FROM : « Nom <adresse> » d'un domaine vérifié
    * chez le fournisseur. Sans eux, le mot de passe oublié passe par l'administrateur.
    */
-  EMAIL_PROVIDER: emptyAsUndefined(z.enum(['brevo', 'resend']).optional()),
-  EMAIL_API_KEY: emptyAsUndefined(z.string().min(1).optional()),
-  EMAIL_FROM: emptyAsUndefined(z.string().min(3).optional()),
+  EMAIL_PROVIDER: z.enum(['brevo', 'resend']).optional(),
+  EMAIL_API_KEY: z.string().min(1).optional(),
+  EMAIL_FROM: z.string().min(3).optional(),
   /** Surchargeable pour tester contre un serveur factice. */
-  EMAIL_API_URL: emptyAsUndefined(z.string().url().optional()),
+  EMAIL_API_URL: z.string().url().optional(),
   /**
    * Paiement en ligne des paliers (Stripe Checkout). STRIPE_API_KEY : clé secrète (sk_test_… en
    * mode test, sk_live_… en réel). STRIPE_WEBHOOK_SECRET : secret de signature du webhook
    * /api/billing/webhook (whsec_…), recommandé pour ne manquer aucun paiement.
    */
-  STRIPE_API_KEY: emptyAsUndefined(z.string().min(1).optional()),
-  STRIPE_WEBHOOK_SECRET: emptyAsUndefined(z.string().min(1).optional()),
-  STRIPE_API_URL: emptyAsUndefined(z.string().url().default('https://api.stripe.com')),
+  STRIPE_API_KEY: z.string().min(1).optional(),
+  STRIPE_WEBHOOK_SECRET: z.string().min(1).optional(),
+  STRIPE_API_URL: z.string().url().default('https://api.stripe.com'),
 
   /**
    * Premier administrateur d'une nouvelle installation (hébergeur sans terminal) : créé au
    * démarrage tant qu'aucun administrateur n'existe, avec un lien à usage unique dans le journal
    * du serveur. Sans effet ensuite. Voir server/services/admin/bootstrap.ts.
    */
-  ADMIN_BOOTSTRAP_EMAIL: emptyAsUndefined(z.string().email().optional()),
+  ADMIN_BOOTSTRAP_EMAIL: z.string().email().optional(),
 
   /**
    * SebPay (Mobile Money, Afrique de l'Ouest et centrale) : clés publique et secrète du tableau de bord.
    * Les clés sont limitées aux adresses IP autorisées chez SebPay ; l'administration affiche celle du serveur.
    */
-  SEBPAY_PUBLIC_KEY: emptyAsUndefined(z.string().min(1).optional()),
-  SEBPAY_SECRET_KEY: emptyAsUndefined(z.string().min(1).optional()),
-  SEBPAY_API_URL: emptyAsUndefined(z.string().url().default('https://newapi.sebpay.bj/api/v1')),
+  SEBPAY_PUBLIC_KEY: z.string().min(1).optional(),
+  SEBPAY_SECRET_KEY: z.string().min(1).optional(),
+  SEBPAY_API_URL: z.string().url().default('https://newapi.sebpay.bj/api/v1'),
   /** Service qui renvoie l'adresse IP publique du serveur (page « État des services ») ; « off » pour ne pas l'interroger. */
-  PUBLIC_IP_URL: emptyAsUndefined(z.string().default('https://api.ipify.org?format=json')),
+  PUBLIC_IP_URL: z.string().default('https://api.ipify.org?format=json'),
 
   /** Facultatif : boîte de l'équipe, qui reçoit une copie de chaque message de la page Contact et un avis à chaque paiement en ligne. */
-  CONTACT_INBOX_EMAIL: emptyAsUndefined(z.string().email().optional()),
+  CONTACT_INBOX_EMAIL: z.string().email().optional(),
 
   /**
    * PostgreSQL (Supabase en production, obligatoire). Absente en développement :
    * base embarquée dans .data/pglite, exclue de Git. `memory://` : base éphémère
    * des tests.
    */
-  DATABASE_URL: emptyAsUndefined(z.string().optional()),
+  DATABASE_URL: z.string().optional(),
 
   /**
    * Clé de chiffrement des secrets stockés en base (double authentification, clés
    * API Chariow des utilisateurs) : 64 caractères hexadécimaux, soit 256 bits.
    * Générer avec : openssl rand -hex 32. La perdre rend ces secrets illisibles.
    */
-  DATA_ENCRYPTION_KEY: emptyAsUndefined(
-    z.string().regex(/^[0-9a-fA-F]{64}$/, '64 caractères hexadécimaux attendus (openssl rand -hex 32).').optional(),
-  ),
+  DATA_ENCRYPTION_KEY: z.string().regex(/^[0-9a-fA-F]{64}$/, '64 caractères hexadécimaux attendus (openssl rand -hex 32).').optional(),
 
   /** Fuseau des statistiques « aujourd'hui, ce mois, cette année » de l'administration. */
-  REPORTING_TIMEZONE: emptyAsUndefined(
-    z
-      .string()
-      .refine((zone) => {
-        try {
-          new Intl.DateTimeFormat('fr-FR', { timeZone: zone });
-          return true;
-        } catch {
-          return false;
-        }
-      }, 'Fuseau horaire inconnu (exemple : Africa/Abidjan).')
-      .default('UTC'),
-  ),
+  REPORTING_TIMEZONE: z
+    .string()
+    .refine((zone) => {
+      try {
+        new Intl.DateTimeFormat('fr-FR', { timeZone: zone });
+        return true;
+      } catch {
+        return false;
+      }
+    }, 'Fuseau horaire inconnu (exemple : Africa/Abidjan).')
+    .default('UTC'),
 
   /** Paliers d'abonnement : quotas, prix et fonctions ouvertes. */
-  PLANS_PATH: emptyAsUndefined(z.string().optional()),
+  PLANS_PATH: z.string().optional(),
 
   /**
    * Taux de change (base EUR), rafraîchis chaque jour pour afficher les prix dans
@@ -182,9 +196,7 @@ const schema = z.object({
    * donnée personnelle n'est envoyée. « off » : taux de repli de
    * server/config/exchange-rates.json uniquement.
    */
-  EXCHANGE_RATES_URL: emptyAsUndefined(
-    z.union([z.literal('off'), z.string().url()]).default('https://open.er-api.com/v6/latest/EUR'),
-  ),
+  EXCHANGE_RATES_URL: z.union([z.literal('off'), z.string().url()]).default('https://open.er-api.com/v6/latest/EUR'),
 
   /**
    * Emplacement de la table de règles de conformité.
@@ -223,7 +235,8 @@ const schema = z.object({
 
 });
 
-const parsed = schema.safeParse(process.env);
+const cleaned = withoutEmptyValues(process.env);
+const parsed = schema.safeParse({ NODE_ENV: hostedEnvironment(process.env), ...cleaned });
 
 if (!parsed.success) {
   console.error('\n❌ Configuration d’environnement invalide :\n');
