@@ -1,5 +1,7 @@
 import { Router } from 'express';
 import { z } from 'zod';
+import { sql } from 'drizzle-orm';
+import { queryRows } from '@server/db/client';
 import { providers } from '@server/env';
 import { AppError, asyncRoute } from '@server/middleware';
 import { stripeMode } from '@server/services/billing/stripe';
@@ -42,25 +44,42 @@ function configRoute<T>(read: () => Promise<T>, unavailable: { error: new (...ar
 /* -------------------------------------------------------------------------- */
 
 /**
- * Expose quels fournisseurs sont configurés — sans jamais révéler les clés.
- * Le client s'en sert pour désactiver proprement les fonctions indisponibles
- * plutôt que de laisser l'utilisateur déclencher un échec.
+ * Santé réelle du serveur, et fournisseurs configurés — sans jamais révéler les clés.
+ * Le client s'en sert pour désactiver proprement les fonctions indisponibles plutôt que
+ * de laisser l'utilisateur déclencher un échec.
+ *
+ * La base est interrogée pour de bon, et non déduite de la présence d'une adresse de
+ * connexion : un mot de passe changé d'un côté sans l'autre laissait le serveur se
+ * déclarer en bonne santé alors que plus personne ne pouvait se connecter. Une panne de
+ * base répond 503, ce que n'importe quelle surveillance sait lire.
  */
-catalogRouter.get('/health', (_req, res) => {
-  res.json({
-    status: 'ok',
-    providers: {
-      text: providers.gemini,
-      video: providers.higgsfield,
-      storybook: providers.gamma,
-      webSearch: providers.webSearch,
-      email: providers.email,
-      payments: providers.payments,
-    },
-    /** test : aucune carte réelle débitée. */
-    paymentMode: stripeMode(),
-  });
-});
+catalogRouter.get(
+  '/health',
+  asyncRoute(async (_req, res) => {
+    let database = false;
+    try {
+      await queryRows(sql`select 1`);
+      database = true;
+    } catch (error) {
+      console.error('[santé] base de données injoignable :', error instanceof Error ? error.message : error);
+    }
+
+    res.status(database ? 200 : 503).json({
+      status: database ? 'ok' : 'degraded',
+      database,
+      providers: {
+        text: providers.gemini,
+        video: providers.higgsfield,
+        storybook: providers.gamma,
+        webSearch: providers.webSearch,
+        email: providers.email,
+        payments: providers.payments,
+      },
+      /** test : aucune carte réelle débitée. */
+      paymentMode: stripeMode(),
+    });
+  }),
+);
 
 /* -------------------------------------------------------------------------- */
 /*  Paliers d'abonnement                                                       */

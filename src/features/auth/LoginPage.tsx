@@ -5,7 +5,7 @@ import { usePublicPageMeta } from '@/shared/hooks/usePublicPageMeta';
 import { Controller, useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
-import { ArrowLeft, Check, KeyRound, Lock, ShieldCheck, Smartphone, TriangleAlert } from 'lucide-react';
+import { ArrowLeft, Check, KeyRound, Lock, ShieldCheck, Smartphone, TriangleAlert, UserPlus } from 'lucide-react';
 import { useAuth } from '@/features/auth/AuthContext';
 import { CountryCombobox } from '@/shared/components/CountryCombobox';
 import { guessCountryCode } from '@/shared/lib/geo';
@@ -24,9 +24,10 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/shared/ui/tabs';
 /**
  * Connexion et inscription.
  *
- * Tout est vérifié par le serveur. Les messages ne disent jamais si une adresse
- * est inscrite ; un verrou après plusieurs essais est annoncé tel quel, avec son
- * délai, pour que la personne sache quoi faire.
+ * Tout est vérifié par le serveur. Une adresse sans compte est dite en clair, et mène
+ * droit à l'inscription : choix assumé du propriétaire, qui a préféré la clarté en
+ * sachant que cela révèle quelles adresses sont inscrites (voir unknownAccount, côté
+ * serveur). Un verrou après plusieurs essais est annoncé tel quel, avec son délai.
  */
 
 const emailField = z.string().trim().min(1, 'Indiquez votre adresse e-mail.').email('Adresse e-mail invalide.');
@@ -56,15 +57,25 @@ const signupSchema = z
 
 const mfaSchema = z.object({ code: z.string().trim().min(6, 'Saisissez votre code (6 caractères au moins).').max(128, 'Code trop long.') });
 
-function AuthErrorAlert({ error }: { error: ApiError }) {
+function AuthErrorAlert({ error, onSignUp }: { error: ApiError; onSignUp?: () => void }) {
   const problems = passwordProblemsOf(error);
   const locked = error.code === 'TOO_MANY_ATTEMPTS';
+  // Une adresse sans compte : le message ne sert à rien s'il ne mène pas à l'inscription.
+  const unknown = error.code === 'ACCOUNT_NOT_FOUND';
 
   return (
-    <Alert variant={locked ? 'warning' : 'danger'} role="alert">
-      {locked ? <Lock /> : <TriangleAlert />}
+    <Alert variant={locked ? 'warning' : unknown ? 'info' : 'danger'} role="alert">
+      {locked ? <Lock /> : unknown ? <UserPlus /> : <TriangleAlert />}
       <AlertTitle>{locked ? 'Connexion temporairement bloquée' : error.message}</AlertTitle>
       {locked && <AlertDescription>{error.message}</AlertDescription>}
+      {unknown && onSignUp && (
+        <AlertDescription>
+          <Button type="button" size="sm" className="mt-1" onClick={onSignUp}>
+            <UserPlus />
+            Créer un compte gratuitement
+          </Button>
+        </AlertDescription>
+      )}
       {!locked && problems.length > 1 && (
         <AlertDescription>
           <ul className="list-disc space-y-0.5 pl-4">
@@ -81,9 +92,11 @@ function AuthErrorAlert({ error }: { error: ApiError }) {
 function LoginForm({
   defaultEmail,
   onMfaRequired,
+  onSignUp,
 }: {
   defaultEmail: string;
   onMfaRequired: (methods: SecondFactorMethods | null) => void;
+  onSignUp: () => void;
 }) {
   const { login } = useAuth();
   const [error, setError] = useState<ApiError | null>(null);
@@ -106,7 +119,7 @@ function LoginForm({
   return (
     <form onSubmit={onSubmit} noValidate>
       <FieldGroup>
-        {error && <AuthErrorAlert error={error} />}
+        {error && <AuthErrorAlert error={error} onSignUp={onSignUp} />}
         <Controller
           name="email"
           control={form.control}
@@ -457,10 +470,14 @@ export function LoginPage() {
                   <TabsTrigger value="signup">Créer un compte</TabsTrigger>
                 </TabsList>
                 <TabsContent value="login" className="pt-4">
-                  <LoginForm defaultEmail={state?.email ?? ''} onMfaRequired={(next) => {
+                  <LoginForm
+                    defaultEmail={state?.email ?? ''}
+                    onSignUp={() => setTab('signup')}
+                    onMfaRequired={(next) => {
                       setMethods(next);
                       setStep('mfa');
-                    }} />
+                    }}
+                  />
                 </TabsContent>
                 <TabsContent value="signup" className="pt-4">
                   <SignupForm />

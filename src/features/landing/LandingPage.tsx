@@ -296,9 +296,17 @@ export function LandingPage() {
           </p>
           <div className="relative mt-5" aria-hidden="true">
             {reduceMotion ? (
-              <div className="mx-auto flex max-w-5xl flex-wrap justify-center gap-2 px-4">
+              /*
+                Animations réduites : le bandeau reste une file horizontale, que le lecteur
+                fait défiler lui-même. Replié sur plusieurs lignes, il perdait la lecture
+                « un pays après l'autre » qui fait tout l'effet de la bande.
+              */
+              <div className="flex snap-x snap-mandatory gap-2 overflow-x-auto px-4 pb-2 [scrollbar-width:thin]">
                 {SHOWCASE_COUNTRIES.map((code) => (
-                  <span key={code} className="inline-flex items-center gap-2 rounded-full border bg-card px-4 py-1.5 text-sm font-medium">
+                  <span
+                    key={code}
+                    className="inline-flex shrink-0 snap-start items-center gap-2 rounded-full border bg-card px-4 py-1.5 text-sm font-medium whitespace-nowrap"
+                  >
                     <CountryFlag code={code} />
                     {countryName(code)}
                   </span>
@@ -510,7 +518,7 @@ export function LandingPage() {
           </nav>
         </div>
         <p className="border-t px-4 py-4 text-center text-xs text-muted-foreground">
-          © {new Date().getFullYear()} Smart Creator — Veille stratégique &amp; production e-commerce
+          © {new Date().getFullYear()} Smart Creator — Veille stratégique, production et création d’e-commerce
         </p>
       </footer>
     </div>

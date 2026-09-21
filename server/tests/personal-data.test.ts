@@ -80,8 +80,10 @@ describe('Données personnelles', () => {
     assert.equal(kept[0]!.userId, null);
 
     await agent.get('/api/account/credits').expect(401);
+    // « Compte inexistant », et non « mot de passe incorrect » : la ligne a bien disparu,
+    // elle n'a pas seulement été rendue inutilisable.
     const login = await request(app).post('/api/auth/login').send({ email: 'binta@exemple.com', password: STRONG_PASSWORD }).expect(401);
-    assert.equal(login.body.error.code, 'INVALID_CREDENTIALS');
+    assert.equal(login.body.error.code, 'ACCOUNT_NOT_FOUND');
   });
 
   it('refuse de supprimer le dernier administrateur', async () => {

@@ -121,6 +121,22 @@ export const RESET_TOKEN_TTL_MS = 2 * 3_600_000;
 const invalidCredentials = () =>
   new AppError(401, 'Adresse e-mail ou mot de passe incorrect.', 'INVALID_CREDENTIALS');
 
+/**
+ * Adresse sans compte, dite en clair — choix assumé du propriétaire du site.
+ *
+ * Distinguer « pas de compte » de « mot de passe faux » apprend à qui le demande quelles
+ * adresses sont inscrites : une liste d'e-mails suffit alors à récolter des utilisateurs,
+ * pour du hameçonnage ciblé ou pour concentrer les tentatives sur des comptes réels.
+ * Le risque a été exposé et accepté, la clarté ayant été jugée plus utile ici.
+ *
+ * Deux protections le limitent et doivent être gardées : la vérification Argon2 reste
+ * faite même sans compte (le temps de réponse ne trahit rien de plus), et l'échec compte
+ * dans les limites par adresse et par IP, qui verrouillent bien avant qu'une liste
+ * entière soit passée en revue.
+ */
+const unknownAccount = () =>
+  new AppError(401, 'Compte inexistant. Veuillez vous inscrire pour accéder à Smart Creator.', 'ACCOUNT_NOT_FOUND');
+
 function tooManyAttempts(seconds: number, subject = 'Trop de tentatives de connexion'): AppError {
   const minutes = Math.max(1, Math.ceil(seconds / 60));
   const delay = minutes >= 90 ? `${Math.round(minutes / 60)} heures` : `${minutes} minute${minutes > 1 ? 's' : ''}`;
@@ -222,7 +238,8 @@ export async function attemptLogin(input: { email: string; password: string; cli
       client: input.client,
       ...(locked > 0 ? { details: { lockedSeconds: locked } } : {}),
     });
-    throw locked > 0 ? tooManyAttempts(locked) : invalidCredentials();
+    if (locked > 0) throw tooManyAttempts(locked);
+    throw user ? invalidCredentials() : unknownAccount();
   }
 
   await clearFailures(emailKey);

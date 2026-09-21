@@ -27,7 +27,7 @@ interface BrandLogoProps {
   size?: 'sm' | 'md' | 'lg';
   /** Masque le mot-symbole et ne garde que le croissant. */
   showText?: boolean;
-  /** Affiche « Veille stratégique & production e-commerce » sous le nom. */
+  /** Affiche « Veille stratégique, production et création d’e-commerce » sous le nom. */
   showTagline?: boolean;
   className?: string;
 }
@@ -55,7 +55,7 @@ export function BrandLogo({ size = 'md', showText = true, showTagline = false, c
           </span>
           {showTagline ? (
             <span className="mt-1 truncate text-xs font-medium text-muted-foreground">
-              Veille stratégique &amp; production e-commerce
+              Veille stratégique, production et création d’e-commerce
             </span>
           ) : null}
         </span>

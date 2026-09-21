@@ -307,7 +307,7 @@ export function ReportPDFView({ report }: ReportPDFViewProps) {
 
         <footer className="space-y-3 border-t pt-6">
           <LegalNotice variant="block" />
-          <p className="text-center text-xs text-muted-foreground">Smart Creator — Veille stratégique &amp; production e-commerce</p>
+          <p className="text-center text-xs text-muted-foreground">Smart Creator — Veille stratégique, production et création d’e-commerce</p>
         </footer>
       </article>
 

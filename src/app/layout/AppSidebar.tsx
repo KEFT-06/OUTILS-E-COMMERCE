@@ -56,7 +56,7 @@ export function AppSidebar() {
                   <span data-brand-wordmark="" className="font-display text-sm font-black tracking-wide">
                     <span className="text-brand-green">SMART</span> <span className="text-brand-orange">CREATOR</span>
                   </span>
-                  <span className="truncate text-xs text-muted-foreground">Veille stratégique &amp; production e-commerce</span>
+                  <span className="truncate text-xs text-muted-foreground">Veille stratégique, production et création d’e-commerce</span>
                 </span>
               </Link>
             </SidebarMenuButton>

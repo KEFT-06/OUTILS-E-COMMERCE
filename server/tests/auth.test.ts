@@ -88,15 +88,27 @@ describe('Force brute', () => {
     assert.equal(correctButLocked.status, 429, 'le bon mot de passe ne lève pas le verrou');
   });
 
-  it('répond exactement pareil pour une adresse inconnue : aucune énumération des comptes', async () => {
+  /*
+    Ce test garantissait l'inverse : une réponse identique pour une adresse inconnue.
+    Le propriétaire du site a demandé que l'absence de compte soit dite en clair, après
+    qu'on lui a exposé ce que cela révèle. Le test suit ce choix, et verrouille ce qui
+    continue de protéger les comptes : le compteur d'échecs ne fait aucune différence
+    entre adresse connue et inconnue, et coupe donc avant qu'une liste soit passée en revue.
+  */
+  it('annonce une adresse sans compte, sans pour autant relâcher le verrou', async () => {
     const known = await signUp(app, { name: 'Chantal Mbarga', email: 'chantal@exemple.com' });
     await known.agent.post('/api/auth/logout').expect(204);
 
     const wrongKnown = await request(app).post('/api/auth/login').send({ email: 'chantal@exemple.com', password: 'Mauvais-Mot-De-Passe-2' });
     const wrongUnknown = await request(app).post('/api/auth/login').send({ email: 'personne@exemple.com', password: 'Mauvais-Mot-De-Passe-2' });
-    assert.equal(wrongKnown.status, wrongUnknown.status);
-    assert.deepEqual(wrongKnown.body, wrongUnknown.body);
 
+    assert.equal(wrongKnown.status, 401);
+    assert.equal(wrongKnown.body.error.code, 'INVALID_CREDENTIALS', 'compte existant : le message ne dit rien du mot de passe');
+    assert.equal(wrongUnknown.status, 401);
+    assert.equal(wrongUnknown.body.error.code, 'ACCOUNT_NOT_FOUND');
+    assert.match(wrongUnknown.body.error.message, /inscrire/, 'et oriente vers l’inscription');
+
+    // Le verrou reste le même : une adresse inconnue ne s'essaie pas plus longtemps qu'une autre.
     for (let attempt = 2; attempt <= 4; attempt += 1) {
       await request(app).post('/api/auth/login').send({ email: 'personne@exemple.com', password: 'Mauvais-Mot-De-Passe-2' }).expect(401);
     }
