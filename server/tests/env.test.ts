@@ -61,6 +61,23 @@ describe('Configuration au démarrage', () => {
     assert.equal(result.databaseUrl, null);
   });
 
+  it('rogne le retour à la ligne emporté avec une valeur collée', async () => {
+    /*
+      Coller une adresse de connexion depuis une page ou un message emporte souvent le
+      saut de ligne final. Invisible dans un champ de formulaire, il se glissait dans le
+      nom de la base et faisait échouer la connexion sans rien laisser deviner.
+    */
+    const result = await readEnv({
+      DATABASE_URL: 'postgresql://exemple:secret@hote.pooler.exemple.com:6543/postgres\n',
+      APP_URL: '  https://exemple.test  ',
+      REPORTING_TIMEZONE: 'Africa/Abidjan\r\n',
+    });
+
+    assert.equal(result.databaseUrl, 'postgresql://exemple:secret@hote.pooler.exemple.com:6543/postgres');
+    assert.equal(result.appUrl, 'https://exemple.test', 'les espaces de bordure ne font pas d’une adresse une adresse invalide');
+    assert.equal(result.reportingTimezone, 'Africa/Abidjan');
+  });
+
   it('se tient pour la production chez un hébergeur, même si NODE_ENV a été créée vide', async () => {
     /*
       Sans cela, retirer un NODE_ENV vide ferait retomber sur « development » : le serveur

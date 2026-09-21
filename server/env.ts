@@ -2,19 +2,29 @@ import 'dotenv/config';
 import { z } from 'zod';
 
 /**
- * Une variable vide vaut « non renseignée », jamais « chaîne vide ».
+ * Valeurs rognées, et une variable vide tenue pour non renseignée.
  *
- * Le cas est la règle, pas l'exception : une ligne `NOM=` recopiée de .env.example, et
- * surtout un hébergeur où l'on crée les variables avant de connaître leurs valeurs —
- * Vercel les envoie alors toutes à vide. Sans ce filtre, `PORT=` devient 0, `NODE_ENV=`
- * ne correspond à aucune valeur attendue, et la construction s'arrête sur une liste
- * d'erreurs qui accuse à tort des variables facultatives.
+ * Deux accidents que la configuration ne doit pas transformer en panne :
  *
- * Le nettoyage est fait ici, sur l'ensemble, plutôt que champ par champ : appliqué
- * schéma par schéma, il finit toujours par être oublié quelque part.
+ * 1. La variable créée avant d'être connue. Chez un hébergeur, on déclare les noms puis
+ *    on remplit plus tard ; elles arrivent alors toutes vides. Sans filtre, `PORT=`
+ *    devient 0 et `NODE_ENV=` ne vaut aucune valeur attendue : la construction s'arrête
+ *    sur une liste d'erreurs qui accuse à tort des variables facultatives.
+ *
+ * 2. Le retour à la ligne collé avec la valeur. Copier une adresse de connexion depuis
+ *    une page ou un message emporte souvent le saut de ligne final ; il se glisse dans le
+ *    nom de la base et la connexion échoue sans que rien ne le laisse deviner. Aucun
+ *    espace de bordure n'a jamais de sens ici : on les retire tous.
+ *
+ * Le nettoyage porte sur l'ensemble plutôt que sur chaque champ : appliqué schéma par
+ * schéma, il finit toujours par être oublié quelque part.
  */
-function withoutEmptyValues(source: NodeJS.ProcessEnv): NodeJS.ProcessEnv {
-  return Object.fromEntries(Object.entries(source).filter(([, value]) => value !== undefined && value.trim() !== ''));
+function cleanedEnv(source: NodeJS.ProcessEnv): NodeJS.ProcessEnv {
+  return Object.fromEntries(
+    Object.entries(source)
+      .map(([name, value]) => [name, value?.trim()] as const)
+      .filter(([, value]) => value !== undefined && value !== ''),
+  );
 }
 
 /**
@@ -235,7 +245,7 @@ const schema = z.object({
 
 });
 
-const cleaned = withoutEmptyValues(process.env);
+const cleaned = cleanedEnv(process.env);
 const parsed = schema.safeParse({ NODE_ENV: hostedEnvironment(process.env), ...cleaned });
 
 if (!parsed.success) {
