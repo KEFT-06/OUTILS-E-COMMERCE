@@ -223,27 +223,42 @@
   --color-danger-border: var(--danger-border);
 }
 
-/* Défilement de l'accueil (composant Marquee de Magic UI). */
-@theme {
-  --animate-marquee: marquee var(--duration) infinite linear;
-  --animate-marquee-vertical: marquee-vertical var(--duration) linear infinite;
+/*
+  Défilement de l'accueil (composant Marquee de Magic UI).
 
-  @keyframes marquee {
-    from {
-      transform: translateX(0);
-    }
-    to {
-      transform: translateX(calc(-100% - var(--gap)));
-    }
+  L'animation est écrite ici en clair, et non déclarée comme variable de thème. Passer par
+  « animation: var(--animate-marquee) » ajoutait une indirection qui ne se résolvait pas
+  dans la page : le navigateur calculait « animation-name: none » et le bandeau des pays
+  restait immobile, sans que rien ne le signale — ni erreur, ni classe manquante.
+
+  « --duration » et « --gap » viennent du composant, qui les pose sur le conteneur ; les
+  valeurs de repli permettent à la classe de fonctionner seule.
+*/
+@keyframes marquee {
+  from {
+    transform: translateX(0);
+  }
+  to {
+    transform: translateX(calc(-100% - var(--gap, 1rem)));
+  }
+}
+
+@keyframes marquee-vertical {
+  from {
+    transform: translateY(0);
+  }
+  to {
+    transform: translateY(calc(-100% - var(--gap, 1rem)));
+  }
+}
+
+@layer utilities {
+  .animate-marquee {
+    animation: marquee var(--duration, 40s) linear infinite;
   }
 
-  @keyframes marquee-vertical {
-    from {
-      transform: translateY(0);
-    }
-    to {
-      transform: translateY(calc(-100% - var(--gap)));
-    }
+  .animate-marquee-vertical {
+    animation: marquee-vertical var(--duration, 40s) linear infinite;
   }
 }
 

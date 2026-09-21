@@ -19,7 +19,7 @@ export const SITE_NAME = 'Smart Creator';
 export const PUBLIC_PAGES: readonly PublicPage[] = [
   {
     path: '/',
-    title: 'Smart Creator — Veille stratégique & production e-commerce',
+    title: 'Smart Creator — Veille stratégique, production et création d’e-commerce',
     description:
       'Smart Creator relie la lecture du marché, la production de produits digitaux et leur mise en vente, pour les créateurs d’Afrique francophone. Chaque chiffre affiché porte sa source.',
     changefreq: 'weekly',

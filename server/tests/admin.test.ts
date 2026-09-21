@@ -180,6 +180,60 @@ describe('Administration : privilèges délégués', () => {
       .expect(403);
     assert.equal(self.body.error.code, 'SELF_ACTION_FORBIDDEN');
   });
+
+  it('supprime un compte, garde le paiement pour la comptabilité et protège le dernier administrateur', async () => {
+    const { getDb } = await import('@server/db/client');
+    const { payments, users } = await import('@server/db/schema');
+    const { eq } = await import('drizzle-orm');
+
+    const suppresseur = await createAdmin(app, 'suppresseur@smartcreator.test');
+    const partant = await signUp(app, { name: 'Awa Diop', email: 'awa@exemple.com' });
+    await getDb().insert(payments).values({
+      userId: partant.account.id,
+      userEmail: 'awa@exemple.com',
+      method: 'card',
+      status: 'paid',
+      plan: 'plus',
+      periodMonths: 1,
+      amountMinor: 5_000,
+      amountFcfa: 5_000,
+      currency: 'XAF',
+      reference: 'test-suppression',
+      paidAt: new Date(),
+    });
+
+    // Sans le mot SUPPRIMER, rien ne part : la validation refuse avant tout le reste.
+    await suppresseur.agent
+      .delete(`/api/admin/users/${partant.account.id}`)
+      .send({ confirmation: 'oui', confirmationCode: '000000' })
+      .expect(400);
+
+    // Le mot juste ne suffit pas : le second facteur est exigé.
+    const sansCode = await suppresseur.agent
+      .delete(`/api/admin/users/${partant.account.id}`)
+      .send({ confirmation: 'SUPPRIMER', confirmationCode: '000000' })
+      .expect(403);
+    assert.equal(sansCode.body.error.code, 'STEP_UP_FAILED');
+
+    await suppresseur.agent
+      .delete(`/api/admin/users/${partant.account.id}`)
+      .send({ confirmation: 'SUPPRIMER', confirmationCode: await suppresseur.device.next() })
+      .expect(200);
+
+    const restants = await getDb().select().from(users).where(eq(users.id, partant.account.id));
+    assert.equal(restants.length, 0, 'le compte a disparu');
+
+    const paiement = await getDb().select().from(payments).where(eq(payments.reference, 'test-suppression'));
+    assert.equal(paiement.length, 1, 'le paiement reste pour la comptabilité');
+    assert.equal(paiement[0]!.userId, null, 'détaché de son auteur');
+
+    // Son propre compte ne se supprime pas d'ici : cela passe par Mon compte, avec le mot de passe.
+    const refus = await suppresseur.agent
+      .delete(`/api/admin/users/${suppresseur.user.id}`)
+      .send({ confirmation: 'SUPPRIMER', confirmationCode: '000000' })
+      .expect(403);
+    assert.equal(refus.body.error.code, 'SELF_ACTION_FORBIDDEN');
+  });
 });
 
 describe('Administration : suspension, liens et journal', () => {

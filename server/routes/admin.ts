@@ -5,6 +5,8 @@ import { getDb } from '@server/db/client';
 import {
   PAYMENT_METHODS,
   PLAN_IDS,
+  auditLogs,
+  authEvents,
   authThrottles,
   featureOverrides,
   payments,
@@ -619,6 +621,64 @@ adminRouter.patch(
     }
 
     res.json(await adminUserDetail(target.id));
+  }),
+);
+
+const deleteUserSchema = z.object({
+  confirmationCode: z.string().trim().max(128).optional(),
+  confirmation: z
+    .string()
+    .trim()
+    .refine((value) => value === 'SUPPRIMER', 'Saisissez SUPPRIMER pour confirmer.'),
+});
+
+/**
+ * Supprime définitivement un compte.
+ *
+ * Réservée au rôle d'administrateur, et exigeant son second facteur : c'est la seule
+ * action de cette page qu'aucune manœuvre ne rattrape. Les contenus, points, sessions et
+ * historiques partent avec la ligne du compte ; les paiements restent, détachés de leur
+ * auteur, parce que la comptabilité ne se réécrit pas.
+ *
+ * Deux refus : son propre compte, qui passe par Mon compte et demande le mot de passe, et
+ * le dernier administrateur actif, sans quoi le site resterait sans personne pour l'administrer.
+ */
+adminRouter.delete(
+  '/users/:userId',
+  routeLimiter(15, 10),
+  requireAdminRole,
+  validateBody(deleteUserSchema),
+  asyncRoute(async (req, res) => {
+    const auth = authOf(req);
+    const target = await loadTarget(req.params.userId);
+    assertNotSelf(auth, target, 'Pour supprimer votre propre compte, passez par Mon compte.');
+    const body = req.body as z.infer<typeof deleteUserSchema>;
+
+    await verifyStepUp(auth.account.user, body.confirmationCode);
+
+    await getDb().transaction(async (tx) => {
+      // Verrou : deux suppressions simultanées ne peuvent pas laisser le site sans administrateur.
+      const admins = await tx.select({ id: users.id }).from(users).where(eq(users.role, 'admin')).for('update');
+      if (target.role === 'admin' && admins.length <= 1) {
+        throw new AppError(409, 'Impossible de supprimer le dernier administrateur.', 'LAST_ADMIN');
+      }
+
+      await recordAudit(
+        {
+          actor: actorOf(auth),
+          action: 'user.deleted',
+          target,
+          details: { role: target.role, plan: target.plan },
+          client: clientInfo(req),
+        },
+        tx,
+      );
+      await tx.delete(authEvents).where(eq(authEvents.userId, target.id));
+      await tx.update(auditLogs).set({ targetUserId: null }).where(eq(auditLogs.targetUserId, target.id));
+      await tx.delete(users).where(eq(users.id, target.id));
+    });
+
+    res.json({ deleted: true, email: target.email });
   }),
 );
 
