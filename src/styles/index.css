@@ -17,7 +17,16 @@
    (dossier PDF) : un document A4 reste blanc, même en thème sombre. */
 :root,
 .paper {
-  --radius: 0.75rem;
+  /*
+    8 px, et non 12.
+
+    Le rayon généreux appliqué partout est l'autre marque de fabrique des interfaces
+    produites à la chaîne : tout y prend la même rondeur, et plus rien ne hiérarchise.
+    Un rayon court rend l'angle lisible, rapproche la carte du document et laisse la
+    typographie porter la hiérarchie. Les couleurs de la charte sont inchangées ;
+    revenir en arrière tient à cette seule ligne.
+  */
+  --radius: 0.5rem;
 
   /* Marque — couleurs du logo Smart Creator, inchangées. */
   --brand-green: #00c853;

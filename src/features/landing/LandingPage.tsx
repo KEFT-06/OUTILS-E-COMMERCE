@@ -216,16 +216,17 @@ export function LandingPage() {
       </header>
 
       <main>
-        <section className="relative overflow-hidden border-b">
-          <div
-            aria-hidden="true"
-            className="pointer-events-none absolute -top-40 -left-32 size-[36rem] rounded-full bg-brand-green/10 blur-3xl"
-          />
-          <div
-            aria-hidden="true"
-            className="pointer-events-none absolute -right-40 bottom-0 size-[28rem] rounded-full bg-brand-orange/10 blur-3xl"
-          />
+        {/*
+          Aucun décor derrière le titre.
 
+          Deux halos flous en couleurs de marque occupaient les coins. C'est la signature
+          visuelle la plus reconnaissable des pages produites à la chaîne : le lecteur la lit
+          comme « site générique » avant même d'avoir lu la promesse. Elle ne portait aucune
+          information, masquait le contraste du texte sur ses bords, et coûtait deux surfaces
+          floutées à composer sur chaque redessin — un travail réel sur un téléphone d'entrée
+          de gamme. Ce qui retient l'œil ici doit être le titre, puis la capture du produit.
+        */}
+        <section className="relative overflow-hidden border-b">
           <div className="relative mx-auto grid max-w-6xl items-center gap-12 px-4 py-16 sm:px-6 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.1fr)] lg:py-24">
             <div className="space-y-6">
               <Badge variant="brand" className="px-3 py-1 text-sm whitespace-normal">
