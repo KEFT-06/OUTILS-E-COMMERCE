@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
-import { ArrowDownRight, ArrowUpRight, Plus, RefreshCw, Store, Trash2, TrendingUp } from 'lucide-react';
+import { ArrowDownRight, ArrowUpRight, ListTree, Plus, RefreshCw, Store, Trash2, TrendingUp } from 'lucide-react';
 import { toast } from 'sonner';
 import { PageHeader } from '@/shared/components/PageHeader';
 import { apiRequest } from '@/shared/lib/api';
@@ -16,6 +16,7 @@ import { Empty, EmptyDescription, EmptyHeader, EmptyTitle } from '@/shared/ui/em
 import { Input } from '@/shared/ui/input';
 import { Skeleton } from '@/shared/ui/skeleton';
 import { Spinner } from '@/shared/ui/spinner';
+import { WatchItemsPanel } from '@/modules/radar/WatchItemsPanel';
 
 /**
  * Radar — le seul écran du site qui se remplit sans que personne ne clique.
@@ -61,11 +62,13 @@ function WatchCard({
   watch,
   onSweep,
   onRemove,
+  onOpen,
   busy,
 }: {
   watch: WatchSummary;
   onSweep: (id: string) => void;
   onRemove: (id: string) => void;
+  onOpen: (watch: WatchSummary) => void;
   busy: string | null;
 }) {
   const lien = safeHttpUrl(watch.url ?? undefined);
@@ -128,13 +131,19 @@ function WatchCard({
         {watch.active && watch.lastError && (
           <p className="text-xs text-amber-600 dark:text-amber-500">Dernier relevé en échec : {watch.lastError}</p>
         )}
-        {lien && (
-          <Button asChild variant="outline" size="sm" className="w-full">
-            <a href={lien} target="_blank" rel="noreferrer noopener">
-              Ouvrir la boutique
-            </a>
+        <div className="flex flex-wrap gap-2">
+          <Button variant="secondary" size="sm" className="flex-1" onClick={() => onOpen(watch)}>
+            <ListTree className="size-4" />
+            Voir le catalogue suivi
           </Button>
-        )}
+          {lien && (
+            <Button asChild variant="outline" size="sm">
+              <a href={lien} target="_blank" rel="noreferrer noopener">
+                Vitrine
+              </a>
+            </Button>
+          )}
+        </div>
       </CardContent>
     </Card>
   );
@@ -146,6 +155,12 @@ export function RadarView() {
   const [target, setTarget] = useState('');
   const [isAdding, setIsAdding] = useState(false);
   const [busyWatch, setBusyWatch] = useState<string | null>(null);
+  /**
+   * Boutique dont le catalogue est ouvert. On garde l'identifiant, pas l'objet : après un
+   * relevé ou un retrait, le panneau suit la liste rechargée au lieu d'afficher des
+   * compteurs périmés — ou une boutique qui n'existe plus.
+   */
+  const [ouverteId, setOuverteId] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     try {
@@ -211,6 +226,7 @@ export function RadarView() {
   const quotaAtteint =
     data !== null && data.limit !== null && data.watches.filter((watch) => watch.active).length >= data.limit;
   const sansAcces = data?.limit === 0;
+  const ouverte = ouverteId === null ? null : (data?.watches.find((watch) => watch.id === ouverteId) ?? null);
 
   return (
     <div className="space-y-6">
@@ -285,11 +301,20 @@ export function RadarView() {
         </div>
       )}
 
+      {ouverte && <WatchItemsPanel watch={ouverte} onBack={() => setOuverteId(null)} />}
+
       {data && data.watches.length > 0 && (
         <>
           <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
             {data.watches.map((watch) => (
-              <WatchCard key={watch.id} watch={watch} onSweep={sweep} onRemove={remove} busy={busyWatch} />
+              <WatchCard
+                key={watch.id}
+                watch={watch}
+                onSweep={sweep}
+                onRemove={remove}
+                onOpen={(cible) => setOuverteId(cible.id)}
+                busy={busyWatch}
+              />
             ))}
           </div>
 

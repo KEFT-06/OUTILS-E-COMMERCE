@@ -148,10 +148,15 @@ describe('Radar — surveillance continue', () => {
     // L'article arrêté garde sa ligne et sa date de mort : c'est l'information que la
     // vitrine ne donne pas, puisqu'elle n'affiche plus ce produit du tout.
     const articles = await agent.get(`/api/radar/watches/${watchId}/items`).expect(200);
-    const arrete = (articles.body.items as { name: string; endedAt: string | null }[]).find((item) =>
-      item.name.includes('Canva'),
-    );
+    const items = articles.body.items as { name: string; endedAt: string | null; trackedDays: number }[];
+    const arrete = items.find((item) => item.name.includes('Canva'));
     assert.ok(arrete?.endedAt, 'la date d’arrêt est conservée');
+    // Le filtre d'ancienneté de l'écran repose entièrement sur ce champ : il doit être servi
+    // pour tout article, y compris celui qui s'est arrêté.
+    assert.ok(
+      items.every((item) => typeof item.trackedDays === 'number'),
+      'chaque article porte son ancienneté de suivi',
+    );
   });
 
   it('mesure les ventes faites pendant la surveillance, jamais le compteur total du concurrent', async () => {
