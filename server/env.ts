@@ -304,16 +304,49 @@ const schema = z.object({
   /** Publicités relevées par passage. Chaque unité est facturée : ne pas gonfler sans raison. */
   RADAR_DISCOVERY_LIMIT: z.coerce.number().int().min(10).max(2000).default(200),
   /**
-   * Heures entre deux découvertes. 168 (une semaine) parce que le résultat est MUTUALISÉ entre
-   * tous les comptes : la dépense ne dépend pas du nombre d'utilisateurs, seulement de ce rythme.
+   * Heures entre deux découvertes. Le résultat est MUTUALISÉ entre tous les comptes : la dépense
+   * ne dépend pas du nombre d'utilisateurs, seulement de ce rythme.
+   *
+   * 720 (mensuel) et non 168 (hebdomadaire) : mesuré, un passage hebdomadaire consomme 4,64 $
+   * des 5 $ offerts, soit 93 % du budget pour la brique la moins précieuse — la liste des
+   * vendeurs qui font de la publicité ne change pas toutes les semaines. En mensuel, elle
+   * coûte 1,16 $ et laisse 3,84 $ aux mesures de marché, qui servent à chaque analyse.
    */
-  RADAR_DISCOVERY_INTERVAL_HOURS: z.coerce.number().int().min(6).max(720).default(168),
+  RADAR_DISCOVERY_INTERVAL_HOURS: z.coerce.number().int().min(6).max(720).default(720),
   /**
    * Mot-clé cherché dans la bibliothèque publicitaire. « mychariow » apparaît dans l'adresse de
    * destination des publicités de toute boutique Chariow : c'est ce qui permet de trouver les
    * vendeurs de la plateforme sans les connaître d'avance.
    */
   RADAR_DISCOVERY_QUERY: z.string().min(2).max(120).default('mychariow'),
+
+  /**
+   * Référence marché : combien de produits numériques existent déjà sur une niche, depuis quand,
+   * et à quel prix — mesuré sur Gumroad, la plus grande place de marché de produits numériques.
+   *
+   * Ce que la sonde du 22/09/2026 a établi sur 25 produits, et qui fixe la conception :
+   *   · prix, devise, type, nombre d'avis et DATE DE CRÉATION : renseignés à 100 % ;
+   *   · nombre de ventes : renseigné à 28 % seulement (le vendeur peut le masquer) ;
+   *   · le rapport ventes/avis va de 8 à 40 — il ne permet donc PAS d'estimer les ventes
+   *     d'un produit donné, seulement de les classer entre eux ;
+   *   · prix médian 199,99 $, minimum 30 $ — dix à trente fois les prix africains relevés par
+   *     le radar (4 000 à 12 000 XAF). Cette source mesure donc la SATURATION d'une niche et
+   *     valide un CONCEPT ; elle ne calibre pas un prix pour l'Afrique. Le radar s'en charge.
+   *
+   * `includeProductDetails` n'est volontairement pas activé : il double le coût pour un champ
+   * absent trois fois sur quatre.
+   */
+  APIFY_GUMROAD_ACTOR: z.string().regex(/^[\w.~-]+$/).default('scrapesage~gumroad-scraper'),
+  /** Produits relevés par niche. Facturé à l'unité : 1,10 $ les 1 000. */
+  MARKET_BENCHMARK_PRODUCTS: z.coerce.number().int().min(10).max(200).default(40),
+  /** Jours de validité d'une mesure. Une niche ne change pas de visage en un mois. */
+  MARKET_BENCHMARK_TTL_DAYS: z.coerce.number().int().min(1).max(365).default(30),
+  /**
+   * Relevés neufs autorisés par jour, pour tout le serveur. Garde-fou de dépense : 40 produits
+   * coûtent 0,044 $, donc 3 par jour ≈ 4 $ par mois — le budget qui reste une fois la découverte
+   * passée en mensuel. Au-delà, la lecture du cache continue, seule la collecte attend.
+   */
+  MARKET_BENCHMARK_DAILY_CAP: z.coerce.number().int().min(0).max(100).default(3),
 });
 
 const cleaned = cleanedEnv(process.env);

@@ -25,6 +25,9 @@ const CockpitDashboard = lazy(() =>
 );
 const NichesView = lazy(() => import('@/modules/niches/NichesView').then((module) => ({ default: module.NichesView })));
 const RadarView = lazy(() => import('@/modules/radar/RadarView').then((module) => ({ default: module.RadarView })));
+const MarketBenchmarkPanel = lazy(() =>
+  import('@/modules/analyse/MarketBenchmarkPanel').then((module) => ({ default: module.MarketBenchmarkPanel })),
+);
 const RadarMeasuredPanel = lazy(() =>
   import('@/modules/radar/RadarMeasuredPanel').then((module) => ({ default: module.RadarMeasuredPanel })),
 );
@@ -221,12 +224,19 @@ export function AnalysePage() {
         description="Les 5 taux, la concurrence et le plan d’action de la niche analysée."
       >
         {(report) => (
-          <StrategicAnalysisView
-            report={report}
-            onNavigateToProducts={() => goTo('studio')}
-            onNavigateToMetaAds={() => goTo('creatifs')}
-            onDelete={() => deleteReport(report.id)}
-          />
+          <div className="space-y-6">
+            {/* Comptage sur un marché international : combien d'offres existent déjà sur cette
+                niche. À côté du rapport comme les mesures du radar, et pour la même raison. */}
+            <Suspense fallback={null}>
+              <MarketBenchmarkPanel niche={report.nicheName || report.query} />
+            </Suspense>
+            <StrategicAnalysisView
+              report={report}
+              onNavigateToProducts={() => goTo('studio')}
+              onNavigateToMetaAds={() => goTo('creatifs')}
+              onDelete={() => deleteReport(report.id)}
+            />
+          </div>
         )}
       </RequireReport>
     </div>

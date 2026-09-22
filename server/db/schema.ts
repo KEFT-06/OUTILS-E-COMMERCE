@@ -889,6 +889,46 @@ export const discoveredStores = pgTable(
   ],
 ).enableRLS();
 
+/**
+ * Référence marché d'une niche, mesurée sur une place de marché internationale.
+ *
+ * Table PARTAGÉE, comme `discoveredStores` et pour la même raison : « combien de produits
+ * existent déjà sur cette niche » est la même réponse pour tous les comptes. Un relevé se paie,
+ * donc il est mutualisé et gardé un mois.
+ *
+ * Ce que ces chiffres disent, et ne disent pas — mesuré le 22/09/2026 :
+ *   · ils mesurent la SATURATION d'une niche (combien d'offres, depuis quand) ;
+ *   · ils ne calibrent AUCUN prix pour l'Afrique : le prix médian relevé était 199,99 $, contre
+ *     4 000 à 12 000 XAF chez les vendeurs africains. C'est le radar qui mesure les prix locaux.
+ */
+export const nicheBenchmarks = pgTable(
+  'niche_benchmarks',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    /** Requête normalisée (minuscules, espaces réduits) : la clé du cache partagé. */
+    query: text('query').notNull(),
+    /** Place de marché relevée, ex. « gumroad ». */
+    source: text('source').notNull(),
+    productCount: integer('product_count').notNull(),
+    /** Prix médian dans la devise dominante du relevé, sans conversion. */
+    medianPrice: integer('median_price'),
+    currency: text('currency'),
+    /** Âge médian des produits, en jours. Renseigné à 100 % par la source. */
+    medianAgeDays: integer('median_age_days'),
+    /** Avis cumulés : un plancher de ventes, disponible partout, et non une estimation. */
+    totalRatings: integer('total_ratings').notNull().default(0),
+    /** Produits dont le vendeur publie ses ventes. Environ un sur quatre. */
+    salesKnownCount: integer('sales_known_count').notNull().default(0),
+    /** Ventes médianes parmi ceux qui les publient. null : aucun ne les publiait. */
+    medianSales: integer('median_sales'),
+    collectedAt: createdAt(),
+  },
+  (table) => [
+    uniqueIndex('niche_benchmarks_query_unique').on(table.query, table.source),
+    index('niche_benchmarks_collected_idx').on(table.collectedAt),
+  ],
+).enableRLS();
+
 export type UserRow = typeof users.$inferSelect;
 export type SessionRow = typeof sessions.$inferSelect;
 export type PlanId = (typeof PLAN_IDS)[number];
@@ -900,3 +940,4 @@ export type WatchEventRow = typeof watchEvents.$inferSelect;
 export type WatchSource = (typeof WATCH_SOURCES)[number];
 export type WatchEventKind = (typeof WATCH_EVENT_KINDS)[number];
 export type DiscoveredStoreRow = typeof discoveredStores.$inferSelect;
+export type NicheBenchmarkRow = typeof nicheBenchmarks.$inferSelect;
