@@ -47,9 +47,14 @@ radarRouter.get(
     const userId = auth.account.user.id;
     const depuis = new Date(Date.now() - 7 * 86_400_000);
 
+    // Le Cockpit n'affiche que trois lignes : lui envoyer soixante événements serait du poids
+    // inutile sur l'écran le plus ouvert du site. L'écran Radar, lui, demande le fil complet.
+    const demandes = Number(req.query.events);
+    const limite = Number.isInteger(demandes) ? Math.min(Math.max(demandes, 1), 60) : 60;
+
     const [watches, events, counts] = await Promise.all([
       listWatches(userId),
-      listEvents(userId, { limit: 60 }),
+      listEvents(userId, { limit: limite }),
       eventCountsSince(userId, depuis),
     ]);
 

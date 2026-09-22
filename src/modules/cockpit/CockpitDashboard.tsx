@@ -10,6 +10,7 @@ import type { MarketAnalysisReport } from '@/shared/types/analysis';
 import { Button } from '@/shared/ui/button';
 import { Card, CardAction, CardContent, CardDescription, CardHeader, CardTitle } from '@/shared/ui/card';
 import { NoDataState } from '@/shared/components/NoDataState';
+import { RadarDigestCard } from '@/modules/cockpit/RadarDigestCard';
 import { Progress } from '@/shared/ui/progress';
 import { RateBadge } from '@/shared/components/RateBadge';
 import { SalesSummaryCard } from '@/shared/components/SalesSummaryCard';
@@ -148,6 +149,13 @@ export function CockpitDashboard({ report, onNavigateToModule, onOpenBilling }: 
             <SalesSummaryCard />
           </CardContent>
         </Card>
+
+        {/*
+          Juste après le solde et les ventes, avant les blocs de parcours : c'est la seule
+          information de cet écran qui a changé pendant la nuit, donc la seule qui mérite d'être
+          lue en premier. Le bloc s'efface complètement quand il n'y a rien à dire.
+        */}
+        <RadarDigestCard />
 
         <Card className="lg:col-span-6">
           <CardHeader>
