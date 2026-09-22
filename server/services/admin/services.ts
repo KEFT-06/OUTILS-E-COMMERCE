@@ -1,6 +1,6 @@
-import { desc, sql } from 'drizzle-orm';
+import { desc, eq, sql } from 'drizzle-orm';
 import { databaseKind, getDb } from '@server/db/client';
-import { storybooks } from '@server/db/schema';
+import { storybooks, watches } from '@server/db/schema';
 import { env, isProd, providers } from '@server/env';
 import { lastImageOutcome } from '@server/services/ai/image';
 
@@ -370,6 +370,87 @@ async function checkSebpay(serverIp: string | null): Promise<ServiceCheck> {
   return unreachable(base);
 }
 
+/**
+ * Radar : le seul service qui travaille sans que personne ne clique. C'est donc le seul dont
+ * une panne peut passer inaperçue des mois — d'où ce contrôle, qui répond à trois questions que
+ * l'administrateur ne peut poser nulle part ailleurs :
+ *
+ *  1. le balayage tourne-t-il vraiment ? (date du dernier relevé, pas la présence du code)
+ *  2. un déclencheur extérieur est-il configuré ? Sans lui, en hébergement sans serveur, le
+ *     radar est inerte alors que tout paraît en place ;
+ *  3. la collecte payante est-elle joignable et son jeton accepté ?
+ */
+async function checkRadar(): Promise<ServiceCheck> {
+  const base = { id: 'radar', name: 'Radar', role: 'Relevé quotidien des boutiques surveillées, résumés et découverte' };
+
+  const [surveillees, dernierReleve] = await Promise.all([
+    getDb()
+      .select({ total: sql<number>`count(*)` })
+      .from(watches)
+      .where(eq(watches.active, true)),
+    getDb()
+      .select({ at: sql<Date | null>`max(${watches.lastSweptAt})` })
+      .from(watches),
+  ]);
+
+  const actives = Number(surveillees[0]?.total ?? 0);
+  const derniere = dernierReleve[0]?.at ? new Date(dernierReleve[0].at) : null;
+  const heures = derniere ? Math.floor((Date.now() - derniere.getTime()) / 3_600_000) : null;
+
+  // Un serveur sans serveur n'a pas de minuteur : sans secret de déclenchement, rien ne relèvera.
+  if (!env.CRON_SECRET) {
+    return {
+      ...base,
+      state: actives > 0 ? 'error' : 'warning',
+      detail:
+        actives > 0
+          ? `${actives} boutique${actives > 1 ? 's' : ''} surveillée${actives > 1 ? 's' : ''}, mais aucun déclencheur périodique n’est configuré.`
+          : 'Aucun déclencheur périodique configuré.',
+      action:
+        'Renseigner CRON_SECRET, puis planifier GET /api/cron/radar une fois par jour. Sans cela, le radar ne relève ' +
+        'jamais en hébergement sans serveur — le minuteur en mémoire n’existe que sur un serveur classique.',
+    };
+  }
+
+  if (actives === 0) {
+    return { ...base, state: 'off', detail: 'Aucune boutique surveillée pour l’instant.', action: null };
+  }
+
+  // Deux jours sans relevé alors que des boutiques attendent : le planificateur ne passe plus.
+  if (heures === null || heures > 48) {
+    return {
+      ...base,
+      state: 'error',
+      detail:
+        heures === null
+          ? `${actives} boutique${actives > 1 ? 's' : ''} surveillée${actives > 1 ? 's' : ''}, aucun relevé abouti à ce jour.`
+          : `Dernier relevé il y a ${Math.floor(heures / 24)} jours, alors que le rythme prévu est de ${env.RADAR_SWEEP_INTERVAL_HOURS} h.`,
+      action: 'Vérifier que la tâche planifiée appelle bien GET /api/cron/radar, et consulter le journal du serveur.',
+    };
+  }
+
+  const collecte = providers.apify
+    ? await probe(`${trimmed(env.APIFY_API_URL)}/users/me`, { Authorization: `Bearer ${env.APIFY_TOKEN ?? ''}` })
+    : null;
+
+  if (providers.apify && collecte && (collecte.status === 401 || collecte.status === 403)) {
+    return refused(base, 'APIFY_TOKEN');
+  }
+
+  const decouverte = !providers.apify
+    ? ' Découverte de boutiques et mesures de marché désactivées (aucun jeton Apify).'
+    : collecte === null
+      ? ' Service de collecte injoignable pour l’instant.'
+      : ' Jeton de collecte accepté.';
+
+  return {
+    ...base,
+    state: 'ok',
+    detail: `${actives} boutique${actives > 1 ? 's' : ''} surveillée${actives > 1 ? 's' : ''} · dernier relevé il y a ${heures} h.${decouverte}`,
+    action: null,
+  };
+}
+
 async function checkEmail(): Promise<ServiceCheck> {
   const base = { id: 'email', name: 'E-mails', role: 'Mot de passe oublié, confirmation d’adresse, avis de paiement' };
   if (!providers.email) {
@@ -422,6 +503,7 @@ export async function checkServices(options: { refresh?: boolean } = {}): Promis
     checkGamma(),
     checkHiggsfield(),
     checkChariow(),
+    checkRadar(),
     checkStripe(),
     checkSebpay(serverIp),
     checkEmail(),

@@ -347,6 +347,20 @@ const schema = z.object({
    * passée en mensuel. Au-delà, la lecture du cache continue, seule la collecte attend.
    */
   MARKET_BENCHMARK_DAILY_CAP: z.coerce.number().int().min(0).max(100).default(3),
+
+  /**
+   * Secret du déclencheur périodique (`GET /api/cron/radar`).
+   *
+   * INDISPENSABLE en hébergement sans serveur. Le serveur classique garde un minuteur en
+   * mémoire, mais en sans-serveur « rien ne tourne entre deux requêtes » (server/vercel.ts) :
+   * sans appel extérieur, le radar ne relèverait JAMAIS, et sa promesse — ne pas dormir —
+   * serait fausse. Vercel envoie ce secret en « Authorization: Bearer … » sur ses tâches
+   * planifiées ; tout autre planificateur (cron-job.org, Render Cron) fait de même.
+   *
+   * Vide : la route répond 503 et refuse de travailler. Elle n'est jamais ouverte sans secret,
+   * sinon n'importe qui pourrait déclencher des relevés chez des tiers et des dépenses de collecte.
+   */
+  CRON_SECRET: z.string().min(16).optional(),
 });
 
 const cleaned = cleanedEnv(process.env);

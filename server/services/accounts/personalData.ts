@@ -17,6 +17,7 @@ import {
   userIntegrations,
   userPermissions,
   users,
+  watches as watchesTable,
   type UserRow,
 } from '@server/db/schema';
 import { sha256 } from '@server/lib/crypto';
@@ -50,7 +51,7 @@ export async function exportPersonalData(userId: string) {
   const [user] = await db.select().from(users).where(eq(users.id, userId)).limit(1);
   if (!user) throw new AppError(404, 'Compte introuvable.', 'ACCOUNT_NOT_FOUND');
 
-  const [history, events, transactions, created, paid, ownGuides, translations, reviewed, coverRows, integrations, privileges, overrides, analyses] =
+  const [history, events, transactions, created, paid, ownGuides, translations, reviewed, coverRows, integrations, privileges, overrides, analyses, watches] =
     await Promise.all([
       db.select().from(sessionHistory).where(eq(sessionHistory.userId, userId)).orderBy(desc(sessionHistory.startedAt)),
       db.select().from(authEvents).where(eq(authEvents.userId, userId)).orderBy(desc(authEvents.createdAt)),
@@ -84,6 +85,7 @@ export async function exportPersonalData(userId: string) {
       db.select().from(userPermissions).where(eq(userPermissions.userId, userId)),
       db.select().from(featureOverrides).where(eq(featureOverrides.userId, userId)),
       db.select().from(reports).where(eq(reports.userId, userId)).orderBy(desc(reports.createdAt)),
+      db.select().from(watchesTable).where(eq(watchesTable.userId, userId)).orderBy(desc(watchesTable.createdAt)),
     ]);
   const workspace = await listWorkspaceDocuments(userId);
   const messages = await db.select().from(contactMessages).where(eq(contactMessages.userId, userId)).orderBy(desc(contactMessages.createdAt));
@@ -141,6 +143,23 @@ export async function exportPersonalData(userId: string) {
         delta: entry.planDelta + entry.bonusDelta,
         balanceAfter: entry.balanceAfter,
         note: entry.note,
+      })),
+    },
+    /**
+     * Surveillances du radar. Elles disent quelles boutiques cette personne observe : c'est une
+     * donnée qui la concerne, elle doit donc figurer dans son export. Les articles relevés n'y
+     * sont pas : ils décrivent le catalogue public d'un tiers, pas l'utilisateur.
+     */
+    radar: {
+      alertsEnabled: user.radarAlertsEnabled,
+      lastAlertAt: iso(user.radarAlertedAt),
+      watches: watches.map((entry) => ({
+        label: entry.label,
+        url: entry.url,
+        source: entry.source,
+        active: entry.active,
+        startedAt: iso(entry.createdAt),
+        lastSweptAt: iso(entry.lastSweptAt),
       })),
     },
     privileges: privileges.map((entry) => ({ permission: entry.permission, grantedAt: iso(entry.createdAt) })),

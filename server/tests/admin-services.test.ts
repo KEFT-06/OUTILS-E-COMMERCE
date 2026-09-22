@@ -33,7 +33,7 @@ describe('État des services', () => {
     };
 
     const byId = Object.fromEntries(report.services.map((service) => [service.id, service]));
-    assert.deepEqual(Object.keys(byId).sort(), ['chariow', 'database', 'email', 'gamma', 'gemini', 'higgsfield', 'images', 'perplexity', 'sebpay', 'stripe']);
+    assert.deepEqual(Object.keys(byId).sort(), ['chariow', 'database', 'email', 'gamma', 'gemini', 'higgsfield', 'images', 'perplexity', 'radar', 'sebpay', 'stripe']);
 
     assert.equal(byId.database!.state, 'warning', 'base embarquée : pas en ligne');
     assert.match(byId.database!.action ?? '', /Session pooler/);
