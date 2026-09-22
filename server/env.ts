@@ -146,6 +146,18 @@ const schema = z.object({
   HIGGSFIELD_API_KEY_ID: z.string().min(1).optional(),
   HIGGSFIELD_API_KEY_SECRET: z.string().min(1).optional(),
   HIGGSFIELD_API_URL: z.string().url().default('https://api.higgsfield.ai'),
+  /**
+   * Rendu vidéo par fal.ai, payé à l'usage : 0,35 $ les cinq secondes, puis 0,07 $ par seconde,
+   * contre un abonnement mensuel chez Higgsfield dont les crédits périmaient chaque mois.
+   * Le jeton s'obtient sur fal.ai/dashboard/keys, portée « API » et non « ADMIN ».
+   *
+   * L'en-tête est « Authorization: Key <clé> », et non « Bearer » : l'erreur donne un 401
+   * sans explication.
+   */
+  FAL_KEY: z.string().min(1).optional(),
+  /** File d'attente de fal.ai. Surchargeable pour tester contre un serveur factice. */
+  FAL_API_URL: z.string().url().default('https://queue.fal.run'),
+  FAL_VIDEO_MODEL: z.string().regex(/^[\w./-]+$/).default('fal-ai/kling-video/v2.5-turbo/pro/text-to-video'),
   GAMMA_API_KEY: z.string().min(1).optional(),
   /** Surchargeable pour tester contre un serveur factice. */
   GAMMA_API_URL: z.string().url().default('https://public-api.gamma.app'),
@@ -287,6 +299,7 @@ export const providers = {
   email: Boolean(env.EMAIL_PROVIDER && env.EMAIL_API_KEY && env.EMAIL_FROM),
   payments: Boolean(env.STRIPE_API_KEY && !env.STRIPE_API_KEY.trim().startsWith('pk_')),
   cloudflareImages: Boolean(env.CLOUDFLARE_ACCOUNT_ID && env.CLOUDFLARE_AI_TOKEN),
+  fal: Boolean(env.FAL_KEY),
   higgsfield: Boolean(env.HIGGSFIELD_API_KEY_ID && env.HIGGSFIELD_API_KEY_SECRET),
   gamma: Boolean(env.GAMMA_API_KEY),
   chariow: Boolean(env.CHARIOW_API_KEY),

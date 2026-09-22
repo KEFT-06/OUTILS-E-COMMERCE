@@ -17,6 +17,8 @@ import {
   videoBriefSchema,
   visualBriefSchema,
 } from '@server/services/creatives';
+import type { CreativeProvider } from '@server/services/creatives';
+import { falRequestIdSchema } from '@server/services/fal';
 import { findOwnedGeneration, runBilledGeneration, settleGeneration } from '@server/services/generations';
 import { requestIdSchema } from '@server/services/higgsfield';
 import { findAdFramework, isAdFrameworkAvailable } from '@server/shared/adFrameworks';
@@ -39,12 +41,35 @@ function assertFrameworkAllowed(req: Request, brief: VisualBrief | VideoBrief): 
   );
 }
 
+/**
+ * Les deux fournisseurs ne nomment pas leurs demandes de la même façon : Higgsfield rend un
+ * UUID, fal.ai une chaîne alphanumérique plus libre. On accepte les deux formes, puis c'est
+ * la génération enregistrée qui dit de quel fournisseur elle vient.
+ */
 function parseCreativeRequestId(value: string | undefined): string {
   const parsed = requestIdSchema.safeParse(value);
-  if (!parsed.success) {
-    throw new AppError(400, 'Identifiant de génération invalide.', 'INVALID_GENERATION_ID');
+  if (parsed.success) return parsed.data;
+  const chezFal = falRequestIdSchema.safeParse(value);
+  if (chezFal.success) return chezFal.data;
+  throw new AppError(400, 'Identifiant de génération invalide.', 'INVALID_GENERATION_ID');
+}
+
+/**
+ * Retrouve la génération de son auteur, quel que soit le fournisseur qui l'a produite, et
+ * dit lequel c'est. Les créatifs lancés avant la bascule vers fal.ai restent suivis chez
+ * Higgsfield jusqu'à leur terme : rien de ce qui a été payé ne devient inaccessible.
+ */
+async function findCreative(req: Request, requestId: string) {
+  const candidats: CreativeProvider[] = ['fal', 'higgsfield'];
+  for (const provider of candidats) {
+    try {
+      return { generation: await findOwnedGeneration(req.auth!, provider, requestId), provider };
+    } catch (error) {
+      if (error instanceof AppError && error.code === 'GENERATION_NOT_FOUND') continue;
+      throw error;
+    }
   }
-  return parsed.data;
+  throw new AppError(404, 'Génération introuvable sur votre compte.', 'GENERATION_NOT_FOUND');
 }
 
 creativesRouter.post(
@@ -92,13 +117,13 @@ creativesRouter.post(
       creativeText(brief),
       'Le brief de la vidéo contient des formulations non conformes : corrigez-les avant de lancer la génération.',
     );
-    if (!providers.higgsfield) throw providerUnavailable('création de visuels et vidéos');
+    if (!providers.fal) throw providerUnavailable('rendu vidéo');
 
     const { result } = await runBilledGeneration({
       auth: req.auth!,
       actionId: 'video_generation',
       kind: 'video',
-      provider: 'higgsfield',
+      provider: 'fal',
       run: () => submitVideo(brief),
       describe: (status) => ({
         providerRef: status.requestId,
@@ -117,10 +142,8 @@ creativesRouter.get(
   requireAuth,
   asyncRoute(async (req, res) => {
     const requestId = parseCreativeRequestId(req.params.requestId);
-    if (!providers.higgsfield) throw providerUnavailable('création de visuels et vidéos');
-
-    const generation = await findOwnedGeneration(req.auth!, 'higgsfield', requestId);
-    const status = await getCreativeStatus(requestId);
+    const { generation, provider } = await findCreative(req, requestId);
+    const status = await getCreativeStatus(requestId, provider);
     await settleGeneration(generation, generationStateOf(status.status), fileFormatOf(status));
     res.json(status);
   }),
@@ -132,10 +155,8 @@ creativesRouter.get(
   requireAuth,
   asyncRoute(async (req, res) => {
     const requestId = parseCreativeRequestId(req.params.requestId);
-    if (!providers.higgsfield) throw providerUnavailable('création de visuels et vidéos');
-
-    await findOwnedGeneration(req.auth!, 'higgsfield', requestId);
+    const { provider } = await findCreative(req, requestId);
     const disposition = req.query.disposition === 'attachment' ? 'attachment' : 'inline';
-    await streamCreativeFile(requestId, disposition, res);
+    await streamCreativeFile(requestId, provider, disposition, res);
   }),
 );

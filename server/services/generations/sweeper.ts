@@ -23,14 +23,21 @@ const RESUME_AFTER_MS = 10 * 60_000;
 const ABANDON_AFTER_MS = 48 * 3_600_000;
 const BATCH_SIZE = 25;
 
-const NOT_FOUND_CODES = new Set(['HIGGSFIELD_NOT_FOUND', 'GAMMA_GENERATION_NOT_FOUND']);
+const NOT_FOUND_CODES = new Set(['HIGGSFIELD_NOT_FOUND', 'GAMMA_GENERATION_NOT_FOUND', 'FAL_NOT_FOUND']);
 
 async function checkWithProvider(generation: GenerationRow): Promise<GenerationRow> {
   if (!generation.providerRef) return settleGeneration(generation, 'failed');
 
   try {
+    // Les vidéos sont chez fal.ai depuis la bascule, les visuels — et les créatifs plus
+    // anciens — restent chez Higgsfield : le balayeur suit les deux, sans quoi une
+    // génération abandonnée ne rendrait jamais ses points.
+    if (generation.provider === 'fal' && providers.fal) {
+      const status = await getCreativeStatus(generation.providerRef, 'fal');
+      return settleGeneration(generation, generationStateOf(status.status), fileFormatOf(status));
+    }
     if (generation.provider === 'higgsfield' && providers.higgsfield) {
-      const status = await getCreativeStatus(generation.providerRef);
+      const status = await getCreativeStatus(generation.providerRef, 'higgsfield');
       return settleGeneration(generation, generationStateOf(status.status), fileFormatOf(status));
     }
     if (generation.provider === 'gamma' && providers.gamma) {

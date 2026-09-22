@@ -3,7 +3,9 @@ import { pipeline } from 'node:stream/promises';
 import type { ReadableStream as NodeReadableStream } from 'node:stream/web';
 import type { Response as ExpressResponse } from 'express';
 import { z } from 'zod';
+import { env, isProd } from '@server/env';
 import { AppError, marketSchema } from '@server/middleware';
+import { type FalQueueStatus, getFalGeneration, submitFalGeneration } from '@server/services/fal';
 import {
   HiggsfieldStatus,
   fetchMedia,
@@ -20,8 +22,8 @@ import { countryName } from '@server/shared/countries';
  *   oriente toute la direction créative, et un créatif sans cible de conscience
  *   parle à tout le monde, donc à personne.
  * - Les trois formats du cahier des charges (1:1, 9:16, 16:9) sont ceux que les
- *   deux modèles retenus acceptent tous : Soul pour l'image, Kling v2.1 pour la
- *   vidéo. Veo 3.1, par exemple, n'offre pas le 1:1.
+ *   deux modèles retenus acceptent tous : Soul pour l'image, Kling 2.5 Turbo Pro
+ *   pour la vidéo. Veo 3.1, par exemple, n'offre pas le 1:1.
  */
 
 export const AWARENESS_LEVELS = [
@@ -58,9 +60,21 @@ export const VISUAL_MODEL_PATH = '/higgsfield-ai/soul/standard';
  * mais l'API réelle les refuse et n'accepte que « 720p » ou « 1080p » (vérifié le 16 septembre 2026).
  */
 export const VISUAL_RESOLUTION = '1080p';
-export const VIDEO_MODEL_PATH = '/kling-video/v2.1/master/text-to-video';
 
-/** Longueur maximale du prompt acceptée par Kling v2.1. */
+/**
+ * Chaque créatif a son fournisseur, et le suivi doit savoir lequel.
+ *
+ * La vidéo est partie chez fal.ai : Kling 2.5 Turbo Pro y coûte 0,35 $ les cinq secondes,
+ * payés au rendu réussi, là où l'abonnement Higgsfield se payait tous les mois et voyait
+ * ses crédits périmer. Les visuels restent chez Higgsfield tant que leur flux n'a pas été
+ * repris : leur API rend un lien, quand un modèle d'image rend des octets.
+ */
+export type CreativeProvider = 'higgsfield' | 'fal';
+
+export const VISUAL_PROVIDER: CreativeProvider = 'higgsfield';
+export const VIDEO_PROVIDER: CreativeProvider = 'fal';
+
+/** Longueur maximale du prompt acceptée par Kling. */
 const VIDEO_PROMPT_MAX = 2500;
 
 const baseBrief = {
@@ -173,11 +187,16 @@ export function buildVisualInput(brief: VisualBrief) {
   };
 }
 
-/** Corps envoyé au modèle vidéo. Fonction pure, testable sans appel réseau. */
+/**
+ * Corps envoyé au modèle vidéo. Fonction pure, testable sans appel réseau.
+ *
+ * `duration` part en CHAÎNE : le schéma de Kling chez fal.ai n'accepte que « 5 » ou « 10 »
+ * sous forme de texte, et refuse le nombre par un 422 qui ne dit pas pourquoi.
+ */
 export function buildVideoInput(brief: VideoBrief) {
   return {
     prompt: buildPrompt(brief, { maxLength: VIDEO_PROMPT_MAX, durationSeconds: brief.duration }),
-    duration: brief.duration,
+    duration: String(brief.duration),
     aspect_ratio: brief.format,
     cfg_scale: 0.5,
     negative_prompt: 'distorted hands, unreadable text, brand logos, watermark',
@@ -236,15 +255,36 @@ export function fileFormatOf(status: CreativeStatus): string | null {
   return null;
 }
 
+/** La file de fal.ai ne connaît que trois états ; ni « nsfw » ni « canceled » n'en font partie. */
+const FAL_STATUS: Record<FalQueueStatus, CreativeStatus['status']> = {
+  IN_QUEUE: 'queued',
+  IN_PROGRESS: 'in_progress',
+  COMPLETED: 'completed',
+};
+
+function falToClientStatus(generation: { requestId: string; status: FalQueueStatus; mediaType?: 'video' | 'image' }): CreativeStatus {
+  return {
+    requestId: generation.requestId,
+    status: FAL_STATUS[generation.status],
+    ...(generation.mediaType ? { mediaType: generation.mediaType } : {}),
+  };
+}
+
 export async function submitVisual(brief: VisualBrief): Promise<CreativeStatus> {
   return toClientStatus(await submitGeneration(VISUAL_MODEL_PATH, buildVisualInput(brief)));
 }
 
 export async function submitVideo(brief: VideoBrief): Promise<CreativeStatus> {
-  return toClientStatus(await submitGeneration(VIDEO_MODEL_PATH, buildVideoInput(brief)));
+  return falToClientStatus(await submitFalGeneration(env.FAL_VIDEO_MODEL, buildVideoInput(brief)));
 }
 
-export async function getCreativeStatus(requestId: string): Promise<CreativeStatus> {
+/**
+ * État d'une génération chez son fournisseur. Le fournisseur est lu sur la génération
+ * enregistrée : chez fal.ai, l'identifiant du modèle fait partie de l'adresse de suivi,
+ * donc un identifiant de demande seul ne suffit pas à retrouver le rendu.
+ */
+export async function getCreativeStatus(requestId: string, provider: CreativeProvider): Promise<CreativeStatus> {
+  if (provider === 'fal') return falToClientStatus(await getFalGeneration(env.FAL_VIDEO_MODEL, requestId));
   return toClientStatus(await getGenerationStatus(requestId));
 }
 
@@ -267,6 +307,40 @@ export function servedMediaType(announced: string | null, mediaType: 'image' | '
   return mediaType === 'video' ? 'video/mp4' : 'image/png';
 }
 
+/** Adresse de boucle locale : la seule tolérée hors HTTPS, et seulement hors production. */
+const LOOPBACK = /^(127\.0\.0\.1|\[::1\]|localhost)$/;
+
+/**
+ * Récupère le fichier produit, quel que soit le fournisseur.
+ *
+ * Le chiffrement est exigé : un lien en clair exposerait le fichier du client sur le trajet.
+ * La seule exception vise la boucle locale hors production, pour qu'une suite de tests puisse
+ * servir un fichier depuis un serveur factice sans certificat — jamais en production, où la
+ * condition `isProd` referme la porte.
+ */
+async function fetchGeneratedMedia(url: string): Promise<Response> {
+  let target: URL;
+  try {
+    target = new URL(url);
+  } catch {
+    throw new AppError(502, 'Lien de fichier invalide renvoyé par le fournisseur.', 'CREATIVE_FILE_INVALID');
+  }
+  const enClairTolere = !isProd && target.protocol === 'http:' && LOOPBACK.test(target.hostname);
+  if (target.protocol !== 'https:' && !enClairTolere) {
+    throw new AppError(502, 'Lien de fichier non sécurisé renvoyé par le fournisseur.', 'CREATIVE_FILE_INSECURE');
+  }
+  if (target.protocol === 'https:') return fetchMedia(url);
+
+  let response: Response;
+  try {
+    response = await fetch(target, { signal: AbortSignal.timeout(60_000) });
+  } catch {
+    throw new AppError(502, 'Le fichier généré est injoignable.', 'CREATIVE_FILE_UNREACHABLE');
+  }
+  if (!response.ok || !response.body) throw new AppError(502, 'Le fichier généré est injoignable.', 'CREATIVE_FILE_UNREACHABLE');
+  return response;
+}
+
 /**
  * Relaie le fichier généré au navigateur.
  *
@@ -276,15 +350,24 @@ export function servedMediaType(announced: string | null, mediaType: 'image' | '
  */
 export async function streamCreativeFile(
   requestId: string,
+  provider: CreativeProvider,
   disposition: 'inline' | 'attachment',
   res: ExpressResponse,
 ): Promise<void> {
-  const media = resultMedia(await getGenerationStatus(requestId));
+  const media =
+    provider === 'fal'
+      ? await (async () => {
+          const generation = await getFalGeneration(env.FAL_VIDEO_MODEL, requestId);
+          return generation.mediaUrl && generation.mediaType
+            ? { mediaType: generation.mediaType, url: generation.mediaUrl }
+            : null;
+        })()
+      : resultMedia(await getGenerationStatus(requestId));
   if (!media) {
     throw new AppError(409, "Aucun fichier disponible : la génération n'est pas terminée.", 'CREATIVE_NOT_READY');
   }
 
-  const upstream = await fetchMedia(media.url);
+  const upstream = await fetchGeneratedMedia(media.url);
   const contentType = servedMediaType(upstream.headers.get('content-type'), media.mediaType);
   const extension = EXTENSIONS[contentType]!;
 

@@ -192,7 +192,7 @@ adminRouter.get(
       details: { generationId: creative.id, kind: creative.kind },
       client: clientInfo(req),
     });
-    await streamCreativeFile(creative.providerRef, disposition, res);
+    await streamCreativeFile(creative.providerRef, creative.provider === 'fal' ? 'fal' : 'higgsfield', disposition, res);
   }),
 );
 
