@@ -48,6 +48,14 @@ export const WORDS_PER_PAGE = 300;
 const limitsSchema = z.object({
   /** Niches qu'un compte peut enregistrer ; null : illimité. */
   savedNiches: z.number().int().min(0).nullable(),
+  /**
+   * Boutiques suivies par le radar ; 0 : pas d'accès au radar, null : illimité.
+   *
+   * Borne le nombre de cibles, jamais le nombre de relevés : un radar facturé au passage
+   * serait coupé par son propriétaire, et une surveillance coupée perd son historique —
+   * c'est-à-dire tout ce qui fait sa valeur.
+   */
+  watchedStores: z.number().int().min(0).nullable(),
   /** Méthodes publicitaires ouvertes, dans l'ordre de server/shared/adFrameworks.ts ; null : toutes. */
   adFrameworks: z.number().int().min(0).max(AD_FRAMEWORKS.length).nullable(),
   /** Langues de traduction par guide ; null : illimité. */
@@ -99,6 +107,7 @@ export type PlanConfig = z.infer<typeof configSchema>;
 
 export const UNLIMITED: PlanLimits = {
   savedNiches: null,
+  watchedStores: null,
   adFrameworks: null,
   guideLanguages: null,
   ebookPages: EBOOK_PAGES_CEILING,

@@ -173,7 +173,7 @@ const measuredColumns: ColumnDef<KeywordRow>[] = [
   intentColumn,
 ];
 
-const radarConfig = { score: { label: 'Score', color: 'var(--chart-1)' } } satisfies ChartConfig;
+const toileConfig = { score: { label: 'Score', color: 'var(--chart-1)' } } satisfies ChartConfig;
 const volumeConfig = { volume: { label: 'Recherches / mois', color: 'var(--chart-2)' } } satisfies ChartConfig;
 
 function hostnameOf(url: string): string {
@@ -228,7 +228,7 @@ function DeleteReportButton({ nicheName, onDelete }: { nicheName: string; onDele
 }
 
 export function StrategicAnalysisView({ report, onNavigateToProducts, onNavigateToMetaAds, onDelete }: StrategicAnalysisViewProps) {
-  const [rateView, setRateView] = useState<'grid' | 'radar'>('grid');
+  const [rateView, setRateView] = useState<'grid' | 'toile'>('grid');
   const [inspectedRate, setInspectedRate] = useState<MarketRate | null>(null);
   const [sorting, setSorting] = useState<SortingState>([{ id: 'volume', desc: true }]);
 
@@ -245,10 +245,10 @@ export function StrategicAnalysisView({ report, onNavigateToProducts, onNavigate
     report.rates.virality,
   ].filter(Boolean);
 
-  // Le radar ne trace que des scores calculés : un niveau qualitatif n'a pas de place sur un axe de 0 à 100.
+  // La toile ne trace que des scores calculés : un niveau qualitatif n'a pas de place sur un axe de 0 à 100.
   const scoredRates = rates.filter((rate): rate is MarketRate & { score: number } => rate.score !== null);
-  const canShowRadar = scoredRates.length >= 3;
-  const radarData = scoredRates.map((rate) => ({
+  const canShowToile = scoredRates.length >= 3;
+  const toileData = scoredRates.map((rate) => ({
     subject: rate.label.replace('Taux de ', '').replace('Taux d’', '').replace("Taux d'", ''),
     score: rate.score,
   }));
@@ -387,19 +387,19 @@ export function StrategicAnalysisView({ report, onNavigateToProducts, onNavigate
               <Info className="mt-0.5 size-4 shrink-0" aria-hidden="true" />
               Touchez un niveau pour voir sur quoi il repose : calcul sur une collecte, sources citées, ou raison de son absence.
             </p>
-            {canShowRadar && (
+            {canShowToile && (
               <div className="inline-flex shrink-0 self-start rounded-lg border bg-muted/50 p-1" role="group" aria-label="Affichage des taux">
                 <Button size="sm" variant={rateView === 'grid' ? 'secondary' : 'ghost'} aria-pressed={rateView === 'grid'} onClick={() => setRateView('grid')}>
                   Grille
                 </Button>
-                <Button size="sm" variant={rateView === 'radar' ? 'secondary' : 'ghost'} aria-pressed={rateView === 'radar'} onClick={() => setRateView('radar')}>
-                  Radar
+                <Button size="sm" variant={rateView === 'toile' ? 'secondary' : 'ghost'} aria-pressed={rateView === 'toile'} onClick={() => setRateView('toile')}>
+                  Toile
                 </Button>
               </div>
             )}
           </div>
 
-          {rateView === 'grid' || !canShowRadar ? (
+          {rateView === 'grid' || !canShowToile ? (
             <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
               {rates.map((rate) => {
                 const trend = rate.trend ? TREND[rate.trend] : null;
@@ -453,8 +453,8 @@ export function StrategicAnalysisView({ report, onNavigateToProducts, onNavigate
                     contradictoires, que le graphique tentait de satisfaire tour à tour en
                     se remesurant sans fin — l'onglet finissait par se figer à l'affichage.
                   */}
-                  <ChartContainer config={radarConfig} className="mx-auto aspect-square w-full max-w-80">
-                    <RadarChart data={radarData} outerRadius="72%">
+                  <ChartContainer config={toileConfig} className="mx-auto aspect-square w-full max-w-80">
+                    <RadarChart data={toileData} outerRadius="72%">
                       <PolarGrid />
                       <PolarAngleAxis dataKey="subject" />
                       <PolarRadiusAxis angle={30} domain={[0, 100]} tick={false} axisLine={false} />
@@ -464,7 +464,7 @@ export function StrategicAnalysisView({ report, onNavigateToProducts, onNavigate
                   </ChartContainer>
                 </div>
                 <div className="space-y-3 lg:col-span-5">
-                  <h2 className="font-semibold">Lire le radar</h2>
+                  <h2 className="font-semibold">Lire la toile</h2>
                   <p className="text-sm leading-relaxed text-muted-foreground">
                     Chaque axe va de 0 à 100. Une aire large signale une niche forte sur plusieurs taux à la fois ; elle ne
                     prédit pas à elle seule un retour sur investissement.

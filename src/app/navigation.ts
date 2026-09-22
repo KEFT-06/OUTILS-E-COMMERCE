@@ -14,6 +14,7 @@ import {
   LayoutTemplate,
   Megaphone,
   Package,
+  Radar,
   Rocket,
   ShieldAlert,
   Store,
@@ -39,6 +40,7 @@ export type ModuleGroup = 'voir' | 'creer' | 'vendre';
 export type ModuleId =
   | 'cockpit'
   | 'niches'
+  | 'radar'
   | 'analyse'
   | 'dossier-pdf'
   | 'studio'
@@ -90,6 +92,15 @@ export const MODULES: readonly ModuleEntry[] = [
     label: { fr: 'Niches', en: 'Niches' },
     description: { fr: 'Toutes les niches, tous secteurs', en: 'Every niche, every sector' },
     icon: Compass,
+    ready: true,
+  },
+  {
+    id: 'radar',
+    path: '/app/radar',
+    group: 'voir',
+    label: { fr: 'Radar', en: 'Radar' },
+    description: { fr: 'Ce qui bouge chez vos concurrents', en: 'What moves at your competitors' },
+    icon: Radar,
     ready: true,
   },
   {

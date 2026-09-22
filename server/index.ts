@@ -4,6 +4,7 @@ import { createApp } from '@server/app';
 import { startExchangeRateRefresher, stopExchangeRateRefresher } from '@server/services/currency';
 import { startSessionSweeper } from '@server/services/auth/sessions';
 import { startGenerationSweeper } from '@server/services/generations/sweeper';
+import { startRadarSweeper } from '@server/services/radar/sweeper';
 import { bootstrapFirstAdmin } from '@server/services/admin/bootstrap';
 import { resumeAnalysisJobs } from '@server/services/analysis/jobs';
 import { resumeEbookJobs } from '@server/services/writing/ebookJobs';
@@ -70,6 +71,10 @@ void resumeEbookJobs()
 // Reprend le suivi des générations dont l'écran a été fermé avant la fin.
 const stopSweeper = startGenerationSweeper();
 
+// Le radar ne dort pas : il relève chaque boutique surveillée une fois par jour, sans
+// que personne n'ouvre l'écran. C'est ce passage nocturne qui constitue l'historique.
+const stopRadarSweeper = startRadarSweeper();
+
 // Clôt dans l'historique les sessions abandonnées (onglet fermé sans déconnexion).
 const stopSessionSweeper = startSessionSweeper();
 
@@ -82,6 +87,7 @@ for (const signal of ['SIGTERM', 'SIGINT'] as const) {
     console.log(`\n  ${signal} reçu, arrêt en cours…`);
     stopSweeper();
     stopSessionSweeper();
+    stopRadarSweeper();
     stopExchangeRateRefresher();
     server.close(() => {
       void closeDatabase().finally(() => process.exit(0));

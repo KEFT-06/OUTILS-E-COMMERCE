@@ -21,6 +21,9 @@ export async function createTestApp(overrides: Record<string, string> = {}): Pro
     HIGGSFIELD_API_URL: 'http://127.0.0.1:9',
     CHARIOW_API_KEY: 'sk_test_cle_du_proprietaire_0000',
     CHARIOW_API_URL: 'http://127.0.0.1:9',
+    // Vitrine publique lue par le radar : neutralisée par défaut, sinon une suite lancée
+    // sur un poste configuré irait relever de vraies boutiques chez un tiers.
+    CHARIOW_STOREFRONT_URL: 'http://127.0.0.1:9',
     GEMINI_API_KEY: 'cle-gemini-de-test',
     GEMINI_API_URL: 'http://127.0.0.1:9',
     // Neutralisés par défaut : env.ts charge le .env du poste, et sans ces trois lignes une

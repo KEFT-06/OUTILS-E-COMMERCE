@@ -1,4 +1,4 @@
-import { lazy, type ReactNode } from 'react';
+import { lazy, Suspense, type ReactNode } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { Compass, PenSquare, Sparkles } from 'lucide-react';
 import { ACCOUNT_PATH, pathOf, type ModuleId } from '@/app/navigation';
@@ -24,6 +24,10 @@ const CockpitDashboard = lazy(() =>
   import('@/modules/cockpit/CockpitDashboard').then((module) => ({ default: module.CockpitDashboard })),
 );
 const NichesView = lazy(() => import('@/modules/niches/NichesView').then((module) => ({ default: module.NichesView })));
+const RadarView = lazy(() => import('@/modules/radar/RadarView').then((module) => ({ default: module.RadarView })));
+const RadarMeasuredPanel = lazy(() =>
+  import('@/modules/radar/RadarMeasuredPanel').then((module) => ({ default: module.RadarMeasuredPanel })),
+);
 const ReportPDFView = lazy(() =>
   import('@/modules/analyse/ReportPDFView').then((module) => ({ default: module.ReportPDFView })),
 );
@@ -196,12 +200,21 @@ export function NichesPage() {
   return <NichesView />;
 }
 
+export function RadarPage() {
+  return <RadarView />;
+}
+
 export function AnalysePage() {
   const goTo = useGoTo();
   const { deleteReport } = useWorkspace();
   return (
     <div className="space-y-6">
       <AnalysisProgress />
+      {/* Les mesures du radar se posent à côté du rapport, jamais dedans : un rapport est
+          un document daté, et ces chiffres changent chaque nuit. */}
+      <Suspense fallback={null}>
+        <RadarMeasuredPanel />
+      </Suspense>
       <RequireReport
         eyebrow="Voir"
         title="Analyse stratégique"

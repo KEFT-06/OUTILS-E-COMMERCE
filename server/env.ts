@@ -273,7 +273,20 @@ const schema = z.object({
   /** Surchargeable pour tester le connecteur contre un serveur factice. */
   CHARIOW_API_URL: z.string().url().default('https://api.chariow.com/v1'),
 
-
+  /**
+   * Radar — vitrine publique des boutiques Chariow. Aucune clé : ce service sert le
+   * catalogue que la boutique affiche déjà à ses visiteurs
+   * (/storefront/{boutique}/products, relevé le 22/09/2026).
+   * Ne jamais y envoyer la clé CHARIOW_API_KEY : elle n'y a pas cours et cette adresse
+   * est surchargeable, donc potentiellement pointée ailleurs par un test.
+   */
+  CHARIOW_STOREFRONT_URL: z.string().url().default('https://api-edge.chariow.com'),
+  /**
+   * Intervalle entre deux balayages d'une même surveillance. Une journée : les ventes
+   * et les prix d'une boutique ne bougent pas à l'heure, et un passage plus fréquent
+   * pèserait sur le site d'un tiers sans rien apprendre de plus.
+   */
+  RADAR_SWEEP_INTERVAL_HOURS: z.coerce.number().int().min(1).max(168).default(24),
 });
 
 const cleaned = cleanedEnv(process.env);

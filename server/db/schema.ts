@@ -740,8 +740,130 @@ export const userIntegrations = pgTable(
   (table) => [primaryKey({ columns: [table.userId, table.provider] })],
 ).enableRLS();
 
+/* -------------------------------------------------------------------------- */
+/*  Radar — surveillance continue                                              */
+/* -------------------------------------------------------------------------- */
+
+/**
+ * Sources surveillées. Une seule aujourd'hui : la vitrine d'une boutique Chariow,
+ * dont le catalogue est public en JSON, sans authentification — relevé le
+ * 22/09/2026 sur quatre boutiques, même forme de réponse à chaque fois.
+ * Ajouter une source (publicités Meta, autre plateforme) est une migration d'une ligne.
+ */
+export const WATCH_SOURCES = ['chariow_store'] as const;
+export const watchSource = pgEnum('watch_source', WATCH_SOURCES);
+
+/**
+ * Ce qu'un balayage peut constater. Ces quatre événements sont exactement ce qu'un
+ * relevé unique ne peut PAS voir : chacun naît de la comparaison de deux passages.
+ * C'est toute la raison d'être du radar.
+ */
+export const WATCH_EVENT_KINDS = ['appeared', 'disappeared', 'price_changed', 'sales_jump'] as const;
+export const watchEventKind = pgEnum('watch_event_kind', WATCH_EVENT_KINDS);
+
+/** Une surveillance : ce qu'un compte a demandé au radar de suivre, jour après jour. */
+export const watches = pgTable(
+  'watches',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    userId: uuid('user_id')
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
+    source: watchSource('source').notNull(),
+    /** Identifiant chez la source, ex. « store_twhjcyivrzt2 ». */
+    externalId: text('external_id').notNull(),
+    /** Nom lisible, relevé sur la vitrine au moment de l'ajout. */
+    label: text('label').notNull(),
+    url: text('url'),
+    /** false : conservée avec son historique, mais plus balayée (quota, ou arrêt demandé). */
+    active: boolean('active').notNull().default(true),
+    lastSweptAt: moment('last_swept_at'),
+    /** Dernier échec de balayage, montré à l'utilisateur : un radar muet doit dire pourquoi. */
+    lastError: text('last_error'),
+    /** Échecs consécutifs. Au-delà du seuil, la surveillance se met en pause au lieu de s'acharner. */
+    failureCount: integer('failure_count').notNull().default(0),
+    createdAt: createdAt(),
+  },
+  (table) => [
+    uniqueIndex('watches_target_unique').on(table.userId, table.source, table.externalId),
+    index('watches_sweep_idx').on(table.active, table.lastSweptAt),
+  ],
+).enableRLS();
+
+/**
+ * Un article vu au moins une fois par une surveillance — une ligne par article, jamais
+ * une par jour : `lastSeenAt` avancé à chaque passage suffit à tout déduire.
+ *
+ * Un relevé quotidien coûterait 3 500 × 365 lignes par an et par surveillance pour la
+ * même information ; ici la durée de vie est une soustraction (`endedAt − firstSeenAt`).
+ */
+export const watchItems = pgTable(
+  'watch_items',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    watchId: uuid('watch_id')
+      .notNull()
+      .references(() => watches.id, { onDelete: 'cascade' }),
+    /** Identifiant chez la source, ex. « prd_kmywa7 ». Stable d'un passage à l'autre. */
+    externalId: text('external_id').notNull(),
+    name: text('name').notNull(),
+    /** Nature déclarée par la source : downloadable, course, coaching, bundle… */
+    kind: text('kind'),
+    /**
+     * Prix tel que la source le donne, sans aucune conversion : le radar ne compare
+     * ce nombre qu'à lui-même d'un passage au suivant. Convertir introduirait une
+     * variation de taux de change là où rien n'a bougé chez le concurrent.
+     */
+    priceValue: integer('price_value'),
+    currency: text('currency'),
+    /** Ventes cumulées annoncées publiquement. Sa progression est la mesure la plus forte du radar. */
+    salesCount: integer('sales_count'),
+    /**
+     * Ventes déjà réalisées au premier relevé. La différence avec `salesCount` donne les
+     * ventes faites PENDANT la surveillance — la seule mesure de demande que le radar
+     * puisse garantir, puisqu'il n'a rien vu avant son premier passage. Sans cette
+     * colonne, il faudrait un relevé de ventes par jour et par article pour la même chose.
+     */
+    salesAtFirstSeen: integer('sales_at_first_seen'),
+    firstSeenAt: moment('first_seen_at').notNull().defaultNow(),
+    lastSeenAt: moment('last_seen_at').notNull().defaultNow(),
+    /** Renseigné au premier passage où l'article a disparu : sa date de mort. */
+    endedAt: moment('ended_at'),
+  },
+  (table) => [
+    uniqueIndex('watch_items_external_unique').on(table.watchId, table.externalId),
+    index('watch_items_alive_idx').on(table.watchId, table.endedAt),
+  ],
+).enableRLS();
+
+/** Ce que le radar a constaté. L'écran lit cette table, pas les articles. */
+export const watchEvents = pgTable(
+  'watch_events',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    watchId: uuid('watch_id')
+      .notNull()
+      .references(() => watches.id, { onDelete: 'cascade' }),
+    itemId: uuid('item_id').references(() => watchItems.id, { onDelete: 'set null' }),
+    kind: watchEventKind('kind').notNull(),
+    /** Phrase déjà rédigée, en français : l'écran affiche, il ne recompose pas. */
+    summary: text('summary').notNull(),
+    /** Chiffres de l'événement : ancien et nouveau prix, ventes gagnées, durée de vie. */
+    payload: jsonb('payload').$type<Record<string, unknown>>().notNull().default(sql`'{}'::jsonb`),
+    occurredAt: createdAt(),
+    /** null : pas encore lu. Porte la pastille « nouveautés » de la barre latérale. */
+    readAt: moment('read_at'),
+  },
+  (table) => [index('watch_events_feed_idx').on(table.watchId, table.occurredAt)],
+).enableRLS();
+
 export type UserRow = typeof users.$inferSelect;
 export type SessionRow = typeof sessions.$inferSelect;
 export type PlanId = (typeof PLAN_IDS)[number];
 export type GenerationKind = (typeof GENERATION_KINDS)[number];
 export type PaymentMethod = (typeof PAYMENT_METHODS)[number];
+export type WatchRow = typeof watches.$inferSelect;
+export type WatchItemRow = typeof watchItems.$inferSelect;
+export type WatchEventRow = typeof watchEvents.$inferSelect;
+export type WatchSource = (typeof WATCH_SOURCES)[number];
+export type WatchEventKind = (typeof WATCH_EVENT_KINDS)[number];

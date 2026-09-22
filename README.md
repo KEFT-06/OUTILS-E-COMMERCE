@@ -220,6 +220,18 @@ est fournie.
 file, score d'intensité concurrentielle) et Brave Search ne sont plus utilisés. Les campagnes
 « Meta Ads » (scripts, structures) restent : il s'agit de publicité sur Meta, pas de la bibliothèque.
 
+**Le Radar remplace ce radar marché, sur une autre source.** L'API officielle de Meta ne rend les
+publicités commerciales que pour l'Union européenne et le Royaume-Uni : elle ne pouvait pas servir
+l'Afrique. Le module Radar (`/app/radar`) observe à la place la vitrine publique des boutiques
+Chariow, qui publie le prix pratiqué **et le nombre de ventes** de chaque produit — une mesure, là
+où une publicité n'était qu'un indice. Aucune clé n'est nécessaire, aucun point n'est facturé : le
+quota porte sur le nombre de boutiques suivies (`limits.watchedStores`).
+
+Ce que le module apporte et qu'un relevé unique ne peut pas donner : la date d'arrêt d'un produit,
+sa date d'apparition, et l'accélération de ses ventes. Une vitrine ne publie que son présent — seul
+celui qui la relevait la veille sait ce qui en a disparu. Le balayage tourne de lui-même
+(`server/services/radar/sweeper.ts`), une fois par jour et par boutique.
+
 ---
 
 ## 5. Base de données
