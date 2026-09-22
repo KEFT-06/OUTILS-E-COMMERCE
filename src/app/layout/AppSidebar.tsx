@@ -13,6 +13,7 @@ import {
   DropdownMenuTrigger,
 } from '@/shared/ui/dropdown-menu';
 import { Progress } from '@/shared/ui/progress';
+import { useRadarUnread } from '@/shared/stores/useRadarUnread';
 import {
   Sidebar,
   SidebarContent,
@@ -34,6 +35,7 @@ export function AppSidebar() {
   const { pathname } = useLocation();
   const navigate = useNavigate();
   const { isMobile, setOpenMobile } = useSidebar();
+  const radarUnread = useRadarUnread();
 
   const closeOnMobile = () => {
     if (isMobile) setOpenMobile(false);
@@ -82,6 +84,13 @@ export function AppSidebar() {
                         </NavLink>
                       </SidebarMenuButton>
                       {!entry.ready && <SidebarMenuBadge className="text-muted-foreground">bientôt</SidebarMenuBadge>}
+                      {/* Le radar travaille la nuit : sans ce compteur, personne ne saurait
+                          qu'il y a quelque chose à lire. */}
+                      {entry.id === 'radar' && radarUnread > 0 && (
+                        <SidebarMenuBadge className="bg-brand-green-text text-white">
+                          {radarUnread > 99 ? '99+' : radarUnread}
+                        </SidebarMenuBadge>
+                      )}
                     </SidebarMenuItem>
                   );
                 })}

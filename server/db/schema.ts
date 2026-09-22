@@ -98,6 +98,10 @@ export const users = pgTable(
     /** Pays choisi par l'utilisateur (ISO 3166-1 alpha-2) : il fixe la devise d'affichage des prix. */
     country: text('country'),
     savedNiches: jsonb('saved_niches').$type<string[]>().notNull().default(sql`'[]'::jsonb`),
+    /** Résumé du radar par e-mail. Vrai par défaut : un radar dont personne n'est averti ne sert à rien. */
+    radarAlertsEnabled: boolean('radar_alerts_enabled').notNull().default(true),
+    /** Dernier résumé envoyé : borne la fréquence et fixe le point de départ du suivant. */
+    radarAlertedAt: moment('radar_alerted_at'),
     /** Langues maternelles déclarées par un relecteur de guides (codes BCP 47). */
     reviewerLanguages: jsonb('reviewer_languages').$type<string[]>().notNull().default(sql`'[]'::jsonb`),
     lastLoginAt: moment('last_login_at'),
@@ -857,6 +861,34 @@ export const watchEvents = pgTable(
   (table) => [index('watch_events_feed_idx').on(table.watchId, table.occurredAt)],
 ).enableRLS();
 
+/**
+ * Boutiques repérées par la découverte publicitaire, en attente d'être surveillées.
+ *
+ * Cette table est PARTAGÉE par tous les comptes, et c'est volontaire : chercher les vendeurs
+ * d'une plateforme donne le même résultat pour tout le monde. Une découverte coûte de
+ * l'argent chez le fournisseur de collecte ; la mutualiser rend ce coût constant, quel que
+ * soit le nombre d'utilisateurs. Sans cela, dix comptes curieux videraient la réserve
+ * du mois en une journée.
+ */
+export const discoveredStores = pgTable(
+  'discovered_stores',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    /** Hôte de la vitrine, ex. « techlab-market.mychariow.com ». Clé d'unicité. */
+    host: text('host').notNull(),
+    /** Nom lisible s'il a pu être relevé ; sinon l'hôte fait office de libellé. */
+    label: text('label'),
+    /** Nombre de publicités où cette boutique est apparue : un indice d'activité, pas une mesure. */
+    adCount: integer('ad_count').notNull().default(0),
+    firstSeenAt: createdAt(),
+    lastSeenAt: moment('last_seen_at').notNull().defaultNow(),
+  },
+  (table) => [
+    uniqueIndex('discovered_stores_host_unique').on(table.host),
+    index('discovered_stores_seen_idx').on(table.lastSeenAt),
+  ],
+).enableRLS();
+
 export type UserRow = typeof users.$inferSelect;
 export type SessionRow = typeof sessions.$inferSelect;
 export type PlanId = (typeof PLAN_IDS)[number];
@@ -867,3 +899,4 @@ export type WatchItemRow = typeof watchItems.$inferSelect;
 export type WatchEventRow = typeof watchEvents.$inferSelect;
 export type WatchSource = (typeof WATCH_SOURCES)[number];
 export type WatchEventKind = (typeof WATCH_EVENT_KINDS)[number];
+export type DiscoveredStoreRow = typeof discoveredStores.$inferSelect;

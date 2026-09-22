@@ -40,6 +40,8 @@ export interface RadarDashboard {
   watches: WatchSummary[];
   events: WatchEventView[];
   countsLast7Days: Partial<Record<WatchEventKind, number>>;
+  alertsEnabled: boolean;
+  emailConfigured: boolean;
   /** 0 : palier sans radar. null : sans limite. */
   limit: number | null;
 }
@@ -75,4 +77,22 @@ export interface RadarMeasurements {
   salesPerDay: number | null;
   medianPriceByCurrency: { currency: string; price: number }[];
   lastSweptAt: string | null;
+}
+
+export interface DiscoveredStore {
+  host: string;
+  label: string | null;
+  /** Publicités où la boutique est apparue : un indice d'activité, pas une mesure. */
+  adCount: number;
+  firstSeenAt: string;
+  lastSeenAt: string;
+}
+
+export interface DiscoveryView {
+  stores: DiscoveredStore[];
+  lastRunAt: string | null;
+  /** false : aucun jeton de collecte sur ce serveur — la découverte est simplement absente. */
+  configured: boolean;
+  /** Seul un administrateur peut lancer une collecte : chaque passage se paie. */
+  canRefresh: boolean;
 }

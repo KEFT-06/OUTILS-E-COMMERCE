@@ -230,7 +230,16 @@ quota porte sur le nombre de boutiques suivies (`limits.watchedStores`).
 Ce que le module apporte et qu'un relevé unique ne peut pas donner : la date d'arrêt d'un produit,
 sa date d'apparition, et l'accélération de ses ventes. Une vitrine ne publie que son présent — seul
 celui qui la relevait la veille sait ce qui en a disparu. Le balayage tourne de lui-même
-(`server/services/radar/sweeper.ts`), une fois par jour et par boutique.
+(`server/services/radar/sweeper.ts`), une fois par jour et par boutique, puis envoie un résumé par
+e-mail aux comptes qui surveillent quelque chose : un radar dont personne n'est averti ne sert à rien.
+
+**La découverte de boutiques est la seule partie payante, et elle est facultative.** Lire une vitrine
+demande de connaître son adresse. Pour trouver des concurrents inconnus, le module cherche
+« mychariow » dans les publicités en cours via Apify — c'est le détour que les outils concurrents
+prennent faute d'accès aux vitrines, et il ne sert ici qu'à cela. Sans `APIFY_TOKEN`, le panneau
+n'apparaît pas et le reste fonctionne. Le résultat est mutualisé entre tous les comptes, donc la
+dépense dépend du rythme configuré et non du nombre d'utilisateurs ; aucun utilisateur ne peut
+déclencher un passage. Le calcul du coût est dans `.env.example`.
 
 ---
 

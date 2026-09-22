@@ -245,3 +245,12 @@ export async function signInWithPlan(app: import('express').Express, email: stri
   await agent.post('/api/auth/login').send({ email, password: STRONG_PASSWORD }).expect(200);
   return { agent, userId: user.id };
 }
+
+
+/** Confirme l'adresse d'un compte : le radar n'écrit qu'aux adresses confirmées. */
+export async function verifyEmailOf(email: string): Promise<void> {
+  const { eq } = await import('drizzle-orm');
+  const { getDb } = await import('@server/db/client');
+  const { users } = await import('@server/db/schema');
+  await getDb().update(users).set({ emailVerifiedAt: new Date() }).where(eq(users.email, email.toLowerCase()));
+}

@@ -1,18 +1,22 @@
 import { Router } from 'express';
 import { z } from 'zod';
+import { providers } from '@server/env';
 import { AppError, asyncRoute, routeLimiter, validateBody } from '@server/middleware';
-import { requireAuth } from '@server/middleware/auth';
+import { requireAuth, requirePermission } from '@server/middleware/auth';
 import { effectiveLimits } from '@server/services/accounts';
 import {
   addWatch,
+  countUnreadEvents,
   eventCountsSince,
   listEvents,
   listWatches,
   markEventsRead,
   removeWatch,
+  setRadarAlerts,
   sweepNow,
   watchItemsOf,
 } from '@server/services/radar';
+import { lastDiscoveryAt, listDiscoveredStores, runDiscovery } from '@server/services/radar/discovery';
 import { radarMeasurements } from '@server/services/radar/measurements';
 
 /**
@@ -54,6 +58,10 @@ radarRouter.get(
       events,
       countsLast7Days: counts,
       limit: effectiveLimits(auth.account).watchedStores,
+      // L'écran a besoin de l'état de l'interrupteur pour l'afficher sans second appel.
+      alertsEnabled: auth.account.user.radarAlertsEnabled,
+      /** false : aucun fournisseur d'e-mail sur ce serveur — l'interrupteur le dit plutôt que de mentir. */
+      emailConfigured: providers.email,
     });
   }),
 );
@@ -129,5 +137,59 @@ radarRouter.post(
   routeLimiter(1, 30),
   asyncRoute(async (req, res) => {
     res.json({ marked: await markEventsRead(req.auth!.account.user.id) });
+  }),
+);
+
+/** Compteur seul, pour la pastille de la barre latérale : réponse minuscule, appelée souvent. */
+radarRouter.get(
+  '/unread',
+  asyncRoute(async (req, res) => {
+    res.json({ unread: await countUnreadEvents(req.auth!.account.user.id) });
+  }),
+);
+
+const alertsSchema = z.object({ enabled: z.boolean() });
+
+/** Résumé par e-mail : activé par défaut, coupé en un clic. */
+radarRouter.post(
+  '/alerts',
+  routeLimiter(10, 20),
+  validateBody(alertsSchema),
+  asyncRoute(async (req, res) => {
+    const { enabled } = req.body as z.infer<typeof alertsSchema>;
+    await setRadarAlerts(req.auth!.account.user.id, enabled);
+    res.json({ enabled });
+  }),
+);
+
+/**
+ * Boutiques repérées par la découverte publicitaire. Lecture du cache mutualisé : gratuite,
+ * et identique pour tous les comptes puisque chercher les vendeurs d'une plateforme donne
+ * la même réponse à tout le monde.
+ */
+radarRouter.get(
+  '/discover',
+  asyncRoute(async (req, res) => {
+    const auth = req.auth!;
+    res.json({
+      stores: await listDiscoveredStores(),
+      lastRunAt: (await lastDiscoveryAt())?.toISOString() ?? null,
+      configured: providers.apify,
+      /** Seul un administrateur peut lancer une collecte : chaque passage coûte de l'argent. */
+      canRefresh: auth.account.user.role === 'admin',
+    });
+  }),
+);
+
+/**
+ * Lance une collecte payante. Réservée aux administrateurs, et limitée : le rythme normal
+ * est celui du planificateur, cette route sert à ne pas attendre la semaine suivante.
+ */
+radarRouter.post(
+  '/discover/refresh',
+  requirePermission('admin.security.read'),
+  routeLimiter(60, 3),
+  asyncRoute(async (_req, res) => {
+    res.json({ outcome: await runDiscovery() });
   }),
 );

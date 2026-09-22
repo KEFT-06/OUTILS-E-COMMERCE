@@ -287,6 +287,33 @@ const schema = z.object({
    * pèserait sur le site d'un tiers sans rien apprendre de plus.
    */
   RADAR_SWEEP_INTERVAL_HOURS: z.coerce.number().int().min(1).max(168).default(24),
+
+  /**
+   * Découverte de boutiques : jeton Apify, créé sur console.apify.com → Settings → API & Integrations.
+   * Sans jeton, la découverte est simplement absente — le reste du radar fonctionne.
+   *
+   * L'acteur facture AU RÉSULTAT, 5,80 $ les 1 000 publicités sur l'offre gratuite. Le compte
+   * gratuit reçoit 5 $ par mois et BLOQUE au dépassement au lieu de facturer : les valeurs par
+   * défaut ci-dessous (200 publicités par passage, un passage par semaine) coûtent donc environ
+   * 4,64 $ par mois et tiennent dans la franchise. Les augmenter engage de l'argent réel.
+   */
+  APIFY_TOKEN: z.string().min(1).optional(),
+  APIFY_API_URL: z.string().url().default('https://api.apify.com/v2'),
+  /** Acteur maintenu par Apify. Le « ~ » remplace le « / » dans les adresses de l'API. */
+  APIFY_ADS_ACTOR: z.string().regex(/^[\w.~-]+$/).default('apify~facebook-ads-scraper'),
+  /** Publicités relevées par passage. Chaque unité est facturée : ne pas gonfler sans raison. */
+  RADAR_DISCOVERY_LIMIT: z.coerce.number().int().min(10).max(2000).default(200),
+  /**
+   * Heures entre deux découvertes. 168 (une semaine) parce que le résultat est MUTUALISÉ entre
+   * tous les comptes : la dépense ne dépend pas du nombre d'utilisateurs, seulement de ce rythme.
+   */
+  RADAR_DISCOVERY_INTERVAL_HOURS: z.coerce.number().int().min(6).max(720).default(168),
+  /**
+   * Mot-clé cherché dans la bibliothèque publicitaire. « mychariow » apparaît dans l'adresse de
+   * destination des publicités de toute boutique Chariow : c'est ce qui permet de trouver les
+   * vendeurs de la plateforme sans les connaître d'avance.
+   */
+  RADAR_DISCOVERY_QUERY: z.string().min(2).max(120).default('mychariow'),
 });
 
 const cleaned = cleanedEnv(process.env);
@@ -316,6 +343,7 @@ export const providers = {
   higgsfield: Boolean(env.HIGGSFIELD_API_KEY_ID && env.HIGGSFIELD_API_KEY_SECRET),
   gamma: Boolean(env.GAMMA_API_KEY),
   chariow: Boolean(env.CHARIOW_API_KEY),
+  apify: Boolean(env.APIFY_TOKEN),
 } as const;
 
 /**

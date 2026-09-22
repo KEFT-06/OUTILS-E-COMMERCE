@@ -72,3 +72,32 @@ export function passwordChangedEmail(to: { email: string; name: string }, input:
     footer: 'Message de sécurité envoyé à chaque changement de mot de passe.',
   });
 }
+
+/**
+ * Résumé du radar. Le seul e-mail que Smart Creator envoie sans que l'utilisateur ait
+ * cliqué sur quoi que ce soit — c'est son objet même : un radar dont personne n'est
+ * averti ne sert à rien.
+ *
+ * Deux règles de forme : les phrases sont celles rédigées par le serveur au moment du
+ * relevé, reprises telles quelles (l'écran et l'e-mail disent donc exactement la même
+ * chose), et le nombre d'événements annoncé est celui de la période, jamais un total
+ * cumulé qui gonflerait avec le temps.
+ */
+export function radarDigestEmail(
+  to: { email: string; name: string },
+  input: { lines: string[]; total: number; since: string; url: string },
+): OutgoingEmail {
+  const reste = input.total - input.lines.length;
+  return build(to, `Radar : ${input.total} changement${input.total > 1 ? 's' : ''} chez vos concurrents`, {
+    title: 'Ce que le radar a vu',
+    paragraphs: [
+      `Bonjour ${to.name},`,
+      `Depuis ${input.since}, le radar a relevé ${input.total} changement${input.total > 1 ? 's' : ''} sur les boutiques que vous surveillez :`,
+      ...input.lines.map((line) => `• ${line}`),
+      ...(reste > 0 ? [`… et ${reste} autre${reste > 1 ? 's' : ''}, à voir sur le radar.`] : []),
+    ],
+    action: { label: 'Ouvrir le radar', url: input.url },
+    footer:
+      'Vous recevez ce résumé parce que vous surveillez au moins une boutique. Il se désactive en un clic depuis l’écran Radar.',
+  });
+}

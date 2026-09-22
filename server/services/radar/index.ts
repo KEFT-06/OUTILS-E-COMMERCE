@@ -1,6 +1,6 @@
 import { and, count, desc, eq, gte, inArray, isNull, sql } from 'drizzle-orm';
 import { getDb, isUniqueViolation } from '@server/db/client';
-import { watchEvents, watchItems, watches, type WatchRow } from '@server/db/schema';
+import { users, watchEvents, watchItems, watches, type WatchRow } from '@server/db/schema';
 import { AppError } from '@server/middleware';
 import { sourceFor } from '@server/services/radar/sources';
 import { sweepWatch, type SweepOutcome } from '@server/services/radar/sweep';
@@ -269,6 +269,21 @@ export async function watchItemsOf(userId: string, watchId: string) {
     endedAt: row.endedAt?.toISOString() ?? null,
     trackedDays: jours(row.firstSeenAt, row.endedAt ?? new Date()),
   }));
+}
+
+/** Événements non lus du compte. Sert la pastille de la barre latérale : réponse d'un entier. */
+export async function countUnreadEvents(userId: string): Promise<number> {
+  const siennes = getDb().select({ id: watches.id }).from(watches).where(eq(watches.userId, userId));
+  const [row] = await getDb()
+    .select({ total: count() })
+    .from(watchEvents)
+    .where(and(inArray(watchEvents.watchId, siennes), isNull(watchEvents.readAt)));
+  return Number(row?.total ?? 0);
+}
+
+/** Active ou coupe le résumé par e-mail. */
+export async function setRadarAlerts(userId: string, enabled: boolean): Promise<void> {
+  await getDb().update(users).set({ radarAlertsEnabled: enabled, updatedAt: new Date() }).where(eq(users.id, userId));
 }
 
 /** Événements du compte sur une période, pour les compteurs de l'écran. */

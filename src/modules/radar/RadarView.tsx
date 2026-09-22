@@ -16,6 +16,8 @@ import { Empty, EmptyDescription, EmptyHeader, EmptyTitle } from '@/shared/ui/em
 import { Input } from '@/shared/ui/input';
 import { Skeleton } from '@/shared/ui/skeleton';
 import { Spinner } from '@/shared/ui/spinner';
+import { Switch } from '@/shared/ui/switch';
+import { DiscoveredStoresPanel } from '@/modules/radar/DiscoveredStoresPanel';
 import { WatchItemsPanel } from '@/modules/radar/WatchItemsPanel';
 
 /**
@@ -155,6 +157,8 @@ export function RadarView() {
   const [target, setTarget] = useState('');
   const [isAdding, setIsAdding] = useState(false);
   const [busyWatch, setBusyWatch] = useState<string | null>(null);
+  /** Interrupteur du résumé par e-mail, tenu localement pour répondre au clic sans attendre. */
+  const [alerts, setAlerts] = useState(true);
   /**
    * Boutique dont le catalogue est ouvert. On garde l'identifiant, pas l'objet : après un
    * relevé ou un retrait, le panneau suit la liste rechargée au lieu d'afficher des
@@ -164,7 +168,9 @@ export function RadarView() {
 
   const load = useCallback(async () => {
     try {
-      setData(await apiRequest<RadarDashboard>('/api/radar'));
+      const payload = await apiRequest<RadarDashboard>('/api/radar');
+      setData(payload);
+      setAlerts(payload.alertsEnabled);
       setLoadError(null);
     } catch (caught) {
       setLoadError(toApiError(caught, 'Le radar n’a pas pu être chargé.'));
@@ -182,19 +188,48 @@ export function RadarView() {
     void apiRequest('/api/radar/events/read', { method: 'POST' }).catch(() => undefined);
   }, [data]);
 
+  /** Met une cible sous surveillance, qu'elle vienne du champ ou de la liste des repérées. */
+  const watchTarget = useCallback(
+    async (cible: string) => {
+      await apiRequest('/api/radar/watches', { method: 'POST', body: { target: cible } });
+      toast.success('Boutique sous surveillance. Le radar repassera chaque jour.');
+      await load();
+    },
+    [load],
+  );
+
   async function add() {
     const saisie = target.trim();
     if (!saisie || isAdding) return;
     setIsAdding(true);
     try {
-      await apiRequest('/api/radar/watches', { method: 'POST', body: { target: saisie } });
+      await watchTarget(saisie);
       setTarget('');
-      toast.success('Boutique sous surveillance. Le radar repassera chaque jour.');
-      await load();
     } catch (caught) {
       toast.error(toApiError(caught, 'Cette boutique n’a pas pu être ajoutée.').message);
     } finally {
       setIsAdding(false);
+    }
+  }
+
+  const watchFromList = useCallback(
+    async (host: string) => {
+      try {
+        await watchTarget(host);
+      } catch (caught) {
+        toast.error(toApiError(caught, 'Cette boutique n’a pas pu être ajoutée.').message);
+      }
+    },
+    [watchTarget],
+  );
+
+  async function toggleAlerts(enabled: boolean) {
+    setAlerts(enabled);
+    try {
+      await apiRequest('/api/radar/alerts', { method: 'POST', body: { enabled } });
+    } catch (caught) {
+      setAlerts(!enabled);
+      toast.error(toApiError(caught, 'Le réglage n’a pas pu être enregistré.').message);
     }
   }
 
@@ -301,6 +336,8 @@ export function RadarView() {
         </div>
       )}
 
+      {!sansAcces && <DiscoveredStoresPanel onWatch={watchFromList} disabled={quotaAtteint} />}
+
       {ouverte && <WatchItemsPanel watch={ouverte} onBack={() => setOuverteId(null)} />}
 
       {data && data.watches.length > 0 && (
@@ -353,6 +390,27 @@ export function RadarView() {
             </EmptyDescription>
           </EmptyHeader>
         </Empty>
+      )}
+
+      {data && data.watches.length > 0 && (
+        <Card>
+          <CardHeader>
+            <CardTitle>Être averti sans ouvrir le site</CardTitle>
+            <CardDescription>
+              {data.emailConfigured
+                ? 'Un résumé par e-mail, au plus une fois par jour, et seulement s’il y a quelque chose à dire.'
+                : 'Aucun fournisseur d’e-mail n’est configuré sur ce serveur : le résumé ne peut pas encore être envoyé.'}
+            </CardDescription>
+            <CardAction>
+              <Switch
+                checked={alerts && data.emailConfigured}
+                disabled={!data.emailConfigured}
+                onCheckedChange={(next) => void toggleAlerts(next)}
+                aria-label="Recevoir le résumé du radar par e-mail"
+              />
+            </CardAction>
+          </CardHeader>
+        </Card>
       )}
 
       <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
