@@ -41,8 +41,18 @@ const SIZES = {
 export function BrandLogo({ size = 'md', showText = true, showTagline = false, className }: BrandLogoProps) {
   const s = SIZES[size];
 
+  /*
+    `min-w-0` et `max-w-full` ne sont pas décoratifs : sans eux, la signature impose sa largeur.
+
+    `truncate` pose `white-space: nowrap`, et ne coupe le texte que si un parent contraint la
+    largeur. Un `inline-flex` se dimensionne au contenu : la signature — cinquante-cinq
+    caractères — figeait le bloc à 377 px. Le pied de page de l'accueil dépassait alors tout
+    écran plus étroit, et la page entière défilait latéralement sur un mobile de 320 ou 360 px,
+    soit la majorité du parc africain. Le défaut est corrigé ici plutôt qu'à chaque appel : un
+    prochain usage de `showTagline` ne le réintroduira pas.
+  */
   return (
-    <span className={cn('inline-flex items-center', s.gap, className)}>
+    <span className={cn('inline-flex min-w-0 max-w-full items-center', s.gap, className)}>
       <BrandMark className={s.mark} />
       {showText ? (
         <span className="flex min-w-0 flex-col leading-none">

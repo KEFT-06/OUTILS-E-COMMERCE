@@ -21,7 +21,13 @@ function CardHeader({ className, ...props }: React.ComponentProps<"div">) {
       className={cn(
         // Adapté : sur téléphone, l'action passe sous le titre au lieu de le
         // comprimer et de faire déborder la carte.
-        "@container/card-header grid auto-rows-min grid-rows-[auto_auto] items-start gap-2 px-6 sm:has-data-[slot=card-action]:grid-cols-[1fr_auto] [.border-b]:pb-6",
+        //
+        // minmax(0,1fr) et non 1fr : « 1fr » vaut « minmax(auto, 1fr) », et ce minimum « auto »
+        // empêche la colonne de descendre sous la largeur de son contenu. Un titre un peu long
+        // poussait donc l'action hors de la carte — mesuré à 768 px sur Distribution, où trois
+        // cartes se partagent l'écran : l'étiquette « Non disponible » sortait de 30 px et
+        // faisait défiler toute la page latéralement.
+        "@container/card-header grid auto-rows-min grid-rows-[auto_auto] items-start gap-2 px-6 sm:has-data-[slot=card-action]:grid-cols-[minmax(0,1fr)_auto] [.border-b]:pb-6",
         className
       )}
       {...props}

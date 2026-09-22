@@ -266,7 +266,13 @@ function SidebarTrigger({
       data-slot="sidebar-trigger"
       variant="ghost"
       size="icon"
-      className={cn("size-7", className)}
+      /*
+        28 px dessinés, 44 px touchables. Ce bouton ouvre le menu : sur un téléphone, c'est le
+        seul chemin vers la navigation. À 28 px il tombait sous le repère des 44 px des guides
+        tactiles, et se manquait au doigt. La zone sensible est étendue par un pseudo-élément :
+        elle ne déplace rien dans l'en-tête, contrairement à une taille ou une marge.
+      */
+      className={cn("relative size-7 before:absolute before:-inset-2 before:content-['']", className)}
       onClick={(event) => {
         onClick?.(event)
         toggleSidebar()

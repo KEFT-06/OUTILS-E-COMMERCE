@@ -6,7 +6,6 @@ import {
   ReportComplianceVerdict,
 } from '@/shared/types/compliance';
 import { FALLBACK_DISCLAIMER } from '@/shared/lib/legal';
-import { generateAnalysisPDF } from '@/shared/lib/pdfGenerator';
 import { recordExport } from '@/shared/lib/usage';
 
 /**
@@ -179,6 +178,12 @@ export async function exportReportPDF(
   if (!verdict.exportAllowed) {
     throw new ComplianceBlockedError(verdict);
   }
+
+  // jsPDF et html2canvas pèsent à eux deux près de 140 Ko compressés. Chargés ici, et non en
+  // tête de fichier, ils ne partent qu'au premier export : WorkspaceProvider passe par cette
+  // porte, et les entraînait donc dans le premier écran de tout utilisateur connecté, y compris
+  // ceux qui n'exportent jamais rien.
+  const { generateAnalysisPDF } = await import('@/shared/lib/pdfGenerator');
 
   // Le verdict est apposé sur le document : mention légale obligatoire sur
   // chaque page, version de la table de règles et horodatage du contrôle.

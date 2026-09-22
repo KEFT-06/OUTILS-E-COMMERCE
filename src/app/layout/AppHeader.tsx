@@ -73,21 +73,30 @@ export function AppHeader() {
       <SidebarTrigger className="-ml-1" />
       <Separator orientation="vertical" className="mr-1 hidden data-[orientation=vertical]:h-5 md:block" />
 
-      <Breadcrumb className="hidden min-w-0 md:block">
-        <BreadcrumbList>
+      {/*
+        C'est le fil d'Ariane qui cède, jamais les actions.
+
+        Le bloc de droite portait `min-w-0` : la disposition le comprimait donc sous la largeur
+        de son contenu, alors que ses boutons sont tous `shrink-0`. À 768 px, il mesurait 214 px
+        pour 244 px de boutons, et le dernier — « Plus d'actions » — sortait de l'écran, qui se
+        mettait à défiler latéralement. Le fil d'Ariane prend désormais l'espace restant et
+        tronque son libellé ; les actions gardent leur taille.
+      */}
+      <Breadcrumb className="hidden min-w-0 flex-1 md:block">
+        <BreadcrumbList className="flex-nowrap">
           {group && (
             <>
-              <BreadcrumbItem>{group.label.fr}</BreadcrumbItem>
-              <BreadcrumbSeparator />
+              <BreadcrumbItem className="shrink-0">{group.label.fr}</BreadcrumbItem>
+              <BreadcrumbSeparator className="shrink-0" />
             </>
           )}
-          <BreadcrumbItem>
+          <BreadcrumbItem className="min-w-0">
             <BreadcrumbPage className="truncate">{pageLabel}</BreadcrumbPage>
           </BreadcrumbItem>
         </BreadcrumbList>
       </Breadcrumb>
 
-      <div className="ml-auto flex min-w-0 items-center gap-1.5 sm:gap-2">
+      <div className="ml-auto flex shrink-0 items-center gap-1.5 sm:gap-2">
         {currentReport && reports.length > 0 && (
         <Select value={currentReport.id} onValueChange={selectReport}>
           <SelectTrigger size="sm" aria-label="Niche analysée" className="w-[8.5rem] sm:w-[13rem] xl:w-[17rem]">
