@@ -5,10 +5,11 @@ import { getDb } from '@server/db/client';
 import { covers, guides } from '@server/db/schema';
 import { AppError } from '@server/middleware';
 import type { RequestAuth } from '@server/middleware/auth';
-import { generateImage } from '@server/services/ai/geminiImage';
+import { generateImage } from '@server/services/ai/image';
 import { generationStateOf } from '@server/services/creatives';
 import { findOwnedGeneration, runBilledGeneration, settleGeneration } from '@server/services/generations';
 import { fetchMedia, getGenerationStatus } from '@server/services/higgsfield';
+import { countryName } from '@server/shared/countries';
 
 /**
  * Images de couverture des guides et des ebooks du Studio.
@@ -42,18 +43,33 @@ export const coverRequestSchema = z.object({
 
 export type CoverRequest = z.infer<typeof coverRequestSchema>;
 
-/** Consigne du modèle d'image. Fonction pure, testable sans appel réseau. */
-export function buildCoverPrompt(input: Pick<CoverRequest, 'title' | 'subtitle' | 'description' | 'style'>): string {
+/**
+ * Consigne du modèle d'image. Fonction pure, testable sans appel réseau.
+ *
+ * Le titre n'est JAMAIS transmis, et les mots « couverture » et « livre » non plus. Donner un
+ * titre à un modèle d'image revient à lui demander de l'écrire : les essais rendaient une
+ * maquette de couverture complète, titre compris, en caractères inventés — « VENDRE en LiGine
+ * AU CAMEROUN » — malgré la consigne « aucun texte ». On ne décrit donc qu'une scène, et la
+ * mise en page pose le vrai titre ensuite, dans la langue de chaque export.
+ *
+ * `market` ancre la scène dans le pays du compte : sans lui, les modèles rendent par défaut des
+ * décors et des visages qui ne sont pas ceux des lecteurs de Smart Creator.
+ */
+export function buildCoverPrompt(
+  input: Pick<CoverRequest, 'title' | 'subtitle' | 'description' | 'style'> & { market?: string | null },
+): string {
+  const subject = [input.title, input.subtitle].filter(Boolean).join(' — ');
   return [
-    `Cover artwork for a practical guide titled "${input.title}"${input.subtitle ? ` (${input.subtitle})` : ''}.`,
     input.description
-      ? `The image shows: ${input.description}.`
-      : 'The image evokes the subject of the guide through one strong, positive visual metaphor.',
+      ? `A scene showing: ${input.description}.`
+      : `A single strong, positive visual metaphor evoking this subject, shown as a scene: ${subject}.`,
+    input.market ? `Setting and people rooted in ${input.market}, everyday and contemporary.` : '',
     `Style: ${STYLE_DIRECTION[input.style]}`,
-    'Vertical book-cover composition, with a calm and uncluttered upper third where the title will be placed afterwards.',
-    'Absolutely no text, letters, numbers, logos or watermarks anywhere in the image.',
+    'Vertical composition. The upper third stays calm and empty — plain background or open sky, no subject in it.',
+    'A wordless illustration: no text, no letters, no numbers, no signage, no logo, no watermark, and no book-cover layout.',
     'No real brands and no celebrities; people, if any, portrayed respectfully and without stereotypes.',
   ]
+    .filter(Boolean)
     .join('\n')
     .slice(0, 3000);
 }
@@ -87,13 +103,13 @@ async function ownedCover(auth: RequestAuth, coverId: string | undefined): Promi
 }
 
 export async function createCover(auth: RequestAuth, input: CoverRequest): Promise<CoverView> {
-  const prompt = buildCoverPrompt(input);
+  const prompt = buildCoverPrompt({ ...input, market: countryName(auth.account.user.country) || null });
   // Format portrait des exports (PDF, DOCX) : l'image n'y est pas déformée.
   const { result } = await runBilledGeneration({
     auth,
     actionId: 'cover_generation',
     kind: 'cover',
-    provider: 'gemini',
+    provider: 'cloudflare',
     run: () => generateImage({ prompt, aspectRatio: '9:16' }),
     describe: (image) => ({ providerRef: null, state: 'completed', fileFormat: image.mimeType === 'image/jpeg' ? 'jpg' : image.mimeType.split('/')[1] }),
   });

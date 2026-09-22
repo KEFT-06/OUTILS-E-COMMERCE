@@ -21,7 +21,7 @@ export type Capability = 'writing' | 'webSearch' | 'images' | 'video' | 'layout'
 const SERVICES_OF: Record<Capability, string[]> = {
   writing: ['gemini'],
   webSearch: ['perplexity'],
-  images: ['gemini-images'],
+  images: ['images'],
   video: ['higgsfield'],
   layout: ['gamma'],
   database: ['database'],

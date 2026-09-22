@@ -23,6 +23,13 @@ export async function createTestApp(overrides: Record<string, string> = {}): Pro
     CHARIOW_API_URL: 'http://127.0.0.1:9',
     GEMINI_API_KEY: 'cle-gemini-de-test',
     GEMINI_API_URL: 'http://127.0.0.1:9',
+    // Neutralisés par défaut : env.ts charge le .env du poste, et sans ces trois lignes une
+    // suite lancée sur une machine configurée irait taper la vraie API Cloudflare — donc
+    // consommerait la réserve d'images du jour, et rendrait le résultat des tests dépendant
+    // du poste. Les tests qui veulent ce fournisseur les redéfinissent.
+    CLOUDFLARE_ACCOUNT_ID: '',
+    CLOUDFLARE_AI_TOKEN: '',
+    CLOUDFLARE_AI_URL: 'http://127.0.0.1:9',
     PERPLEXITY_API_KEY: '',
     PERPLEXITY_API_URL: 'http://127.0.0.1:9',
     PERPLEXITY_RESEARCH_PRESET: 'medium',

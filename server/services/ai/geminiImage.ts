@@ -1,5 +1,6 @@
 import { env } from '@server/env';
 import { AppError, providerUnavailable } from '@server/middleware';
+import type { ImageAspectRatio, ImageResult } from '@server/services/ai/imageTypes';
 
 /**
  * Génération d'image par Gemini (modèles « Nano Banana », API REST generateContent).
@@ -9,7 +10,6 @@ import { AppError, providerUnavailable } from '@server/middleware';
  * distinct d'une vraie saturation. La clé part en en-tête, jamais dans l'adresse ni dans un journal.
  */
 
-export type ImageAspectRatio = '1:1' | '2:3' | '3:2' | '3:4' | '4:3' | '4:5' | '5:4' | '9:16' | '16:9';
 
 const TIMEOUT_MS = 120_000;
 const MAX_IMAGE_BYTES = 12 * 1024 * 1024;
@@ -26,8 +26,12 @@ const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 /** Dernier résultat depuis le démarrage, pour la page « État des services » : Google ne dit qu'à la génération si les images sont ouvertes. */
 let lastOutcome: { ok: boolean; code: string | null; at: string } | null = null;
 
-export function lastImageOutcome() {
+export function lastGeminiImageOutcome() {
   return lastOutcome;
+}
+
+export function geminiImagesConfigured(): boolean {
+  return Boolean(env.GEMINI_API_KEY);
 }
 
 async function callOnce(
@@ -53,11 +57,11 @@ async function callOnce(
   return { status: response.status, payload: (await response.json().catch(() => null)) as ImagePayload | null };
 }
 
-export async function generateImage(input: {
+export async function generateGeminiImage(input: {
   prompt: string;
   aspectRatio: ImageAspectRatio;
   imageSize?: '1K' | '2K';
-}): Promise<{ mimeType: string; bytes: Buffer; model: string }> {
+}): Promise<ImageResult> {
   try {
     const image = await produceImage(input);
     lastOutcome = { ok: true, code: null, at: new Date().toISOString() };
@@ -72,8 +76,8 @@ async function produceImage(input: {
   prompt: string;
   aspectRatio: ImageAspectRatio;
   imageSize?: '1K' | '2K';
-}): Promise<{ mimeType: string; bytes: Buffer; model: string }> {
-  if (!env.GEMINI_API_KEY) throw providerUnavailable('rédaction par IA');
+}): Promise<ImageResult> {
+  if (!env.GEMINI_API_KEY) throw providerUnavailable('génération d’images');
   const imageSize = input.imageSize ?? '1K';
 
   let { status, payload } = await callOnce(input.prompt, input.aspectRatio, imageSize);

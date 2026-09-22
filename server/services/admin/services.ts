@@ -2,7 +2,7 @@ import { desc, sql } from 'drizzle-orm';
 import { databaseKind, getDb } from '@server/db/client';
 import { storybooks } from '@server/db/schema';
 import { env, isProd, providers } from '@server/env';
-import { lastImageOutcome } from '@server/services/ai/geminiImage';
+import { lastImageOutcome } from '@server/services/ai/image';
 
 /**
  * État des services du site, vérifié en direct pour l'administration.
@@ -120,33 +120,88 @@ async function checkGemini(): Promise<ServiceCheck> {
   return unreachable(base);
 }
 
-function checkGeminiImages(): ServiceCheck {
-  const base = { id: 'gemini-images', name: 'Gemini (images)', role: 'Couvertures des guides et des ebooks' };
-  if (!providers.gemini) return { ...base, state: 'off', detail: 'Aucune clé Gemini.', action: 'Renseigner GEMINI_API_KEY.' };
-  const last = lastImageOutcome();
+/**
+ * Couvertures : Cloudflare Workers AI en principal, Gemini en secours. L'état rapporté est celui
+ * du fournisseur qui travaille réellement, et la ligne dit toujours lequel c'est — sans quoi une
+ * facture Gemini inattendue resterait inexplicable.
+ */
+function checkImages(): ServiceCheck {
+  const base = { id: 'images', name: 'Génération d’images', role: 'Couvertures des guides et des ebooks' };
   const billing =
     'Activer la facturation du projet Google de la clé (aistudio.google.com → Billing) : l’offre gratuite n’autorise aucune image.';
-  if (!last) {
+
+  if (!providers.cloudflareImages && !providers.gemini)
+    return {
+      ...base,
+      state: 'off',
+      detail: 'Aucun fournisseur d’images.',
+      action: 'Renseigner CLOUDFLARE_ACCOUNT_ID et CLOUDFLARE_AI_TOKEN, ou à défaut GEMINI_API_KEY.',
+    };
+
+  const { cloudflare, gemini } = lastImageOutcome();
+  const secours = providers.gemini ? 'Gemini prend le relais si la réserve du jour est vide.' : 'Aucun secours : sans clé Gemini, la réserve épuisée refuse les couvertures.';
+
+  if (providers.cloudflareImages) {
+    const horodate = (at: string) => new Date(at).toLocaleString('fr-FR', { timeZone: env.REPORTING_TIMEZONE });
+    // Configuré n'est pas éprouvé : un jeton sans le droit d'écriture ne se révèle qu'à la
+    // première image. On le dit, plutôt que d'afficher un vert qui ne repose sur rien.
+    if (!cloudflare)
+      return {
+        ...base,
+        state: 'warning',
+        detail: `Cloudflare ${env.CLOUDFLARE_IMAGE_MODEL} · aucune image demandée depuis le démarrage. ${secours}`,
+        action: 'Créer une couverture pour éprouver le jeton.',
+      };
+    if (cloudflare.ok)
+      return {
+        ...base,
+        state: 'ok',
+        detail: `Cloudflare ${env.CLOUDFLARE_IMAGE_MODEL} · dernière image produite le ${horodate(cloudflare.at)}${cloudflare.neurons ? ` (${Math.round(cloudflare.neurons)} neurones)` : ''}.`,
+        action: null,
+      };
+    if (cloudflare.code === 'CF_IMAGE_QUOTA_EXHAUSTED')
+      return {
+        ...base,
+        state: 'warning',
+        detail: `Réserve Cloudflare du jour épuisée depuis le ${horodate(cloudflare.at)}. ${secours}`,
+        action: 'Passer le compte Cloudflare en offre Workers Paid (5 $/mois) pour facturer au-delà au lieu de refuser.',
+      };
+    if (cloudflare.code === 'CF_IMAGE_ACCESS_DENIED')
+      return {
+        ...base,
+        state: 'error',
+        detail: 'Cloudflare refuse le jeton du serveur.',
+        action: 'Recréer le jeton avec les droits « Workers AI » en lecture ET en écriture, puis mettre à jour CLOUDFLARE_AI_TOKEN.',
+      };
     return {
       ...base,
       state: 'warning',
-      detail: `Modèle ${env.GEMINI_IMAGE_MODEL} · pas encore vérifié depuis le démarrage : Google ne dit si les images sont ouvertes qu’au moment d’en créer une.`,
-      action: `Créer une couverture pour vérifier. Si elle est refusée : ${billing}`,
+      detail: `Dernière tentative Cloudflare refusée (${cloudflare.code}) le ${horodate(cloudflare.at)}. ${secours}`,
+      action: 'Réessayer une couverture ; si le refus persiste, vérifier le compte Cloudflare.',
     };
   }
-  if (last.ok)
+
+  // Gemini seul : plus coûteux, et sa facturation doit être ouverte.
+  if (!gemini)
     return {
       ...base,
-      state: 'ok',
-      detail: `Dernière image produite le ${new Date(last.at).toLocaleString('fr-FR', { timeZone: env.REPORTING_TIMEZONE })}.`,
-      action: null,
+      state: 'warning',
+      detail: `Gemini ${env.GEMINI_IMAGE_MODEL} seul, faute de compte Cloudflare · pas encore vérifié depuis le démarrage.`,
+      action: `Renseigner CLOUDFLARE_ACCOUNT_ID et CLOUDFLARE_AI_TOKEN : une couverture y coûte une vingtaine de fois moins. Sinon : ${billing}`,
     };
-  if (last.code === 'GEMINI_IMAGE_BILLING_REQUIRED')
+  if (gemini.ok)
+    return {
+      ...base,
+      state: 'warning',
+      detail: `Gemini ${env.GEMINI_IMAGE_MODEL} seul, faute de compte Cloudflare · dernière image le ${new Date(gemini.at).toLocaleString('fr-FR', { timeZone: env.REPORTING_TIMEZONE })}.`,
+      action: 'Renseigner CLOUDFLARE_ACCOUNT_ID et CLOUDFLARE_AI_TOKEN : une couverture y coûte une vingtaine de fois moins.',
+    };
+  if (gemini.code === 'GEMINI_IMAGE_BILLING_REQUIRED')
     return { ...base, state: 'error', detail: 'Google refuse les images : la clé est sur l’offre gratuite.', action: billing };
   return {
     ...base,
     state: 'warning',
-    detail: `Dernière tentative refusée (${last.code}).`,
+    detail: `Dernière tentative Gemini refusée (${gemini.code}).`,
     action: 'Réessayer une couverture ; si le refus persiste, vérifier la clé Gemini.',
   };
 }
@@ -362,7 +417,7 @@ export async function checkServices(options: { refresh?: boolean } = {}): Promis
   const services = await Promise.all([
     checkDatabase(),
     checkGemini(),
-    Promise.resolve(checkGeminiImages()),
+    Promise.resolve(checkImages()),
     checkPerplexity(),
     checkGamma(),
     checkHiggsfield(),

@@ -12,7 +12,13 @@ import { closeTestApp, createAdmin, createTestApp } from './support/helpers';
 let app: Express;
 
 before(async () => {
-  app = await createTestApp({ SEBPAY_PUBLIC_KEY: 'pk_test_sebpay_0000', SEBPAY_SECRET_KEY: 'sk_test_sebpay_secret_0000' });
+  app = await createTestApp({
+    SEBPAY_PUBLIC_KEY: 'pk_test_sebpay_0000',
+    SEBPAY_SECRET_KEY: 'sk_test_sebpay_secret_0000',
+    // Fixés ici : sans eux, le contrôle des images dépendrait du .env du poste qui lance les tests.
+    CLOUDFLARE_ACCOUNT_ID: '0'.repeat(32),
+    CLOUDFLARE_AI_TOKEN: 'jeton-cloudflare-de-test',
+  });
 });
 
 after(closeTestApp);
@@ -27,7 +33,7 @@ describe('État des services', () => {
     };
 
     const byId = Object.fromEntries(report.services.map((service) => [service.id, service]));
-    assert.deepEqual(Object.keys(byId).sort(), ['chariow', 'database', 'email', 'gamma', 'gemini', 'gemini-images', 'higgsfield', 'perplexity', 'sebpay', 'stripe']);
+    assert.deepEqual(Object.keys(byId).sort(), ['chariow', 'database', 'email', 'gamma', 'gemini', 'higgsfield', 'images', 'perplexity', 'sebpay', 'stripe']);
 
     assert.equal(byId.database!.state, 'warning', 'base embarquée : pas en ligne');
     assert.match(byId.database!.action ?? '', /Session pooler/);
@@ -37,7 +43,8 @@ describe('État des services', () => {
     assert.equal(byId.email!.state, 'off');
     assert.match(byId.email!.action ?? '', /Brevo/);
     assert.equal(byId.gemini!.state, 'warning', 'fournisseur injoignable : à surveiller, pas en panne');
-    assert.equal(byId['gemini-images']!.state, 'warning');
+    assert.equal(byId['images']!.state, 'warning', 'Cloudflare configuré mais pas encore éprouvé');
+    assert.match(byId['images']!.detail, /Cloudflare/, 'la ligne dit quel fournisseur travaille');
     assert.equal(byId.sebpay!.state, 'warning');
     assert.equal(report.serverIp, null);
 

@@ -120,6 +120,25 @@ const schema = z.object({
   GEMINI_IMAGE_MODEL: z.string().regex(/^[\w.-]+$/).default('gemini-3.1-flash-image'),
   /** Modèle d'image que Gamma utilise pour illustrer les storybooks (liste : developers.gamma.app, « Image models »). */
   GAMMA_IMAGE_MODEL: z.string().regex(/^[\w.-]+$/).default('gemini-3.1-flash-image'),
+  /**
+   * Génération d'images par Cloudflare Workers AI : fournisseur principal, Gemini en secours.
+   * Le jeton demande les droits « Workers AI » en lecture ET en écriture
+   * (dash.cloudflare.com → Workers AI → Use REST API). Sans ces deux variables, tout repasse
+   * par Gemini, une vingtaine de fois plus cher.
+   *
+   * Deux modèles, aux capacités différentes — mesurées sur l'API, pas déduites de la doc :
+   * celui de qualité accepte un format libre (couverture verticale) ; le rapide ne produit que
+   * du carré 1024 et REFUSE width/height, mais coûte une vingtaine de fois moins.
+   */
+  CLOUDFLARE_ACCOUNT_ID: z
+    .string()
+    .regex(/^[0-9a-f]{32}$/, 'Identifiant de compte Cloudflare attendu : 32 caractères hexadécimaux.')
+    .optional(),
+  CLOUDFLARE_AI_TOKEN: z.string().min(1).optional(),
+  /** Surchargeable pour tester contre un serveur factice. */
+  CLOUDFLARE_AI_URL: z.string().url().default('https://api.cloudflare.com/client/v4'),
+  CLOUDFLARE_IMAGE_MODEL: z.string().regex(/^@?[\w./-]+$/).default('@cf/leonardo/lucid-origin'),
+  CLOUDFLARE_IMAGE_MODEL_FAST: z.string().regex(/^@?[\w./-]+$/).default('@cf/black-forest-labs/flux-1-schnell'),
   // Higgsfield authentifie par une paire identifiant + secret, envoyée sous la
   // forme `Authorization: Key ID:SECRET` (docs.higgsfield.ai/docs/authentication).
   // L'ancienne variable unique HIGGSFIELD_API_KEY ne pouvait fonctionner avec
@@ -267,6 +286,7 @@ export const providers = {
   webSearch: Boolean(env.PERPLEXITY_API_KEY),
   email: Boolean(env.EMAIL_PROVIDER && env.EMAIL_API_KEY && env.EMAIL_FROM),
   payments: Boolean(env.STRIPE_API_KEY && !env.STRIPE_API_KEY.trim().startsWith('pk_')),
+  cloudflareImages: Boolean(env.CLOUDFLARE_ACCOUNT_ID && env.CLOUDFLARE_AI_TOKEN),
   higgsfield: Boolean(env.HIGGSFIELD_API_KEY_ID && env.HIGGSFIELD_API_KEY_SECRET),
   gamma: Boolean(env.GAMMA_API_KEY),
   chariow: Boolean(env.CHARIOW_API_KEY),

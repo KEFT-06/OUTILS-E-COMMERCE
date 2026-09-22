@@ -209,7 +209,12 @@ describe('Guides multilingues', () => {
     assert.equal(call.model, 'gemini-3.1-flash-image');
     assert.deepEqual(call.modalities, ['IMAGE']);
     assert.equal(call.aspectRatio, '9:16', 'format portrait des exports');
-    assert.match(call.prompt, /no text, letters, numbers/);
+    assert.match(call.prompt, /no text, no letters, no numbers/);
+    // Le titre transmis au modèle d'image, c'est le titre qu'il dessine : les essais rendaient
+    // une maquette de couverture avec un titre en caractères inventés. La consigne ne décrit
+    // qu'une scène, et la mise en page pose le vrai titre ensuite.
+    assert.doesNotMatch(call.prompt, /titled|book cover artwork/i, 'la consigne ne demande pas une couverture');
+    assert.ok(!call.prompt.includes(`"${GUIDE.title}"`), 'le titre n’est jamais cité entre guillemets au modèle');
 
     const image = await agent.get(`/api/covers/${submitted.body.cover.id}/image`).buffer(true).expect(200);
     assert.equal(image.headers['content-type'], 'image/png');
