@@ -6,9 +6,14 @@ import { AppError } from '@server/middleware';
 
 /**
  * Bibliothèque des créatifs pour l'administration : vidéos et visuels générés par les comptes,
- * avec accès au fichier. Le fichier lui-même reste chez son fournisseur — fal.ai pour les vidéos,
- * Higgsfield pour les visuels — qui ne le conserve qu'environ sept jours : au-delà, la ligne reste
- * (date, créateur, points) mais le fichier est annoncé expiré.
+ * avec accès au fichier.
+ *
+ * Deux régimes, selon l'endroit où vit le fichier. Une vidéo reste chez fal.ai, qui ne la garde
+ * qu'environ sept jours : passé ce délai, la ligne demeure (date, créateur, points) mais le
+ * fichier est annoncé expiré. Un visuel produit par Cloudflare est enregistré chez nous : il ne
+ * périme pas, et la bibliothèque ne doit pas le déclarer perdu au bout d'une semaine.
+ *
+ * Les visuels d'avant la bascule restent chez Higgsfield, et gardent donc l'ancien régime.
  */
 
 /** Durée de conservation des fichiers chez Higgsfield (docs.higgsfield.ai, « Billing and retention »). */
@@ -25,11 +30,17 @@ export const creativeListQuerySchema = z.object({
 
 export type CreativeListQuery = z.infer<typeof creativeListQuerySchema>;
 
-const isAvailable = (row: { status: string; providerRef: string | null; createdAt: Date }, now: number) =>
-  row.status === 'completed' && Boolean(row.providerRef) && now - row.createdAt.getTime() < PROVIDER_FILE_RETENTION_DAYS * 86_400_000;
+/** Fichiers gardés chez nous : rien ne les efface, la conservation du fournisseur ne les concerne pas. */
+const STORED_LOCALLY = 'interne';
 
-/** Les deux fournisseurs de créatifs : la vidéo est chez fal.ai, les visuels chez Higgsfield. */
-const CREATIVE_PROVIDERS = ['fal', 'higgsfield'] as const;
+const isAvailable = (row: { status: string; provider: string; providerRef: string | null; createdAt: Date }, now: number) => {
+  if (row.status !== 'completed' || !row.providerRef) return false;
+  if (row.provider === STORED_LOCALLY) return true;
+  return now - row.createdAt.getTime() < PROVIDER_FILE_RETENTION_DAYS * 86_400_000;
+};
+
+/** Fournisseurs de créatifs : vidéo chez fal.ai, visuels chez Cloudflare, et l'historique Higgsfield. */
+const CREATIVE_PROVIDERS = ['fal', 'higgsfield', STORED_LOCALLY] as const;
 
 export async function listCreatives(query: CreativeListQuery) {
   const db = getDb();
@@ -42,6 +53,7 @@ export async function listCreatives(query: CreativeListQuery) {
         id: generations.id,
         status: generations.status,
         providerRef: generations.providerRef,
+        provider: generations.provider,
         creditsCharged: generations.creditsCharged,
         refunded: generations.refunded,
         createdAt: generations.createdAt,
@@ -80,7 +92,7 @@ export async function listCreatives(query: CreativeListQuery) {
       createdAt: row.createdAt.toISOString(),
       completedAt: row.completedAt?.toISOString() ?? null,
       user: { id: row.userId, name: row.userName, email: row.userEmail },
-      /** Fichier encore disponible chez le fournisseur ; l'identifiant du fournisseur ne sort pas du serveur. */
+      /** Fichier encore récupérable ; l'identifiant chez le fournisseur ne sort pas du serveur. */
       available: isAvailable(row, now),
     })),
   };

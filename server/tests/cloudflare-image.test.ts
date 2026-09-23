@@ -170,3 +170,75 @@ describe('Couvertures par Cloudflare Workers AI', () => {
     assert.match(images.action ?? '', /lecture ET en écriture/, 'le conseil dit quoi refaire');
   });
 });
+
+/**
+ * Visuels publicitaires : depuis la bascule, l'image n'arrive plus par un lien à relayer mais
+ * en octets, qu'il faut donc garder. Ces trois tests verrouillent ce que la bascule change —
+ * le fournisseur choisi, l'endroit où le fichier vit, et le fait qu'il y survive.
+ */
+describe('Visuels publicitaires produits chez nous', () => {
+  const BRIEF = {
+    productName: 'Formation couture',
+    awarenessLevel: 'problem_aware',
+    format: '9:16',
+    market: 'CM',
+    sceneDescription: 'une couturière devant sa machine dans son atelier, lumière du matin',
+    purpose: 'content',
+  };
+
+  it('produit le visuel chez Cloudflare, le garde, et le sert depuis notre origine', async () => {
+    cloudflareMode = 'ok';
+    const agent = await author('visuel-cloudflare@exemple.com');
+
+    const lance = await agent.post('/api/creatives/visuals').send(BRIEF).expect(202);
+    assert.equal(lance.body.status, 'completed', 'l’image est rendue dans la réponse, pas mise en file');
+    assert.equal(lance.body.mediaType, 'image');
+
+    const call = cloudflareCalls.at(-1)!;
+    assert.equal(call.model, '@cf/leonardo/lucid-origin');
+    assert.equal(call.width, 720, 'le format 9:16 du brief est respecté');
+    assert.equal(call.height, 1280);
+
+    const requestId = lance.body.requestId as string;
+    const suivi = await agent.get(`/api/creatives/requests/${requestId}`).expect(200);
+    assert.equal(suivi.body.status, 'completed');
+
+    /*
+      Le point de la bascule : Higgsfield effaçait ses fichiers au bout de sept jours. Celui-ci
+      est en base, servi par nous, et ne dépend plus d'aucune rétention chez un tiers.
+    */
+    const fichier = await agent.get(`/api/creatives/requests/${requestId}/file`).buffer(true).expect(200);
+    assert.equal(fichier.headers['content-type'], 'image/jpeg');
+    assert.ok(Number(fichier.headers['content-length']) > 0);
+  });
+
+  it('ne montre le visuel qu’à son auteur', async () => {
+    cloudflareMode = 'ok';
+    const auteure = await author('visuel-proprietaire@exemple.com');
+    const lance = await auteure.post('/api/creatives/visuals').send(BRIEF).expect(202);
+
+    const autre = await author('visuel-intruse@exemple.com');
+    await autre.get(`/api/creatives/requests/${lance.body.requestId as string}/file`).expect(404);
+  });
+
+  /*
+    Le repli vaut pour les visuels comme pour les couvertures : un client qui vient de payer
+    ses points repart avec son image, même si Cloudflare l'a refusée. C'est aussi ce qui
+    justifie que la ligne dise « interne » et non « cloudflare » — ici, c'est Gemini qui a
+    dessiné, et le fichier est tout de même gardé et servi par nous.
+  */
+  it('garde et sert le visuel même quand c’est Gemini qui a dû le dessiner', async () => {
+    cloudflareMode = 'refus';
+    const avant = geminiImageCalls.length;
+    const agent = await author('visuel-repli-gemini@exemple.com');
+
+    const lance = await agent.post('/api/creatives/visuals').send(BRIEF).expect(202);
+    assert.equal(geminiImageCalls.length, avant + 1, 'Gemini a pris le relais');
+
+    const fichier = await agent
+      .get(`/api/creatives/requests/${lance.body.requestId as string}/file`)
+      .buffer(true)
+      .expect(200);
+    assert.equal(fichier.headers['content-type'], 'image/png', 'l’image vient bien du second fournisseur');
+  });
+});

@@ -54,6 +54,7 @@ import { creativeListQuerySchema, findCreativeFile, listCreatives } from '@serve
 import { pricingOverview } from '@server/services/admin/pricing';
 import { checkServices } from '@server/services/admin/services';
 import { streamCreativeFile } from '@server/services/creatives';
+import { sendLocalVisual } from '@server/services/creatives/local';
 import { contactListQuerySchema, contactStatusSchema, listContactMessages, setContactMessageStatus } from '@server/services/contact';
 import { formatMoney } from '@server/shared/currency';
 
@@ -193,6 +194,11 @@ adminRouter.get(
       details: { generationId: creative.id, kind: creative.kind },
       client: clientInfo(req),
     });
+    // Un visuel produit chez nous est servi depuis la base ; les autres sont relayés du fournisseur.
+    if (creative.provider === 'interne') {
+      await sendLocalVisual(null, creative.providerRef, disposition, res);
+      return;
+    }
     await streamCreativeFile(creative.providerRef, creative.provider === 'fal' ? 'fal' : 'higgsfield', disposition, res);
   }),
 );

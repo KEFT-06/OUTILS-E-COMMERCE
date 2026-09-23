@@ -3,7 +3,7 @@ import { pipeline } from 'node:stream/promises';
 import type { ReadableStream as NodeReadableStream } from 'node:stream/web';
 import type { Response as ExpressResponse } from 'express';
 import { z } from 'zod';
-import { env, isProd } from '@server/env';
+import { env, isProd, providers } from '@server/env';
 import { AppError, marketSchema } from '@server/middleware';
 import { type FalQueueStatus, getFalGeneration, submitFalGeneration } from '@server/services/fal';
 import {
@@ -62,16 +62,30 @@ export const VISUAL_MODEL_PATH = '/higgsfield-ai/soul/standard';
 export const VISUAL_RESOLUTION = '1080p';
 
 /**
- * Chaque créatif a son fournisseur, et le suivi doit savoir lequel.
+ * Où vit le fichier d'un créatif — ce que le suivi a besoin de savoir, et rien d'autre.
  *
- * La vidéo est partie chez fal.ai : Kling 2.5 Turbo Pro y coûte 0,35 $ les cinq secondes,
- * payés au rendu réussi, là où l'abonnement Higgsfield se payait tous les mois et voyait
- * ses crédits périmer. Les visuels restent chez Higgsfield tant que leur flux n'a pas été
- * repris : leur API rend un lien, quand un modèle d'image rend des octets.
+ * C'est bien l'ENDROIT qui est nommé, pas le modèle qui a dessiné. « interne » couvre tout
+ * ce que nous produisons et gardons nous-mêmes ; derrière, la façade d'images choisit
+ * Cloudflare, et bascule sur Gemini quand la réserve du jour est vide. Nommer la ligne
+ * d'après le modèle la rendrait fausse une fois sur dix, et c'est une valeur qui reste en
+ * base pour toujours.
+ *
+ * La vidéo est chez fal.ai : Kling 2.5 Turbo Pro y coûte 0,35 $ les cinq secondes, payés au
+ * rendu réussi. Higgsfield garde les visuels d'avant la bascule, qui restent consultables.
  */
-export type CreativeProvider = 'higgsfield' | 'fal';
+export type CreativeProvider = 'higgsfield' | 'fal' | 'interne';
 
-export const VISUAL_PROVIDER: CreativeProvider = 'higgsfield';
+/**
+ * Fournisseur des visuels, décidé à chaque demande et non figé ici.
+ *
+ * Un visuel produit par notre façade coûte quelques centimes à l'unité, là où Higgsfield se
+ * payait par abonnement mensuel dont les crédits périmaient sans report. Higgsfield reste le
+ * recours tant qu'il est configuré : un serveur sans clé Cloudflare continue de produire.
+ */
+export function visualProvider(): CreativeProvider {
+  return providers.cloudflareImages ? 'interne' : 'higgsfield';
+}
+
 export const VIDEO_PROVIDER: CreativeProvider = 'fal';
 
 /** Longueur maximale du prompt acceptée par Kling. */

@@ -262,6 +262,39 @@ export const covers = pgTable(
 ).enableRLS();
 
 /**
+ * Visuels publicitaires produits par un modèle qui rend des OCTETS, et non un lien.
+ *
+ * Higgsfield déposait le fichier sur son propre stockage et nous en donnait l'adresse ;
+ * il suffisait de la relayer. Cloudflare Workers AI répond l'image elle-même : sans cette
+ * table, elle n'existerait nulle part une fois la requête terminée.
+ *
+ * `requestId` reprend le contrat des fournisseurs asynchrones — l'écran demande un visuel,
+ * reçoit un identifiant, puis va chercher le fichier. Le visuel est prêt sur-le-champ, mais
+ * garder la même forme évite de réécrire tout le suivi côté client pour un gain nul.
+ */
+export const creativeImages = pgTable(
+  'creative_images',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    userId: uuid('user_id')
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
+    requestId: text('request_id').notNull(),
+    prompt: text('prompt').notNull(),
+    /** 1:1 · 9:16 · 16:9 */
+    format: text('format').notNull(),
+    mimeType: text('mime_type').notNull(),
+    /** Image encodée en base64, comme les couvertures. */
+    data: text('data').notNull(),
+    createdAt: createdAt(),
+  },
+  (table) => [
+    uniqueIndex('creative_images_request_unique').on(table.requestId),
+    index('creative_images_user_idx').on(table.userId, table.createdAt),
+  ],
+).enableRLS();
+
+/**
  * Rapports d'analyse de niche, tels qu'ils ont été produits et facturés. Le rapport
  * complet est gardé en JSON : il ne se recalcule pas, ses sources et sa trace de
  * calcul restent celles du jour de l'analyse.
@@ -1010,3 +1043,4 @@ export type WatchEventKind = (typeof WATCH_EVENT_KINDS)[number];
 export type DiscoveredStoreRow = typeof discoveredStores.$inferSelect;
 export type NicheBenchmarkRow = typeof nicheBenchmarks.$inferSelect;
 export type SpiedAdRow = typeof spiedAds.$inferSelect;
+export type CreativeImageRow = typeof creativeImages.$inferSelect;
