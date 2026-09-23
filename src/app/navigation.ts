@@ -223,7 +223,7 @@ export const ACCOUNT_PATH = '/app/compte';
  * fermée.
  */
 export interface AdminSection {
-  id: 'overview' | 'users' | 'connections' | 'messages' | 'audience' | 'revenue' | 'content' | 'services' | 'security';
+  id: 'overview' | 'users' | 'connections' | 'messages' | 'audience' | 'revenue' | 'pricing' | 'content' | 'services' | 'security';
   path: `/app/admin${string}`;
   label: string;
   description: string;
@@ -281,6 +281,14 @@ export const ADMIN_SECTIONS: readonly AdminSection[] = [
     description: 'Abonnements par jour, mois et année',
     icon: Banknote,
     permission: 'admin.revenue.read',
+  },
+  {
+    id: 'pricing',
+    path: '/app/admin/tarifs',
+    label: 'Tarifs',
+    description: 'Ce que chaque palier donne et ce que chaque action coûte',
+    icon: Banknote,
+    permission: 'admin.pricing.read',
   },
   {
     id: 'content',

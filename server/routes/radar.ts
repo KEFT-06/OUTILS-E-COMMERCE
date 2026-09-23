@@ -180,8 +180,12 @@ radarRouter.get(
       stores: await listDiscoveredStores(),
       lastRunAt: (await lastDiscoveryAt())?.toISOString() ?? null,
       configured: providers.apify,
-      /** Seul un administrateur peut lancer une collecte : chaque passage coûte de l'argent. */
-      canRefresh: auth.account.user.role === 'admin',
+      /*
+        Le bouton suit le PRIVILÈGE, pas le rôle : la collecte se délègue (un membre de l'équipe
+        peut la lancer sans voir les revenus ni gérer les comptes). Se fier au rôle afficherait un
+        bouton refusé, ou en cacherait un permis.
+      */
+      canRefresh: auth.account.permissions.includes('admin.market.collect'),
     });
   }),
 );
@@ -192,7 +196,7 @@ radarRouter.get(
  */
 radarRouter.post(
   '/discover/refresh',
-  requirePermission('admin.security.read'),
+  requirePermission('admin.market.collect'),
   routeLimiter(60, 3),
   asyncRoute(async (_req, res) => {
     res.json({ outcome: await runDiscovery() });

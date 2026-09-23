@@ -22,6 +22,9 @@ export const AdminRevenuePage = lazy(() =>
 export const AdminContentPage = lazy(() =>
   import('@/features/admin/AdminContentPage').then((module) => ({ default: module.AdminContentPage })),
 );
+export const AdminPricingPage = lazy(() =>
+  import('@/features/admin/AdminPricingPage').then((module) => ({ default: module.AdminPricingPage })),
+);
 export const AdminServicesPage = lazy(() =>
   import('@/features/admin/AdminServicesPage').then((module) => ({ default: module.AdminServicesPage })),
 );

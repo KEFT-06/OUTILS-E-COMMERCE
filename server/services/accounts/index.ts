@@ -12,6 +12,7 @@ import { providers } from '@server/env';
 import { AppError } from '@server/middleware';
 import { effectivePermissions, type Permission } from '@server/services/auth/permissions';
 import {
+  FEATURE_IDS,
   UNLIMITED,
   getPlan,
   resolveFeatures,
@@ -189,9 +190,26 @@ export async function loadAccount(userId: string, now = new Date()): Promise<Acc
     plan,
     permissions,
     overrides,
-    features: resolveFeatures(plan, overrides),
+    // Un administrateur a toutes les fonctions : voir effectiveFeatures ci-dessous.
+    features:
+      user.role === 'admin'
+        ? (Object.fromEntries(FEATURE_IDS.map((id) => [id, true])) as Record<FeatureId, boolean>)
+        : resolveFeatures(plan, overrides),
     isStaff: permissions.length > 0,
   };
+}
+
+/**
+ * Fonctions réellement ouvertes au compte. Un administrateur les a TOUTES, quel que soit son
+ * palier — exactement comme il n'a aucune limite.
+ *
+ * Sans cette symétrie, un propriétaire resté au palier Gratuit se voyait refuser ses propres
+ * modules : ni vidéo, ni conte, ni mesure de marché. Il ne pouvait donc ni éprouver ce qu'il
+ * vend, ni diagnostiquer une panne signalée par un client.
+ */
+export function effectiveFeatures(snapshot: Pick<AccountSnapshot, 'user' | 'features'>): Record<FeatureId, boolean> {
+  if (snapshot.user.role !== 'admin') return snapshot.features;
+  return Object.fromEntries(FEATURE_IDS.map((id) => [id, true])) as Record<FeatureId, boolean>;
 }
 
 /** Limites du palier (niches enregistrées, méthodes publicitaires) ; un administrateur n'en a aucune. */

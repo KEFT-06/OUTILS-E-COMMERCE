@@ -119,3 +119,53 @@ describe('Paliers — répartition des fonctions', () => {
     assert.notEqual(autorise.body.origin, 'plan', 'un palier payant n’est pas bloqué par son abonnement');
   });
 });
+
+describe('Administration — grille tarifaire et droits', () => {
+  it('donne à l’administrateur toutes les fonctions, quel que soit son palier', async () => {
+    const { createUserRecord } = await import('@server/services/accounts');
+    const { hashPassword } = await import('@server/services/auth/password');
+    const { STRONG_PASSWORD } = await import('./support/helpers');
+    const { loadAccount } = await import('@server/services/accounts');
+
+    /*
+      Le cas qui manquait : un propriétaire resté au palier Gratuit. Il n'a aucune limite
+      (effectiveLimits le dit depuis longtemps) mais il se voyait refuser ses propres modules —
+      ni vidéo, ni conte, ni mesure de marché. Il ne pouvait donc ni éprouver ce qu'il vend, ni
+      reproduire la panne d'un client.
+    */
+    const patron = await createUserRecord({
+      name: 'Propriétaire au palier Gratuit',
+      email: 'patron-gratuit@exemple.test',
+      passwordHash: await hashPassword(STRONG_PASSWORD),
+      role: 'admin',
+      plan: 'free',
+    });
+    const compte = await loadAccount(patron.id);
+
+    for (const fonction of ['video_generation', 'storybook_generation', 'native_review', 'market_benchmark'] as const) {
+      assert.equal(compte!.features[fonction], true, `un administrateur devrait avoir ${fonction}`);
+    }
+  });
+
+  it('sert la grille complète à qui détient le privilège, et la refuse aux autres', async () => {
+    const { createAdmin } = await import('./support/helpers');
+    const { agent: admin } = await createAdmin(app, 'patron-tarifs@exemple.test');
+
+    const grille = await admin.get('/api/admin/pricing').expect(200);
+    assert.equal(grille.body.plans.length, 5, 'les cinq paliers');
+    assert.ok(grille.body.actions.length > 0, 'et le coût de chaque action');
+    assert.ok(grille.body.point.value > 0, 'la valeur du point, qui rend la grille lisible en argent');
+
+    // Les limites des nouveaux modules doivent y figurer : une grille incomplète ne sert à rien.
+    const gratuit = (grille.body.plans as { id: string; limits: Record<string, number | null> }[]).find((p) => p.id === 'free')!;
+    assert.equal(gratuit.limits.watchedStores, 0);
+    assert.equal(gratuit.limits.spiedAdsVisible, 6);
+    // Et ce que le palier ferme, avec un libellé lisible plutôt qu'un identifiant.
+    const fermees = (grille.body.plans as { id: string; closedFeatures: { id: string; label: string }[] }[]).find((p) => p.id === 'free')!.closedFeatures;
+    assert.ok(fermees.some((f) => f.id === 'market_benchmark' && f.label.length > 0));
+
+    // Un compte ordinaire n'a rien à faire dans la grille interne.
+    const { agent } = await signInWithPlan(app, 'curieux-tarifs@exemple.test', 'pro');
+    await agent.get('/api/admin/pricing').expect(403);
+  });
+});

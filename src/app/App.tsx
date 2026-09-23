@@ -14,6 +14,7 @@ import {
   AdminMessagesPage,
   AdminOverviewPage,
   AdminRevenuePage,
+  AdminPricingPage,
   AdminSecurityPage,
   AdminServicesPage,
   AdminUserDetailPage,
@@ -126,6 +127,7 @@ export default function App() {
                       <Route path="messages" element={<AdminMessagesPage />} />
                       <Route path="audience" element={<AdminAudiencePage />} />
                       <Route path="revenus" element={<AdminRevenuePage />} />
+                      <Route path="tarifs" element={<AdminPricingPage />} />
                       <Route path="contenus" element={<AdminContentPage />} />
                       <Route path="services" element={<AdminServicesPage />} />
                       <Route path="securite" element={<AdminSecurityPage />} />

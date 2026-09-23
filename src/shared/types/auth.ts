@@ -20,6 +20,8 @@ export type Permission =
   | 'admin.revenue.read'
   | 'admin.payments.record'
   | 'admin.content.view'
+  | 'admin.pricing.read'
+  | 'admin.market.collect'
   | 'admin.security.read'
   | 'guides.review';
 

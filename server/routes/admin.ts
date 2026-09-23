@@ -51,6 +51,7 @@ import { convertAmount, getRates, toMinorUnits } from '@server/services/currency
 import { FEATURES, getPlan, getPlanConfig, isFeature } from '@server/services/plans';
 import { audienceSummary } from '@server/services/audience';
 import { creativeListQuerySchema, findCreativeFile, listCreatives } from '@server/services/admin/creatives';
+import { pricingOverview } from '@server/services/admin/pricing';
 import { checkServices } from '@server/services/admin/services';
 import { streamCreativeFile } from '@server/services/creatives';
 import { contactListQuerySchema, contactStatusSchema, listContactMessages, setContactMessageStatus } from '@server/services/contact';
@@ -967,6 +968,19 @@ adminRouter.get(
 );
 
 /** État des services branchés (clés, crédits, adresse IP du serveur), vérifié en direct sans rien consommer. */
+/**
+ * Grille tarifaire complète, en lecture seule : ce qu'un palier donne et ce que chaque action
+ * coûte. Les deux tables sont des fichiers modifiables sans redéploiement ; cet écran sert à les
+ * RELIRE, pas à les éditer — une grille changée depuis une page web le serait sans trace.
+ */
+adminRouter.get(
+  '/pricing',
+  requirePermission('admin.pricing.read'),
+  asyncRoute(async (_req, res) => {
+    res.json(await pricingOverview());
+  }),
+);
+
 adminRouter.get(
   '/services',
   requirePermission('admin.security.read'),

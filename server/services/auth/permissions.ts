@@ -39,6 +39,16 @@ export const PERMISSIONS = {
     label: 'Voir les vidéos et visuels créés',
     description: 'Ouvrir et télécharger les vidéos et visuels générés par les comptes. Chaque ouverture est inscrite au journal d’audit.',
   },
+  'admin.pricing.read': {
+    label: 'Voir la grille tarifaire',
+    description:
+      'Paliers, prix par devise, quotas de points, limites et fonctions ouvertes, ainsi que le coût en points de chaque action. Lecture seule : ces deux tables sont des fichiers de configuration, modifiables sans redéploiement.',
+  },
+  'admin.market.collect': {
+    label: 'Lancer une collecte publicitaire',
+    description:
+      'Déclencher un relevé de la bibliothèque publicitaire, qui alimente les boutiques repérées et le mur d’espionnage. Chaque passage est facturé au résultat par le fournisseur : ce privilège engage de l’argent réel.',
+  },
   'admin.security.read': {
     label: 'Voir la sécurité et le journal',
     description: 'Tentatives de connexion, verrous et journal des actions d’administration.',
