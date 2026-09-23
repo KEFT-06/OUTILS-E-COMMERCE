@@ -23,6 +23,13 @@ export const FEATURES = {
   affiliate_invitations: 'Invitations d’affiliés',
   guide_translation: 'Guides multilingues',
   native_review: 'Relecture par un locuteur natif',
+  /**
+   * Déclencher une mesure de marché neuve. LIRE une mesure déjà en cache reste ouvert à tous :
+   * elle est mutualisée et ne coûte rien de plus. C'est la COLLECTE qui se paie chez le
+   * fournisseur — sans cette porte, un compte gratuit consommerait la réserve mensuelle du
+   * serveur, au détriment des comptes qui la financent.
+   */
+  market_benchmark: 'Mesure de marché d’une niche',
 } as const;
 
 export type FeatureId = keyof typeof FEATURES;

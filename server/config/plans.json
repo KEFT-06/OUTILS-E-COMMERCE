@@ -1,5 +1,5 @@
 {
-  "version": "2026.09.10",
+  "version": "2026.09.11",
   "updatedAt": "2026-09-23",
   "note": "Paliers d'abonnement, éditables sans redéploiement. « prices » : prix mensuel par devise ; une devise absente est convertie depuis la devise de base puis arrondie. null : prix pas encore fixé. « limits » : null = illimité. « guideLanguages » : langues de traduction par guide. « ebookPages » : pages au plus pour un ebook rédigé par l'IA (plafond absolu 250). Une fonction absente de « features » est ouverte ; false la ferme pour le palier.",
   "pricing": {
@@ -27,7 +27,8 @@
       "features": {
         "video_generation": false,
         "storybook_generation": false,
-        "native_review": false
+        "native_review": false,
+        "market_benchmark": false
       }
     },
     {

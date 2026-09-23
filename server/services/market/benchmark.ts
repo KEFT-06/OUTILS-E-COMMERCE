@@ -202,8 +202,13 @@ async function collect(query: string, now: Date): Promise<NicheBenchmark> {
 
 export interface BenchmarkResult {
   benchmark: NicheBenchmark | null;
-  /** « cache » : servi tel quel. « collected » : relevé neuf, payé. « capped » : plafond du jour atteint. */
-  origin: 'cache' | 'collected' | 'capped' | 'unavailable';
+  /**
+   * « cache » : servi tel quel · « collected » : relevé neuf, payé · « capped » : plafond du
+   * jour atteint · « plan » : le palier n'autorise pas de relevé neuf · « unavailable » : aucune
+   * collecte configurée. L'écran doit pouvoir dire POURQUOI il n'a rien, sinon l'absence de
+   * mesure passe pour une niche vide.
+   */
+  origin: 'cache' | 'collected' | 'capped' | 'plan' | 'unavailable';
 }
 
 /**
