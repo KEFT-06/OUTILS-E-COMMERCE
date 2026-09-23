@@ -36,7 +36,12 @@ const fakeGemini = createServer((req, res) => {
     if (prompt.includes('Titre : Saturé') && model === 'gemini-3.5-flash') return send(503, overloaded);
 
     let answer: unknown;
-    if (prompt.includes('Compose le plan de ce produit')) {
+    if (prompt.includes('Réécris le TEXTE')) {
+      // Le faux relecteur glisse une promesse de gain : une retouche doit être contrôlée aussi.
+      answer = prompt.includes('promesse interdite')
+        ? { text: 'Avec cette méthode, gagnez 500 000 FCFA par mois.' }
+        : { text: 'Version courte du passage.' };
+    } else if (prompt.includes('Compose le plan de ce produit')) {
       // Aucun plan fourni : le modèle en propose un, titres compris.
       answer = {
         modules: [
@@ -197,5 +202,62 @@ describe('Rédaction par l’IA', () => {
     assert.match(overloaded.body.error.message, /surchargé/);
     assert.equal(models.length, 4, 'deux tentatives par modèle, pas davantage');
     assert.equal(await balance(agent), before, 'points rendus');
+  });
+});
+
+describe('Retouche d’un passage par l’IA', () => {
+  it('réécrit à la demande, contrôle le résultat et facture un point', async () => {
+    const { agent } = await signInWithPlan(app, 'retouche@exemple.com', 'pro');
+    const avant = await balance(agent);
+
+    const response = await agent
+      .post('/api/writing/product/revise')
+      .send({
+        text: 'Un très long passage qui dit la même chose de trois façons différentes.',
+        instruction: 'Raccourcis en gardant l’idée.',
+        productTitle: 'Poulailler de balcon',
+        sectionTitle: 'Emplacement',
+        market: 'CM',
+      })
+      .expect(200);
+
+    const result = response.body as { text: string; findings: { label: string; severity: string }[] };
+    assert.equal(result.text, 'Version courte du passage.');
+    assert.deepEqual(result.findings, [], 'un texte sain ne remonte aucun signalement');
+
+    /*
+      Une retouche coûte un point, pas quatre. C'est ce qui rend l'aperçu utilisable : on relit,
+      on corrige une phrase, on recommence. Au tarif d'une rédaction complète, personne n'oserait.
+    */
+    assert.equal(await balance(agent), avant - 1);
+
+    // Le contexte voyage : sans le titre de la section, le modèle perdrait le ton du produit.
+    const dernier = prompts.at(-1)!;
+    assert.match(dernier, /Section : Emplacement/);
+    assert.match(dernier, /Raccourcis en gardant l’idée/);
+  });
+
+  it('contrôle la conformité du texte réécrit, pas seulement du texte d’origine', async () => {
+    /*
+      Une retouche peut réintroduire ce que la première rédaction avait évité : on demande « un
+      ton plus vendeur » et le modèle ajoute une promesse de gain. Sans ce contrôle, la formulation
+      ne serait vue qu'à l'export, après relecture — trop tard pour être corrigée simplement.
+    */
+    const { agent } = await signInWithPlan(app, 'retouche-risquee@exemple.com', 'pro');
+    const response = await agent
+      .post('/api/writing/product/revise')
+      .send({ text: 'Un passage neutre.', instruction: 'promesse interdite, ton plus vendeur', sectionTitle: 'Budget' })
+      .expect(200);
+
+    const result = response.body as { findings: { label: string; severity: string }[] };
+    assert.ok(result.findings.length > 0, 'la promesse de gain doit être signalée tout de suite');
+    assert.equal(result.findings[0]!.label, 'Budget');
+  });
+
+  it('refuse une consigne vide, sans rien facturer', async () => {
+    const { agent } = await signInWithPlan(app, 'retouche-vide@exemple.com', 'pro');
+    const avant = await balance(agent);
+    await agent.post('/api/writing/product/revise').send({ text: 'Un passage.', instruction: 'ok' }).expect(400);
+    assert.equal(await balance(agent), avant, 'une demande refusée ne coûte rien');
   });
 });

@@ -10,9 +10,12 @@ import {
 } from '@server/services/writing/video';
 import {
   type LaunchKitWritingRequest,
+  type ProductRevisionRequest,
   type ProductWritingRequest,
   launchKitWritingSchema,
+  productRevisionSchema,
   productWritingSchema,
+  reviseProduct,
   writeLaunchKit,
   writeProduct,
 } from '@server/services/writing';
@@ -30,6 +33,21 @@ import { type MarketReportRequest, marketReportRequestSchema, startMarketReport 
 /** Rédaction par l'IA : modules d'un produit et textes du kit de lancement. Facturée, points rendus en cas d'échec. */
 
 export const writingRouter = Router();
+
+/**
+ * Retouche d'un passage à partir d'une consigne, depuis l'aperçu. Facturée un point : on
+ * retouche souvent, on rédige une fois.
+ */
+writingRouter.post(
+  '/product/revise',
+  requireAuth,
+  requireFeature('ai_writing'),
+  aiLimiter,
+  validateBody(productRevisionSchema),
+  asyncRoute(async (req, res) => {
+    res.json(await reviseProduct(req.auth!, req.body as ProductRevisionRequest));
+  }),
+);
 
 writingRouter.post(
   '/product',

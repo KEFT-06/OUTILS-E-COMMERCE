@@ -1,9 +1,10 @@
 import { useState } from 'react';
 import { toast } from 'sonner';
-import { AlertTriangle, FileDown, FileText, PenSquare, Sparkles } from 'lucide-react';
+import { AlertTriangle, Eye, FileDown, FileText, PenSquare, Sparkles } from 'lucide-react';
 import { useCreditGate } from '@/app/providers/CreditGateProvider';
 import { LongformEbookPanel } from '@/modules/studio/LongformEbookPanel';
 import { ProductExpertEditor } from '@/modules/studio/ProductExpertEditor';
+import { ProductPreviewPanel } from '@/modules/studio/ProductPreviewPanel';
 import { CoverGenerator } from '@/shared/components/CoverGenerator';
 import { WritingFindings } from '@/shared/components/WritingFindings';
 import { toApiError } from '@/shared/lib/apiError';
@@ -65,6 +66,7 @@ export function ProductStudioPanel({ baseProduct, report, initialExpertOpen = fa
   const [blockedVerdict, setBlockedVerdict] = useState<ProductExportVerdict | null>(null);
   const [cover, setCover] = useState<CoverView | null>(null);
   const [generateOpen, setGenerateOpen] = useState(false);
+  const [isPreviewOpen, setIsPreviewOpen] = useState(false);
   const [isWriting, setIsWriting] = useState(false);
   const [findings, setFindings] = useState<WritingFinding[]>([]);
   /** Pages du dernier ebook long rédigé : sert à proposer de l'allonger. */
@@ -164,11 +166,28 @@ export function ProductStudioPanel({ baseProduct, report, initialExpertOpen = fa
                 <PenSquare />
                 Expert
               </Button>
+              {/*
+                L'aperçu n'est pas un quatrième mode de création : c'est l'endroit où l'on LIT ce
+                qu'on vient d'écrire, avant de le télécharger. Il vient donc après les deux modes.
+              */}
+              <Button
+                variant={isPreviewOpen ? 'secondary' : 'outline'}
+                size="sm"
+                onClick={() => setIsPreviewOpen((open) => !open)}
+                aria-expanded={isPreviewOpen}
+              >
+                <Eye />
+                Aperçu
+              </Button>
             </div>
             <ul className="space-y-0.5 text-xs leading-relaxed text-muted-foreground">
               <li>
                 <span className="font-medium text-foreground/80">Génératif</span> :{' '}
                 {generativeReason ?? 'l’IA rédige chaque module à partir du titre, de la promesse et du sommaire, en brouillon à relire.'}
+              </li>
+              <li>
+                <span className="font-medium text-foreground/80">Aperçu</span> : le document tel qu’il sera exporté, corrigeable à la
+                main ou par une consigne à l’IA.
               </li>
               <li>
                 <span className="font-medium text-foreground/80">Vidéo → Produit</span> : bouton « Depuis une vidéo », en haut du
@@ -247,6 +266,21 @@ export function ProductStudioPanel({ baseProduct, report, initialExpertOpen = fa
               plus grande : le brouillon actuel sera remplacé.
             </AlertDescription>
           </Alert>
+        )}
+
+        {isPreviewOpen && (
+          <ProductPreviewPanel
+            // Repart du brouillon courant après chaque rédaction ou enregistrement.
+            key={`apercu-${baseProduct.id}-${editorRevision}`}
+            product={product}
+            market={report?.market ?? null}
+            onSave={(modifie) => {
+              drafts.saveDraft(modifie);
+              setEditorRevision((revision) => revision + 1);
+              toast.success('Modifications enregistrées', { description: 'Elles partiront dans le prochain export.' });
+            }}
+            onFindings={setFindings}
+          />
         )}
 
         {isExpertOpen && (

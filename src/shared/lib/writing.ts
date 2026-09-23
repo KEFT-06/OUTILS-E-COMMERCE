@@ -108,6 +108,15 @@ export const writingApi = {
     market: string | null;
   }) => apiRequest<ProductWritingResult>('/api/writing/product', { method: 'POST', body }),
 
+  /** Retouche d'un passage depuis l'aperçu, à partir d'une consigne. Un point. */
+  revise: (body: {
+    text: string;
+    instruction: string;
+    productTitle: string;
+    sectionTitle: string;
+    market: string | null;
+  }) => apiRequest<{ text: string; findings: WritingFinding[] }>('/api/writing/product/revise', { method: 'POST', body }),
+
   launchKit: (body: {
     product: { title: string; subtitle: string; targetAudience: string; transformationPromise: string; modules: string[] };
     objective: KitObjective;
