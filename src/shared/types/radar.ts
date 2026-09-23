@@ -130,4 +130,8 @@ export interface EspionnageView {
   stores: number;
   lastCollectedAt: string | null;
   configured: boolean;
+  /** Annonces que le palier laisse voir ; null : tout le mur. */
+  visibleLimit: number | null;
+  /** Annonces correspondant aux filtres mais masquées par le palier. */
+  hiddenByPlan: number;
 }

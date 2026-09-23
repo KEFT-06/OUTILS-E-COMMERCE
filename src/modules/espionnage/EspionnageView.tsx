@@ -268,6 +268,23 @@ export function EspionnageView() {
         </div>
       )}
 
+      {data && data.hiddenByPlan > 0 && (
+        /*
+          Dire ce qui manque, et pourquoi. Un mur tronqué en silence passe pour un mur pauvre :
+          l'utilisateur en conclut que l'outil ne trouve rien, alors que c'est son palier qui borne.
+        */
+        <Alert>
+          <AlertTitle>
+            {data.hiddenByPlan} annonce{data.hiddenByPlan > 1 ? 's' : ''} de plus correspond
+            {data.hiddenByPlan > 1 ? 'ent' : ''} à ce filtre
+          </AlertTitle>
+          <AlertDescription>
+            Votre palier affiche {data.visibleLimit} annonces à la fois. Les autres sont déjà collectées et
+            vous attendent sur un palier supérieur.
+          </AlertDescription>
+        </Alert>
+      )}
+
       {data && data.ads.length > 0 && (
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
           {data.ads.map((ad) => (

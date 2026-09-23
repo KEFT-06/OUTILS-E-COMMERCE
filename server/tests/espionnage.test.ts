@@ -208,3 +208,31 @@ describe('Mur d’espionnage', () => {
     await request(app).get('/api/espionnage').expect(401);
   });
 });
+
+describe('Mur d’espionnage — ce que le palier laisse voir', () => {
+  it('bride le gratuit sans l’aveugler, et dit combien d’annonces il manque', async () => {
+    // Le mur a été rempli par la collecte du premier bloc : deux annonces retenues.
+    const { agent: gratuit } = await signInWithPlan(app, 'espion-gratuit@exemple.test', 'free');
+
+    // Le palier Gratuit voit 6 annonces : ici les deux passent, rien n'est caché.
+    const large = await gratuit.get('/api/espionnage').expect(200);
+    assert.equal(large.body.visibleLimit, 6);
+    assert.equal(large.body.hiddenByPlan, 0);
+    assert.equal(large.body.ads.length, 2, 'un compte gratuit VOIT le mur : un écran vide ne convainc personne');
+
+    /*
+      Le point qui compte : quand le palier coupe, il faut le DIRE. Un mur tronqué en silence
+      passe pour un mur pauvre, et l'utilisateur en conclut que l'outil ne trouve rien — alors
+      que c'est son abonnement qui borne.
+    */
+    const serre = await gratuit.get('/api/espionnage?limit=1').expect(200);
+    assert.equal(serre.body.ads.length, 1);
+    assert.equal(serre.body.hiddenByPlan, 1, 'l’écran peut annoncer ce qui manque');
+
+    // Un palier supérieur voit davantage, sans nouvelle collecte : la donnée est déjà là.
+    const { agent: pro } = await signInWithPlan(app, 'espion-pro@exemple.test', 'pro');
+    const chezPro = await pro.get('/api/espionnage').expect(200);
+    assert.equal(chezPro.body.visibleLimit, 100);
+    assert.equal(chezPro.body.hiddenByPlan, 0);
+  });
+});

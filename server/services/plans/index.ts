@@ -49,6 +49,15 @@ const limitsSchema = z.object({
   /** Niches qu'un compte peut enregistrer ; null : illimité. */
   savedNiches: z.number().int().min(0).nullable(),
   /**
+   * Annonces visibles sur le mur d'espionnage ; null : tout le mur.
+   *
+   * Bridé et non fermé, délibérément. Le mur est la donnée la plus chère du produit, mais un
+   * écran vide ne convainc personne de payer : un compte gratuit doit VOIR que les annonces
+   * existent, leur ancienneté et leurs accroches, et buter sur la quantité. La collecte, elle,
+   * est mutualisée : montrer six annonces de plus à un visiteur ne coûte rien de plus.
+   */
+  spiedAdsVisible: z.number().int().min(0).nullable(),
+  /**
    * Boutiques suivies par le radar ; 0 : pas d'accès au radar, null : illimité.
    *
    * Borne le nombre de cibles, jamais le nombre de relevés : un radar facturé au passage
@@ -108,6 +117,7 @@ export type PlanConfig = z.infer<typeof configSchema>;
 export const UNLIMITED: PlanLimits = {
   savedNiches: null,
   watchedStores: null,
+  spiedAdsVisible: null,
   adFrameworks: null,
   guideLanguages: null,
   ebookPages: EBOOK_PAGES_CEILING,

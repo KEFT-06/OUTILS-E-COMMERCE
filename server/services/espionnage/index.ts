@@ -61,6 +61,10 @@ export interface EspionnageView {
   lastCollectedAt: string | null;
   /** false : aucun jeton de collecte — le mur est vide et l'écran le dit au lieu de mentir. */
   configured: boolean;
+  /** Annonces que le palier laisse voir ; null : tout le mur. */
+  visibleLimit: number | null;
+  /** Annonces retenues par les filtres mais masquées par le palier. Zéro : rien n'est caché. */
+  hiddenByPlan: number;
 }
 
 const JOUR_MS = 86_400_000;
@@ -92,8 +96,15 @@ function viewOf(row: typeof spiedAds.$inferSelect, now: Date): SpiedAdView {
  * Annonces du mur, filtrées. Lecture pure d'un cache partagé : gratuite, et identique pour tous
  * les comptes puisque les publicités d'une plateforme sont les mêmes pour tout le monde.
  */
-export async function listSpiedAds(filters: EspionnageFilters = {}, now = new Date()): Promise<EspionnageView> {
-  const limit = Math.min(Math.max(filters.limit ?? 60, 1), 200);
+export async function listSpiedAds(
+  filters: EspionnageFilters = {},
+  /** Plafond du palier ; null : tout le mur. */
+  visibleLimit: number | null = null,
+  now = new Date(),
+): Promise<EspionnageView> {
+  const demande = Math.min(Math.max(filters.limit ?? 60, 1), 200);
+  // Le palier l'emporte toujours sur ce que demande l'écran.
+  const limit = visibleLimit === null ? demande : Math.min(demande, visibleLimit);
   const conditions: SQL[] = [];
 
   /*
@@ -132,6 +143,18 @@ export async function listSpiedAds(filters: EspionnageFilters = {}, now = new Da
 
   const rows = await getDb().select().from(spiedAds).where(where).orderBy(...order).limit(limit);
 
+  /*
+    Combien d'annonces le palier cache-t-il, parmi celles que les filtres retiennent ? On le
+    compte pour le DIRE. Couper en silence laisserait croire que la niche est vide, alors que
+    c'est l'abonnement qui borne — un utilisateur qui ne sait pas ce qu'il rate n'a aucune
+    raison de payer, et croit le produit pauvre.
+  */
+  let hiddenByPlan = 0;
+  if (visibleLimit !== null) {
+    const [correspondantes] = await getDb().select({ total: count() }).from(spiedAds).where(where);
+    hiddenByPlan = Math.max(0, Number(correspondantes?.total ?? 0) - rows.length);
+  }
+
   const [totaux] = await getDb()
     .select({ total: count(), stores: sql<number>`count(distinct ${spiedAds.storeHost})` })
     .from(spiedAds);
@@ -142,6 +165,8 @@ export async function listSpiedAds(filters: EspionnageFilters = {}, now = new Da
     stores: Number(totaux?.stores ?? 0),
     lastCollectedAt: (await lastDiscoveryAt())?.toISOString() ?? null,
     configured: providers.apify,
+    visibleLimit,
+    hiddenByPlan,
   };
 }
 

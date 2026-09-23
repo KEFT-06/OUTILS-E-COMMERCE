@@ -1,6 +1,6 @@
 {
-  "version": "2026.09.9",
-  "updatedAt": "2026-09-22",
+  "version": "2026.09.10",
+  "updatedAt": "2026-09-23",
   "note": "Paliers d'abonnement, éditables sans redéploiement. « prices » : prix mensuel par devise ; une devise absente est convertie depuis la devise de base puis arrondie. null : prix pas encore fixé. « limits » : null = illimité. « guideLanguages » : langues de traduction par guide. « ebookPages » : pages au plus pour un ebook rédigé par l'IA (plafond absolu 250). Une fonction absente de « features » est ouverte ; false la ferme pour le palier.",
   "pricing": {
     "baseCurrency": "EUR",
@@ -19,6 +19,7 @@
       "limits": {
         "savedNiches": 3,
         "watchedStores": 0,
+        "spiedAdsVisible": 6,
         "adFrameworks": 2,
         "guideLanguages": 1,
         "ebookPages": 15
@@ -42,6 +43,7 @@
       "limits": {
         "savedNiches": 15,
         "watchedStores": 1,
+        "spiedAdsVisible": 30,
         "adFrameworks": 4,
         "guideLanguages": 3,
         "ebookPages": 40
@@ -64,6 +66,7 @@
       "limits": {
         "savedNiches": 50,
         "watchedStores": 5,
+        "spiedAdsVisible": 100,
         "adFrameworks": 7,
         "guideLanguages": 5,
         "ebookPages": 100
@@ -83,6 +86,7 @@
       "limits": {
         "savedNiches": 150,
         "watchedStores": 20,
+        "spiedAdsVisible": 200,
         "adFrameworks": 10,
         "guideLanguages": 10,
         "ebookPages": 180
@@ -102,6 +106,7 @@
       "limits": {
         "savedNiches": null,
         "watchedStores": null,
+        "spiedAdsVisible": null,
         "adFrameworks": null,
         "guideLanguages": null,
         "ebookPages": 250

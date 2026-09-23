@@ -2,6 +2,7 @@ import { Router } from 'express';
 import { z } from 'zod';
 import { asyncRoute } from '@server/middleware';
 import { requireAuth } from '@server/middleware/auth';
+import { effectiveLimits } from '@server/services/accounts';
 import { listSpiedAds, spiedStores } from '@server/services/espionnage';
 
 /**
@@ -31,7 +32,8 @@ espionnageRouter.get(
   asyncRoute(async (req, res) => {
     // Un filtre invalide n'est pas une erreur à afficher : on sert le mur sans lui.
     const parsed = filtersSchema.safeParse(req.query);
-    res.json(await listSpiedAds(parsed.success ? parsed.data : {}));
+    const limite = effectiveLimits(req.auth!.account).spiedAdsVisible;
+    res.json(await listSpiedAds(parsed.success ? parsed.data : {}, limite));
   }),
 );
 
