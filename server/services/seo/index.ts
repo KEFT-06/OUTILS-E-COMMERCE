@@ -81,9 +81,9 @@ export function renderIndexHtml(template: string, appUrl: string, path: string):
     `<meta property="og:description" content="${escapeMarkup(description)}" />`,
     '<meta property="og:type" content="website" />',
     '<meta property="og:locale" content="fr_FR" />',
-    `<meta property="og:image" content="${escapeMarkup(url)}/marque-smart-creator.jpg" />`,
-    '<meta property="og:image:width" content="1222" />',
-    '<meta property="og:image:height" content="864" />',
+    `<meta property="og:image" content="${escapeMarkup(url)}/og-image.png" />`,
+    '<meta property="og:image:width" content="1200" />',
+    '<meta property="og:image:height" content="630" />',
     '<meta property="og:image:alt" content="Smart Creator : lire le marché, produire le bon produit digital, le vendre." />',
     '<meta name="twitter:card" content="summary_large_image" />',
     page

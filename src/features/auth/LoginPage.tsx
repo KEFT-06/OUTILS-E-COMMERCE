@@ -14,7 +14,7 @@ import { PASSWORD_MIN_LENGTH, PasswordHints, PasswordInput } from '@/features/au
 import { passwordProblemsOf } from '@/shared/lib/api';
 import { type ApiError, toApiError } from '@/shared/lib/apiError';
 import { Alert, AlertDescription, AlertTitle } from '@/shared/ui/alert';
-import { BrandLogo, BrandPoster } from '@/shared/components/BrandLogo';
+import { BrandLogo } from '@/shared/components/BrandLogo';
 import { Button } from '@/shared/ui/button';
 import { Field, FieldDescription, FieldError, FieldGroup, FieldLabel } from '@/shared/ui/field';
 import { Input } from '@/shared/ui/input';
@@ -403,9 +403,6 @@ export function LoginPage() {
 
         <div className="max-w-md space-y-8">
           <div className="space-y-6">
-            {/* L'image de marque entière, là où elle a la place de se lire. Ailleurs, seul son
-                emblème est repris : à 32 px, son nom serait illisible et ferait doublon. */}
-            <BrandPoster className="max-w-sm" />
             <h2 className="font-display text-4xl leading-tight font-extrabold tracking-tight">
               Sachez quoi vendre avant de le produire.
             </h2>

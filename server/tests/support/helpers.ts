@@ -24,6 +24,15 @@ export async function createTestApp(overrides: Record<string, string> = {}): Pro
     // Vitrine publique lue par le radar : neutralisée par défaut, sinon une suite lancée
     // sur un poste configuré irait relever de vraies boutiques chez un tiers.
     CHARIOW_STOREFRONT_URL: 'http://127.0.0.1:9',
+    /*
+      Collecte publicitaire et mesures de marché : neutralisées de la même façon, et pour une
+      raison plus sérieuse encore — ces acteurs se facturent AU RÉSULTAT. Sans ces deux lignes,
+      une suite lancée sur un poste configuré lançait de vrais relevés chez le fournisseur et
+      consommait la réserve mensuelle du propriétaire. Constaté, pas supposé.
+      Les tests qui veulent ce fournisseur redéfinissent ces valeurs vers un serveur factice.
+    */
+    APIFY_TOKEN: '',
+    APIFY_API_URL: 'http://127.0.0.1:9',
     GEMINI_API_KEY: 'cle-gemini-de-test',
     GEMINI_API_URL: 'http://127.0.0.1:9',
     // Neutralisés par défaut : env.ts charge le .env du poste, et sans ces trois lignes une
