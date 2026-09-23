@@ -1,25 +1,55 @@
 import { cn } from '@/shared/lib/utils';
 
 /**
- * Identité Smart Creator : le croissant et le mot-symbole « SMART CREATOR »
- * dans les deux couleurs du logo (vert #00C853, orange #F59E0B).
+ * Identité Smart Creator : l'emblème du logo fourni, et le mot-symbole « SMART CREATOR »
+ * dans les deux couleurs de la marque (vert #00C853, orange #F59E0B).
  *
- * Le logo est dessiné en SVG plutôt que chargé depuis une image : l'ancien
- * fichier JPEG était vide et l'écran affichait en permanence son repli.
+ * L'emblème vient désormais de l'image du graphiste, RECADRÉE sur la seule illustration.
+ * Le nom qu'elle contient n'est pas repris : à 32 px il serait illisible, et il apparaîtrait
+ * une seconde fois juste à côté en texte sélectionnable. Le mot-symbole reste donc du texte —
+ * il s'adapte au thème sombre, se traduit et se lit par un lecteur d'écran, ce qu'une image ne
+ * fait pas. L'image entière, nom compris, s'affiche par `BrandPoster`, là où elle a la place.
  *
  * Contraste : les couleurs du mot-symbole sont celles de la marque. Les
  * logotypes sont exemptés du critère de contraste WCAG 1.4.3 ; l'attribut
  * `data-brand-wordmark` permet de les écarter explicitement des audits.
  */
 
+/** Image de marque complète : emblème ET mot-symbole, composés par le graphiste. */
+export const BRAND_IMAGE = '/marque-smart-creator.jpg';
+
+/*
+  Recadrage de l'emblème, MESURÉ et non estimé.
+
+  L'image fait 1222 × 864 et contient deux choses : l'illustration en haut, le nom écrit en bas.
+  Une analyse du profil d'encre, ligne par ligne, dans un navigateur, les a séparées :
+
+      y   96 → 610   l'illustration (robot, flèches, diamant)
+      y  624 → 760   le nom et la signature, larges et réguliers
+
+  Un carré de 520 px pris en (355, 90) tient donc entièrement dans l'illustration, sans mordre
+  sur le texte. Utiliser l'image entière comme icône afficherait le nom deux fois — une fois
+  illisible dans un carré de 32 px, une fois en toutes lettres à côté.
+
+  Les trois nombres ci-dessous découlent de ce carré :
+      largeur  = 1222 / 520           = 235 %
+      décalage x = 355 / 520          = 68,3 % de la largeur du cadre
+      décalage y =  90 / 520          = 17,3 %
+*/
+const EMBLEME = { width: '235%', left: '-68.3%', top: '-17.3%' } as const;
+
 export function BrandMark({ className }: { className?: string }) {
   return (
-    <svg viewBox="0 0 100 100" aria-hidden="true" className={cn('shrink-0', className)}>
-      <circle cx="50" cy="50" r="49" fill="#ffffff" stroke="#e0e5df" strokeWidth="2" />
-      <path d="M 50 10 A 40 40 0 1 0 78 78 A 34 34 0 1 1 50 16 Z" fill="#00c853" />
-      <path d="M 44 20 A 30 30 0 0 0 44 80 A 25 25 0 0 1 44 25 Z" fill="#0f172a" />
-      <path d="M 32 60 C 40 75 60 75 75 68 C 60 70 45 68 32 60 Z" fill="#00c853" />
-    </svg>
+    <span className={cn('relative block shrink-0 overflow-hidden rounded-full bg-white', className)}>
+      <img
+        src={BRAND_IMAGE}
+        alt=""
+        aria-hidden="true"
+        className="absolute max-w-none"
+        style={EMBLEME}
+        draggable={false}
+      />
+    </span>
   );
 }
 
@@ -73,5 +103,27 @@ export function BrandLogo({ size = 'md', showText = true, showTagline = false, c
         <span className="sr-only">Smart Creator</span>
       )}
     </span>
+  );
+}
+
+/**
+ * L'image de marque entière — illustration et nom composés par le graphiste — pour les endroits
+ * qui ont la place de la montrer : l'accueil et le panneau de connexion.
+ *
+ * Elle n'est pas décorative : elle porte le nom du produit, d'où un vrai texte alternatif.
+ * `loading="lazy"` et une largeur bornée parce qu'elle pèse 108 Ko, ce qui compte sur une
+ * connexion mobile africaine — la même raison qui interdit de la servir comme icône.
+ */
+export function BrandPoster({ className }: { className?: string }) {
+  return (
+    <img
+      src={BRAND_IMAGE}
+      alt="Smart Creator — veille stratégique et production, e-commerce de produits digitaux"
+      width={1222}
+      height={864}
+      loading="lazy"
+      decoding="async"
+      className={cn('h-auto w-full max-w-lg rounded-xl', className)}
+    />
   );
 }
