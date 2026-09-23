@@ -25,6 +25,9 @@ const CockpitDashboard = lazy(() =>
 );
 const NichesView = lazy(() => import('@/modules/niches/NichesView').then((module) => ({ default: module.NichesView })));
 const RadarView = lazy(() => import('@/modules/radar/RadarView').then((module) => ({ default: module.RadarView })));
+const EspionnageView = lazy(() =>
+  import('@/modules/espionnage/EspionnageView').then((module) => ({ default: module.EspionnageView })),
+);
 const MarketBenchmarkPanel = lazy(() =>
   import('@/modules/analyse/MarketBenchmarkPanel').then((module) => ({ default: module.MarketBenchmarkPanel })),
 );
@@ -205,6 +208,10 @@ export function NichesPage() {
 
 export function RadarPage() {
   return <RadarView />;
+}
+
+export function EspionnagePage() {
+  return <EspionnageView />;
 }
 
 export function AnalysePage() {

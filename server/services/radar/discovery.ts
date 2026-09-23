@@ -1,9 +1,10 @@
 import { desc, sql } from 'drizzle-orm';
 import { z } from 'zod';
 import { getDb } from '@server/db/client';
-import { discoveredStores } from '@server/db/schema';
+import { discoveredStores, spiedAds } from '@server/db/schema';
 import { env, providers } from '@server/env';
 import { AppError } from '@server/middleware';
+import { readMetaAd } from '@server/services/espionnage/parse';
 
 /**
  * Découverte de boutiques : trouver des concurrents qu'on ne connaît pas encore.
@@ -24,8 +25,13 @@ import { AppError } from '@server/middleware';
  *     l'enregistrement. Un fournisseur qui renomme ses colonnes ne casse donc rien —
  *     et il n'y a rien à deviner sur un format qu'on ne contrôle pas.
  *
- * Aucune publicité n'est conservée : seulement l'hôte de la boutique et le nombre de fois
- * qu'il est apparu. Ce qui est gardé est une adresse de boutique, pas le contenu d'un tiers.
+ * UN SEUL passage alimente deux écrans : les boutiques repérées ci-dessous, et le mur
+ * d'espionnage (`services/espionnage`), qui garde les annonces elles-mêmes. Collecter deux fois
+ * les mêmes publicités paierait deux fois la même donnée.
+ *
+ * Des annonces, on conserve le texte, le titre, l'adresse de destination et l'aperçu du visuel —
+ * ce qu'un annonceur diffuse publiquement pour être vu. Ni la vidéo, ni l'image ne sont
+ * réhébergées : seules leurs adresses, que chaque passage rafraîchit puisque Meta les signe.
  */
 
 const TIMEOUT_MS = 180_000;
@@ -47,6 +53,8 @@ export interface DiscoveryOutcome {
   adsExamined: number;
   storesFound: number;
   storesNew: number;
+  /** Annonces retenues pour le mur d'espionnage : celles qui mènent vraiment à la plateforme. */
+  adsKept: number;
 }
 
 const apifyUnavailable = (detail: string) =>
@@ -123,7 +131,13 @@ export async function runDiscovery(now = new Date()): Promise<DiscoveryOutcome> 
         // Plafond facturé : la borne du coût, pas une préférence d'affichage.
         resultsLimit: env.RADAR_DISCOVERY_LIMIT,
         activeStatus: 'active',
-        sorting: 'most recent',
+        /*
+          « total_impressions » et non « most recent » : mesuré le 23/09/2026, l'acteur REFUSE
+          toute autre valeur que "", "total_impressions" ou "relevancy_monthly_grouped", et
+          répond 400 « Input is not valid ». Chaque collecte échouait donc en silence.
+          Trier par impressions sert aussi le propos : les plus gros annonceurs d'abord.
+        */
+        sorting: 'total_impressions',
       }),
       signal: AbortSignal.timeout(TIMEOUT_MS),
     });
@@ -179,7 +193,39 @@ export async function runDiscovery(now = new Date()): Promise<DiscoveryOutcome> 
     if (row && row.firstSeenAt.getTime() === now.getTime()) storesNew += 1;
   }
 
-  return { adsExamined: items.length, storesFound: comptes.size, storesNew };
+  /*
+    Le même passage alimente les deux écrans : les boutiques repérées du Radar et le mur
+    d'espionnage. Une seconde collecte pour les mêmes annonces paierait deux fois la même donnée.
+  */
+  let adsKept = 0;
+  for (const item of items) {
+    const annonce = readMetaAd(item, now);
+    if (!annonce) continue;
+    await getDb()
+      .insert(spiedAds)
+      .values(annonce)
+      .onConflictDoUpdate({
+        target: spiedAds.externalId,
+        // Les adresses de visuel signées par Meta expirent : chaque passage les rafraîchit.
+        set: {
+          storeHost: annonce.storeHost,
+          landingUrl: annonce.landingUrl,
+          title: annonce.title,
+          bodyText: annonce.bodyText,
+          advertiser: annonce.advertiser,
+          mediaUrl: annonce.mediaUrl,
+          mediaKind: annonce.mediaKind,
+          startedAt: annonce.startedAt,
+          variants: annonce.variants,
+          platforms: annonce.platforms,
+          active: annonce.active,
+          lastSeenAt: now,
+        },
+      });
+    adsKept += 1;
+  }
+
+  return { adsExamined: items.length, storesFound: comptes.size, storesNew, adsKept };
 }
 
 /** Vrai si une collecte est due, selon le rythme configuré. */

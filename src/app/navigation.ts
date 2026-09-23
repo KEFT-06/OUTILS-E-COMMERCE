@@ -5,6 +5,7 @@ import {
   BookOpen,
   Clapperboard,
   Compass,
+  Eye,
   FileText,
   Film,
   Gauge,
@@ -41,6 +42,7 @@ export type ModuleId =
   | 'cockpit'
   | 'niches'
   | 'radar'
+  | 'espionnage'
   | 'analyse'
   | 'dossier-pdf'
   | 'studio'
@@ -101,6 +103,15 @@ export const MODULES: readonly ModuleEntry[] = [
     label: { fr: 'Radar', en: 'Radar' },
     description: { fr: 'Ce qui bouge chez vos concurrents', en: 'What moves at your competitors' },
     icon: Radar,
+    ready: true,
+  },
+  {
+    id: 'espionnage',
+    path: '/app/espionnage',
+    group: 'voir',
+    label: { fr: 'Espionnage', en: 'Ad spy' },
+    description: { fr: 'Les publicités qui tournent chez les autres', en: 'Ads running at others' },
+    icon: Eye,
     ready: true,
   },
   {

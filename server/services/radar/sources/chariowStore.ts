@@ -94,6 +94,20 @@ function storefrontUrl(input: string): URL {
   if (!url.hostname.includes('.')) url = new URL(`https://${url.hostname}.mychariow.com`);
 
   const tolereEnClair = !isProd && LOOPBACK.test(url.hostname);
+
+  /*
+    Sous test, seule la boucle locale est joignable. Sans cette barrière, un test qui ajoute une
+    surveillance par nom d'hôte appelle la VRAIE vitrine d'un tiers : la suite devient dépendante
+    du réseau, et l'on sollicite le site de quelqu'un à chaque exécution. Constaté, pas supposé.
+  */
+  if (env.NODE_ENV === 'test' && !tolereEnClair) {
+    throw new AppError(
+      400,
+      'Sous test, le radar ne relève que des vitrines locales.',
+      'RADAR_SOURCE_UNSUPPORTED',
+    );
+  }
+
   if (!STOREFRONT_HOSTS.test(url.hostname) && !tolereEnClair) {
     throw new AppError(
       400,

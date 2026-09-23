@@ -941,6 +941,62 @@ export const nicheBenchmarks = pgTable(
   ],
 ).enableRLS();
 
+/**
+ * Publicités repérées sur la bibliothèque publicitaire Meta et qui mènent à une boutique de la
+ * plateforme : le mur d'espionnage.
+ *
+ * Table PARTAGÉE, comme `discoveredStores`, et alimentée par LE MÊME passage payant : chercher
+ * les publicités d'une plateforme donne la même réponse à tout le monde, et les collecter deux
+ * fois coûterait deux fois.
+ *
+ * Ce que la sonde du 23/09/2026 a établi sur 60 annonces réelles, et qui explique chaque colonne :
+ *   · 43 sur 60 mènent vraiment à la plateforme. La preuve de redirection se lit dans le LIEN de
+ *     destination, jamais dans l'enregistrement entier : `inputUrl` contient le mot-clé cherché
+ *     dans TOUTES les annonces et ferait passer n'importe quelle publicité pour une des nôtres.
+ *   · lien 43/43, texte 42/43, visuel 39/43, titre 38/43 : tout est exploitable.
+ *   · ancienneté de 10 à 213 jours — c'est la donnée qui fait la valeur du mur.
+ *   · dépense, impressions et portée : 0 sur 43. Meta ne les publie pas hors Union européenne.
+ *     Aucune colonne ne les accueille : une colonne toujours vide ferait croire à une panne.
+ */
+export const spiedAds = pgTable(
+  'spied_ads',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    /** `adArchiveID` chez Meta : stable, et permet de rouvrir l'annonce dans la bibliothèque. */
+    externalId: text('external_id').notNull(),
+    /** Hôte de la boutique visée, normalisé en .com pour rejoindre une surveillance du radar. */
+    storeHost: text('store_host').notNull(),
+    /** Adresse exacte de destination : c'est elle qui prouve la redirection. */
+    landingUrl: text('landing_url').notNull(),
+    title: text('title'),
+    /** Texte de l'annonce. La meilleure source d'inspiration du module : de vraies accroches qui tournent. */
+    bodyText: text('body_text'),
+    /** Nom de la page Facebook annonceuse. */
+    advertiser: text('advertiser'),
+    /**
+     * Visuel de l'annonce. Les adresses de Meta sont signées et EXPIRENT : l'écran prévoit donc
+     * un repli, et chaque collecte les rafraîchit. Conserver l'image elle-même reviendrait à
+     * héberger le contenu publicitaire d'un tiers.
+     */
+    mediaUrl: text('media_url'),
+    /** image · video */
+    mediaKind: text('media_kind'),
+    /** Début de diffusion annoncé par Meta : la seule ancienneté qui ne demande aucune observation. */
+    startedAt: moment('started_at'),
+    /** Nombre de variantes regroupées sous la même annonce : un indice de test à grande échelle. */
+    variants: integer('variants').notNull().default(1),
+    platforms: jsonb('platforms').$type<string[]>().notNull().default(sql`'[]'::jsonb`),
+    active: boolean('active').notNull().default(true),
+    firstSeenAt: createdAt(),
+    lastSeenAt: moment('last_seen_at').notNull().defaultNow(),
+  },
+  (table) => [
+    uniqueIndex('spied_ads_external_unique').on(table.externalId),
+    index('spied_ads_started_idx').on(table.startedAt),
+    index('spied_ads_store_idx').on(table.storeHost),
+  ],
+).enableRLS();
+
 export type UserRow = typeof users.$inferSelect;
 export type SessionRow = typeof sessions.$inferSelect;
 export type PlanId = (typeof PLAN_IDS)[number];
@@ -953,3 +1009,4 @@ export type WatchSource = (typeof WATCH_SOURCES)[number];
 export type WatchEventKind = (typeof WATCH_EVENT_KINDS)[number];
 export type DiscoveredStoreRow = typeof discoveredStores.$inferSelect;
 export type NicheBenchmarkRow = typeof nicheBenchmarks.$inferSelect;
+export type SpiedAdRow = typeof spiedAds.$inferSelect;

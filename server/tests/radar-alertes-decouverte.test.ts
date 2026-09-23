@@ -137,7 +137,14 @@ describe('Radar — découverte de boutiques', () => {
     const { agent } = await createAdmin(app, 'decouverte-admin@exemple.test');
 
     const collecte = await agent.post('/api/radar/discover/refresh').expect(200);
-    assert.deepEqual(collecte.body.outcome, { adsExamined: 2, storesFound: 2, storesNew: 2 });
+    /*
+      `adsKept: 0` est correct ici, et c'est instructif : les annonces de ce fixture nomment le lien
+      « link_url », alors que la vraie API le nomme « linkUrl » — mesuré le 23/09/2026. La
+      DÉCOUVERTE de boutiques s'en moque, car elle cherche les hôtes dans l'enregistrement entier ;
+      le MUR d'espionnage, lui, exige le champ exact et écarte donc ces annonces. La forme réelle
+      est éprouvée dans espionnage.test.ts.
+    */
+    assert.deepEqual(collecte.body.outcome, { adsExamined: 2, storesFound: 2, storesNew: 2, adsKept: 0 });
 
     const envoi = collectes.at(-1)!;
     assert.match(envoi.chemin, /apify~facebook-ads-scraper/, 'l’acteur configuré est bien celui appelé');

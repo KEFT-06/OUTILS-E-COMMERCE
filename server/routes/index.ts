@@ -9,6 +9,7 @@ import { catalogRouter } from '@server/routes/catalog';
 import { checksRouter } from '@server/routes/checks';
 import { creativesRouter } from '@server/routes/creatives';
 import { cronRouter } from '@server/routes/cron';
+import { espionnageRouter } from '@server/routes/espionnage';
 import { coversRouter, guidesRouter, reviewsRouter } from '@server/routes/guides';
 import { affiliationRouter, marketplacesRouter } from '@server/routes/marketplaces';
 import { marketRouter } from '@server/routes/market';
@@ -49,6 +50,7 @@ api.use('/reviews', reviewsRouter);
 api.use('/storybook', storybookRouter);
 api.use('/creatives', creativesRouter);
 api.use('/radar', radarRouter);
+api.use('/espionnage', espionnageRouter);
 api.use('/market', marketRouter);
 // Déclencheur périodique : protégé par son propre secret, pas par une session utilisateur.
 api.use('/cron', cronRouter);

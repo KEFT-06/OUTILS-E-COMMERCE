@@ -96,3 +96,38 @@ export interface DiscoveryView {
   /** Seul un administrateur peut lancer une collecte : chaque passage se paie. */
   canRefresh: boolean;
 }
+
+/**
+ * Mur d'espionnage : une publicité Meta qui mène à une boutique de la plateforme.
+ *
+ * Ni budget, ni impressions, ni portée : Meta ne les publie que pour l'Union européenne
+ * (mesuré à 0 sur 43 annonces africaines). Aucun champ ne les représente, plutôt qu'un champ
+ * toujours vide qui passerait pour une panne.
+ */
+export interface SpiedAd {
+  id: string;
+  externalId: string;
+  storeHost: string;
+  landingUrl: string;
+  title: string | null;
+  bodyText: string | null;
+  advertiser: string | null;
+  /** Adresse signée par Meta : elle expire, d'où le repli prévu à l'affichage. */
+  mediaUrl: string | null;
+  mediaKind: string | null;
+  startedAt: string | null;
+  /** Jours de diffusion selon Meta : la donnée qui fait la valeur du mur. */
+  runningDays: number | null;
+  variants: number;
+  platforms: string[];
+  active: boolean;
+  lastSeenAt: string;
+}
+
+export interface EspionnageView {
+  ads: SpiedAd[];
+  total: number;
+  stores: number;
+  lastCollectedAt: string | null;
+  configured: boolean;
+}
