@@ -36,7 +36,16 @@ const fakeGemini = createServer((req, res) => {
     if (prompt.includes('Titre : Saturé') && model === 'gemini-3.5-flash') return send(503, overloaded);
 
     let answer: unknown;
-    if (prompt.includes('Rédige le contenu complet')) {
+    if (prompt.includes('Compose le plan de ce produit')) {
+      // Aucun plan fourni : le modèle en propose un, titres compris.
+      answer = {
+        modules: [
+          { index: 1, title: 'Choisir son emplacement', content: 'Repérer l’ombre et la pente du terrain.' },
+          { index: 2, title: 'Chiffrer le budget', content: 'Lister le grillage, le bois et la main-d’œuvre.' },
+          { index: 3, title: '', content: 'Nourrir les poules sans gaspiller.' },
+        ],
+      };
+    } else if (prompt.includes('Rédige le contenu complet')) {
       answer = {
         modules: [
           { index: 1, content: 'Choisir un emplacement ombragé.\n\n\n- Mesurer la surface\n- Prévoir [à compléter : prix local du grillage]' },
@@ -145,7 +154,30 @@ describe('Rédaction par l’IA', () => {
     assert.equal(failed.body.error.code, 'WRITING_FAILED');
     assert.equal(await balance(agent), start);
 
-    await agent.post('/api/writing/product').send({ product: { ...PRODUCT, modules: [] } }).expect(400);
+  });
+
+  it('compose le plan lui-même quand l’auteur n’en a pas donné', async () => {
+    /*
+      Le cas d'un produit saisi à la main : un titre, une intention, aucun plan. C'était refusé
+      par un 400 ; l'auteur devait donc inventer une structure avant d'avoir droit à l'IA, alors
+      que c'est précisément ce pour quoi il vient. Le plan et le contenu arrivent maintenant
+      ensemble, en un seul geste et un seul débit.
+    */
+    const { agent } = await signInWithPlan(app, 'sans-plan@exemple.com', 'pro');
+    const avant = await balance(agent);
+
+    const response = await agent.post('/api/writing/product').send({ product: { ...PRODUCT, modules: [] } }).expect(200);
+    const result = response.body as { modules: { title: string; details: string }[]; missing: number };
+
+    assert.equal(result.modules.length, 3, 'le plan proposé devient celui du produit');
+    assert.equal(result.modules[0]!.title, 'Choisir son emplacement', 'les titres viennent du modèle');
+    assert.match(result.modules[1]!.details, /grillage/);
+    // Un module sans titre resterait muet dans le sommaire et dans l'export.
+    assert.equal(result.modules[2]!.title, 'Module 3', 'un titre manquant est remplacé, jamais laissé vide');
+    assert.equal(result.missing, 0);
+
+    // Une seule action facturée, au même tarif qu'une rédaction ordinaire.
+    assert.equal(await balance(agent), avant - 4);
   });
 
   it('réessaie quand Google est saturé, puis passe au modèle de secours', async () => {

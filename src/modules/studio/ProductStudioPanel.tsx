@@ -108,9 +108,18 @@ export function ProductStudioPanel({ baseProduct, report, initialExpertOpen = fa
       );
       if (!result) return;
 
+      /*
+        Deux cas. L'auteur avait un plan : on ne remplace que le contenu, son sommaire reste le
+        sien. L'auteur n'en avait pas — le cas d'un produit saisi à la main — et le plan composé
+        par l'IA DEVIENT le sommaire. Sans cette seconde branche, on recopiait un sommaire vide
+        et tout le travail rédigé disparaissait.
+      */
+      const composeLePlan = product.tableOfContents.length === 0;
       drafts.saveDraft({
         ...product,
-        tableOfContents: product.tableOfContents.map((module, index) => ({ ...module, details: result.modules[index]?.details ?? module.details })),
+        tableOfContents: composeLePlan
+          ? result.modules.map((module, index) => ({ moduleNumber: index + 1, title: module.title, details: module.details }))
+          : product.tableOfContents.map((module, index) => ({ ...module, details: result.modules[index]?.details ?? module.details })),
       });
       setFindings(result.findings);
       setEditorRevision((revision) => revision + 1);
@@ -254,11 +263,27 @@ export function ProductStudioPanel({ baseProduct, report, initialExpertOpen = fa
         <Dialog open={generateOpen} onOpenChange={setGenerateOpen}>
           <DialogContent className="sm:max-w-md">
             <DialogHeader>
-              <DialogTitle>Rédiger le contenu du produit</DialogTitle>
+              <DialogTitle>
+                {product.tableOfContents.length === 0 ? 'Structurer et rédiger le produit' : 'Rédiger le contenu du produit'}
+              </DialogTitle>
               <DialogDescription>
-                L’IA rédige les {product.tableOfContents.length} modules de « {product.title} » à partir du titre, de la
-                promesse et de vos notes. Le texte actuel des modules est remplacé dans votre brouillon ; la version
-                d’origine reste disponible.
+                {/*
+                  Un produit saisi à la main n'a souvent qu'un titre et une intention. Dire ici que
+                  l'IA compose aussi le plan évite de laisser croire qu'il faut l'écrire d'abord.
+                */}
+                {product.tableOfContents.length === 0 ? (
+                  <>
+                    « {product.title} » n’a pas encore de plan. L’IA en compose un de 5 à 8 modules à partir du titre et
+                    de la promesse, puis rédige chaque module. Le tout arrive dans votre brouillon, que vous relisez et
+                    modifiez avant l’export.
+                  </>
+                ) : (
+                  <>
+                    L’IA rédige les {product.tableOfContents.length} modules de « {product.title} » à partir du titre, de
+                    la promesse et de vos notes. Le texte actuel des modules est remplacé dans votre brouillon ; la
+                    version d’origine reste disponible.
+                  </>
+                )}
               </DialogDescription>
             </DialogHeader>
             <p className="text-sm text-muted-foreground">
