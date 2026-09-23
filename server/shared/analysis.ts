@@ -211,7 +211,16 @@ export interface MarketAnalysisReport {
    * Absente ⇒ le graphique le signale à l'écran plutôt que de se taire.
    */
   dataProvenance?: ReportDataProvenance;
-  /** Ce que le rapport n'a pas pu établir, dit en clair. */
+  /**
+   * Ce que les sources n'ont pas permis d'établir — et la décision proposée malgré tout.
+   *
+   * Remplace l'ancienne liste de « points à vérifier », qui rendait la question à l'auteur.
+   * Le rapport prend désormais position et dit sur quoi il s'appuie : une source, un
+   * concurrent comparable, ou une règle de prudence assumée. Ce qu'il ne fera jamais, c'est
+   * inventer un chiffre de marché — dans ce cas il propose une méthode pour l'obtenir.
+   */
+  decisions?: PendingDecision[];
+  /** Ancienne forme, conservée telle quelle sur les rapports produits avant septembre 2026. */
   limitations?: string[];
   generator?: ReportGenerator;
 }
@@ -226,6 +235,24 @@ export interface ReportSummary {
 }
 
 /** Analyse lancée sur le serveur (étude puis rédaction), suivie par le navigateur jusqu'au rapport. */
+/** Un point non établi par les sources, et la décision que le rapport propose. */
+export interface PendingDecision {
+  /** Ce qui manque, en une phrase. */
+  gap: string;
+  /** La décision proposée, à l'impératif, chiffrée quand c'est possible. */
+  proposal: string;
+  /** Ce sur quoi elle s'appuie : un comparable, une source, ou une règle de prudence assumée. */
+  basis: string;
+  /**
+   * Numéros des sources qui fondent la proposition.
+   *
+   * Les renvois ne vivent jamais dans la prose de ce produit — ils passent par ce tableau,
+   * comme pour les taux et les concurrents. Une décision qui prend position doit pouvoir
+   * être vérifiée en un clic.
+   */
+  sourceIds?: number[];
+}
+
 export interface AnalysisJob {
   id: string;
   query: string;

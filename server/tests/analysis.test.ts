@@ -59,7 +59,7 @@ interface Report {
   adCampaigns: { durationSeconds: number; scenes: { timing: string; phase: string }[]; complianceCheck: unknown[] }[];
   groundingSources: { id: number; url: string; title: string }[];
   dataProvenance: Record<string, { source: string; sampleSize?: number; isDemonstration: boolean } | undefined>;
-  limitations: string[];
+  decisions: { gap: string; proposal: string; basis: string; sourceIds: number[] }[];
   generator: {
     webSearch: string | null;
     model: string;
@@ -179,7 +179,16 @@ describe('Analyse de niche', () => {
     assert.match(report.dataProvenance.adCampaigns!.source, /l’IA de rédaction/);
     assert.match(report.dataProvenance.strategicActionPlan!.source, /d’après l’étude/);
     assert.ok(Object.values(report.dataProvenance).every((entry) => entry!.isDemonstration === false));
-    assert.deepEqual(report.limitations, ['Aucune donnée de ventes.']);
+    // Le rapport ne rend plus la question à l'auteur : il tranche, et dit sur quoi il s'appuie.
+    assert.deepEqual(report.decisions, [
+      {
+        gap: 'Aucune donnée de ventes.',
+        proposal: 'Lancez à 5 000 XAF et ajustez après 20 ventes.',
+        basis: 'Prix des deux concurrents relevés par l’étude.',
+        // Le renvoi passe par sourceIds, jamais par un crochet dans la prose.
+        sourceIds: [1],
+      },
+    ]);
     assert.equal(report.generator.webSearch, 'Recherche web');
     assert.deepEqual(report.generator.research, {
       provider: 'Perplexity',

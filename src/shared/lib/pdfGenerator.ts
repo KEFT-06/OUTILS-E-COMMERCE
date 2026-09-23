@@ -348,6 +348,8 @@ export async function generateAnalysisPDF(report: MarketAnalysisReport, stamp: P
   // === 7. SOURCES ET LIMITES ===
   const sources = report.groundingSources ?? [];
   const sourceUsage = usageBySource(report);
+  const decisions = report.decisions ?? [];
+  // Ancienne forme, sur les rapports antérieurs à septembre 2026.
   const limitations = report.limitations ?? [];
 
   // Provenance : qui a cherché, qui a rédigé, d'où vient chaque bloc.
@@ -398,11 +400,40 @@ export async function generateAnalysisPDF(report: MarketAnalysisReport, stamp: P
     currentY += 2;
   }
 
-  if (limitations.length > 0) {
+  if (decisions.length > 0 || limitations.length > 0) {
     checkPageBreak(24);
-    sectionHeading(`${sources.length > 0 ? '9' : '8'}. Points à vérifier avant de lancer`);
-    doc.setFont('helvetica', 'normal');
+    const numero = sources.length > 0 ? '9' : '8';
+    sectionHeading(
+      decisions.length > 0
+        ? `${numero}. Ce que les sources ne disent pas, et ce qui est proposé`
+        : `${numero}. Points à vérifier avant de lancer`,
+    );
     doc.setFontSize(8.5);
+
+    // Une décision se lit en trois temps : le manque, la proposition en gras, puis son appui.
+    // Le dossier téléchargé doit dire exactement ce que dit l'écran.
+    decisions.forEach((decision) => {
+      doc.setFont('helvetica', 'italic');
+      doc.setTextColor(100, 116, 139);
+      const manque = doc.splitTextToSize(toPdfSafe(decision.gap), contentWidth);
+      checkPageBreak(manque.length * 4 + 14);
+      doc.text(manque, margin, currentY);
+      currentY += manque.length * 4 + 1;
+
+      doc.setFont('helvetica', 'bold');
+      doc.setTextColor(15, 23, 42);
+      const proposition = doc.splitTextToSize(toPdfSafe(decision.proposal), contentWidth);
+      doc.text(proposition, margin, currentY);
+      currentY += proposition.length * 4 + 1;
+
+      doc.setFont('helvetica', 'normal');
+      doc.setTextColor(100, 116, 139);
+      const appui = doc.splitTextToSize(toPdfSafe(`Sur quoi : ${decision.basis}`), contentWidth);
+      doc.text(appui, margin, currentY);
+      currentY += appui.length * 4 + 3;
+    });
+
+    doc.setFont('helvetica', 'normal');
     doc.setTextColor(71, 85, 105);
     limitations.forEach((limitation) => {
       const lines = doc.splitTextToSize(toPdfSafe(`• ${limitation}`), contentWidth);

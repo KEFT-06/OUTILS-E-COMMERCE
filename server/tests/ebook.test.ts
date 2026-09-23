@@ -111,7 +111,7 @@ async function createStoredReport(userId: string): Promise<string> {
         digitalProducts: [{ title: 'Guide du poulailler', typeName: 'Ebook', recommendedPrice: null, targetAudience: 'Citadins' }],
         strategicActionPlan: [{ title: 'Semaine 1', steps: ['Valider la promesse'] }],
         groundingSources: [{ id: 1, title: 'Agriculture urbaine au Sénégal', url: 'https://agri.example/dakar' }],
-        limitations: ['Aucune donnée de ventes.'],
+        decisions: [{ gap: 'Aucune donnée de ventes.', proposal: 'Lancez à 5 000 XAF.', basis: 'Source [1].' }],
       },
       createdAt: new Date(),
     });

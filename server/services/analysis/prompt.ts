@@ -10,7 +10,7 @@ import type { WebSource } from '@server/services/analysis/webSearch';
  * la respecter : il écarte ensuite tout fait dont les sources citées n'existent pas.
  */
 
-export const ANALYSIS_PROMPT_VERSION = '2026.09.4';
+export const ANALYSIS_PROMPT_VERSION = '2026.09.5';
 
 export const VERDICTS = ['Opportunité Exceptionnelle', 'Opportunité Forte', 'Marché Compétitif', 'Niche Risquée'] as const;
 export const LEVELS = ['Faible', 'Moyen', 'Élevé', 'Très élevé'] as const;
@@ -80,10 +80,10 @@ export function buildAnalysisPrompt(input: {
     '- demand, saturation (concurrence déjà en place : nombre et poids des offres visibles dans les sources), profitability, opportunity, virality : level, rationale (1 ou 2 phrases), sourceIds.',
     '- keywords : 5 à 8 expressions que les acheteurs taperaient dans un moteur de recherche, avec leur intention. Aucun volume.',
     '- competitors : au plus 4 concurrents présents dans les sources : nom, lien ou compte tel qu’il apparaît dans la source, prix constatés ou « Prix non indiqué dans les sources », positionnement, forces et faiblesses visibles dans les sources, un angle à exploiter, sourceIds.',
-    '- products : 3 idées de produits digitaux adaptées au marché visé : titre, sous-titre, type, public, promesse de transformation réaliste, pricingNote (prix constatés chez les concurrents avec leurs numéros de source, ou « Aucun prix constaté dans les sources »), 5 à 8 modules (titre et contenu), un aimant à prospects gratuit (titre, format, accroche).',
+    '- products : de 3 à 8 idées de produits digitaux adaptées au marché visé. LE NOMBRE SUIT LE POTENTIEL que tu viens d’attribuer : une niche saturée ou à demande faible n’en mérite que 3, une niche à demande élevée et faible saturation en mérite 6 à 8. Varie les TYPES entre eux (ebook, modèle, masterclass, offre groupée, micro-outil) plutôt que de décliner la même idée. Chaque idée : titre, sous-titre, type, public, promesse de transformation réaliste, pricingNote (prix constatés chez les concurrents avec leurs numéros de source, ou « Aucun prix constaté dans les sources »), 5 à 8 modules (titre et contenu), un aimant à prospects gratuit (titre, format, accroche).',
     '- adScripts : 2 scripts vidéo pour Meta Ads avec deux méthodes différentes parmi AIDA, PAS et BAB : accroche des 3 premières secondes, texte principal, titre, bouton d’appel à l’action, format 9:16 ou 1:1, durée de 15 ou 30 secondes, une scène par étape de la méthode (phase = nom exact de l’étape : AIDA → Attention, Intérêt, Désir, Action ; PAS → Problème, Agitation, Solution ; BAB → Avant, Après, Pont) avec sa durée en secondes, le visuel, le texte à l’écran, la voix off et l’ambiance sonore ; centres d’intérêt, public et placements suggérés.',
     '- actionPlan : 3 étapes (valider la demande, produire, lancer), chacune avec 3 à 5 actions concrètes.',
-    '- limitations : au plus 4 points importants que les sources n’ont pas permis d’établir, chacun formulé comme une vérification à faire avant de lancer le produit.',
+    '- decisions : au plus 4 points que les sources n’ont pas permis d’établir. Pour CHACUN, ne rends pas la question à l’auteur : PRENDS la décision à sa place. gap = ce qui manque, en une phrase ; proposal = la décision que tu proposes, formulée à l’impératif et chiffrée quand c’est possible ; basis = ce sur quoi elle s’appuie, en toutes lettres et SANS renvoi entre crochets (un concurrent comparable, un constat des sources, ou une règle de prudence explicite) ; sourceIds = les numéros des sources qui la fondent. N’invente jamais un chiffre de marché : si rien ne fonde une valeur, propose une méthode pour l’obtenir en moins d’une semaine.',
   );
 
   return lines.join('\n');
@@ -210,7 +210,14 @@ export const ANALYSIS_RESPONSE_SCHEMA = {
       type: 'ARRAY',
       items: { type: 'OBJECT', properties: { phase: STRING, title: STRING, steps: STRINGS }, required: ['phase', 'title', 'steps'] },
     },
-    limitations: STRINGS,
+    decisions: {
+      type: 'ARRAY',
+      items: {
+        type: 'OBJECT',
+        properties: { gap: STRING, proposal: STRING, basis: STRING, sourceIds: SOURCE_IDS },
+        required: ['gap', 'proposal', 'basis'],
+      },
+    },
   },
   required: [
     'nicheName',
@@ -228,7 +235,7 @@ export const ANALYSIS_RESPONSE_SCHEMA = {
     'products',
     'adScripts',
     'actionPlan',
-    'limitations',
+    'decisions',
   ],
 };
 
@@ -383,7 +390,9 @@ const analysisResponseSchema = z.object({
   products: z.array(product).catch([]),
   adScripts: z.array(adScript).catch([]),
   actionPlan: z.array(z.object({ phase: text(80), title: text(160), steps: texts(6, 300) }).catch({ phase: '', title: '', steps: [] })).catch([]),
-  limitations: texts(6, 300),
+  decisions: z
+    .array(z.object({ gap: text(300), proposal: text(400), basis: text(300), sourceIds }).catch({ gap: '', proposal: '', basis: '', sourceIds: [] }))
+    .catch([]),
 });
 
 export type AnalysisResponse = z.infer<typeof analysisResponseSchema>;

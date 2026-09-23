@@ -173,9 +173,16 @@ export function assembleReport(input: {
       ? 'Aucun prix constaté dans les sources : fixez le vôtre dans le simulateur.'
       : 'Aucun prix constaté, faute de recherche web : fixez le vôtre dans le simulateur.';
 
+  /*
+    Jusqu'à huit idées, et non trois.
+
+    Le nombre suit le potentiel de la niche : la consigne demande au modèle d'en proposer 3 sur
+    une niche saturée ou à demande faible, et 6 à 8 sur une niche forte. Ce plafond était la
+    vraie limite — le modèle pouvait en rendre davantage, le serveur les jetait.
+  */
   const digitalProducts: DigitalProductIdea[] = response.products
     .filter((product) => product.title)
-    .slice(0, 3)
+    .slice(0, 8)
     .map((product, index) => ({
       id: `${id}-p${index + 1}`,
       title: product.title,
@@ -252,16 +259,36 @@ export function assembleReport(input: {
     .slice(0, 8)
     .map((keyword) => ({ keyword: keyword.keyword, intent: keyword.intent, volume: null, growthRate: null, growthType: null }));
 
-  // La nature de chaque bloc (fait sourcé ou proposition de l'IA) est dite par sa provenance, pas ici.
-  const limitations = [
+  /*
+    Des décisions, pas des devoirs rendus à l'auteur.
+
+    Le rapport prend position sur ce que les sources n'ont pas établi, et dit sur quoi il
+    s'appuie. Il n'invente jamais un chiffre de marché : quand rien ne le fonde, il propose une
+    méthode pour l'obtenir.
+
+    L'absence totale de sources reste elle aussi une décision, et la plus importante de toutes :
+    ne rien produire sur ce rapport. La formuler ainsi vaut mieux que de la taire.
+  */
+  const decisions = [
     ...(sources.length === 0
       ? [
-          input.webSearchConfigured
-            ? 'La recherche web n’a trouvé aucune page sur cette niche : concurrents, prix et demande n’ont pas pu être étudiés.'
-            : 'Aucune recherche web n’est branchée : concurrents, prix et demande n’ont pas été étudiés.',
+          {
+            gap: input.webSearchConfigured
+              ? 'La recherche web n’a trouvé aucune page sur cette niche : concurrents, prix et demande n’ont pas pu être étudiés.'
+              : 'Aucune recherche web n’est branchée : concurrents, prix et demande n’ont pas été étudiés.',
+            proposal:
+              'Ne lancez aucune production à partir de ce rapport. Relancez l’analyse avec une formulation plus large, ou mettez deux boutiques concurrentes sous radar pendant une semaine.',
+            basis: 'Règle de prudence : aucune source ne fonde ce qui suit.',
+          },
         ]
       : []),
-    ...response.limitations,
+    ...response.decisions
+      .filter((decision) => decision.gap && decision.proposal)
+      // Un renvoi vers une source inexistante serait pire que pas de renvoi du tout.
+      .map((decision) => ({
+        ...decision,
+        sourceIds: decision.sourceIds.filter((id) => sources.some((source) => source.id === id)),
+      })),
   ];
 
   const collectedAt = input.now.toISOString();
@@ -320,7 +347,7 @@ export function assembleReport(input: {
       ...(adCampaigns.length > 0 ? { adCampaigns: proposed(`Scripts proposés par ${writer}`) } : {}),
       ...(response.actionPlan.length > 0 ? { strategicActionPlan: proposed(`Plan proposé par ${writer}${sources.length > 0 ? ' d’après l’étude' : ''}`) } : {}),
     },
-    limitations: [...new Set(limitations)].slice(0, 8),
+    decisions: decisions.slice(0, 8),
     generator: {
       provider: 'Smart Creator',
       model: ANALYSIS_PROMPT_VERSION,

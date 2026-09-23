@@ -235,6 +235,8 @@ export function StrategicAnalysisView({ report, onNavigateToProducts, onNavigate
   const isExampleReport = report.dataProvenance?.rates?.isDemonstration ?? false;
   const sources = report.groundingSources ?? [];
   const sourceUsage = useMemo(() => usageBySource(report), [report]);
+  const decisions = report.decisions ?? [];
+  // Rapports antérieurs à septembre 2026 : ils portent encore l'ancienne liste.
   const limitations = report.limitations ?? [];
 
   const rates: MarketRate[] = [
@@ -338,7 +340,32 @@ export function StrategicAnalysisView({ report, onNavigateToProducts, onNavigate
             </Alert>
           )}
 
-          {limitations.length > 0 && (
+          {/*
+            Des décisions, pas une liste de devoirs. L'ancien bloc « Points à vérifier » rendait
+            la question à l'auteur : il lisait quatre choses à faire avant de pouvoir avancer.
+            Le rapport tranche désormais, et dit sur quoi il s'appuie — l'auteur garde la main,
+            mais il part d'une position, pas d'une page blanche.
+          */}
+          {decisions.length > 0 && (
+            <Alert variant="info">
+              <Lightbulb />
+              <AlertTitle>Ce que les sources ne disent pas, et ce que je propose</AlertTitle>
+              <AlertDescription>
+                <ul className="space-y-3">
+                  {decisions.map((decision) => (
+                    <li key={decision.gap} className="space-y-0.5">
+                      <p className="text-muted-foreground">{decision.gap}</p>
+                      <p className="font-medium text-foreground">{decision.proposal}</p>
+                      <p className="text-xs text-muted-foreground">Sur quoi je m’appuie : {decision.basis}</p>
+                    </li>
+                  ))}
+                </ul>
+              </AlertDescription>
+            </Alert>
+          )}
+
+          {/* Rapports produits avant septembre 2026 : l'ancienne liste, affichée telle quelle. */}
+          {decisions.length === 0 && limitations.length > 0 && (
             <Alert variant="warning">
               <TriangleAlert />
               <AlertTitle>Points à vérifier avant de lancer</AlertTitle>

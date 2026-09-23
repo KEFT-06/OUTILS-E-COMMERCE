@@ -75,7 +75,14 @@ describe('Analyse de niche sans recherche web', () => {
     assert.equal(report.overallVerdict, null);
     assert.match(report.verdictRationale ?? '', /aucune recherche web/);
     assert.match(report.digitalProducts[0]?.pricingNote ?? '', /faute de recherche web/);
-    assert.ok(report.limitations?.some((limitation) => limitation.includes('Aucune recherche web')));
+    /*
+      Sans aucune source, la décision la plus importante est de NE RIEN produire. Le rapport la
+      formule au lieu de la taire, et propose une sortie concrète plutôt qu'un constat.
+    */
+    const sansSource = report.decisions?.find((decision) => decision.gap.includes('Aucune recherche web'));
+    assert.ok(sansSource, 'l’absence de source doit être dite comme une décision');
+    assert.match(sansSource!.proposal, /Ne lancez aucune production/);
+    assert.match(sansSource!.basis, /prudence/);
     assert.equal(report.generator?.webSearch, null);
     assert.equal(report.generator?.research, undefined);
   });

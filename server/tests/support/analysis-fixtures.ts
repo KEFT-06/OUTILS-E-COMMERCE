@@ -89,7 +89,14 @@ export function fakeAnalysis(prompt: string) {
       },
     ],
     actionPlan: [{ phase: 'Semaine 1', title: 'Valider la demande', steps: ['Publier un sondage'] }],
-    limitations: ['Aucune donnée de ventes.'],
+    decisions: [
+      {
+        gap: 'Aucune donnée de ventes.',
+        proposal: 'Lancez à 5 000 XAF et ajustez après 20 ventes.',
+        basis: 'Prix des deux concurrents relevés par l’étude.',
+        sourceIds: [1],
+      },
+    ],
   };
 }
 
