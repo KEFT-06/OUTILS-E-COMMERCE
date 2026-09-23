@@ -230,9 +230,16 @@ export interface AnalysisJob {
   id: string;
   query: string;
   market: string | null;
-  status: 'queued' | 'research' | 'writing' | 'completed' | 'failed';
+  /**
+   * « waiting » : le fournisseur d'IA est saturé et l'analyse attend son tour au lieu
+   * d'échouer. L'étude du web est déjà faite et payée — la jeter pour une saturation
+   * passagère chez Google gâcherait plusieurs minutes de travail et les points de l'auteur.
+   */
+  status: 'queued' | 'research' | 'writing' | 'waiting' | 'completed' | 'failed';
   reportId: string | null;
   error: { code: string; message: string } | null;
+  /** Renseigné en attente seulement : instant de la prochaine tentative. */
+  retryAfter?: string | null;
   createdAt: string;
   updatedAt: string;
   /**

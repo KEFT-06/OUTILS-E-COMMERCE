@@ -23,9 +23,15 @@ const STEPS = [
   { title: 'Vérification et enregistrement', detail: 'Tout fait sans source existante est écarté avant l’enregistrement.' },
 ] as const;
 
-function activeStep(status: AnalysisJob['status']): number {
-  if (status === 'queued' || status === 'research') return 0;
-  if (status === 'writing') return 1;
+function activeStep(job: AnalysisJob): number {
+  if (job.status === 'queued' || job.status === 'research') return 0;
+  if (job.status === 'writing') return 1;
+  /*
+    En attente, l'étape reste celle où le travail s'est arrêté : l'étude si elle n'a rien rendu,
+    la rédaction si les sources sont là. Sans ce cas, le dernier `return` affichait « Vérification
+    et enregistrement » — l'écran annonçait une étape que rien n'avait commencée.
+  */
+  if (job.status === 'waiting') return (job.sources?.length ?? 0) > 0 ? 1 : 0;
   return 2;
 }
 
@@ -46,8 +52,9 @@ export function AnalysisProgress() {
   }, [analysisJob]);
 
   if (!analysisJob) return null;
-  const current = activeStep(analysisJob.status);
+  const current = activeStep(analysisJob);
   const sources = analysisJob.sources ?? [];
+  const enAttente = analysisJob.status === 'waiting';
 
   return (
     <Card role="status" aria-live="polite" className="border-primary/30">
@@ -63,6 +70,20 @@ export function AnalysisProgress() {
         </CardDescription>
       </CardHeader>
       <CardContent>
+        {/*
+          Sans cette ligne, une attente ressemblait à un blocage : un spinner qui tourne sans
+          rien dire. Elle nomme la cause, annonce l'heure du prochain essai, et rassure sur les
+          points — c'est la question que l'auteur se pose en premier.
+        */}
+        {enAttente && (
+          <p className="mb-4 rounded-lg border border-amber-500/40 bg-amber-500/10 p-3 text-sm text-amber-700 dark:text-amber-400">
+            Le service d’IA est saturé en ce moment. L’analyse reprendra d’elle-même
+            {analysisJob.retryAfter
+              ? `, vers ${new Date(analysisJob.retryAfter).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })}`
+              : ''}
+            . L’étude du web est déjà faite et vos points restent réservés : rien n’est perdu.
+          </p>
+        )}
         <ol className="grid gap-3 sm:grid-cols-3">
           {STEPS.map((step, index) => {
             const done = index < current;

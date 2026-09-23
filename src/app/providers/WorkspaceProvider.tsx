@@ -71,16 +71,35 @@ const fetchReport = (id: string) => apiRequest<{ report: MarketAnalysisReport }>
 
 /** Cadence du suivi d'une analyse : l'étude dure une à plusieurs minutes. */
 const JOB_POLL_MS = 3_000;
+/**
+ * Cadence pendant une attente. Une analyse qui attend que le fournisseur se libère peut patienter
+ * vingt minutes : la sonder toutes les trois secondes ferait quatre cents requêtes pour rien.
+ * C'est pourtant cette sonde qui la relancera — d'où un rythme lent, mais pas nul.
+ */
+const JOB_WAIT_POLL_MS = 20_000;
 
 const JOB_STEPS: Record<AnalysisJob['status'], string> = {
   queued: 'Préparation de l’analyse…',
   research: 'Étude de marché sur le web en cours : comptez 1 à 3 minutes.',
   writing: 'Rédaction du rapport à partir des sources trouvées…',
+  waiting: 'Le service d’IA est saturé. L’analyse reprendra d’elle-même : vos points restent réservés.',
   completed: 'Rapport prêt.',
   failed: 'L’analyse n’a pas abouti.',
 };
 
 export const analysisStepLabel = (status: AnalysisJob['status']) => JOB_STEPS[status];
+
+/**
+ * Étape du suivi, avec l'heure du prochain essai quand il y en a un. Dire « ça reprendra » sans
+ * dire quand laisse penser à un blocage : l'attente doit avoir une fin visible.
+ */
+function stepDescription(status: AnalysisJob['status'], retryAfter?: string | null): string {
+  const base = JOB_STEPS[status];
+  if (status !== 'waiting' || !retryAfter) return base;
+  const heure = new Date(retryAfter);
+  if (Number.isNaN(heure.getTime())) return base;
+  return `${base} Prochain essai à ${heure.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })}.`;
+}
 
 export const WorkspaceProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const navigate = useNavigate();
@@ -228,10 +247,15 @@ export const WorkspaceProvider: React.FC<{ children: React.ReactNode }> = ({ chi
   // Suivi de l'analyse en cours, étape par étape, jusqu'au rapport.
   const analysisJobId = analysisJob?.id;
   const analysisJobStatus = analysisJob?.status;
+  const analysisJobRetryAfter = analysisJob?.retryAfter ?? null;
   useEffect(() => {
     if (!analysisJobId || analysisJobStatus === 'completed' || analysisJobStatus === 'failed') return;
     const toastId = `analyse-${analysisJobId}`;
-    toast.loading('Analyse en cours', { id: toastId, description: JOB_STEPS[analysisJobStatus ?? 'queued'], duration: Infinity });
+    toast.loading('Analyse en cours', {
+      id: toastId,
+      description: stepDescription(analysisJobStatus ?? 'queued', analysisJobRetryAfter),
+      duration: Infinity,
+    });
 
     let cancelled = false;
     let failures = 0;
@@ -270,13 +294,14 @@ export const WorkspaceProvider: React.FC<{ children: React.ReactNode }> = ({ chi
             toast.loading('Analyse en cours', { id: toastId, description: 'Connexion instable : le suivi réessaie, l’analyse continue sur le serveur.' });
           }
         });
-    }, JOB_POLL_MS);
+      // En attente, la sonde ralentit : c'est elle qui relance, mais le rendez-vous est loin.
+    }, analysisJobStatus === 'waiting' ? JOB_WAIT_POLL_MS : JOB_POLL_MS);
 
     return () => {
       cancelled = true;
       clearInterval(timer);
     };
-  }, [accountId, analysisJobId, analysisJobStatus, navigate, refresh]);
+  }, [accountId, analysisJobId, analysisJobStatus, analysisJobRetryAfter, navigate, refresh]);
 
   // Export PDF : passe obligatoirement par la porte de conformité.
   const exportPdf = useCallback(async () => {

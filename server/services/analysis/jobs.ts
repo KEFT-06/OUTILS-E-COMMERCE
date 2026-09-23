@@ -28,9 +28,33 @@ import { countryName } from '@server/shared/countries';
 
 export type AnalysisJobStatus = AnalysisJob['status'];
 
+/** États où le travail peut avancer maintenant. */
 const ACTIVE: AnalysisJobStatus[] = ['queued', 'research', 'writing'];
+/**
+ * États qui occupent la place du compte. « waiting » en fait partie : une analyse qui attend
+ * que le fournisseur se libère garde ses points réservés, donc elle garde sa place — sinon
+ * l'utilisateur en lancerait une seconde et paierait deux fois pour le même travail.
+ */
+const PENDING: AnalysisJobStatus[] = [...ACTIVE, 'waiting'];
 /** Au-delà, une analyse restée « en cours » est abandonnée et remboursée. */
 const JOB_DEADLINE_MS = 25 * 60_000;
+
+/**
+ * Pannes passagères : le fournisseur est saturé, hors service ou trop lent. Attendre a un sens.
+ * Une clé refusée ou une réponse illisible ne s'arrangeront pas d'elles-mêmes : celles-là échouent.
+ * Le motif porte sur le SUFFIXE du code, donc il vaut pour Gemini comme pour le moteur de recherche.
+ */
+const TRANSIENT = /_(OVERLOADED|RATE_LIMITED|TIMEOUT|UNAVAILABLE)$/;
+
+/**
+ * Attentes successives avant de renoncer. Trois essais espacés, parce qu'une saturation chez
+ * Google dure typiquement quelques minutes : deux minutes suffisent souvent, vingt couvrent
+ * les mauvais jours. Au-delà, insister n'apporte rien et il vaut mieux rendre les points.
+ */
+const BACKOFF_MS = [2 * 60_000, 8 * 60_000, 20 * 60_000];
+
+/** Budget total d'une analyse qui a dû attendre, depuis son lancement. */
+const WAITING_BUDGET_MS = 90 * 60_000;
 
 type JobRow = typeof analysisJobs.$inferSelect;
 
@@ -46,6 +70,7 @@ function viewOf(row: JobRow): AnalysisJobView {
     error: row.errorCode ? { code: row.errorCode, message: row.errorMessage ?? 'L’analyse a échoué.' } : null,
     createdAt: row.createdAt.toISOString(),
     updatedAt: row.updatedAt.toISOString(),
+    ...(row.retryAfter ? { retryAfter: row.retryAfter.toISOString() } : {}),
     ...(row.sources ? { sources: row.sources as WebGroundingSource[] } : {}),
   };
 }
@@ -57,7 +82,48 @@ async function setStatus(jobId: string, status: AnalysisJobStatus): Promise<void
   await getDb()
     .update(analysisJobs)
     .set({ status, updatedAt: new Date() })
-    .where(and(eq(analysisJobs.id, jobId), inArray(analysisJobs.status, ACTIVE)));
+    .where(and(eq(analysisJobs.id, jobId), inArray(analysisJobs.status, PENDING)));
+}
+
+/**
+ * Met une analyse en attente au lieu de la perdre.
+ *
+ * C'est le cœur du dispositif. Quand la rédaction échoue parce que Google est saturé, l'étude du
+ * web est DÉJÀ faite : son identifiant est conservé, ses sources sont en base. Échouer jetterait
+ * plusieurs minutes de travail payé pour une indisponibilité qui dure souvent deux minutes.
+ *
+ * Les points restent réservés pendant l'attente. Les rendre puis les reprendre ferait deux
+ * écritures de compte pour un seul achat, et ferait croire à un remboursement définitif.
+ *
+ * Renvoie faux quand l'attente n'a pas lieu d'être : l'appelant échoue alors normalement.
+ */
+async function holdForRetry(jobId: string, code: string, message: string): Promise<boolean> {
+  if (!TRANSIENT.test(code)) return false;
+
+  const [job] = await getDb().select().from(analysisJobs).where(eq(analysisJobs.id, jobId)).limit(1);
+  if (!job) return false;
+  if (job.retryCount >= BACKOFF_MS.length) return false;
+  // Une analyse qui traîne depuis plus d'une heure et demie n'intéresse plus personne.
+  if (Date.now() - job.createdAt.getTime() > WAITING_BUDGET_MS) return false;
+
+  const attente = BACKOFF_MS[job.retryCount]!;
+  const [held] = await getDb()
+    .update(analysisJobs)
+    .set({
+      status: 'waiting',
+      retryCount: job.retryCount + 1,
+      retryAfter: new Date(Date.now() + attente),
+      // Le motif est conservé et montré : l'écran doit dire pourquoi ça attend.
+      errorCode: code,
+      errorMessage: message,
+      updatedAt: new Date(),
+    })
+    .where(and(eq(analysisJobs.id, jobId), inArray(analysisJobs.status, PENDING)))
+    .returning();
+
+  if (!held) return false;
+  console.warn(`[analyse] ${jobId} en attente ${Math.round(attente / 60_000)} min (${code}), essai ${held.retryCount}/${BACKOFF_MS.length}`);
+  return true;
 }
 
 /** Échec : message gardé, points rendus une seule fois (la réclamation est conditionnelle). */
@@ -67,11 +133,14 @@ async function failJob(jobId: string, error: unknown): Promise<void> {
   const message = known ? error.message : 'L’analyse a échoué sur le serveur. Réessayez : vos points ont été rendus.';
   if (!known) console.error('[analyse] échec inattendu', error);
 
+  // Panne passagère : on attend au lieu de perdre l'étude déjà payée.
+  if (await holdForRetry(jobId, code, message)) return;
+
   await getDb().transaction(async (tx) => {
     const [claimed] = await tx
       .update(analysisJobs)
       .set({ status: 'failed', errorCode: code, errorMessage: message, refunded: true, updatedAt: new Date(), completedAt: new Date() })
-      .where(and(eq(analysisJobs.id, jobId), inArray(analysisJobs.status, ACTIVE), eq(analysisJobs.refunded, false)))
+      .where(and(eq(analysisJobs.id, jobId), inArray(analysisJobs.status, PENDING), eq(analysisJobs.refunded, false)))
       .returning();
     if (claimed?.debitTransactionId && claimed.creditsCharged > 0) {
       await refundDebit(
@@ -88,7 +157,7 @@ async function runJob(jobId: string): Promise<void> {
   const db = getDb();
   try {
     const [job] = await db.select().from(analysisJobs).where(eq(analysisJobs.id, jobId)).limit(1);
-    if (!job || !ACTIVE.includes(job.status as AnalysisJobStatus)) return;
+    if (!job || !PENDING.includes(job.status as AnalysisJobStatus)) return;
 
     const [owner] = await db.select({ country: users.country }).from(users).where(eq(users.id, job.userId)).limit(1);
     const request: AnalysisRequest = { query: job.query, market: job.market };
@@ -114,14 +183,14 @@ async function runJob(jobId: string): Promise<void> {
     await db
       .update(analysisJobs)
       .set({ status: 'writing', sources: research.sources, updatedAt: new Date() })
-      .where(and(eq(analysisJobs.id, jobId), inArray(analysisJobs.status, ACTIVE)));
+      .where(and(eq(analysisJobs.id, jobId), inArray(analysisJobs.status, PENDING)));
     const report = await writeReport({ userId: job.userId, userCountry: owner?.country ?? null, request, now, research });
 
     await db.transaction(async (tx) => {
       const [done] = await tx
         .update(analysisJobs)
         .set({ status: 'completed', reportId: report.id, updatedAt: new Date(), completedAt: new Date() })
-        .where(and(eq(analysisJobs.id, jobId), inArray(analysisJobs.status, ACTIVE)))
+        .where(and(eq(analysisJobs.id, jobId), inArray(analysisJobs.status, PENDING)))
         .returning();
       if (!done) return;
       await tx
@@ -169,7 +238,7 @@ export async function startAnalysis(auth: RequestAuth, request: AnalysisRequest)
       await db
         .select()
         .from(analysisJobs)
-        .where(and(eq(analysisJobs.userId, userId), inArray(analysisJobs.status, ACTIVE)))
+        .where(and(eq(analysisJobs.userId, userId), inArray(analysisJobs.status, PENDING)))
         .limit(1)
     )[0];
 
@@ -219,9 +288,16 @@ export async function getAnalysisJob(auth: RequestAuth, jobId: string | undefine
     .where(and(eq(analysisJobs.id, parsed.data), eq(analysisJobs.userId, auth.account.user.id)))
     .limit(1);
   if (!job) throw new AppError(404, 'Analyse introuvable sur votre compte.', 'ANALYSIS_JOB_NOT_FOUND');
-  // Filet de sécurité : une analyse orpheline (processus arrêté, instance sans serveur gelée)
-  // est relancée par le suivi. C'est elle qui fait avancer le travail d'une instance à l'autre.
-  if (ACTIVE.includes(job.status as AnalysisJobStatus) && !running.has(job.id)) {
+  /*
+    Filet de sécurité : une analyse orpheline (processus arrêté, instance sans serveur gelée)
+    est relancée par le suivi. C'est elle qui fait avancer le travail d'une instance à l'autre.
+
+    C'est aussi ce qui fait repartir une analyse en attente, et c'est volontaire : en
+    hébergement sans serveur, aucun minuteur ne survit entre deux requêtes. Le navigateur qui
+    suit l'avancement est donc l'horloge du dispositif — il sonde déjà, il ne coûte rien de
+    plus, et `resumeJob` refuse de repartir avant l'heure du rendez-vous.
+  */
+  if (PENDING.includes(job.status as AnalysisJobStatus) && !running.has(job.id)) {
     runInBackground(() => resumeJob(job), `reprise de l’analyse ${job.id}`);
   }
   return viewOf(job);
@@ -246,7 +322,7 @@ export async function cancelAnalysis(auth: RequestAuth, jobId: string | undefine
     .limit(1);
   if (!job) throw new AppError(404, 'Analyse introuvable sur votre compte.', 'ANALYSIS_JOB_NOT_FOUND');
 
-  if (!ACTIVE.includes(job.status as AnalysisJobStatus)) {
+  if (!PENDING.includes(job.status as AnalysisJobStatus)) {
     // Terminée entre l'affichage du bouton et le clic : son résultat vaut mieux qu'une erreur.
     return viewOf(job);
   }
@@ -264,13 +340,25 @@ export async function getActiveAnalysisJob(auth: RequestAuth): Promise<AnalysisJ
   const [job] = await getDb()
     .select()
     .from(analysisJobs)
-    .where(and(eq(analysisJobs.userId, auth.account.user.id), inArray(analysisJobs.status, ACTIVE)))
+    .where(and(eq(analysisJobs.userId, auth.account.user.id), inArray(analysisJobs.status, PENDING)))
     .limit(1);
   return job ? viewOf(job) : null;
 }
 
 async function resumeJob(job: JobRow): Promise<void> {
-  if (Date.now() - job.createdAt.getTime() > JOB_DEADLINE_MS) {
+  const enAttente = job.status === 'waiting';
+
+  // Une analyse en attente n'est pas en panne : elle a rendez-vous. Y toucher avant l'heure
+  // referait la tentative que le fournisseur vient de refuser.
+  if (enAttente && job.retryAfter && job.retryAfter.getTime() > Date.now()) return;
+
+  /*
+    Deux délais, parce que ce ne sont pas deux mêmes situations. Une analyse bloquée en étude
+    depuis 25 minutes est perdue. Une analyse qui attend son tour a trois rendez-vous devant
+    elle : lui appliquer le même délai la tuerait avant sa dernière chance.
+  */
+  const limite = enAttente ? WAITING_BUDGET_MS : JOB_DEADLINE_MS;
+  if (Date.now() - job.createdAt.getTime() > limite) {
     await failJob(
       job.id,
       new AppError(
@@ -287,13 +375,15 @@ async function resumeJob(job: JobRow): Promise<void> {
 /** Au démarrage du serveur : reprend les analyses en cours, abandonne (et rembourse) les trop anciennes. */
 export async function resumeAnalysisJobs(): Promise<number> {
   const db = getDb();
+  // Les trop anciennes d'abord : resumeJob sait distinguer une analyse bloquée (25 min) d'une
+  // analyse qui attend son tour (90 min), et ne touche pas à celle qui a rendez-vous plus tard.
   const stale = await db
     .select()
     .from(analysisJobs)
-    .where(and(inArray(analysisJobs.status, ACTIVE), lt(analysisJobs.createdAt, new Date(Date.now() - JOB_DEADLINE_MS))));
+    .where(and(inArray(analysisJobs.status, PENDING), lt(analysisJobs.createdAt, new Date(Date.now() - JOB_DEADLINE_MS))));
   for (const job of stale) await resumeJob(job);
 
-  const active = await db.select().from(analysisJobs).where(inArray(analysisJobs.status, ACTIVE));
+  const active = await db.select().from(analysisJobs).where(inArray(analysisJobs.status, PENDING));
   for (const job of active) void resumeJob(job);
   return active.length;
 }

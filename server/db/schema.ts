@@ -297,8 +297,16 @@ export const analysisJobs = pgTable(
       .references(() => users.id, { onDelete: 'cascade' }),
     query: text('query').notNull(),
     market: text('market'),
-    /** queued · research · writing · completed · failed */
+    /** queued · research · writing · waiting · completed · failed */
     status: text('status').notNull(),
+    /**
+     * « waiting » : le fournisseur d'IA est saturé et l'analyse attend son tour au lieu
+     * d'échouer. Les points RESTENT réservés — les rendre puis les reprendre ferait deux
+     * lignes de compte pour un seul achat.
+     */
+    retryCount: integer('retry_count').notNull().default(0),
+    /** Instant à partir duquel une analyse en attente peut repartir. */
+    retryAfter: moment('retry_after'),
     /** Identifiant de l'étude chez le moteur de recherche. */
     researchRef: text('research_ref'),
     /** Pages retenues par l'étude, affichées pendant que le rapport se rédige. */
@@ -316,7 +324,11 @@ export const analysisJobs = pgTable(
   (table) => [
     index('analysis_jobs_user_idx').on(table.userId, table.createdAt),
     // Une seule analyse en cours par compte : deux clics rapides ne paient pas deux fois.
-    uniqueIndex('analysis_jobs_one_active').on(table.userId).where(sql`${table.status} in ('queued', 'research', 'writing')`),
+    // « waiting » compte comme en cours : une analyse qui attend que Google se libère occupe
+    // la place, sinon l'utilisateur en lancerait une seconde et paierait deux fois.
+    uniqueIndex('analysis_jobs_one_active')
+      .on(table.userId)
+      .where(sql`${table.status} in ('queued', 'research', 'writing', 'waiting')`),
   ],
 ).enableRLS();
 

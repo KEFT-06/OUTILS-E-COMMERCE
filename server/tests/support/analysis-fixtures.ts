@@ -105,6 +105,12 @@ export interface FakeProviders {
   geminiCalls: FakeCall[];
   searchQueries: { token: string | undefined; query: string | null; country: string | null }[];
   agentCalls: AgentCall[];
+  /**
+   * Force le faux Gemini à répondre 503 « saturé » pour les N prochains appels dont la requête
+   * contient « saturé ». Le client réessaie quatre fois avant de renoncer : il faut donc 4 pour
+   * qu'un tour de rédaction échoue entièrement.
+   */
+  setOverload: (calls: number) => void;
   close: () => Promise<void>;
 }
 
@@ -157,6 +163,7 @@ export async function startFakeProviders(): Promise<FakeProviders> {
   const agentCalls: AgentCall[] = [];
   const studies = new Map<string, string>();
   const searchQueries: { token: string | undefined; query: string | null; country: string | null }[] = [];
+  let overloadRemaining = 0;
 
   const server: Server = createServer((req, res) => {
     const chunks: Buffer[] = [];
@@ -174,6 +181,10 @@ export async function startFakeProviders(): Promise<FakeProviders> {
         const key = req.headers['x-goog-api-key'] as string | undefined;
         geminiCalls.push({ key, prompt });
         if (key !== 'cle-gemini-de-test') return send(403, { error: { message: 'clé refusée' } });
+        if (prompt.includes('« saturé') && overloadRemaining > 0) {
+          overloadRemaining -= 1;
+          return send(503, { error: { message: 'The model is overloaded. Please try again later.' } });
+        }
         if (prompt.includes('« panne')) return send(500, { error: { message: 'erreur interne' } });
         if (prompt.includes('« illisible')) return send(200, { candidates: [{ content: { parts: [{ text: '{}' }] } }] });
         return send(200, { candidates: [{ content: { parts: [{ text: JSON.stringify(fakeAnalysis(prompt)) }] } }] });
@@ -229,6 +240,9 @@ export async function startFakeProviders(): Promise<FakeProviders> {
   return {
     base: `http://127.0.0.1:${(server.address() as AddressInfo).port}`,
     geminiCalls,
+    setOverload: (calls: number) => {
+      overloadRemaining = calls;
+    },
     searchQueries,
     agentCalls,
     close: () => new Promise<void>((resolve) => server.close(() => resolve())),
