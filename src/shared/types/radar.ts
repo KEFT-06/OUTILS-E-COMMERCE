@@ -116,8 +116,10 @@ export interface SpiedAd {
   mediaUrl: string | null;
   mediaKind: string | null;
   startedAt: string | null;
-  /** Jours de diffusion selon Meta : la donnée qui fait la valeur du mur. */
+  /** Jours pendant lesquels l'annonce a été VUE en diffusion : la donnée qui fait la valeur du mur. */
   runningDays: number | null;
+  /** Jours depuis le dernier passage qui a vu cette annonce. */
+  daysSinceSeen: number;
   variants: number;
   platforms: string[];
   active: boolean;

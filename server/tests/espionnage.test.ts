@@ -185,6 +185,55 @@ describe('Mur d’espionnage', () => {
     assert.equal(tolerant.body.ads.length, 2);
   });
 
+  /*
+    Une annonce arrêtée ne doit pas continuer de vieillir.
+
+    Une collecte ne désactive pas les annonces qu'elle ne retrouve pas — elle n'en ramène
+    qu'un nombre plafonné, trié par impressions, donc une absence ne prouve pas un arrêt.
+    L'ancienneté se comptait jusqu'à AUJOURD'HUI : une annonce arrêtée le lendemain de sa
+    collecte vieillissait donc indéfiniment. Le tri par défaut montrant les plus anciennes
+    d'abord, les annonces mortes arrivaient en tête du mur, présentées comme les mieux
+    éprouvées — l'inverse exact de ce que ce mur promet.
+  */
+  it('arrête de compter l’ancienneté d’une annonce le jour où on cesse de la voir', async () => {
+    const { getDb } = await import('@server/db/client');
+    const { spiedAds } = await import('@server/db/schema');
+
+    const jours = (n: number) => new Date(Date.now() - n * 86_400_000);
+    await getDb()
+      .insert(spiedAds)
+      .values({
+        externalId: 'annonce-abandonnee',
+        storeHost: 'boutique-morte.mychariow.com',
+        landingUrl: 'https://boutique-morte.mychariow.com/p/offre',
+        title: 'Offre abandonnée',
+        // Lancée il y a 300 jours, mais plus revue depuis 200 : on ne l'a observée en
+        // diffusion que pendant les 100 premiers.
+        startedAt: jours(300),
+        lastSeenAt: jours(200),
+        variants: 1,
+        platforms: ['FACEBOOK'],
+        active: true,
+      });
+
+    try {
+      const { agent } = await signInWithPlan(app, 'espion-perime@exemple.test', 'pro');
+      const vue = await agent.get('/api/espionnage').expect(200);
+      const morte = (vue.body.ads as { externalId: string; runningDays: number; daysSinceSeen: number }[]).find(
+        (ad) => ad.externalId === 'annonce-abandonnee',
+      );
+
+      assert.ok(morte, 'l’annonce est bien sur le mur');
+      assert.equal(morte.runningDays, 100, 'on ne compte que ce qu’on a observé, pas ce qu’on suppose');
+      assert.ok(morte.daysSinceSeen >= 199, 'et l’écran peut dire depuis quand elle n’a plus été vue');
+    } finally {
+      // Le mur est partagé par les tests suivants : cette annonce ne doit pas leur rester
+      // dans les jambes, sinon on ne saurait plus lequel a écrit quoi.
+      const { eq } = await import('drizzle-orm');
+      await getDb().delete(spiedAds).where(eq(spiedAds.externalId, 'annonce-abandonnee'));
+    }
+  });
+
   it('permet de passer d’une annonce à une surveillance du radar, et reste fermé aux non-membres', async () => {
     const { agent } = await signInWithPlan(app, 'espion-suivi@exemple.test', 'pro');
     const mur = await agent.get('/api/espionnage').expect(200);

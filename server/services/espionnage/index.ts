@@ -32,8 +32,16 @@ export interface SpiedAdView {
   mediaUrl: string | null;
   mediaKind: string | null;
   startedAt: string | null;
-  /** Jours de diffusion selon Meta. null : date de début non publiée. */
+  /**
+   * Jours pendant lesquels l'annonce a été VUE en diffusion, de sa date de début au dernier
+   * passage qui l'a retrouvée. null : date de début non publiée par Meta.
+   */
   runningDays: number | null;
+  /**
+   * Jours écoulés depuis le dernier passage qui a vu cette annonce. Au-delà d'une collecte,
+   * on ne sait plus si elle tourne encore : le mur doit le dire plutôt que de le supposer.
+   */
+  daysSinceSeen: number;
   variants: number;
   platforms: string[];
   active: boolean;
@@ -72,8 +80,23 @@ const JOUR_MS = 86_400_000;
 /** Plafond de page, tous paliers confondus : deux cents vignettes suffisent à alourdir l'écran. */
 const PLAFOND_ABSOLU = 200;
 
-const runningDays = (startedAt: Date | null, now: Date): number | null =>
-  startedAt ? Math.max(0, Math.floor((now.getTime() - startedAt.getTime()) / JOUR_MS)) : null;
+/**
+ * Durée pendant laquelle l'annonce a été VUE en diffusion : de sa date de début au dernier
+ * passage qui l'a retrouvée.
+ *
+ * Elle se comptait jusqu'à aujourd'hui, et c'était faux d'une façon qui retournait le mur
+ * contre son propre propos. Une collecte ne désactive pas les annonces qu'elle ne retrouve
+ * pas — elle n'en ramène qu'un nombre plafonné, trié par impressions, si bien qu'une absence
+ * ne prouve pas un arrêt. Une annonce arrêtée le lendemain de sa collecte continuait donc de
+ * vieillir indéfiniment. Le tri par défaut montrant les plus anciennes d'abord, les annonces
+ * mortes arrivaient en tête, présentées comme les mieux éprouvées : exactement l'inverse de
+ * ce que ce mur promet.
+ *
+ * Compter jusqu'au dernier passage qui l'a vue n'affirme que ce qui a été observé. Une
+ * annonce toujours en vie est retrouvée à chaque collecte, et son compteur avance avec elle.
+ */
+const runningDays = (startedAt: Date | null, lastSeenAt: Date): number | null =>
+  startedAt ? Math.max(0, Math.floor((lastSeenAt.getTime() - startedAt.getTime()) / JOUR_MS)) : null;
 
 function viewOf(row: typeof spiedAds.$inferSelect, now: Date): SpiedAdView {
   return {
@@ -87,11 +110,12 @@ function viewOf(row: typeof spiedAds.$inferSelect, now: Date): SpiedAdView {
     mediaUrl: row.mediaUrl,
     mediaKind: row.mediaKind,
     startedAt: row.startedAt?.toISOString() ?? null,
-    runningDays: runningDays(row.startedAt, now),
+    runningDays: runningDays(row.startedAt, row.lastSeenAt),
     variants: row.variants,
     platforms: row.platforms,
     active: row.active,
     lastSeenAt: row.lastSeenAt.toISOString(),
+    daysSinceSeen: Math.max(0, Math.floor((now.getTime() - row.lastSeenAt.getTime()) / JOUR_MS)),
   };
 }
 

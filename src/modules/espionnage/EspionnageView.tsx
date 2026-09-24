@@ -92,6 +92,17 @@ function AdCard({ ad, onWatch, busy }: { ad: SpiedAd; onWatch: (host: string) =>
         <CardDescription className="flex flex-wrap items-center gap-1.5">
           <AgeBadge days={ad.runningDays} />
           {!ad.active && <Badge variant="outline">Arrêtée</Badge>}
+          {/*
+            Une collecte ne ramène qu'un nombre plafonné d'annonces, triées par impressions :
+            ne plus retrouver une annonce ne prouve pas qu'elle s'est arrêtée. On dit donc ce
+            qu'on sait — la date de la dernière fois qu'on l'a vue — au lieu de laisser croire
+            qu'elle tourne encore. Sept jours : au-delà d'une semaine, l'incertitude compte.
+          */}
+          {ad.active && ad.daysSinceSeen > 7 && (
+            <Badge variant="outline" title="Une collecte ne ramène qu'une partie des annonces : son absence ne prouve pas un arrêt.">
+              Non revue depuis {ad.daysSinceSeen} jours
+            </Badge>
+          )}
         </CardDescription>
       </CardHeader>
 
