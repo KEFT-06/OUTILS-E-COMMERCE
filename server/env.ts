@@ -88,16 +88,26 @@ const schema = z.object({
   // et renvoie 503 avec un message explicite si elle manque.
   GEMINI_API_KEY: z.string().min(1).optional(),
   GEMINI_API_URL: z.string().url().default('https://generativelanguage.googleapis.com'),
-  /** Modèle Gemini des analyses de niche, des rédactions et des traductions. */
-  GEMINI_MODEL: z.string().regex(/^[\w.-]+$/).default('gemini-3.5-flash'),
+  /**
+   * Modèle Gemini des analyses de niche, des rédactions et des traductions.
+   *
+   * 3.6 Flash est passé devant 3.5 Flash le 24 septembre 2026 : il est à la fois plus récent
+   * et deux fois moins cher sur la grille de Google — 0,75 $ / 3,75 $ le million de jetons,
+   * contre 1,50 $ / 9,00 $. L'ordre précédent faisait payer le double pour la génération
+   * antérieure, et le secours coûtait moins que le principal qu'il remplaçait.
+   */
+  GEMINI_MODEL: z.string().regex(/^[\w.-]+$/).default('gemini-3.6-flash'),
   /**
    * Modèle de secours quand le modèle principal est saturé chez Google (réponse 503, « high
    * demand »), après une seconde tentative. « off » : pas de modèle de secours.
+   *
+   * Le secours est volontairement d'une autre génération : deux modèles de la même famille
+   * sont servis par la même flotte, et sont donc saturés en même temps.
    */
   GEMINI_FALLBACK_MODEL: z
     .string()
     .regex(/^[\w.-]+$/)
-    .default('gemini-3.6-flash')
+    .default('gemini-3.5-flash')
     .transform((model) => (model === 'off' ? null : model)),
   /**
    * Étude de marché des analyses de niche : Perplexity cherche et lit le web (Agent API, repli

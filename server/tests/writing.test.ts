@@ -33,7 +33,7 @@ const fakeGemini = createServer((req, res) => {
     // Réponse réelle de Google quand le modèle est saturé (relevée le 16 septembre 2026).
     const overloaded = { error: { code: 503, message: 'This model is currently experiencing high demand.', status: 'UNAVAILABLE' } };
     if (prompt.includes('Titre : Saturé partout')) return send(503, overloaded);
-    if (prompt.includes('Titre : Saturé') && model === 'gemini-3.5-flash') return send(503, overloaded);
+    if (prompt.includes('Titre : Saturé') && model === 'gemini-3.6-flash') return send(503, overloaded);
 
     let answer: unknown;
     if (prompt.includes('Réécris le TEXTE')) {
@@ -192,7 +192,9 @@ describe('Rédaction par l’IA', () => {
     models.length = 0;
     const rescued = await agent.post('/api/writing/product').send({ product: { ...PRODUCT, title: 'Saturé' } }).expect(200);
     assert.equal(rescued.body.modules.length, PRODUCT.modules.length);
-    assert.deepEqual(models, ['gemini-3.5-flash', 'gemini-3.5-flash', 'gemini-3.6-flash']);
+    // Deux essais sur le modèle principal, puis le secours — d'une autre génération, parce
+    // que deux modèles de la même famille sont saturés en même temps.
+    assert.deepEqual(models, ['gemini-3.6-flash', 'gemini-3.6-flash', 'gemini-3.5-flash']);
     assert.ok(start > (await balance(agent)), 'rédaction facturée une fois');
 
     models.length = 0;
