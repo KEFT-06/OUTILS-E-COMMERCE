@@ -26,7 +26,8 @@ Ce fichier est la seule documentation du projet.
 13. [Charte graphique](#13-charte-graphique)
 14. [Tests et vérifications](#14-tests-et-vérifications)
 15. [Mise en production](#15-mise-en-production)
-16. [Reste à fournir](#16-reste-à-fournir)
+16. [Radar et Espionnage](#16-radar-et-espionnage)
+17. [Reste à fournir](#17-reste-à-fournir)
 
 ---
 
@@ -85,10 +86,12 @@ ne passe par la ligne de commande. Se connecter, puis activer un second facteur 
 | --- | --- | --- | --- |
 | Voir | Cockpit | `/app/cockpit` | Solde de points, ventes, concurrence de la dernière niche, parcours conseillé |
 | Voir | Niches | `/app/niches` | 594 niches dans 41 secteurs, enregistrement et analyse en un clic |
+| Voir | Radar | `/app/radar` | Boutiques Chariow surveillées jour après jour : prix, ventes, produits apparus ou retirés (section 16) |
+| Voir | Espionnage | `/app/espionnage` | Publicités Meta qui mènent à une boutique de la plateforme, classées par ancienneté (section 16) |
 | Voir | Analyse stratégique | `/app/analyse` | Les 5 taux, la concurrence, les produits proposés, le plan d'action |
 | Voir | Dossier PDF | `/app/dossier-pdf` | Le rapport A4 à télécharger, après contrôle de conformité |
 | Créer | Studio de création | `/app/studio` | Produits issus d'une analyse, créés à la main ou à partir d'une vidéo ; rédaction par IA ; export PDF/DOCX |
-| Créer | Créatifs publicitaires | `/app/creatifs` | Visuels et vidéos (Higgsfield), 12 méthodes publicitaires |
+| Créer | Créatifs publicitaires | `/app/creatifs` | Visuels (Cloudflare Workers AI) et vidéos (fal.ai), 12 méthodes publicitaires |
 | Créer | Storybook illustré | `/app/storybook` | Contes illustrés ancrés dans un pays (Gamma) |
 | Créer | Pages produits | `/app/pages-produits` | Pages de vente en 7 sections, export HTML |
 | Créer | Guides multilingues | `/app/multilingue` | Traduction, relecture, export (section 11) |
@@ -191,9 +194,12 @@ l'annonce à l'écran et répond 503 : rien ne casse.
 
 | Service | Rôle | Variables | Sans clé |
 | --- | --- | --- | --- |
-| **Gemini** | Rédaction du rapport d'analyse, rédaction des produits et du kit, traduction des guides, Vidéo → Produit | `GEMINI_API_KEY`, `GEMINI_MODEL` (défaut `gemini-3.5-flash`), `GEMINI_FALLBACK_MODEL` (défaut `gemini-3.6-flash`) | Analyse, rédaction et traduction fermées |
+| **Gemini** | Rédaction du rapport d'analyse, rédaction des produits et du kit, traduction des guides, Vidéo → Produit ; secours des images | `GEMINI_API_KEY`, `GEMINI_MODEL` (défaut `gemini-3.6-flash`), `GEMINI_FALLBACK_MODEL` (défaut `gemini-3.5-flash`) | Analyse, rédaction et traduction fermées |
 | **Perplexity** (API Search) | Sources web des analyses de niche | `PERPLEXITY_API_KEY` | L'analyse fonctionne mais n'avance aucun fait de marché et le dit |
-| **Higgsfield** | Visuels (Soul, 1080p), vidéos publicitaires (Kling v2.1, 5 ou 10 s), couvertures de guides | `HIGGSFIELD_API_KEY_ID`, `HIGGSFIELD_API_KEY_SECRET` ; le compte des clés doit avoir des crédits | Créatifs et couvertures fermés ; sans crédits, le site l'annonce et rend les points |
+| **Cloudflare Workers AI** | **Toutes les images** : visuels publicitaires, couvertures de guides et d'ebooks | `CLOUDFLARE_ACCOUNT_ID`, `CLOUDFLARE_AI_TOKEN` (droits Workers AI en lecture **et** écriture), `CLOUDFLARE_IMAGE_MODEL`, `CLOUDFLARE_IMAGE_MODEL_FAST` | Repli sur Gemini, une vingtaine de fois plus cher ; sans les deux, images fermées |
+| **fal.ai** | Vidéos publicitaires (Kling 2.5 Turbo Pro, 5 ou 10 s) | `FAL_KEY` (portée « API », pas « ADMIN »), `FAL_VIDEO_MODEL` | Vidéos fermées |
+| **Apify** | Découverte de boutiques et mur d'espionnage (section 16) | `APIFY_TOKEN` | Le radar et le mur fonctionnent sur ce qui est déjà collecté ; aucune nouvelle collecte |
+| **Higgsfield** | *Historique seulement.* Visuels d'avant la bascule vers Cloudflare, encore consultables | `HIGGSFIELD_API_KEY_ID`, `HIGGSFIELD_API_KEY_SECRET` | Les anciens visuels ne s'ouvrent plus ; rien de neuf n'y est envoyé |
 | **Gamma** | Storybooks illustrés | `GAMMA_API_KEY` | Storybook fermé |
 | **Stripe** | Paiement des paliers par carte | `STRIPE_API_KEY` (clé secrète `sk_…`), `STRIPE_WEBHOOK_SECRET` | Paiement en ligne masqué ; paiements saisis par l'équipe |
 | **Brevo** ou **Resend** | E-mails de sécurité | `EMAIL_PROVIDER`, `EMAIL_API_KEY`, `EMAIL_FROM` | Mot de passe oublié via l'équipe, pas de confirmation d'adresse |
@@ -209,37 +215,34 @@ principal, puis passe au modèle de secours ; si tout reste saturé, l'utilisate
 Google, réessayez dans quelques minutes » et ses points sont rendus. Le rapport d'analyse indique le
 modèle qui l'a réellement rédigé.
 
-**Vérifié contre les vrais services (16 septembre 2026).** Gemini : analyse, rédaction des modules,
-kit de lancement, Vidéo → Produit (lien YouTube) et traduction répondent. Higgsfield : identifiants
-acceptés, adresses des modèles et corps des demandes conformes ; la spécification publiée annonce une
-résolution « 2K » que l'API refuse, le site envoie donc « 1080p ». Chariow : catalogue et ventes lus
-avec la clé administrateur. Perplexity : format conforme à la documentation, à essayer dès que la clé
-est fournie.
+**Pourquoi les images sont parties chez Cloudflare.** Higgsfield se payait par abonnement mensuel,
+dont les crédits périmaient sans report : on payait les mois sans visuel, et on perdait ce qu'on
+n'avait pas consommé. Cloudflare facture à l'image, de l'ordre de 0,015 $. Conséquence technique :
+Higgsfield déposait le fichier sur son stockage et rendait un lien à relayer, qui expirait au bout
+de sept jours ; un modèle d'image rend des OCTETS, que le serveur garde lui-même (`creative_images`).
+Un visuel ne périme donc plus.
+
+**Deux formes de requête chez Cloudflare, sur la même route.** Mesuré sur l'API, absent de toute
+documentation : la famille FLUX.2 REFUSE un corps JSON (400, « required properties at '/' are
+'multipart' ») et n'accepte qu'un formulaire multipart ; Phoenix répond les octets du JPEG sans
+enveloppe JSON. `server/services/ai/cloudflareImage.ts` déduit l'encodage du nom du modèle et la
+lecture du type de contenu de la réponse — à relire avant de changer `CLOUDFLARE_IMAGE_MODEL`.
+
+**Vérifié contre les vrais services.** Gemini (16/09/2026) : analyse, rédaction des modules, kit de
+lancement, Vidéo → Produit (lien YouTube) et traduction répondent ; la génération d'images y est
+refusée tant que la facturation du projet Google n'est pas ouverte (429 `RESOURCE_EXHAUSTED`).
+Cloudflare (24/09/2026) : les quatre formats produisent une image par le code de l'application —
+9:16, 1:1 et 16:9 en FLUX.2 klein 9B, le carré rapide en FLUX.1 schnell à 172,8 neurones.
+Chariow : catalogue et ventes lus avec la clé administrateur. Perplexity : format conforme à la
+documentation, à essayer dès que la clé est fournie.
 
 **Retirés du site.** La bibliothèque publicitaire Meta (radar marché, galerie de publicités, swipe
 file, score d'intensité concurrentielle) et Brave Search ne sont plus utilisés. Les campagnes
 « Meta Ads » (scripts, structures) restent : il s'agit de publicité sur Meta, pas de la bibliothèque.
 
-**Le Radar remplace ce radar marché, sur une autre source.** L'API officielle de Meta ne rend les
-publicités commerciales que pour l'Union européenne et le Royaume-Uni : elle ne pouvait pas servir
-l'Afrique. Le module Radar (`/app/radar`) observe à la place la vitrine publique des boutiques
-Chariow, qui publie le prix pratiqué **et le nombre de ventes** de chaque produit — une mesure, là
-où une publicité n'était qu'un indice. Aucune clé n'est nécessaire, aucun point n'est facturé : le
-quota porte sur le nombre de boutiques suivies (`limits.watchedStores`).
-
-Ce que le module apporte et qu'un relevé unique ne peut pas donner : la date d'arrêt d'un produit,
-sa date d'apparition, et l'accélération de ses ventes. Une vitrine ne publie que son présent — seul
-celui qui la relevait la veille sait ce qui en a disparu. Le balayage tourne de lui-même
-(`server/services/radar/sweeper.ts`), une fois par jour et par boutique, puis envoie un résumé par
-e-mail aux comptes qui surveillent quelque chose : un radar dont personne n'est averti ne sert à rien.
-
-**La découverte de boutiques est la seule partie payante, et elle est facultative.** Lire une vitrine
-demande de connaître son adresse. Pour trouver des concurrents inconnus, le module cherche
-« mychariow » dans les publicités en cours via Apify — c'est le détour que les outils concurrents
-prennent faute d'accès aux vitrines, et il ne sert ici qu'à cela. Sans `APIFY_TOKEN`, le panneau
-n'apparaît pas et le reste fonctionne. Le résultat est mutualisé entre tous les comptes, donc la
-dépense dépend du rythme configuré et non du nombre d'utilisateurs ; aucun utilisateur ne peut
-déclencher un passage. Le calcul du coût est dans `.env.example`.
+**Le Radar remplace ce radar marché, sur une autre source**, et le mur d'espionnage reprend la
+partie publicitaire par un autre chemin. Les deux modules, ce qu'ils mesurent, ce qu'ils ne peuvent
+pas mesurer et la seule route qui dépense : **section 16**.
 
 ---
 
@@ -286,7 +289,7 @@ session ouverte avec lui.
 | Messages | Messages du formulaire de contact : nouveau, lu, archivé |
 | Audience | Visites et visiteurs uniques des pages publiques, sans cookie, sur 30 jours |
 | Revenus | Revenus par jour, mois et année, paiements Stripe et saisis à la main, remboursements |
-| Contenus | Nombre de vidéos, visuels, storybooks mesurés par le serveur et d'exports déclarés par le navigateur ; **bibliothèque des créatifs** : chaque vidéo et visuel avec son créateur, sa date et ses points, lecture et téléchargement (privilège « Voir les vidéos et visuels créés », chaque ouverture inscrite au journal ; fichiers disponibles environ 7 jours, durée de conservation de Higgsfield) |
+| Contenus | Nombre de vidéos, visuels, storybooks mesurés par le serveur et d'exports déclarés par le navigateur ; **bibliothèque des créatifs** : chaque vidéo et visuel avec son créateur, sa date et ses points, lecture et téléchargement (privilège « Voir les vidéos et visuels créés », chaque ouverture inscrite au journal ; un visuel produit chez nous ne périme pas ; une vidéo reste chez fal.ai, qui ne la garde qu'environ 7 jours — au-delà, la ligne demeure mais le fichier est annoncé expiré) |
 | Sécurité | Journal des connexions et des codes, verrous actifs, journal d'audit des actions de l'équipe |
 
 Un accès accordé ou retiré (fonction, palier, points) vaut dès la requête suivante. Bloquer un compte
@@ -438,7 +441,7 @@ langue par langue parmi 30 langues, dont plusieurs langues africaines.
 Les relecteurs (privilège *Relire des guides*) déclarent leurs langues, voient les demandes sans leur
 texte, découvrent le texte en prenant une demande et n'y ont plus accès après l'avoir rendue. Exports :
 PDF par l'impression du navigateur (toutes écritures, arabe de droite à gauche compris), Word et
-HTML. La couverture, générée sans texte par Higgsfield, est recopiée en base dès qu'elle est prête.
+HTML. La couverture, générée sans texte par Cloudflare Workers AI, est recopiée en base dès qu'elle est prête.
 
 ---
 
@@ -518,7 +521,7 @@ remboursement des générations, les paiements Stripe (signature, montants, idem
 niche (sources inexistantes écartées, absence de recherche web), la rédaction et Vidéo → Produit, les
 brouillons, les guides multilingues, les e-mails, le contact, l'audience, les données personnelles,
 le référencement et les correctifs de sécurité. Tous les fournisseurs sont simulés : aucun test
-n'appelle Gemini, Perplexity, Higgsfield, Gamma, Stripe, Brevo, Resend ni Chariow, et aucun ne touche
+n'appelle Gemini, Perplexity, Cloudflare, fal.ai, Apify, Gamma, Stripe, Brevo, Resend ni Chariow, et aucun ne touche
 la vraie base.
 
 L'intégration continue (`.github/workflows/verifications.yml`) lance à chaque envoi : installation,
@@ -572,17 +575,86 @@ Autre hébergeur : un serveur Node.js lancé depuis la racine du projet (`npm ru
 
 ---
 
-## 16. Reste à fournir
+## 16. Radar et Espionnage
+
+Deux écrans, **une seule collecte**. Le point à ne pas perdre de vue en y touchant : la donnée
+payante est mutualisée entre tous les comptes, et un seul endroit la paie.
+
+### Radar (`/app/radar`) — ce que fait un concurrent, jour après jour
+
+L'API officielle de Meta ne rend les publicités commerciales que pour l'Union européenne et le
+Royaume-Uni : elle ne pouvait pas servir l'Afrique. Le radar observe à la place la vitrine publique
+des boutiques Chariow, qui publie le prix pratiqué **et le nombre de ventes** de chaque produit —
+une mesure, là où une publicité n'est qu'un indice.
+
+Ce qu'un relevé unique ne peut pas donner, et que seul le passage quotidien établit : la date
+d'apparition d'un produit, sa date d'arrêt, et l'accélération de ses ventes. Une vitrine ne publie
+que son présent ; seul celui qui la relevait la veille sait ce qui en a disparu.
+
+- Aucune clé, aucun point facturé. Le quota porte sur le nombre de boutiques suivies
+  (`limits.watchedStores` ; `0` ferme le module).
+- Balayage automatique une fois par jour et par boutique (`server/services/radar/sweeper.ts`), puis
+  résumé par e-mail aux comptes qui surveillent quelque chose.
+- **`CRON_SECRET` est obligatoire en production.** Sans lui, `GET /api/cron/radar` refuse de
+  s'exécuter et **le radar ne balaie jamais** : les écrans restent figés sur le dernier relevé,
+  sans rien signaler. Le planificateur est déclaré dans `vercel.json` (`0 3 * * *`) ; le secret se
+  pose dans les variables d'environnement de l'hébergeur.
+
+### Espionnage (`/app/espionnage`) — qui paie de la publicité, et depuis quand
+
+Le mur montre les publicités Meta en cours qui redirigent vers une boutique de la plateforme.
+L'ancienneté y est une donnée publiée, pas une estimation : elle sépare deux situations qu'on
+confond toujours — une annonce de 12 jours est un test en cours, une annonce de 213 jours est un
+produit qui paie sa publicité depuis sept mois. La seconde a fait ses preuves.
+
+Ce que le mur ne montrera jamais, faute de donnée et non par choix : budget, impressions et portée.
+Meta ne les publie que pour l'Union européenne — mesuré à 0 sur 43 annonces.
+
+Trois pièges de la source, vérifiés par `server/tests/espionnage.test.ts` :
+
+1. `inputUrl` contient le mot-clé cherché dans **chaque** enregistrement. Chercher la preuve de
+   redirection dans l'enregistrement entier ferait passer toutes les annonces pour les nôtres :
+   seuls `snapshot.linkUrl` et `snapshot.caption` font foi.
+2. `startDate` est en **secondes**. Lu en millisecondes, tout daterait de 1970 et l'ancienneté —
+   l'intérêt même du mur — n'aurait aucun sens.
+3. `.shop` et `.com` désignent la même boutique : sans normalisation, elle apparaîtrait deux fois.
+
+### La collecte : le seul endroit qui dépense
+
+Lire une vitrine suppose d'en connaître l'adresse. Pour trouver des concurrents inconnus, la
+découverte cherche « mychariow » dans les publicités en cours via Apify. Un même passage remplit
+les deux écrans — boutiques repérées **et** mur d'espionnage — sinon la même donnée serait payée
+deux fois.
+
+- Route unique : `POST /api/radar/discover/refresh`, réservée au privilège `admin.market.collect`.
+  **Aucun utilisateur ne peut déclencher une dépense.**
+- Sans `APIFY_TOKEN`, le panneau n'apparaît pas et tout le reste fonctionne.
+- Le résultat étant mutualisé, la dépense dépend du rythme configuré, jamais du nombre de comptes.
+  Le calcul du coût est dans `.env.example`.
+- Ne jamais activer les options `includeCreatorLeads` / `enrichCreatorEmails` de l'acteur Apify :
+  elles collectent des données personnelles de tiers, et la prospection non sollicitée qui en
+  découlerait abîmerait la réputation du domaine d'envoi.
+
+**Ce que le palier borne sur le mur.** `limits.spiedAdsVisible` fixe le nombre d'annonces visibles
+(6 / 30 / 100 / 200, illimité en Élite). Quand il coupe, l'écran l'annonce : un mur tronqué en
+silence passe pour un mur pauvre, et l'utilisateur en conclut que l'outil ne trouve rien. À
+l'inverse, ce que le palier n'a pas caché ne doit jamais lui être imputé — l'écran ne fixe donc
+aucune limite de son côté, et `hiddenByPlan` se compte contre la limite du palier, jamais contre
+le nombre de lignes servies.
+
+---
+
+## 17. Reste à fournir
 
 | Élément | Où |
 | --- | --- |
 | Identité de l'éditeur, hébergeurs, durée de conservation comptable, rétractation et remboursement, droit applicable | Pages légales (`À compléter`) |
 | `DATABASE_URL` Supabase (région Paris) | `.env` / secrets de l'hébergeur |
-| Crédits API Higgsfield : le compte des clés actuelles est à zéro, aucune vidéo ni aucun visuel ne peut être créé | Compte Higgsfield des clés API |
+| `CRON_SECRET` sur l'hébergeur — sans lui le radar ne balaie jamais | Variables d'environnement |
 | Service d'e-mails et domaine vérifié | `.env` |
 | `STRIPE_WEBHOOK_SECRET` et activation du compte Stripe pour les paiements réels (profil d'entreprise, puis clé `sk_live_…`) | Tableau de bord Stripe |
 | Prix définitifs des paliers | `server/config/plans.json` |
-| Garanties des transferts hors Union européenne (Google, Perplexity, Stripe, Higgsfield, Gamma) | Politique de confidentialité |
+| Garanties des transferts hors Union européenne (Google, Perplexity, Cloudflare, fal.ai, Apify, Stripe, Higgsfield, Gamma) | Politique de confidentialité |
 
 **Clés à régénérer** : toute clé qui a été copiée hors du fichier `.env` (messages, captures) doit
 être régénérée chez son fournisseur, puis remplacée dans `.env`.
