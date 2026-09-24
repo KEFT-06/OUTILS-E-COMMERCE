@@ -24,6 +24,8 @@ interface CloudflareCall {
   height: number | undefined;
   steps: number | undefined;
   authorization: string | undefined;
+  /** Encodage réellement employé : la famille FLUX.2 n’accepte que le multipart. */
+  contentType: string;
 }
 
 const cloudflareCalls: CloudflareCall[] = [];
@@ -35,6 +37,32 @@ let cloudflareMode: 'ok' | 'quota' | 'refus' = 'ok';
 const JPEG = Buffer.concat([Buffer.from('ffd8ffe000104a46494600010100000100010000', 'hex'), Buffer.alloc(64, 7), Buffer.from('ffd9', 'hex')]);
 const PNG = Buffer.from('89504e470d0a1a0a0000000d4948445200000001000000010806000000', 'hex');
 
+/**
+ * Décode le corps d'une requête, JSON ou multipart.
+ *
+ * Les deux formes coexistent sur la même route `ai/run` : la famille FLUX.2 n'accepte QUE le
+ * multipart, les autres modèles veulent du JSON. Le faux serveur doit donc lire les deux, sans
+ * quoi il ne prouverait rien de ce que le vrai attend. Les valeurs reviennent typées comme
+ * après un JSON.parse — un champ multipart arrive en texte, et un nombre doit redevenir nombre
+ * pour que les assertions portent sur la même chose dans les deux cas.
+ */
+function readBody(raw: Buffer, contentType: string): Record<string, unknown> {
+  if (raw.length === 0) return {};
+  if (!contentType.startsWith('multipart/form-data')) return JSON.parse(raw.toString('utf8')) as Record<string, unknown>;
+
+  const frontiere = /boundary=(?:"([^"]+)"|([^;]+))/.exec(contentType);
+  assert.ok(frontiere, 'un multipart annonce toujours sa frontière');
+  const parts = raw.toString('utf8').split(`--${frontiere[1] ?? frontiere[2]!.trim()}`);
+  const champs: Record<string, unknown> = {};
+  for (const part of parts) {
+    const nom = /name="([^"]+)"/.exec(part);
+    if (!nom) continue;
+    const valeur = part.slice(part.indexOf('\r\n\r\n') + 4).replace(/\r\n$/, '');
+    champs[nom[1]!] = /^-?\d+(\.\d+)?$/.test(valeur) ? Number(valeur) : valeur;
+  }
+  return champs;
+}
+
 const fakeProviders = createServer((req, res) => {
   const chunks: Buffer[] = [];
   req.on('data', (chunk: Buffer) => chunks.push(chunk));
@@ -44,7 +72,7 @@ const fakeProviders = createServer((req, res) => {
       res.writeHead(status, { 'content-type': 'application/json' });
       res.end(JSON.stringify(body));
     };
-    const body = chunks.length > 0 ? (JSON.parse(Buffer.concat(chunks).toString('utf8')) as Record<string, unknown>) : {};
+    const body = readBody(Buffer.concat(chunks), req.headers['content-type'] ?? '');
 
     const run = /^\/cf\/accounts\/([0-9a-f]+)\/ai\/run\/(.+)$/.exec(url.pathname);
     if (run && req.method === 'POST') {
@@ -57,6 +85,7 @@ const fakeProviders = createServer((req, res) => {
         height: body.height as number | undefined,
         steps: body.steps as number | undefined,
         authorization: req.headers.authorization,
+        contentType: (req.headers['content-type'] ?? '').split(';')[0]!.trim(),
       });
       if (cloudflareMode === 'quota')
         return send(429, { success: false, errors: [{ code: 3036, message: 'Account limited. Daily neuron quota exceeded.' }] });
@@ -123,7 +152,10 @@ describe('Couvertures par Cloudflare Workers AI', () => {
     assert.equal(response.body.cover.status, 'ready');
 
     const call = cloudflareCalls.at(-1)!;
-    assert.equal(call.model, '@cf/leonardo/lucid-origin', 'seul ce modèle accepte un format libre');
+    assert.equal(call.model, '@cf/black-forest-labs/flux-2-klein-9b', 'le modèle de qualité du catalogue Cloudflare');
+    // Mesuré sur la vraie API : un corps JSON est refusé par un 400 « required properties at
+    // '/' are 'multipart' ». Rien ne l'annonce ailleurs que dans ce message d'erreur.
+    assert.equal(call.contentType, 'multipart/form-data', 'la famille FLUX.2 n’accepte que le multipart');
     assert.equal(call.authorization, 'Bearer jeton-cloudflare-de-test', 'le jeton part en en-tête');
     // 720 x 1280 : exactement 9:16, multiples de 16, environ un mégapixel. Au-delà la facture
     // monte au carré, le prix par étape se payant par tuile de 512.
@@ -195,7 +227,7 @@ describe('Visuels publicitaires produits chez nous', () => {
     assert.equal(lance.body.mediaType, 'image');
 
     const call = cloudflareCalls.at(-1)!;
-    assert.equal(call.model, '@cf/leonardo/lucid-origin');
+    assert.equal(call.model, '@cf/black-forest-labs/flux-2-klein-9b');
     assert.equal(call.width, 720, 'le format 9:16 du brief est respecté');
     assert.equal(call.height, 1280);
 

@@ -129,6 +129,16 @@ const schema = z.object({
    * Deux modèles, aux capacités différentes — mesurées sur l'API, pas déduites de la doc :
    * celui de qualité accepte un format libre (couverture verticale) ; le rapide ne produit que
    * du carré 1024 et REFUSE width/height, mais coûte une vingtaine de fois moins.
+   *
+   * Le modèle de qualité est FLUX.2 [klein] 9B. Comparé le 24 septembre 2026 sur une même
+   * consigne publicitaire en 720×1280, contre Lucid Origin, Phoenix 1.0, FLUX.2 [dev] et
+   * FLUX.2 [klein] 4B : meilleure composition, et 0,015 $ l'image contre 0,034 $ pour Lucid
+   * Origin qu'il remplace. Le 4B coûte quinze fois moins mais a dessiné un logo de marque sur
+   * l'écran d'un ordinateur — inacceptable dans un visuel publicitaire destiné à un client.
+   *
+   * Attention en changeant cette valeur : la famille FLUX.2 n'accepte QUE le multipart, là où
+   * les autres veulent du JSON (voir `encodeRequest`), et Phoenix répond les octets du JPEG au
+   * lieu d'un JSON (voir `readImage`). Les deux cas sont gérés, mais ils existent.
    */
   CLOUDFLARE_ACCOUNT_ID: z
     .string()
@@ -137,7 +147,7 @@ const schema = z.object({
   CLOUDFLARE_AI_TOKEN: z.string().min(1).optional(),
   /** Surchargeable pour tester contre un serveur factice. */
   CLOUDFLARE_AI_URL: z.string().url().default('https://api.cloudflare.com/client/v4'),
-  CLOUDFLARE_IMAGE_MODEL: z.string().regex(/^@?[\w./-]+$/).default('@cf/leonardo/lucid-origin'),
+  CLOUDFLARE_IMAGE_MODEL: z.string().regex(/^@?[\w./-]+$/).default('@cf/black-forest-labs/flux-2-klein-9b'),
   CLOUDFLARE_IMAGE_MODEL_FAST: z.string().regex(/^@?[\w./-]+$/).default('@cf/black-forest-labs/flux-1-schnell'),
   // Higgsfield authentifie par une paire identifiant + secret, envoyée sous la
   // forme `Authorization: Key ID:SECRET` (docs.higgsfield.ai/docs/authentication).

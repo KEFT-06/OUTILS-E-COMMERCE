@@ -140,7 +140,7 @@ async function produce(input: CloudflareImageInput): Promise<ImageResult & { neu
   const model = tier === 'fast' ? env.CLOUDFLARE_IMAGE_MODEL_FAST : env.CLOUDFLARE_IMAGE_MODEL;
   const { width, height } = DIMENSIONS[input.aspectRatio];
 
-  const body =
+  const fields: Record<string, string | number> =
     tier === 'fast'
       ? { prompt: input.prompt, steps: input.steps ?? 4 }
       : {
@@ -156,12 +156,58 @@ async function produce(input: CloudflareImageInput): Promise<ImageResult & { neu
   try {
     response = await fetch(`${env.CLOUDFLARE_AI_URL.replace(/\/+$/, '')}/accounts/${env.CLOUDFLARE_ACCOUNT_ID}/ai/run/${model}`, {
       method: 'POST',
-      headers: { Authorization: `Bearer ${env.CLOUDFLARE_AI_TOKEN}`, 'Content-Type': 'application/json' },
-      body: JSON.stringify(body),
+      // Le jeton part en en-tête ; `encodeRequest` ajoute le type de contenu qui convient au modèle.
+      headers: { Authorization: `Bearer ${env.CLOUDFLARE_AI_TOKEN}` },
+      ...encodeRequest(model, fields),
       signal: AbortSignal.timeout(TIMEOUT_MS),
     });
   } catch {
     throw new AppError(504, 'Cloudflare n’a pas produit l’image à temps. Réessayez : vos points ont été rendus.', 'CF_IMAGE_TIMEOUT');
+  }
+
+  const { bytes, neurons } = await readImage(response);
+
+  if (bytes.length === 0 || bytes.length > MAX_IMAGE_BYTES)
+    throw new AppError(502, 'L’image générée est vide ou trop lourde.', 'CF_IMAGE_SIZE');
+
+  const mimeType = sniffMimeType(bytes);
+  if (!mimeType) throw new AppError(502, 'Format d’image inattendu.', 'CF_IMAGE_FORMAT');
+
+  return { mimeType, bytes, model, ...(typeof neurons === 'number' ? { neurons } : {}) };
+}
+
+/**
+ * Comment parler au modèle. Deux formes coexistent sur la MÊME route `ai/run`, et rien ne
+ * l'annonce : les modèles FLUX.2 refusent un corps JSON par un 400 « required properties at
+ * '/' are 'multipart' », et n'acceptent qu'un formulaire multipart. Les autres veulent du JSON.
+ *
+ * La règle est déduite du nom du modèle plutôt que d'une liste à tenir à jour : la famille
+ * FLUX.2 partage cette exigence, et un modèle inconnu retombe sur le JSON, qui est le cas
+ * général. Mesuré sur l'API le 24 septembre 2026.
+ */
+function encodeRequest(model: string, fields: Record<string, string | number>): { headers?: HeadersInit; body: BodyInit } {
+  if (!/flux-2/.test(model)) {
+    return { headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(fields) };
+  }
+  const form = new FormData();
+  for (const [key, value] of Object.entries(fields)) form.append(key, String(value));
+  // Pas de Content-Type ici : `fetch` pose lui-même la frontière du multipart.
+  return { body: form };
+}
+
+/**
+ * Lit l'image, quelle que soit la façon dont le modèle la rend.
+ *
+ * La plupart répondent un JSON portant l'image en base64. Phoenix, lui, répond directement les
+ * octets du JPEG — sans enveloppe, sans champ `success`. Le type de contenu de la réponse est
+ * ce qui distingue les deux de façon fiable, et il vaut mieux que la liste des modèles qui font
+ * l'un ou l'autre, qui changerait à chaque ajout au catalogue.
+ */
+async function readImage(response: Response): Promise<{ bytes: Buffer; neurons?: number }> {
+  const contentType = response.headers.get('content-type')?.split(';')[0]?.trim().toLowerCase() ?? '';
+
+  if (response.ok && contentType.startsWith('image/')) {
+    return { bytes: Buffer.from(await response.arrayBuffer()) };
   }
 
   const payload = (await response.json().catch(() => null)) as RunPayload | null;
@@ -173,13 +219,6 @@ async function produce(input: CloudflareImageInput): Promise<ImageResult & { neu
     throw new AppError(502, 'Cloudflare n’a renvoyé aucune image. Réessayez : vos points ont été rendus.', 'CF_IMAGE_MISSING');
   }
 
-  const bytes = Buffer.from(encoded, 'base64');
-  if (bytes.length === 0 || bytes.length > MAX_IMAGE_BYTES)
-    throw new AppError(502, 'L’image générée est vide ou trop lourde.', 'CF_IMAGE_SIZE');
-
-  const mimeType = sniffMimeType(bytes);
-  if (!mimeType) throw new AppError(502, 'Format d’image inattendu.', 'CF_IMAGE_FORMAT');
-
   const neurons = payload.result?.usage?.neurons;
-  return { mimeType, bytes, model, ...(typeof neurons === 'number' ? { neurons } : {}) };
+  return { bytes: Buffer.from(encoded, 'base64'), ...(typeof neurons === 'number' ? { neurons } : {}) };
 }
