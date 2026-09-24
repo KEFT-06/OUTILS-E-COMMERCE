@@ -1,9 +1,10 @@
-import { desc, sql } from 'drizzle-orm';
+import { desc, eq, sql } from 'drizzle-orm';
 import { z } from 'zod';
 import { getDb } from '@server/db/client';
-import { discoveredStores, spiedAds } from '@server/db/schema';
+import { auditLogs, discoveredStores, spiedAds } from '@server/db/schema';
 import { env, providers } from '@server/env';
 import { AppError } from '@server/middleware';
+import { recordAudit } from '@server/services/audit';
 import { readMetaAd } from '@server/services/espionnage/parse';
 
 /**
@@ -77,8 +78,37 @@ export async function listDiscoveredStores(limit = 100): Promise<DiscoveredStore
   }));
 }
 
-/** Date de la dernière collecte, pour savoir si une nouvelle est due. */
+/** Action inscrite au journal à chaque collecte lancée, qu'elle rapporte quelque chose ou non. */
+const DISCOVERY_AUDIT_ACTION = 'radar.discovery.run';
+
+/** Le planificateur n'est pas une personne : aucune ligne du journal ne doit lui en prêter une. */
+const SYSTEM_ACTOR = { id: null, email: 'radar@planificateur' } as const;
+
+/**
+ * Date de la dernière collecte LANCÉE — et non de la dernière qui a rapporté quelque chose.
+ *
+ * La distinction vaut de l'argent. Cette date se lisait auparavant sur le dernier passage
+ * ayant écrit une boutique. Une collecte qui ne trouve rien — mot-clé sans résultat, champ
+ * renommé chez le fournisseur, acteur interrompu en cours de route — n'écrivait donc aucune
+ * date, et la collecte redevenait « due » au réveil suivant. Elle était relancée, et
+ * facturée, chaque jour, alors que le rythme voulu est mensuel : trente fois le prix, et
+ * précisément le jour où le service ne marche pas.
+ *
+ * Le journal d'audit tranche, parce qu'un passage payant chez un tiers y a sa place de
+ * toute façon : sans lui, une dépense qui ne rapporte rien ne laisse aucune trace.
+ *
+ * Le repli sur `discoveredStores` sert les serveurs dont l'historique est antérieur à ce
+ * correctif : sans lui, ils relanceraient une collecte immédiatement après la mise à jour.
+ */
 export async function lastDiscoveryAt(): Promise<Date | null> {
+  const [journal] = await getDb()
+    .select({ at: auditLogs.createdAt })
+    .from(auditLogs)
+    .where(eq(auditLogs.action, DISCOVERY_AUDIT_ACTION))
+    .orderBy(desc(auditLogs.createdAt))
+    .limit(1);
+  if (journal?.at) return journal.at;
+
   const [row] = await getDb()
     .select({ at: sql<Date | null>`max(${discoveredStores.lastSeenAt})` })
     .from(discoveredStores);
@@ -120,6 +150,24 @@ export async function runDiscovery(now = new Date()): Promise<DiscoveryOutcome> 
   const url =
     `${env.APIFY_API_URL.replace(/\/+$/, '')}/acts/${env.APIFY_ADS_ACTOR}/run-sync-get-dataset-items` +
     `?token=${encodeURIComponent(env.APIFY_TOKEN!)}`;
+
+  /*
+    Le passage est inscrit AVANT l'appel, et non après son succès.
+
+    Ce qui décide du rythme, c'est la dépense engagée, pas le résultat obtenu. Inscrire après
+    coup laissait une collecte infructueuse redevenir « due » le lendemain, et se refacturer
+    tous les jours au lieu d'une fois par mois.
+
+    Le risque retenu en échange est assumé et bien moindre : si l'appel échoue avant d'avoir
+    rien coûté — panne réseau, jeton refusé — le rythme aura tout de même avancé, et la
+    prochaine collecte attendra son tour. On perd un passage ; l'inverse perdait de l'argent.
+  */
+  await recordAudit({
+    actor: SYSTEM_ACTOR,
+    action: DISCOVERY_AUDIT_ACTION,
+    details: { query: env.RADAR_DISCOVERY_QUERY, resultsLimit: env.RADAR_DISCOVERY_LIMIT, actor: env.APIFY_ADS_ACTOR },
+    client: { ipAddress: null, userAgent: null },
+  });
 
   let response: Response;
   try {
@@ -197,33 +245,45 @@ export async function runDiscovery(now = new Date()): Promise<DiscoveryOutcome> 
     Le même passage alimente les deux écrans : les boutiques repérées du Radar et le mur
     d'espionnage. Une seconde collecte pour les mêmes annonces paierait deux fois la même donnée.
   */
-  let adsKept = 0;
-  for (const item of items) {
-    const annonce = readMetaAd(item, now);
-    if (!annonce) continue;
+  const annonces = items.map((item) => readMetaAd(item, now)).filter((annonce) => annonce !== null);
+
+  /*
+    Les annonces s'écrivent par paquets, et non une par une.
+
+    Une collecte en rapporte jusqu'à `RADAR_DISCOVERY_LIMIT` — deux cents par défaut. Autant
+    d'allers-retours attendus l'un après l'autre coûtaient plusieurs secondes du budget que
+    le relevé des boutiques partage avec cette collecte sur un hébergement sans serveur.
+
+    Le paquet reste modeste : une requête qui porte deux cents lignes, chacune avec le texte
+    d'une publicité, dépasse ce qu'un pilote accepte de préparer d'un coup.
+  */
+  const PAQUET = 50;
+  for (let debut = 0; debut < annonces.length; debut += PAQUET) {
     await getDb()
       .insert(spiedAds)
-      .values(annonce)
+      .values(annonces.slice(debut, debut + PAQUET))
       .onConflictDoUpdate({
         target: spiedAds.externalId,
         // Les adresses de visuel signées par Meta expirent : chaque passage les rafraîchit.
+        // `excluded` désigne la ligne qu'on tentait d'insérer — indispensable en écriture
+        // groupée, où une valeur figée écraserait toutes les lignes par la même.
         set: {
-          storeHost: annonce.storeHost,
-          landingUrl: annonce.landingUrl,
-          title: annonce.title,
-          bodyText: annonce.bodyText,
-          advertiser: annonce.advertiser,
-          mediaUrl: annonce.mediaUrl,
-          mediaKind: annonce.mediaKind,
-          startedAt: annonce.startedAt,
-          variants: annonce.variants,
-          platforms: annonce.platforms,
-          active: annonce.active,
+          storeHost: sql`excluded.store_host`,
+          landingUrl: sql`excluded.landing_url`,
+          title: sql`excluded.title`,
+          bodyText: sql`excluded.body_text`,
+          advertiser: sql`excluded.advertiser`,
+          mediaUrl: sql`excluded.media_url`,
+          mediaKind: sql`excluded.media_kind`,
+          startedAt: sql`excluded.started_at`,
+          variants: sql`excluded.variants`,
+          platforms: sql`excluded.platforms`,
+          active: sql`excluded.active`,
           lastSeenAt: now,
         },
       });
-    adsKept += 1;
   }
+  const adsKept = annonces.length;
 
   return { adsExamined: items.length, storesFound: comptes.size, storesNew, adsKept };
 }

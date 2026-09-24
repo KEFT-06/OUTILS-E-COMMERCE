@@ -24,6 +24,8 @@ let catalogue = [{ id: 'prd_x1', name: 'Pack productivité', prix: 4_000, ventes
 
 /** Ce que le faux fournisseur de collecte a reçu : sert à vérifier le plafond facturé. */
 const collectes: { chemin: string; corps: Record<string, unknown> }[] = [];
+/** Pilote le faux fournisseur : vrai, il répond une collecte sans aucun résultat. */
+let collecteVide = false;
 /** Messages acceptés par le faux service d'e-mail. */
 const courriers: { to: string; subject: string; text: string }[] = [];
 
@@ -65,6 +67,12 @@ const faux = createServer((req, res) => {
         chemin: url.pathname,
         corps: JSON.parse(Buffer.concat(chunks).toString('utf8')) as Record<string, unknown>,
       });
+      // Une collecte peut très bien ne rien rapporter : mot-clé sans résultat, champ renommé
+      // chez le fournisseur, acteur interrompu. Elle est facturée quand même.
+      if (collecteVide) {
+        json(200, []);
+        return;
+      }
       // Deux publicités, trois mentions de boutiques, dont un sous-domaine technique à écarter
       // et la même boutique citée deux fois dans une seule publicité.
       json(200, [
@@ -162,6 +170,41 @@ describe('Radar — découverte de boutiques', () => {
     // Une boutique citée deux fois dans la même publicité ne compte qu'une fois.
     const belle = (vue.body.stores as { host: string; adCount: number }[]).find((s) => s.host.startsWith('mabelle'));
     assert.equal(belle?.adCount, 1);
+  });
+
+  /*
+    Une collecte qui ne rapporte rien a coûté exactement le même prix qu'une autre.
+
+    Le rythme se lisait auparavant sur la dernière boutique écrite. Une collecte
+    infructueuse n'écrivant rien, elle redevenait « due » au réveil suivant et se
+    refacturait chaque jour, alors que le rythme voulu est mensuel — trente fois le prix,
+    et précisément le jour où le service ne fonctionne pas.
+  */
+  it('ne relance pas une collecte payante parce que la précédente n’a rien rapporté', async () => {
+    const { discoveryIsDue } = await import('@server/services/radar/discovery');
+    const { createAdmin } = await import('./support/helpers');
+    const { getDb } = await import('@server/db/client');
+    const { discoveredStores } = await import('@server/db/schema');
+    const { agent } = await createAdmin(app, 'decouverte-vide@exemple.test');
+
+    /*
+      La table est vidée pour placer le seul cas qui compte : celui où AUCUNE collecte n'a
+      jamais rien écrit. Sans cela, les boutiques trouvées par le test précédent dateraient
+      le rythme à elles seules, et ce test passerait même avec le défaut qu'il doit attraper.
+    */
+    await getDb().delete(discoveredStores);
+
+    const avant = collectes.length;
+    collecteVide = true;
+    try {
+      const collecte = await agent.post('/api/radar/discover/refresh').expect(200);
+      assert.deepEqual(collecte.body.outcome, { adsExamined: 0, storesFound: 0, storesNew: 0, adsKept: 0 });
+      assert.equal(collectes.length, avant + 1, 'le fournisseur a bien été appelé, donc facturé');
+
+      assert.equal(await discoveryIsDue(), false, 'le passage compte, même sans résultat : pas de seconde facture demain');
+    } finally {
+      collecteVide = false;
+    }
   });
 
   it('met une boutique repérée sous surveillance en un geste', async () => {
