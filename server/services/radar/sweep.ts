@@ -1,4 +1,4 @@
-import { and, eq, isNull } from 'drizzle-orm';
+import { and, eq, inArray, isNull } from 'drizzle-orm';
 import { getDb } from '@server/db/client';
 import { watchEvents, watchItems, watches, type WatchEventKind, type WatchItemRow, type WatchRow } from '@server/db/schema';
 import { AppError } from '@server/middleware';
@@ -152,9 +152,29 @@ export async function applyObservations(
 
     // Ce qui était en vente au passage précédent et ne l'est plus : sa date d'arrêt.
     const vus = new Set(observations.map((observation) => observation.externalId));
-    for (const item of known) {
-      if (item.endedAt !== null || vus.has(item.externalId)) continue;
-      await tx.update(watchItems).set({ endedAt: now }).where(eq(watchItems.id, item.id));
+    const partis = known.filter((item) => item.endedAt === null && !vus.has(item.externalId));
+
+    /*
+      Une seule écriture pour tous les articles retirés, au lieu d'une par article.
+
+      Le catalogue entier d'une boutique peut disparaître d'un coup — compte fermé, vitrine
+      en maintenance, changement de domaine. C'est précisément le jour où la boucle aurait
+      tenu la transaction ouverte pendant des centaines d'allers-retours, en bloquant la
+      table pour les autres relevés.
+    */
+    if (partis.length > 0) {
+      await tx
+        .update(watchItems)
+        .set({ endedAt: now })
+        .where(
+          inArray(
+            watchItems.id,
+            partis.map((item) => item.id),
+          ),
+        );
+    }
+
+    for (const item of partis) {
       outcome.disappeared += 1;
       const jours = daysBetween(item.firstSeenAt, now);
       events.push({

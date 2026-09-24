@@ -206,6 +206,51 @@ describe('Radar — surveillance continue', () => {
     assert.deepEqual(chezIntrus.body.events, []);
   });
 
+  /*
+    Le balayage relevait vingt boutiques par tour, et annonçait vingt boutiques dues.
+
+    Sur un hébergement sans serveur, où le planificateur ne se réveille qu'une fois par jour
+    — l'offre Hobby de Vercel n'autorisant QU'UN cron quotidien — la plateforme entière était
+    donc plafonnée à vingt relevés par jour. Un seul compte Max en consomme vingt.
+
+    Et rien ne le disait : le compte des surveillances dues était lui-même tronqué par la
+    même limite, si bien que le journal affichait « 20/20 relevées » sur une file de cent.
+    Un plafond qui se déclare atteint à chaque fois est indiscernable d'un travail terminé.
+  */
+  it('compte toutes les surveillances dues, et dit ce qui reste quand le temps manque', async () => {
+    const { getDb } = await import('@server/db/client');
+    const { watches } = await import('@server/db/schema');
+    const { sweepDueWatches } = await import('@server/services/radar/sweeper');
+
+    const { userId } = await signInWithPlan(app, 'radar-file@exemple.test', 'pro');
+
+    // Vingt-cinq : au-delà de l'ancienne limite fixe de vingt, c'est là que le défaut apparaît.
+    await getDb()
+      .insert(watches)
+      .values(
+        Array.from({ length: 25 }, (_, rang) => ({
+          userId,
+          source: 'chariow_store' as const,
+          externalId: `store_file_${rang}`,
+          label: `Boutique ${rang}`,
+          url: `https://file-${rang}.mychariow.com`,
+          active: true,
+          lastSweptAt: null,
+        })),
+      );
+
+    /*
+      Budget nul : aucune boutique n'est relevée, donc aucun appel n'est fait chez un tiers.
+      Ce qui est vérifié ici n'est pas le relevé mais la COMPTABILITÉ du balayage — le seul
+      endroit où le défaut se voyait.
+    */
+    const tour = await sweepDueWatches(new Date(), 0);
+
+    assert.ok(tour.due >= 25, `toutes les surveillances dues sont comptées, pas seulement les vingt premières (reçu ${tour.due})`);
+    assert.equal(tour.swept, 0, 'sans budget, rien n’est relevé');
+    assert.equal(tour.remaining, tour.due, 'et la file entière est annoncée comme restant à faire');
+  });
+
   it('n’accepte à surveiller qu’une vitrine de la plateforme, pas une adresse quelconque', async () => {
     const { agent } = await signInWithPlan(app, 'radar-hors-champ@exemple.test', 'pro');
     // Sans cette barrière, une adresse fournie par un utilisateur ferait appeler par le

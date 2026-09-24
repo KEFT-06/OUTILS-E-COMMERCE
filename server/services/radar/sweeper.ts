@@ -1,4 +1,4 @@
-import { and, asc, eq, isNull, lt, or } from 'drizzle-orm';
+import { and, asc, count, eq, isNull, lt, or } from 'drizzle-orm';
 import { getDb } from '@server/db/client';
 import { watches } from '@server/db/schema';
 import { env } from '@server/env';
@@ -19,30 +19,79 @@ import { sweepWatch } from '@server/services/radar/sweep';
  *   · les boutiques sont relevées une par une, avec une pause, jamais en rafale.
  */
 
-/** Surveillances relevées par tour. Borne le travail d'un réveil, le reste attend le suivant. */
-const BATCH_SIZE = 20;
-/** Pause entre deux boutiques : le radar n'a aucune raison d'être pressé. */
-const PAUSE_MS = 1_500;
+/**
+ * Ce qu'un tour peut relever au plus. Garde-fou, pas objectif : c'est le temps qui arrête
+ * la boucle en pratique.
+ */
+const BATCH_MAX = 250;
+
+/**
+ * Temps qu'un tour s'autorise.
+ *
+ * Il y avait ici un nombre fixe de vingt boutiques par tour. Sur un hébergement sans
+ * serveur, où le seul réveil est le planificateur — et où l'offre Hobby de Vercel
+ * n'autorise QU'UN cron par jour — cela plafonnait la plateforme entière à vingt relevés
+ * quotidiens. Un seul compte Max (vingt boutiques) consommait toute la capacité du site.
+ *
+ * Le pire n'était pas le plafond, mais son silence : le tri par `lastSweptAt` fait tourner
+ * la file, si bien qu'avec cent boutiques chacune était relevée tous les cinq jours. Le
+ * produit promet un relevé quotidien, et rien à l'écran ne disait le contraire.
+ *
+ * Une durée plutôt qu'un compte : elle s'adapte à la lenteur du réseau et au temps que
+ * l'hébergeur accorde, là où un nombre fixe est juste une fois et faux partout ailleurs.
+ */
+const BUDGET_MS = 240_000;
+
+/**
+ * Pause entre deux boutiques. Elle protège l'API de vitrine, qui est la même pour toutes :
+ * ce sont des sous-domaines, pas des serveurs différents.
+ *
+ * Elle valait une seconde et demie, soit près de trente secondes de budget passées à ne
+ * rien faire. Quatre cents millisecondes tiennent la cadence sous trois requêtes par
+ * seconde — ce qu'une API publique de JSON absorbe sans y penser.
+ */
+const PAUSE_MS = 400;
 
 const pause = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
 
-/** Relève les surveillances dues. Renvoie ce qui a été tenté et ce qui a abouti. */
-export async function sweepDueWatches(now = new Date()): Promise<{ due: number; swept: number; failed: number }> {
-  const seuil = new Date(now.getTime() - env.RADAR_SWEEP_INTERVAL_HOURS * 3_600_000);
+export interface SweepRunOutcome {
+  due: number;
+  swept: number;
+  failed: number;
+  /**
+   * Surveillances encore dues à la fin du tour. Au-dessus de zéro, la file n'a pas été
+   * vidée : c'est ce chiffre qu'il faut lire avant de croire le radar à jour.
+   */
+  remaining: number;
+}
 
-  const dues = await getDb()
+/** Relève les surveillances dues. Renvoie ce qui a été tenté, ce qui a abouti, et ce qui attend. */
+export async function sweepDueWatches(now = new Date(), budgetMs = BUDGET_MS): Promise<SweepRunOutcome> {
+  const seuil = new Date(now.getTime() - env.RADAR_SWEEP_INTERVAL_HOURS * 3_600_000);
+  const dues = and(eq(watches.active, true), or(isNull(watches.lastSweptAt), lt(watches.lastSweptAt, seuil)));
+
+  const [total] = await getDb().select({ value: count() }).from(watches).where(dues);
+  const due = Number(total?.value ?? 0);
+
+  const lot = await getDb()
     .select()
     .from(watches)
-    .where(and(eq(watches.active, true), or(isNull(watches.lastSweptAt), lt(watches.lastSweptAt, seuil))))
+    .where(dues)
     // Les plus anciennement relevées d'abord : personne n'est oublié quand la file est longue.
     .orderBy(asc(watches.lastSweptAt))
-    .limit(BATCH_SIZE);
+    .limit(BATCH_MAX);
 
+  const echeance = Date.now() + budgetMs;
   let swept = 0;
   let failed = 0;
+  let traitees = 0;
 
-  for (const [index, watch] of dues.entries()) {
+  for (const [index, watch] of lot.entries()) {
+    // Le temps restant se vérifie AVANT de commencer : couper un relevé en cours laisserait
+    // une transaction ouverte et de fausses disparitions derrière elle.
+    if (Date.now() >= echeance) break;
     if (index > 0) await pause(PAUSE_MS);
+    traitees += 1;
     try {
       await sweepWatch(watch, new Date());
       swept += 1;
@@ -54,7 +103,7 @@ export async function sweepDueWatches(now = new Date()): Promise<{ due: number; 
     }
   }
 
-  return { due: dues.length, swept, failed };
+  return { due, swept, failed, remaining: Math.max(0, due - traitees) };
 }
 
 /**
@@ -70,8 +119,14 @@ export function startRadarSweeper(intervalMs = 30 * 60_000): () => void {
     if (running) return;
     running = true;
     sweepDueWatches()
-      .then(async ({ due, swept, failed }) => {
-        if (due > 0) console.log(`  Radar : ${swept}/${due} boutiques relevées${failed > 0 ? `, ${failed} en échec` : ''}`);
+      .then(async ({ due, swept, failed, remaining }) => {
+        if (due > 0)
+          console.log(
+            `  Radar : ${swept}/${due} boutiques relevées` +
+              `${failed > 0 ? `, ${failed} en échec` : ''}` +
+              // Une file non vidée est ce qu'il faut voir en premier : le radar n'est pas à jour.
+              `${remaining > 0 ? `, ${remaining} EN ATTENTE du prochain tour` : ''}`,
+          );
         // Les résumés partent APRÈS les relevés : les événements du jour sont déjà écrits,
         // donc le message dit ce qui vient d'être constaté et pas ce qui l'était hier.
         const { sent } = await sendDueRadarDigests();

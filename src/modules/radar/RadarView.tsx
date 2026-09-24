@@ -74,6 +74,22 @@ function WatchCard({
   busy: string | null;
 }) {
   const lien = safeHttpUrl(watch.url ?? undefined);
+
+  /*
+    Un relevé en retard doit se voir.
+
+    L'écran affichait « dernier relevé il y a X » sans jamais rien en conclure. Or tout ce que
+    montre cette carte — prix, ventes, produits en vente — date de ce relevé-là. Sur un produit
+    qui promet un passage quotidien, lire « il y a cinq jours » sans avertissement laisse croire
+    à des chiffres frais, et l'auteur prend une décision sur un marché qu'il ne voit plus.
+    Le radar peut prendre du retard quand la file est longue : il doit le dire, pas le taire.
+
+    Deux jours, et non un : la fenêtre du planificateur est quotidienne, un léger décalage est
+    normal. Un avertissement qui se déclenche tous les jours n'est plus lu.
+  */
+  const RETARD_MS = 48 * 60 * 60 * 1000;
+  const enRetard = watch.active && watch.lastSweptAt !== null && Date.now() - new Date(watch.lastSweptAt).getTime() > RETARD_MS;
+
   return (
     <Card>
       <CardHeader>
@@ -132,6 +148,12 @@ function WatchCard({
         )}
         {watch.active && watch.lastError && (
           <p className="text-xs text-amber-600 dark:text-amber-500">Dernier relevé en échec : {watch.lastError}</p>
+        )}
+        {enRetard && !watch.lastError && (
+          <p className="text-xs text-amber-600 dark:text-amber-500">
+            Relevé en retard : les chiffres ci-dessous datent du dernier passage, pas d’aujourd’hui. Vous pouvez relever
+            cette boutique maintenant.
+          </p>
         )}
         <div className="flex flex-wrap gap-2">
           <Button variant="secondary" size="sm" className="flex-1" onClick={() => onOpen(watch)}>
