@@ -221,18 +221,62 @@ describe('Mur d’espionnage — ce que le palier laisse voir', () => {
     assert.equal(large.body.ads.length, 2, 'un compte gratuit VOIT le mur : un écran vide ne convainc personne');
 
     /*
-      Le point qui compte : quand le palier coupe, il faut le DIRE. Un mur tronqué en silence
-      passe pour un mur pauvre, et l'utilisateur en conclut que l'outil ne trouve rien — alors
-      que c'est son abonnement qui borne.
+      Une page plus courte parce que l'ÉCRAN en a demandé moins n'est pas un manque imputable
+      à l'abonnement. Accuser le palier de ce qu'il n'a pas fait pousse à payer pour rien : on
+      souscrit, et rien ne change.
     */
     const serre = await gratuit.get('/api/espionnage?limit=1').expect(200);
     assert.equal(serre.body.ads.length, 1);
-    assert.equal(serre.body.hiddenByPlan, 1, 'l’écran peut annoncer ce qui manque');
+    assert.equal(serre.body.hiddenByPlan, 0, 'le palier n’a rien caché : c’est l’écran qui a demandé une seule annonce');
 
     // Un palier supérieur voit davantage, sans nouvelle collecte : la donnée est déjà là.
     const { agent: pro } = await signInWithPlan(app, 'espion-pro@exemple.test', 'pro');
     const chezPro = await pro.get('/api/espionnage').expect(200);
     assert.equal(chezPro.body.visibleLimit, 100);
     assert.equal(chezPro.body.hiddenByPlan, 0);
+  });
+
+  /*
+    Le défaut que ce test verrouille coûtait de l'argent aux comptes payants.
+
+    L'écran demandait soixante annonces, en dur. Un palier qui en promet cent n'en servait donc
+    que soixante, et affichait à côté « votre palier affiche 100 annonces à la fois » avec
+    quarante annonces manquantes. Le plafond venait du code ; la phrase accusait l'abonnement.
+
+    Il faut plus de soixante annonces pour que la différence apparaisse : c'est tout l'objet de
+    ce remplissage.
+  */
+  it('sert au palier tout ce qu’il a payé, au-delà de l’ancienne limite fixe de soixante', async () => {
+    const { getDb } = await import('@server/db/client');
+    const { spiedAds } = await import('@server/db/schema');
+
+    const debut = new Date(Date.now() - 90 * 86_400_000);
+    await getDb()
+      .insert(spiedAds)
+      .values(
+        Array.from({ length: 70 }, (_, rang) => ({
+          externalId: `masse-${rang}`,
+          storeHost: 'boutique-masse.mychariow.com',
+          landingUrl: 'https://boutique-masse.mychariow.com/p/offre',
+          title: `Annonce ${rang}`,
+          startedAt: debut,
+          variants: 1,
+          platforms: ['FACEBOOK'],
+          active: true,
+        })),
+      );
+
+    const { agent: pro } = await signInWithPlan(app, 'espion-pro-masse@exemple.test', 'pro');
+    const vue = await pro.get('/api/espionnage').expect(200);
+
+    assert.equal(vue.body.visibleLimit, 100);
+    assert.ok(vue.body.ads.length > 60, `le palier Pro voit au-delà de soixante (reçu ${vue.body.ads.length})`);
+    assert.equal(vue.body.hiddenByPlan, 0, 'rien n’est caché tant que le palier n’est pas atteint');
+
+    // Et le palier Gratuit, lui, est bien borné — et le dit.
+    const { agent: gratuit } = await signInWithPlan(app, 'espion-gratuit-masse@exemple.test', 'free');
+    const bride = await gratuit.get('/api/espionnage').expect(200);
+    assert.equal(bride.body.ads.length, 6, 'le palier Gratuit s’arrête à six');
+    assert.ok(bride.body.hiddenByPlan > 60, 'et l’écran peut annoncer tout ce qui manque');
   });
 });

@@ -69,6 +69,9 @@ export interface EspionnageView {
 
 const JOUR_MS = 86_400_000;
 
+/** Plafond de page, tous paliers confondus : deux cents vignettes suffisent à alourdir l'écran. */
+const PLAFOND_ABSOLU = 200;
+
 const runningDays = (startedAt: Date | null, now: Date): number | null =>
   startedAt ? Math.max(0, Math.floor((now.getTime() - startedAt.getTime()) / JOUR_MS)) : null;
 
@@ -102,9 +105,20 @@ export async function listSpiedAds(
   visibleLimit: number | null = null,
   now = new Date(),
 ): Promise<EspionnageView> {
-  const demande = Math.min(Math.max(filters.limit ?? 60, 1), 200);
-  // Le palier l'emporte toujours sur ce que demande l'écran.
-  const limit = visibleLimit === null ? demande : Math.min(demande, visibleLimit);
+  /*
+    Par défaut, l'écran reçoit tout ce que son palier autorise.
+
+    Il y avait ici une valeur fixe de soixante, et c'était un défaut qui se retournait contre
+    les comptes payants : un palier promettant 200 annonces n'en servait que 60, et le message
+    « votre palier affiche 200 annonces » s'affichait à côté de 140 annonces manquantes. Le
+    plafond venait du code, la phrase accusait l'abonnement.
+
+    Le plafond absolu reste : deux cents lignes portant chacune une image sont déjà une page
+    lourde, et il borne aussi le palier « illimité ».
+  */
+  const plafondPalier = visibleLimit ?? PLAFOND_ABSOLU;
+  const demande = Math.min(Math.max(filters.limit ?? plafondPalier, 1), PLAFOND_ABSOLU);
+  const limit = Math.min(demande, plafondPalier);
   const conditions: SQL[] = [];
 
   /*
@@ -148,11 +162,16 @@ export async function listSpiedAds(
     compte pour le DIRE. Couper en silence laisserait croire que la niche est vide, alors que
     c'est l'abonnement qui borne — un utilisateur qui ne sait pas ce qu'il rate n'a aucune
     raison de payer, et croit le produit pauvre.
+
+    Le compte se fait contre la LIMITE DU PALIER, et non contre le nombre de lignes servies :
+    une page plus courte parce que l'écran en a demandé moins n'est pas un manque imputable à
+    l'abonnement. Accuser le palier de ce qu'il n'a pas fait pousse à payer pour rien, et
+    l'utilisateur qui souscrit découvre que rien ne change.
   */
   let hiddenByPlan = 0;
   if (visibleLimit !== null) {
     const [correspondantes] = await getDb().select({ total: count() }).from(spiedAds).where(where);
-    hiddenByPlan = Math.max(0, Number(correspondantes?.total ?? 0) - rows.length);
+    hiddenByPlan = Math.max(0, Number(correspondantes?.total ?? 0) - visibleLimit);
   }
 
   const [totaux] = await getDb()

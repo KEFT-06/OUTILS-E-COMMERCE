@@ -146,7 +146,9 @@ export function EspionnageView() {
   const [busy, setBusy] = useState<string | null>(null);
 
   const load = useCallback(async () => {
-    const params = new URLSearchParams({ sort: tri, limit: '60' });
+    // Aucune limite demandée : le serveur sert ce que le palier autorise. En fixer une ici
+    // rognait ce que les paliers supérieurs avaient payé, sans que rien ne le dise.
+    const params = new URLSearchParams({ sort: tri });
     if (anciennete !== '0') params.set('minDays', anciennete);
     if (format !== 'tous') params.set('mediaKind', format);
     if (recherchee) params.set('search', recherchee);
