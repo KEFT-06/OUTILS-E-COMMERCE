@@ -207,6 +207,30 @@ describe('Radar — découverte de boutiques', () => {
     }
   });
 
+  /*
+    Le compte des nouvelles boutiques se déduisait de l'égalité entre l'horodatage relu et
+    l'instant du passage. PostgreSQL garde les horodatages à la microseconde quand JavaScript
+    s'arrête à la milliseconde : un arrondi au retour, et toute boutique nouvelle passait pour
+    déjà connue. Un chiffre de compte rendu ne doit pas dépendre de la précision d'un type.
+  */
+  it('distingue les boutiques nouvelles de celles déjà connues, d’une collecte à l’autre', async () => {
+    const { getDb } = await import('@server/db/client');
+    const { discoveredStores } = await import('@server/db/schema');
+    const { createAdmin } = await import('./support/helpers');
+    const { agent } = await createAdmin(app, 'decouverte-nouveautes@exemple.test');
+
+    await getDb().delete(discoveredStores);
+
+    const premiere = await agent.post('/api/radar/discover/refresh').expect(200);
+    assert.equal(premiere.body.outcome.storesFound, 2);
+    assert.equal(premiere.body.outcome.storesNew, 2, 'sur une table vide, tout est nouveau');
+
+    // Même collecte, mêmes boutiques : plus rien de nouveau, et le compte doit le dire.
+    const seconde = await agent.post('/api/radar/discover/refresh').expect(200);
+    assert.equal(seconde.body.outcome.storesFound, 2);
+    assert.equal(seconde.body.outcome.storesNew, 0, 'une boutique déjà repérée n’est pas une découverte');
+  });
+
   it('met une boutique repérée sous surveillance en un geste', async () => {
     const { agent } = await signInWithPlan(app, 'decouverte-suivi@exemple.test', 'pro');
     // L'hôte repéré n'existe pas chez notre faux serveur : l'ajout doit malgré tout être

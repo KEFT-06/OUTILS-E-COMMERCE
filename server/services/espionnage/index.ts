@@ -159,8 +159,18 @@ export async function listSpiedAds(
   if (filters.storeHost) conditions.push(eq(spiedAds.storeHost, filters.storeHost));
   if (filters.mediaKind) conditions.push(eq(spiedAds.mediaKind, filters.mediaKind));
   if (filters.search) {
-    // Recherche insensible à la casse sur les trois champs lisibles par un humain.
-    const motif = `%${filters.search.replace(/[%_]/g, '')}%`;
+    /*
+      Recherche insensible à la casse sur les trois champs lisibles par un humain.
+
+      Trois caractères sont retirés, et non deux. `%` et `_` sont les jokers de ILIKE ; on les
+      neutralisait déjà. L'ANTISLASH manquait, et c'est lui qui en est l'échappement : une
+      recherche finissant par « \ » échappait le « % » de fin, transformait le joker en
+      caractère ordinaire, et ne rendait plus rien. Un champ de recherche qui répond « aucun
+      résultat » au lieu de chercher passe pour un mur vide.
+
+      Rien d'injectable ici — la valeur est un paramètre — mais un motif faux reste faux.
+    */
+    const motif = `%${filters.search.replace(/[\\%_]/g, '')}%`;
     conditions.push(
       or(
         sql`${spiedAds.title} ilike ${motif}`,

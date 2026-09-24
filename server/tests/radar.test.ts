@@ -26,9 +26,12 @@ const BOUTIQUE = 'store_faussevitrine';
 interface FauxProduit {
   id: string;
   name: string;
-  prix: number;
+  /** null : vitrine sans prix affiché — « nous contacter », offre groupée, produit suspendu. */
+  prix: number | null;
   ventes: number;
   status?: string;
+  /** Une boutique peut changer de devise : les deux montants cessent alors d’être comparables. */
+  devise?: string;
 }
 
 /** Catalogue servi par la fausse vitrine. Un test le modifie pour simuler le lendemain. */
@@ -53,7 +56,7 @@ const fausseVitrine = createServer((req, res) => {
           name: produit.name,
           type: 'downloadable',
           status: produit.status ?? 'published',
-          pricing: { effective: { value: produit.prix, currency: 'XAF' } },
+          pricing: produit.prix === null ? {} : { effective: { value: produit.prix, currency: produit.devise ?? 'XAF' } },
           sales_count: { value: produit.ventes },
           store: { name: 'BOUTIQUE TÉMOIN', url: 'https://temoin.mychariow.shop' },
         })),
@@ -157,6 +160,48 @@ describe('Radar — surveillance continue', () => {
       items.every((item) => typeof item.trackedDays === 'number'),
       'chaque article porte son ancienneté de suivi',
     );
+  });
+
+  /*
+    Un prix change de trois façons, et une seule se remarquait.
+
+    Le changement n'était relevé que si les deux prix existaient ET partageaient la devise.
+    Une devise remplacée ou un prix retiré de la vitrine réécrivaient donc la ligne en
+    silence : la surveillance affichait la nouvelle valeur sans que rien n'ait signalé le
+    changement — exactement ce qu'un radar existe pour attraper. Retirer son prix, c'est
+    changer de stratégie de vente, pas de décor.
+  */
+  it('signale aussi une devise remplacée et un prix retiré de la vitrine', async () => {
+    catalogue = [
+      { id: 'prd_dev', name: 'Pack réseaux sociaux', prix: 5_000, ventes: 2, devise: 'XAF' },
+      { id: 'prd_sans', name: 'Accompagnement', prix: 40_000, ventes: 1 },
+    ];
+
+    const { agent } = await signInWithPlan(app, 'radar-devise@exemple.test', 'pro');
+    const ajout = await agent.post('/api/radar/watches').send({ target: base }).expect(201);
+    const watchId = ajout.body.watch.id as string;
+
+    // Le lendemain : l'un passe en francs CFA de l'Ouest, l'autre retire son prix.
+    catalogue = [
+      { id: 'prd_dev', name: 'Pack réseaux sociaux', prix: 5_000, ventes: 2, devise: 'XOF' },
+      { id: 'prd_sans', name: 'Accompagnement', prix: null, ventes: 1 },
+    ];
+
+    const releve = await agent.post(`/api/radar/watches/${watchId}/sweep`).expect(200);
+    assert.equal(releve.body.outcome.priceChanged, 2, 'les deux changements sont relevés');
+
+    const fil = await agent.get(`/api/radar/watches/${watchId}/events`).expect(200);
+    const resumes = (fil.body.events as { kind: string; summary: string }[])
+      .filter((event) => event.kind === 'price_changed')
+      .map((event) => event.summary);
+
+    const devise = resumes.find((texte) => texte.includes('Pack réseaux sociaux'))!;
+    assert.match(devise, /Devise changée/);
+    // 5 000 XAF devenus 5 000 XOF ne sont ni une hausse ni une baisse : l'inventer serait pire
+    // que se taire, puisque l'auteur y lirait un mouvement de marché qui n'a pas eu lieu.
+    assert.doesNotMatch(devise, /augmenté|baissé/);
+
+    assert.match(resumes.find((texte) => texte.includes('Accompagnement'))!, /Prix retiré de la vitrine/);
   });
 
   it('mesure les ventes faites pendant la surveillance, jamais le compteur total du concurrent', async () => {

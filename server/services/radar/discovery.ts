@@ -1,4 +1,4 @@
-import { desc, eq, sql } from 'drizzle-orm';
+import { desc, eq, inArray, sql } from 'drizzle-orm';
 import { z } from 'zod';
 import { getDb } from '@server/db/client';
 import { auditLogs, discoveredStores, spiedAds } from '@server/db/schema';
@@ -228,17 +228,37 @@ export async function runDiscovery(now = new Date()): Promise<DiscoveryOutcome> 
     for (const host of vus) comptes.set(host, (comptes.get(host) ?? 0) + 1);
   }
 
-  let storesNew = 0;
-  for (const [host, adCount] of comptes) {
-    const [row] = await getDb()
+  /*
+    Les nouvelles boutiques se comptent en comparant à ce qui existait AVANT l'écriture.
+
+    Le compte se déduisait auparavant de l'égalité entre `firstSeenAt` relu et l'instant du
+    passage. PostgreSQL garde les horodatages à la microseconde quand JavaScript s'arrête à la
+    milliseconde : un arrondi au retour, et toute boutique nouvelle passait pour ancienne. Un
+    chiffre de compte rendu ne doit pas dépendre de la précision d'un type.
+
+    Une lecture avant écriture dit la même chose sans rien supposer.
+  */
+  const hotes = [...comptes.keys()];
+  const connus = new Set(
+    hotes.length === 0
+      ? []
+      : (await getDb().select({ host: discoveredStores.host }).from(discoveredStores).where(inArray(discoveredStores.host, hotes))).map(
+          (row) => row.host,
+        ),
+  );
+  const storesNew = hotes.filter((host) => !connus.has(host)).length;
+
+  // Une seule écriture pour toutes les boutiques du passage, au lieu d'une par boutique.
+  if (hotes.length > 0) {
+    await getDb()
       .insert(discoveredStores)
-      .values({ host, adCount, firstSeenAt: now, lastSeenAt: now })
+      .values(hotes.map((host) => ({ host, adCount: comptes.get(host)!, firstSeenAt: now, lastSeenAt: now })))
       .onConflictDoUpdate({
         target: discoveredStores.host,
-        set: { adCount, lastSeenAt: now },
-      })
-      .returning({ firstSeenAt: discoveredStores.firstSeenAt });
-    if (row && row.firstSeenAt.getTime() === now.getTime()) storesNew += 1;
+        // `excluded` désigne la ligne qu'on tentait d'insérer : en écriture groupée, une
+        // valeur figée donnerait à toutes les boutiques le compte de la dernière.
+        set: { adCount: sql`excluded.ad_count`, lastSeenAt: now },
+      });
   }
 
   /*

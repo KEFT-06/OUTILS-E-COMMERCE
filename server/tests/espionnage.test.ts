@@ -234,6 +234,28 @@ describe('Mur d’espionnage', () => {
     }
   });
 
+  /*
+    La recherche neutralisait « % » et « _ », les jokers de ILIKE, mais pas l'ANTISLASH qui en
+    est l'échappement. Une recherche finissant par « \ » échappait le « % » de fin, le
+    transformait en caractère ordinaire, et ne rendait plus rien. Un champ de recherche qui
+    répond « aucun résultat » au lieu de chercher fait passer le mur pour vide.
+  */
+  it('cherche quand même lorsque la recherche contient un caractère spécial', async () => {
+    const { agent } = await signInWithPlan(app, 'espion-recherche@exemple.test', 'pro');
+
+    const attendu = (await agent.get('/api/espionnage?search=Formation').expect(200)).body.ads.length as number;
+    assert.ok(attendu > 0, 'le mur contient bien une annonce dont le texte porte ce mot');
+
+    for (const saisie of ['Formation\\', 'Formation%', 'Formation_']) {
+      const resultat = await agent.get(`/api/espionnage?search=${encodeURIComponent(saisie)}`).expect(200);
+      assert.equal(
+        resultat.body.ads.length,
+        attendu,
+        `« ${saisie} » doit chercher le texte sans ses caractères spéciaux, pas rendre une liste vide`,
+      );
+    }
+  });
+
   it('permet de passer d’une annonce à une surveillance du radar, et reste fermé aux non-membres', async () => {
     const { agent } = await signInWithPlan(app, 'espion-suivi@exemple.test', 'pro');
     const mur = await agent.get('/api/espionnage').expect(200);

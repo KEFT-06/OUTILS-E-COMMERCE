@@ -96,8 +96,32 @@ export async function applyObservations(
       // une seconde ligne, sinon son historique serait coupé en deux.
       const revenu = previous.endedAt !== null;
 
-      if (previous.priceValue !== null && observation.priceValue !== null && previous.currency === observation.currency) {
-        if (previous.priceValue !== observation.priceValue) {
+      /*
+        Trois façons dont un prix change, et elles ne se disent pas de la même manière.
+
+        Seule la première se remarquait. Les deux autres réécrivaient la ligne en silence :
+        la surveillance affichait le nouveau prix sans que rien n'ait signalé le changement,
+        et c'est précisément ce qu'un radar existe pour attraper. Un concurrent qui retire son
+        prix de sa vitrine vient de changer de stratégie de vente, pas de décor.
+      */
+      if (previous.priceValue !== null && observation.priceValue !== null) {
+        if (previous.currency !== observation.currency) {
+          // Devise différente : les deux montants ne se comparent pas. Ne pas dire « augmenté »
+          // pour 5 000 XOF devenus 5 000 XAF — ce serait inventer une hausse qui n'existe pas.
+          outcome.priceChanged += 1;
+          events.push({
+            kind: 'price_changed',
+            itemId: previous.id,
+            summary: `Devise changée sur « ${previous.name} » : ${money(previous.priceValue, previous.currency)} → ${money(observation.priceValue, observation.currency)}. Les deux montants ne se comparent pas directement.`,
+            payload: {
+              from: previous.priceValue,
+              to: observation.priceValue,
+              fromCurrency: previous.currency,
+              currency: observation.currency,
+              currencyChanged: true,
+            },
+          });
+        } else if (previous.priceValue !== observation.priceValue) {
           const sens = observation.priceValue > previous.priceValue ? 'augmenté' : 'baissé';
           outcome.priceChanged += 1;
           events.push({
@@ -107,6 +131,24 @@ export async function applyObservations(
             payload: { from: previous.priceValue, to: observation.priceValue, currency: observation.currency },
           });
         }
+      } else if (previous.priceValue !== null && observation.priceValue === null) {
+        // Le prix a disparu de la vitrine : passage en « nous contacter », en offre groupée
+        // ou en produit suspendu. C'est un signal fort, et il ne s'inscrivait nulle part.
+        outcome.priceChanged += 1;
+        events.push({
+          kind: 'price_changed',
+          itemId: previous.id,
+          summary: `Prix retiré de la vitrine sur « ${previous.name} » : il affichait ${money(previous.priceValue, previous.currency)}.`,
+          payload: { from: previous.priceValue, to: null, currency: previous.currency },
+        });
+      } else if (previous.priceValue === null && observation.priceValue !== null) {
+        outcome.priceChanged += 1;
+        events.push({
+          kind: 'price_changed',
+          itemId: previous.id,
+          summary: `Prix affiché sur « ${previous.name} » : ${money(observation.priceValue, observation.currency)}.`,
+          payload: { from: null, to: observation.priceValue, currency: observation.currency },
+        });
       }
 
       if (previous.salesCount !== null && observation.salesCount !== null) {
