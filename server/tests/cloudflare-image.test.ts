@@ -178,6 +178,32 @@ describe('Couvertures par Cloudflare Workers AI', () => {
     assert.equal(image.headers['content-type'], 'image/jpeg');
   });
 
+  /*
+    Le jeton doit survivre à L'AUTRE encodage, celui en JSON.
+
+    Ce test vient d'un bug réel, trouvé en faisant passer une vraie génération par le code
+    plutôt que par curl : l'encodage était étalé par-dessus les en-têtes déjà posés, et son
+    objet `headers` remplaçait l'objet entier — donc le jeton. Le chemin multipart n'en
+    souffrait pas, n'ajoutant aucun en-tête, si bien que les tests existants passaient tous
+    pendant que la moitié JSON répondait 401.
+  */
+  it('envoie le jeton aussi quand le modèle veut du JSON, et non du multipart', async () => {
+    cloudflareMode = 'ok';
+    const { generateImage } = await import('@server/services/ai/image');
+
+    const image = await generateImage({ prompt: 'un panier de mangues', aspectRatio: '1:1', tier: 'fast' });
+    assert.equal(image.mimeType, 'image/jpeg');
+
+    const call = cloudflareCalls.at(-1)!;
+    assert.equal(call.model, '@cf/black-forest-labs/flux-1-schnell', 'le palier rapide a son propre modèle');
+    assert.equal(call.contentType, 'application/json', 'hors FLUX.2, le corps part en JSON');
+    assert.equal(call.authorization, 'Bearer jeton-cloudflare-de-test', 'le jeton survit à l’encodage JSON');
+    // Ce modèle REFUSE width et height : la requête échouerait avec « Additional or
+    // unevaluated properties not allowed ». Il ne produit que du carré.
+    assert.equal(call.width, undefined);
+    assert.equal(call.height, undefined);
+  });
+
   it('bascule sur Gemini quand la réserve Cloudflare du jour est vide, plutôt que de refuser', async () => {
     cloudflareMode = 'quota';
     const avant = geminiImageCalls.length;

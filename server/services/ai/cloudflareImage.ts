@@ -152,13 +152,16 @@ async function produce(input: CloudflareImageInput): Promise<ImageResult & { neu
           guidance: 4.5,
         };
 
+  const { headers, body } = encodeRequest(model, fields);
+
   let response: Response;
   try {
     response = await fetch(`${env.CLOUDFLARE_AI_URL.replace(/\/+$/, '')}/accounts/${env.CLOUDFLARE_ACCOUNT_ID}/ai/run/${model}`, {
       method: 'POST',
-      // Le jeton part en en-tête ; `encodeRequest` ajoute le type de contenu qui convient au modèle.
-      headers: { Authorization: `Bearer ${env.CLOUDFLARE_AI_TOKEN}` },
-      ...encodeRequest(model, fields),
+      // Le jeton AJOUTÉ aux en-têtes de l'encodage, jamais l'inverse : étaler le résultat de
+      // `encodeRequest` par-dessus remplacerait l'objet `headers` entier, et le jeton avec lui.
+      headers: { ...headers, Authorization: `Bearer ${env.CLOUDFLARE_AI_TOKEN}` },
+      body,
       signal: AbortSignal.timeout(TIMEOUT_MS),
     });
   } catch {
@@ -185,7 +188,7 @@ async function produce(input: CloudflareImageInput): Promise<ImageResult & { neu
  * FLUX.2 partage cette exigence, et un modèle inconnu retombe sur le JSON, qui est le cas
  * général. Mesuré sur l'API le 24 septembre 2026.
  */
-function encodeRequest(model: string, fields: Record<string, string | number>): { headers?: HeadersInit; body: BodyInit } {
+function encodeRequest(model: string, fields: Record<string, string | number>): { headers?: Record<string, string>; body: BodyInit } {
   if (!/flux-2/.test(model)) {
     return { headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(fields) };
   }
