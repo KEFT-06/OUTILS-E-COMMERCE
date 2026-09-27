@@ -93,7 +93,25 @@ export function sectionPrompt(input: {
     `Section ${section.index} — ${section.title}`,
     `Angle, et lui seul : ${section.angle}`,
     section.beats.length > 0 ? `Points à couvrir dans l’ordre :\n${section.beats.map((beat) => `  - ${beat}`).join('\n')}` : '',
-    `Longueur : ${section.targetWords} mots environ, ±15 %.`,
+    /*
+      Une fourchette CHIFFRÉE des deux côtés, et non une cible avec un « environ ».
+
+      Mesuré le 27 septembre 2026 sur le vrai modèle : à la consigne « 750 mots environ,
+      ±15 % », deux sections ont rendu 1 172 et 1 014 mots — soit +46 % en moyenne. Un ebook
+      de vingt pages en livrait vingt-neuf.
+
+      Ce n'est pas anodin même si l'acheteur en a « plus » : la génération est facturée à la
+      tranche de dix pages DEMANDÉES, donc chaque ebook coûte en jetons la moitié de plus que
+      ce sur quoi le prix est calculé ; elle dure d'autant plus longtemps, sur un hébergement
+      où le temps par requête est borné ; et un auteur qui demande une longueur précise pour
+      tenir un format ne l'obtient pas.
+
+      Un modèle suit mal une cible molle et bien une borne haute explicite : on nomme donc le
+      plancher et le plafond, et on dit ce qui compte quand il faut trancher.
+    */
+    `Longueur : entre ${Math.round(section.targetWords * 0.9)} et ${Math.round(section.targetWords * 1.1)} mots. ` +
+      'Ne dépasse pas ce plafond : une section plus longue déborde sur les suivantes. ' +
+      'Si la matière manque, écris moins plutôt que de délayer.',
     '',
     alreadySaid.length > 0
       ? `DÉJÀ ÉCRIT (ne le répète pas, appuie-toi dessus)\n${alreadySaid.map((entry) => `  - ${entry.title} : ${entry.gist}`).join('\n')}`
