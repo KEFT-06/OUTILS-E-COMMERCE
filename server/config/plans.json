@@ -18,7 +18,7 @@
       },
       "limits": {
         "savedNiches": 3,
-        "watchedStores": 0,
+        "watchedStores": 1,
         "spiedAdsVisible": 6,
         "adFrameworks": 2,
         "guideLanguages": 1,
@@ -43,7 +43,7 @@
       },
       "limits": {
         "savedNiches": 15,
-        "watchedStores": 1,
+        "watchedStores": 3,
         "spiedAdsVisible": 30,
         "adFrameworks": 4,
         "guideLanguages": 3,

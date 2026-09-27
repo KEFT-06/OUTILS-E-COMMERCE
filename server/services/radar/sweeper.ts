@@ -1,6 +1,6 @@
-import { and, asc, count, eq, isNull, lt, or } from 'drizzle-orm';
+import { and, asc, count, eq, isNull, lt, or, sql } from 'drizzle-orm';
 import { getDb } from '@server/db/client';
-import { watches } from '@server/db/schema';
+import { users, watches } from '@server/db/schema';
 import { env } from '@server/env';
 import { sendDueRadarDigests } from '@server/services/radar/alerts';
 import { discoveryIsDue, runDiscovery } from '@server/services/radar/discovery';
@@ -73,12 +73,25 @@ export async function sweepDueWatches(now = new Date(), budgetMs = BUDGET_MS): P
   const [total] = await getDb().select({ value: count() }).from(watches).where(dues);
   const due = Number(total?.value ?? 0);
 
+  /*
+    Les comptes payants passent avant les comptes gratuits, puis les plus anciennement
+    relevés d'abord.
+
+    Le palier Gratuit a droit à une surveillance : un radar qu'on ne peut pas essayer ne se
+    vend pas, et l'écran ne montrait jusqu'ici qu'une porte fermée. Mais la capacité d'un
+    tour est finie, et un afflux de comptes gratuits ne doit pas retarder ceux qui paient.
+    Une file strictement chronologique le permettrait.
+
+    La règle s'arrête là : payant avant gratuit, sans hiérarchie entre paliers payants. Un
+    client Plus n'a pas à attendre derrière un client Max — leurs boutiques sont relevées le
+    même jour, et c'est ce qui leur a été vendu.
+  */
   const lot = await getDb()
-    .select()
+    .select({ watch: watches })
     .from(watches)
+    .innerJoin(users, eq(users.id, watches.userId))
     .where(dues)
-    // Les plus anciennement relevées d'abord : personne n'est oublié quand la file est longue.
-    .orderBy(asc(watches.lastSweptAt))
+    .orderBy(sql`case when ${users.plan} = 'free' then 1 else 0 end`, asc(watches.lastSweptAt))
     .limit(BATCH_MAX);
 
   const echeance = Date.now() + budgetMs;
@@ -86,7 +99,8 @@ export async function sweepDueWatches(now = new Date(), budgetMs = BUDGET_MS): P
   let failed = 0;
   let traitees = 0;
 
-  for (const [index, watch] of lot.entries()) {
+  for (const [index, ligne] of lot.entries()) {
+    const watch = ligne.watch;
     // Le temps restant se vérifie AVANT de commencer : couper un relevé en cours laisserait
     // une transaction ouverte et de fausses disparitions derrière elle.
     if (Date.now() >= echeance) break;

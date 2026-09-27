@@ -158,7 +158,9 @@ describe('Administration — grille tarifaire et droits', () => {
 
     // Les limites des nouveaux modules doivent y figurer : une grille incomplète ne sert à rien.
     const gratuit = (grille.body.plans as { id: string; limits: Record<string, number | null> }[]).find((p) => p.id === 'free')!;
-    assert.equal(gratuit.limits.watchedStores, 0);
+    // Une surveillance, et non zéro : le radar est l'atout du produit, et un atout qu'on ne
+    // peut pas essayer ne se vend pas. Voir radar.test.ts pour ce que le gratuit peut en faire.
+    assert.equal(gratuit.limits.watchedStores, 1);
     assert.equal(gratuit.limits.spiedAdsVisible, 6);
     // Et ce que le palier ferme, avec un libellé lisible plutôt qu'un identifiant.
     const fermees = (grille.body.plans as { id: string; closedFeatures: { id: string; label: string }[] }[]).find((p) => p.id === 'free')!.closedFeatures;

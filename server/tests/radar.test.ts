@@ -227,16 +227,33 @@ describe('Radar — surveillance continue', () => {
     assert.equal(apres.body.salesPerDay, null);
   });
 
-  it('refuse le radar au palier gratuit, et la surveillance d’autrui à tout le monde', async () => {
+  /*
+    Le palier Gratuit surveille UNE boutique, et la deuxième lui est refusée.
+
+    Il n'en surveillait aucune : l'écran n'offrait qu'une porte fermée. Or le radar est
+    l'atout de ce produit — la seule donnée qu'un concurrent ne peut pas reconstituer — et un
+    atout qu'on ne peut pas essayer ne se vend pas. Le mur d'espionnage montrait déjà six
+    annonces au gratuit pour cette raison exacte : brider sans aveugler.
+
+    Trois jours d'une vraie surveillance en disent plus long que n'importe quelle page de
+    vente : on voit un concurrent baisser son prix, un produit disparaître, des ventes
+    accélérer. C'est le seul argument qui n'a pas besoin d'être cru.
+  */
+  it('laisse le palier gratuit surveiller une boutique, et lui refuse la deuxième', async () => {
     catalogue = [{ id: 'prd_ggg', name: 'Pack réseaux sociaux', prix: 2_000, ventes: 1 }];
 
     const { agent: gratuit } = await signInWithPlan(app, 'radar-gratuit@exemple.test', 'free');
-    const refus = await gratuit.post('/api/radar/watches').send({ target: base }).expect(403);
-    assert.equal(refus.body.error.code, 'WATCH_LIMIT_REACHED');
+    const premiere = await gratuit.post('/api/radar/watches').send({ target: base }).expect(201);
+    assert.ok(premiere.body.watch.id, 'le gratuit obtient une vraie surveillance, pas une démonstration');
 
     const tableau = await gratuit.get('/api/radar').expect(200);
-    assert.equal(tableau.body.limit, 0, 'l’écran sait qu’il doit proposer un palier supérieur');
-    assert.deepEqual(tableau.body.watches, []);
+    assert.equal(tableau.body.limit, 1);
+    assert.equal(tableau.body.watches.length, 1);
+
+    // La deuxième est refusée, et le refus dit quoi faire.
+    const refus = await gratuit.post('/api/radar/watches').send({ target: base }).expect(403);
+    assert.equal(refus.body.error.code, 'WATCH_LIMIT_REACHED');
+    assert.match(refus.body.error.message, /palier supérieur/, 'le refus indique la sortie');
 
     const { agent: proprietaire } = await signInWithPlan(app, 'radar-proprio@exemple.test', 'pro');
     const ajout = await proprietaire.post('/api/radar/watches').send({ target: base }).expect(201);
