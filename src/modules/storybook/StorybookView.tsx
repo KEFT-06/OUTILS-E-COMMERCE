@@ -7,8 +7,9 @@ import { useAuth } from '@/features/auth/AuthContext';
 import { CountryCombobox } from '@/shared/components/CountryCombobox';
 import { guessCountryCode } from '@/shared/lib/geo';
 import { safeHttpUrl } from '@/shared/lib/safeUrl';
-import { type StorybookBrief, type StorybookStatus, storybookPdfPath } from '@/shared/types/storybook';
+import { type StoryDraft, type StorybookBrief, type StorybookStatus, storybookPdfPath } from '@/shared/types/storybook';
 import { StorybookLibrary } from '@/modules/storybook/StorybookLibrary';
+import { StoryPreviewPanel } from '@/modules/storybook/StoryPreviewPanel';
 import { Alert, AlertDescription, AlertTitle } from '@/shared/ui/alert';
 import { Button } from '@/shared/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/shared/ui/card';
@@ -50,7 +51,13 @@ const INITIAL_BRIEF: StorybookBrief = {
 };
 
 export function StorybookView() {
-  const { runWithCredits } = useCreditGate();
+  const { runWithCredits, costTable } = useCreditGate();
+  /*
+    Le prix vient de la grille servie par le serveur, jamais d’une constante recopiée ici :
+    un tarif affiché sur un bouton et un tarif facturé qui divergent est la pire des
+    surprises. Tant que la grille n’est pas chargée, le bouton ne promet aucun chiffre.
+  */
+  const coutIllustration = costTable?.actions.find((action) => action.id === 'storybook_illustration')?.cost ?? null;
 
   const { account } = useAuth();
   const [brief, setBrief] = useState<StorybookBrief>(() => ({
@@ -58,6 +65,9 @@ export function StorybookView() {
     country: account?.country ?? guessCountryCode() ?? INITIAL_BRIEF.country,
   }));
   const [isGenerating, setIsGenerating] = useState(false);
+  const [isWriting, setIsWriting] = useState(false);
+  /** Conte écrit, en attente de relecture. Null : rien à relire pour l’instant. */
+  const [story, setStory] = useState<StoryDraft | null>(null);
   const [elapsedSeconds, setElapsedSeconds] = useState(0);
   const [result, setResult] = useState<StorybookStatus | null>(null);
   const [error, setError] = useState<ApiError | null>(null);
@@ -102,23 +112,58 @@ export function StorybookView() {
     };
   };
 
-  const handleSubmit = async (event: React.FormEvent) => {
+  /**
+   * Première étape : écrire le conte, et rien de plus.
+   *
+   * Elle ne touche pas à la mise en page, donc elle coûte trois points au lieu de quinze.
+   * L'auteur lit son histoire avant d'engager l'étape chère — c'est tout l'objet de la
+   * séparation, et c'est ce qui permet de recommencer sans payer une illustration perdue.
+   */
+  const ecrireLeConte = async (event: React.FormEvent) => {
     event.preventDefault();
     if (!canSubmit) return;
 
     setError(null);
     setResult(null);
     setTitle(null);
+    setStory(null);
+
+    try {
+      await runWithCredits('storybook_story', async () => {
+        setIsWriting(true);
+        try {
+          const response = await fetch('/api/storybook/stories', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(requestBody()),
+          });
+          if (!response.ok) throw await readApiError(response, `L’écriture a échoué (${response.status}).`);
+          const { story: ecrit } = (await response.json()) as { story: StoryDraft };
+          setStory(ecrit);
+          setTitle(ecrit.title);
+        } finally {
+          if (!unmountedRef.current) setIsWriting(false);
+        }
+      });
+    } catch (caught) {
+      if (!unmountedRef.current) setError(toApiError(caught, 'L’écriture du conte a échoué.'));
+    }
+  };
+
+  /** Seconde étape : illustrer le conte tel que l'auteur vient de le valider, corrections comprises. */
+  const illustrer = async (approuve: StoryDraft) => {
+    setError(null);
+    setResult(null);
 
     try {
       // Points réservés par le serveur au lancement, rendus automatiquement si le conte échoue.
-      await runWithCredits('storybook_generation', async () => {
+      await runWithCredits('storybook_illustration', async () => {
         setIsGenerating(true);
         try {
           const created = await fetch('/api/storybook/generations', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(requestBody()),
+            body: JSON.stringify({ ...requestBody(), story: approuve }),
           });
           if (!created.ok) throw await readApiError(created, `La demande a échoué (${created.status}).`);
 
@@ -192,7 +237,7 @@ export function StorybookView() {
           <CardDescription>Le prénom du personnage et le thème suffisent pour lancer la génération.</CardDescription>
         </CardHeader>
         <CardContent>
-          <form onSubmit={handleSubmit} className="space-y-5">
+          <form onSubmit={ecrireLeConte} className="space-y-5">
             <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
               <Field>
                 <FieldLabel htmlFor="story-country">Pays d’ancrage</FieldLabel>
@@ -303,17 +348,32 @@ export function StorybookView() {
 
             <div className="flex flex-col gap-3 border-t pt-4 sm:flex-row sm:items-center sm:justify-between">
               <p className="text-xs leading-relaxed text-muted-foreground">
-                Le brief passe le vérificateur de conformité avant l’envoi. Le coût en points s’affiche avant validation ;
-                restez sur cet écran pendant la génération.
+                Le brief passe le vérificateur de conformité avant l’envoi. L’écriture se paie seule : vous lisez
+                l’histoire, vous la corrigez, et vous ne payez l’illustration que si elle vous convient.
               </p>
-              <Button type="submit" disabled={!canSubmit} className="shrink-0">
-                {isGenerating ? <Spinner /> : <Sparkles />}
-                {isGenerating ? 'Génération en cours…' : 'Générer le conte'}
+              <Button type="submit" disabled={!canSubmit || isWriting} className="shrink-0">
+                {isWriting ? <Spinner /> : <Sparkles />}
+                {isWriting ? 'Écriture en cours…' : 'Écrire le conte'}
               </Button>
             </div>
           </form>
         </CardContent>
       </Card>
+
+      {/*
+        L'aperçu disparaît dès que l'illustration part : on ne relit plus un texte dont la
+        mise en page est déjà lancée, et le laisser affiché inviterait à corriger ce qui
+        n'est plus modifiable.
+      */}
+      {story && !isGenerating && !result && (
+        <StoryPreviewPanel
+          story={story}
+          busy={isGenerating}
+          coutIllustration={coutIllustration}
+          onIllustrate={(approuve) => void illustrer(approuve)}
+          onRewrite={() => setStory(null)}
+        />
+      )}
 
       {isGenerating && (
         <Alert variant="info" role="status">
