@@ -361,13 +361,22 @@ const schema = z.object({
   /**
    * Publicités relevées par passage. Chaque unité est facturée : ne pas gonfler sans raison.
    *
-   * Cinquante, et non deux cents : c'est ce qui paie le passage hebdomadaire sans toucher au
-   * budget. L'acteur trie par impressions cumulées, donc cinquante annonces restent les
-   * cinquante plus diffusées — les plus instructives. Et quatre passages hebdomadaires voient
-   * plus d'annonces DIFFÉRENTES qu'un seul passage mensuel deux fois plus large, parce qu'une
-   * annonce lancée puis arrêtée dans le mois échappe entièrement au passage unique.
+   * Cent, et le calcul tient en une ligne. L'acteur facture 0,0058 $ l'annonce sur l'offre
+   * gratuite ; cent annonces par semaine font 2,52 $ par mois, soit la MOITIÉ des 5 $ que
+   * cette offre accorde. L'autre moitié reste disponible pour les collectes lancées à la main.
+   *
+   * Autrement dit : ce module n'a jamais eu besoin d'un abonnement payant. Il tournait à
+   * cinquante par passage — un quart du budget — par prudence héritée d'une époque où le
+   * rythme était mensuel et le plafond de deux cents. Le doubler ne coûte rien de plus qu'un
+   * budget déjà offert, et double ce que le mur montre.
+   *
+   * Ne pas aller au-delà de cent cinquante sans passer à une offre payante : on atteindrait
+   * 76 % du budget, et une seule collecte manuelle ferait déborder le mois.
+   *
+   * Le résultat étant MUTUALISÉ, cette dépense ne bouge pas avec le nombre d'utilisateurs.
+   * C'est ce qui rend l'offre gratuite tenable même avec mille comptes.
    */
-  RADAR_DISCOVERY_LIMIT: z.coerce.number().int().min(10).max(2000).default(50),
+  RADAR_DISCOVERY_LIMIT: z.coerce.number().int().min(10).max(2000).default(100),
   /**
    * Heures entre deux découvertes. Le résultat est MUTUALISÉ entre tous les comptes : la dépense
    * ne dépend pas du nombre d'utilisateurs, seulement de ce rythme.
