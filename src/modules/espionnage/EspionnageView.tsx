@@ -1,5 +1,20 @@
 import { useCallback, useEffect, useState } from 'react';
-import { ExternalLink, Eye, ImageOff, Play, Search, Store } from 'lucide-react';
+import {
+  AtSign,
+  CheckCircle2,
+  ExternalLink,
+  Eye,
+  Facebook,
+  ImageOff,
+  Instagram,
+  type LucideIcon,
+  MessageCircle,
+  MessagesSquare,
+  Play,
+  Radio,
+  Search,
+  Store,
+} from 'lucide-react';
 import { toast } from 'sonner';
 import { PageHeader } from '@/shared/components/PageHeader';
 import { apiRequest } from '@/shared/lib/api';
@@ -47,6 +62,49 @@ function AgeBadge({ days }: { days: number | null }) {
   return <Badge variant="outline">{days} jours · test récent</Badge>;
 }
 
+/**
+ * Plateformes de diffusion, comme la bibliothèque de Meta les montre.
+ *
+ * L'information était collectée depuis le début et n'était affichée nulle part. Elle dit
+ * pourtant quelque chose d'utile : une annonce diffusée sur cinq plateformes coûte plus cher
+ * que la même sur une seule, et son annonceur y croit davantage.
+ *
+ * Une plateforme inconnue n'est pas masquée : Meta en ajoute, et la faire disparaître
+ * donnerait à lire moins que ce qui a été relevé.
+ */
+const PLATEFORMES: Record<string, { Icone: LucideIcon; nom: string }> = {
+  FACEBOOK: { Icone: Facebook, nom: 'Facebook' },
+  INSTAGRAM: { Icone: Instagram, nom: 'Instagram' },
+  MESSENGER: { Icone: MessageCircle, nom: 'Messenger' },
+  WHATSAPP: { Icone: MessagesSquare, nom: 'WhatsApp' },
+  THREADS: { Icone: AtSign, nom: 'Threads' },
+  AUDIENCE_NETWORK: { Icone: Radio, nom: 'Audience Network' },
+};
+
+function Plateformes({ noms }: { noms: string[] }) {
+  if (noms.length === 0) return null;
+  return (
+    <p className="flex flex-wrap items-center gap-1.5 text-xs text-muted-foreground">
+      <span className="sr-only">Diffusée sur</span>
+      {noms.map((nom) => {
+        const connue = PLATEFORMES[nom.toUpperCase()];
+        if (!connue) {
+          return (
+            <span key={nom} className="rounded bg-muted px-1.5 py-0.5 text-[10px] font-medium uppercase">
+              {nom}
+            </span>
+          );
+        }
+        return <connue.Icone key={nom} className="size-3.5" aria-label={connue.nom} />;
+      })}
+    </p>
+  );
+}
+
+/** Date de début telle que Meta la publie : « Lancée le 16 août 2026 ». */
+const dateFr = (iso: string) =>
+  new Date(iso).toLocaleDateString('fr-FR', { day: 'numeric', month: 'long', year: 'numeric' });
+
 function AdCard({ ad, onWatch, busy }: { ad: SpiedAd; onWatch: (host: string) => void; busy: string | null }) {
   const [imageCassee, setImageCassee] = useState(false);
   const lien = safeHttpUrl(ad.landingUrl);
@@ -88,10 +146,31 @@ function AdCard({ ad, onWatch, busy }: { ad: SpiedAd; onWatch: (host: string) =>
       </div>
 
       <CardHeader className="gap-1.5">
+        {/*
+          L'en-tête reprend ce que la bibliothèque de Meta affiche, et dans le même ordre :
+          l'état, l'identifiant, la date de lancement, les plateformes. Ces quatre éléments
+          étaient tous en base depuis la première collecte, et aucun n'était montré. Les
+          retrouver ici évite d'ouvrir Meta pour vérifier ce que l'outil savait déjà.
+        */}
+        <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-xs">
+          {ad.active ? (
+            <span className="flex items-center gap-1 font-medium text-success">
+              <CheckCircle2 className="size-3.5" aria-hidden="true" />
+              Active
+            </span>
+          ) : (
+            <span className="font-medium text-muted-foreground">Arrêtée</span>
+          )}
+          <span className="text-muted-foreground">
+            ID <span className="font-mono tabular-nums">{ad.externalId}</span>
+          </span>
+        </div>
+        {ad.startedAt && <p className="text-xs text-muted-foreground">Lancée le {dateFr(ad.startedAt)}</p>}
+        <Plateformes noms={ad.platforms} />
+
         <CardTitle className="text-sm leading-snug">{ad.title ?? 'Annonce sans titre'}</CardTitle>
         <CardDescription className="flex flex-wrap items-center gap-1.5">
           <AgeBadge days={ad.runningDays} />
-          {!ad.active && <Badge variant="outline">Arrêtée</Badge>}
           {/*
             Une collecte ne ramène qu'un nombre plafonné d'annonces, triées par impressions :
             ne plus retrouver une annonce ne prouve pas qu'elle s'est arrêtée. On dit donc ce
@@ -114,6 +193,7 @@ function AdCard({ ad, onWatch, busy }: { ad: SpiedAd; onWatch: (host: string) =>
           <span className="truncate" title={ad.storeHost}>
             {ad.advertiser ?? ad.storeHost}
           </span>
+          <span className="shrink-0 text-[10px] uppercase opacity-70">Sponsorisé</span>
         </p>
 
         <div className="mt-auto flex flex-wrap gap-2">
@@ -135,9 +215,15 @@ function AdCard({ ad, onWatch, busy }: { ad: SpiedAd; onWatch: (host: string) =>
             <Eye />
             Surveiller
           </Button>
+          {/*
+            L'équivalent du « See ad details » de la bibliothèque. Le lien est juste par
+            construction : l'identifiant enregistré EST l'`adArchiveID` de Meta, celui que
+            sa bibliothèque affiche sous « Library ID » et attend dans « ?id= ».
+          */}
           <Button asChild size="sm" variant="ghost">
             <a href={bibliotheque} target="_blank" rel="noreferrer noopener">
-              Chez Meta
+              Détail chez Meta
+              <ExternalLink />
             </a>
           </Button>
         </div>
