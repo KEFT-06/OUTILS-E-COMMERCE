@@ -79,8 +79,16 @@ export function CockpitDashboard({ report, onNavigateToModule, onOpenBilling }: 
       ? Math.min(100, (credits.plan / credits.allowance) * 100)
       : 0;
 
-  // Seul le taux de saturation porte une trace de calcul vérifiable : c'est
-  // donc le seul affiché comme indicateur de tension.
+  /*
+    La saturation est le seul taux affiché ici, comme indicateur de tension sur la niche.
+
+    Ce commentaire affirmait qu'elle « porte une trace de calcul vérifiable ». Ce n'est vrai que
+    des rapports produits par l'ancienne collecte publicitaire Meta, retirée depuis. Un rapport
+    récent la donne en APPRÉCIATION de l'IA fondée sur des sources — et l'écran le dit bien
+    (« appréciation fondée sur des sources »). C'est le commentaire qui était faux, pas
+    l'affichage ; mais un commentaire faux sur la provenance d'un chiffre finit toujours par
+    produire un affichage faux, le jour où quelqu'un s'y fie pour modifier l'écran.
+  */
   const saturation = report?.rates.saturation;
 
   const serviceEntries = providers ? Object.entries(providers) : [];
