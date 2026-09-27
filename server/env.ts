@@ -321,18 +321,36 @@ const schema = z.object({
   APIFY_API_URL: z.string().url().default('https://api.apify.com/v2'),
   /** Acteur maintenu par Apify. Le « ~ » remplace le « / » dans les adresses de l'API. */
   APIFY_ADS_ACTOR: z.string().regex(/^[\w.~-]+$/).default('apify~facebook-ads-scraper'),
-  /** Publicités relevées par passage. Chaque unité est facturée : ne pas gonfler sans raison. */
-  RADAR_DISCOVERY_LIMIT: z.coerce.number().int().min(10).max(2000).default(200),
+  /**
+   * Publicités relevées par passage. Chaque unité est facturée : ne pas gonfler sans raison.
+   *
+   * Cinquante, et non deux cents : c'est ce qui paie le passage hebdomadaire sans toucher au
+   * budget. L'acteur trie par impressions cumulées, donc cinquante annonces restent les
+   * cinquante plus diffusées — les plus instructives. Et quatre passages hebdomadaires voient
+   * plus d'annonces DIFFÉRENTES qu'un seul passage mensuel deux fois plus large, parce qu'une
+   * annonce lancée puis arrêtée dans le mois échappe entièrement au passage unique.
+   */
+  RADAR_DISCOVERY_LIMIT: z.coerce.number().int().min(10).max(2000).default(50),
   /**
    * Heures entre deux découvertes. Le résultat est MUTUALISÉ entre tous les comptes : la dépense
    * ne dépend pas du nombre d'utilisateurs, seulement de ce rythme.
    *
-   * 720 (mensuel) et non 168 (hebdomadaire) : mesuré, un passage hebdomadaire consomme 4,64 $
-   * des 5 $ offerts, soit 93 % du budget pour la brique la moins précieuse — la liste des
-   * vendeurs qui font de la publicité ne change pas toutes les semaines. En mensuel, elle
-   * coûte 1,16 $ et laisse 3,84 $ aux mesures de marché, qui servent à chaque analyse.
+   * Hebdomadaire, à budget inchangé — c'est le plafond d'annonces qui a payé le changement,
+   * pas la caisse. Un passage mensuel de 200 annonces coûte 1,16 $ ; quatre passages
+   * hebdomadaires de 50 en coûtent 1,26 $. On échange de la largeur contre de la fraîcheur.
+   *
+   * Ce qui a rendu l'échange nécessaire : le mur d'espionnage ne prétend plus qu'une annonce
+   * tourne encore, il dit depuis quand il ne l'a plus vue. À un rythme mensuel, cette mention
+   * s'affiche sur presque toutes les annonces presque tout le temps, et un avertissement
+   * permanent ne veut plus rien dire. Une annonce toujours en vie doit être RETROUVÉE assez
+   * souvent pour que son compteur avance — c'est la fréquence qui donne sa valeur au signal,
+   * pas le nombre d'annonces ramenées d'un coup.
+   *
+   * La mesure qui fixait l'ancien rythme reste vraie et reste la garde : un passage
+   * hebdomadaire de 200 annonces consommerait 4,64 $ des 5 $ offerts, soit 93 % du budget pour
+   * la brique la moins précieuse. C'est le plafond, et lui seul, qui rend l'hebdomadaire tenable.
    */
-  RADAR_DISCOVERY_INTERVAL_HOURS: z.coerce.number().int().min(6).max(720).default(720),
+  RADAR_DISCOVERY_INTERVAL_HOURS: z.coerce.number().int().min(6).max(720).default(168),
   /**
    * Mot-clé cherché dans la bibliothèque publicitaire. « mychariow » apparaît dans l'adresse de
    * destination des publicités de toute boutique Chariow : c'est ce qui permet de trouver les
