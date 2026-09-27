@@ -55,6 +55,12 @@ export interface EspionnageFilters {
   maxDays?: number;
   storeHost?: string;
   mediaKind?: 'image' | 'video';
+  /**
+   * État déclaré par Meta à la dernière collecte qui a vu l'annonce. La bibliothèque de Meta
+   * propose ce filtre en premier, et c'est souvent la seule question : « qu'est-ce qui tourne
+   * encore ? ». Une absence de collecte ne vaut pas arrêt — voir `daysSinceSeen`.
+   */
+  etat?: 'active' | 'arretee';
   /** Recherche libre dans le titre, le texte et le nom de l'annonceur. */
   search?: string;
   sort?: 'oldest' | 'newest' | 'variants';
@@ -172,6 +178,7 @@ export async function listSpiedAds(
   }
   if (filters.storeHost) conditions.push(eq(spiedAds.storeHost, filters.storeHost));
   if (filters.mediaKind) conditions.push(eq(spiedAds.mediaKind, filters.mediaKind));
+  if (filters.etat) conditions.push(eq(spiedAds.active, filters.etat === 'active'));
   if (filters.search) {
     /*
       Recherche insensible à la casse sur les trois champs lisibles par un humain.

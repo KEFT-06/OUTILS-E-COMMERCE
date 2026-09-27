@@ -22,6 +22,8 @@ const filtersSchema = z.object({
   maxDays: z.coerce.number().int().min(0).max(3_650).optional(),
   storeHost: z.string().trim().max(200).optional(),
   mediaKind: z.enum(['image', 'video']).optional(),
+  // « active » : ce que Meta déclarait en cours à la dernière collecte ; « arretee » : l'inverse.
+  etat: z.enum(['active', 'arretee']).optional(),
   search: z.string().trim().max(120).optional(),
   sort: z.enum(['oldest', 'newest', 'variants']).optional(),
   limit: z.coerce.number().int().min(1).max(200).optional(),

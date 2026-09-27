@@ -242,6 +242,13 @@ export function EspionnageView() {
   const [erreur, setErreur] = useState<string | null>(null);
   const [anciennete, setAnciennete] = useState('0');
   const [format, setFormat] = useState<'tous' | 'image' | 'video'>('tous');
+  /*
+    « En cours » par défaut, comme la bibliothèque de Meta, dont c'est le premier filtre et
+    le réglage d'ouverture : la question qu'on se pose en arrivant est « qu'est-ce qui tourne
+    encore ? ». Les annonces arrêtées restent à un clic — une offre qui a tourné deux cents
+    jours avant de s'arrêter reste une preuve.
+  */
+  const [etat, setEtat] = useState<'toutes' | 'active' | 'arretee'>('active');
   const [tri, setTri] = useState<'oldest' | 'newest' | 'variants'>('oldest');
   const [recherche, setRecherche] = useState('');
   const [recherchee, setRecherchee] = useState('');
@@ -253,6 +260,7 @@ export function EspionnageView() {
     const params = new URLSearchParams({ sort: tri });
     if (anciennete !== '0') params.set('minDays', anciennete);
     if (format !== 'tous') params.set('mediaKind', format);
+    if (etat !== 'toutes') params.set('etat', etat);
     if (recherchee) params.set('search', recherchee);
     try {
       setData(await apiRequest<EspionnageData>(`/api/espionnage?${params.toString()}`));
@@ -260,7 +268,7 @@ export function EspionnageView() {
     } catch (caught) {
       setErreur(toApiError(caught, 'Le mur d’espionnage n’a pas pu être chargé.').message);
     }
-  }, [anciennete, format, tri, recherchee]);
+  }, [anciennete, format, etat, tri, recherchee]);
 
   useEffect(() => {
     void load();
@@ -351,6 +359,17 @@ export function EspionnageView() {
               </SelectContent>
             </Select>
 
+            <Select value={etat} onValueChange={(value) => setEtat(value as typeof etat)}>
+              <SelectTrigger className="w-full sm:w-44" aria-label="État de l’annonce">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="active">Annonces en cours</SelectItem>
+                <SelectItem value="arretee">Annonces arrêtées</SelectItem>
+                <SelectItem value="toutes">Tous les états</SelectItem>
+              </SelectContent>
+            </Select>
+
             <Select value={format} onValueChange={(value) => setFormat(value as typeof format)}>
               <SelectTrigger className="w-full sm:w-40" aria-label="Format de l’annonce">
                 <SelectValue />
@@ -424,7 +443,9 @@ export function EspionnageView() {
             */}
             <EmptyDescription>
               {data.total > 0
-                ? 'Élargissez l’ancienneté ou retirez la recherche.'
+                ? etat === 'active'
+                  ? 'Aucune annonce en cours ne correspond. Affichez tous les états, élargissez l’ancienneté ou retirez la recherche.'
+                  : 'Élargissez l’ancienneté, changez l’état ou retirez la recherche.'
                 : data.configured
                   ? 'La collecte tourne d’elle-même, au rythme réglé par l’administrateur. Le premier passage remplira ce mur. Un administrateur peut aussi la lancer tout de suite depuis l’écran Radar.'
                   : estAdmin

@@ -275,6 +275,41 @@ describe('Mur d’espionnage', () => {
     assert.equal(avec.body.ads.length, sans.body.ads.length, 'avec ou sans accent, les mêmes annonces');
   });
 
+  it('filtre sur l’état déclaré par Meta : en cours, arrêtées, ou tout', async () => {
+    const { getDb } = await import('@server/db/client');
+    const { spiedAds } = await import('@server/db/schema');
+    const { eq } = await import('drizzle-orm');
+
+    await getDb().insert(spiedAds).values({
+      externalId: 'annonce-arretee-filtre',
+      storeHost: 'boutique-filtre.mychariow.com',
+      landingUrl: 'https://boutique-filtre.mychariow.com/p/offre',
+      title: 'Offre arrêtée',
+      startedAt: new Date(Date.now() - 40 * 86_400_000),
+      variants: 1,
+      platforms: ['FACEBOOK'],
+      active: false,
+    });
+
+    try {
+      const { agent } = await signInWithPlan(app, 'espion-etat@exemple.test', 'pro');
+      const ids = async (requete: string) =>
+        ((await agent.get(`/api/espionnage${requete}`).expect(200)).body.ads as { externalId: string; active: boolean }[]);
+
+      const enCours = await ids('?etat=active');
+      assert.ok(enCours.length > 0);
+      assert.ok(enCours.every((ad) => ad.active), 'aucune annonce arrêtée parmi celles en cours');
+
+      const arretees = await ids('?etat=arretee');
+      assert.deepEqual(arretees.map((ad) => ad.externalId), ['annonce-arretee-filtre']);
+
+      const toutes = await ids('');
+      assert.equal(toutes.length, enCours.length + arretees.length, 'sans filtre, les deux états réunis');
+    } finally {
+      await getDb().delete(spiedAds).where(eq(spiedAds.externalId, 'annonce-arretee-filtre'));
+    }
+  });
+
   it('permet de passer d’une annonce à une surveillance du radar, et reste fermé aux non-membres', async () => {
     const { agent } = await signInWithPlan(app, 'espion-suivi@exemple.test', 'pro');
     const mur = await agent.get('/api/espionnage').expect(200);
