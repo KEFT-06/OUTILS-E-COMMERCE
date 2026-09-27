@@ -16,6 +16,7 @@ import {
   Store,
 } from 'lucide-react';
 import { toast } from 'sonner';
+import { useAuth } from '@/features/auth/AuthContext';
 import { PageHeader } from '@/shared/components/PageHeader';
 import { apiRequest } from '@/shared/lib/api';
 import { toApiError } from '@/shared/lib/apiError';
@@ -233,6 +234,10 @@ function AdCard({ ad, onWatch, busy }: { ad: SpiedAd; onWatch: (host: string) =>
 }
 
 export function EspionnageView() {
+  // Le conseil de configuration ne s’adresse qu’à qui peut l’appliquer : les autres n’ont pas
+  // la main sur les variables du serveur, et lire une consigne qu’on ne peut pas suivre inquiète.
+  const { account } = useAuth();
+  const estAdmin = account?.role === 'admin';
   const [data, setData] = useState<EspionnageData | null>(null);
   const [erreur, setErreur] = useState<string | null>(null);
   const [anciennete, setAnciennete] = useState('0');
@@ -290,37 +295,49 @@ export function EspionnageView() {
         </Alert>
       )}
 
-      <Card>
-        <CardHeader>
-          <CardTitle>Filtrer</CardTitle>
-          <CardDescription>
-            {data
-              ? `${data.total} annonces conservées chez ${data.stores} boutiques${data.lastCollectedAt ? `, dernière collecte ${formatRelativeFr(data.lastCollectedAt)}` : ''}.`
-              : 'Chargement…'}
-            {hint ? ` Filtre : ${hint}.` : ''}
-          </CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-3">
-          <form
-            className="flex flex-col gap-2 sm:flex-row"
-            onSubmit={(submit) => {
-              submit.preventDefault();
-              setRecherchee(recherche.trim());
-            }}
-          >
-            <Input
-              value={recherche}
-              onChange={(change) => setRecherche(change.target.value)}
-              placeholder="Chercher un mot dans les annonces…"
-              aria-label="Chercher dans les annonces"
-            />
-            <Button type="submit" variant="secondary">
-              <Search />
-              Chercher
-            </Button>
-          </form>
+      {/*
+        La disposition reprend celle de la bibliothèque de Meta, parce que c'est celle que
+        connaissent les gens qui s'en servent : la recherche occupe toute la largeur en haut,
+        le nombre de résultats vient dessous en évidence, et les filtres se rangent à droite.
+        Un outil qui montre la même chose autrement oblige à réapprendre ce qu'on sait déjà.
+      */}
+      <div className="space-y-4">
+        <form
+          className="flex flex-col gap-2 sm:flex-row"
+          onSubmit={(submit) => {
+            submit.preventDefault();
+            setRecherchee(recherche.trim());
+          }}
+        >
+          <Input
+            value={recherche}
+            onChange={(change) => setRecherche(change.target.value)}
+            placeholder="Chercher un mot dans les annonces…"
+            aria-label="Chercher dans les annonces"
+            className="h-11 text-base"
+          />
+          <Button type="submit" variant="secondary" className="h-11 shrink-0">
+            <Search />
+            Chercher
+          </Button>
+        </form>
 
-          <div className="flex flex-wrap gap-2">
+        <div className="flex flex-col gap-3 md:flex-row md:items-end md:justify-between">
+          <div>
+            <p className="font-display text-2xl font-extrabold tracking-tight tabular-nums">
+              {data ? `${data.ads.length} annonce${data.ads.length > 1 ? 's' : ''}` : '…'}
+            </p>
+            <p className="text-sm text-muted-foreground">
+              {data
+                ? `Sur ${data.total} conservées chez ${data.stores} boutique${data.stores > 1 ? 's' : ''}${
+                    data.lastCollectedAt ? ` · dernière collecte ${formatRelativeFr(data.lastCollectedAt)}` : ''
+                  }`
+                : 'Chargement…'}
+              {hint ? ` · ${hint}` : ''}
+            </p>
+          </div>
+
+          <div className="flex flex-wrap gap-2 md:justify-end">
             <Select value={anciennete} onValueChange={setAnciennete}>
               <SelectTrigger className="w-full sm:w-72" aria-label="Ancienneté de diffusion">
                 <SelectValue />
@@ -356,8 +373,8 @@ export function EspionnageView() {
               </SelectContent>
             </Select>
           </div>
-        </CardContent>
-      </Card>
+        </div>
+      </div>
 
       {data === null && !erreur && (
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
@@ -396,12 +413,23 @@ export function EspionnageView() {
         <Empty className="border border-dashed py-12">
           <EmptyHeader>
             <EmptyTitle>{data.total === 0 ? 'Aucune annonce collectée pour l’instant' : 'Aucune annonce sur ce filtre'}</EmptyTitle>
+            {/*
+              Un mur vide dit POURQUOI il est vide, et ce qu'il faut faire pour le remplir.
+
+              Il annonçait « aucun jeton de collecte » et s'arrêtait là. Pour qui met le
+              module en service, c'est une impasse : le message décrit la panne sans nommer
+              le geste. Trois causes possibles, trois phrases différentes — et celle qui
+              s'adresse à l'administrateur n'apparaît qu'à lui, les autres n'ayant pas la
+              main sur la configuration du serveur.
+            */}
             <EmptyDescription>
-              {data.total === 0
-                ? data.configured
-                  ? 'La collecte tourne d’elle-même, au rythme réglé par l’administrateur. Elle peut aussi être lancée depuis l’écran Radar.'
-                  : 'La collecte publicitaire n’est pas configurée sur ce serveur : aucun jeton de collecte.'
-                : 'Élargissez l’ancienneté ou retirez la recherche.'}
+              {data.total > 0
+                ? 'Élargissez l’ancienneté ou retirez la recherche.'
+                : data.configured
+                  ? 'La collecte tourne d’elle-même, au rythme réglé par l’administrateur. Le premier passage remplira ce mur. Un administrateur peut aussi la lancer tout de suite depuis l’écran Radar.'
+                  : estAdmin
+                    ? 'Aucun jeton de collecte sur ce serveur. Posez APIFY_TOKEN dans les variables d’environnement de l’hébergement, puis relancez le déploiement — sans lui, aucune annonce ne peut être récupérée.'
+                    : 'La collecte publicitaire n’est pas encore activée sur ce serveur. L’administrateur doit la configurer.'}
             </EmptyDescription>
           </EmptyHeader>
         </Empty>

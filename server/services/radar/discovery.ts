@@ -212,6 +212,18 @@ export async function runDiscovery(now = new Date()): Promise<DiscoveryOutcome> 
     throw apifyUnavailable('réponse illisible');
   }
 
+  return ingestDiscoveryItems(items, now);
+}
+
+/**
+ * Écrit dans la base ce qu'un passage a rapporté : boutiques repérées et mur d'espionnage.
+ *
+ * Séparé de l'appel au fournisseur pour une raison pratique : une collecte est PAYÉE, et il
+ * faut pouvoir en reverser le résultat dans une autre base — ou simplement le rejouer après
+ * une erreur d'écriture — sans la repayer. `server/scripts/collect-ads.ts --from` emprunte ce
+ * chemin, et c'est le MÊME que celui de la collecte réelle : rien n'y est simulé.
+ */
+export async function ingestDiscoveryItems(items: unknown[], now = new Date()): Promise<DiscoveryOutcome> {
   // On ne lit aucun champ nommé : on cherche les hôtes de vitrine dans l'enregistrement
   // entier. Le fournisseur peut renommer ses colonnes sans rien casser ici.
   const comptes = new Map<string, number>();

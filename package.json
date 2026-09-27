@@ -25,7 +25,8 @@
     "admin:create": "tsx server/scripts/create-admin.ts",
     "lint": "eslint . --max-warnings 0",
     "format": "prettier --write \"**/*.{ts,tsx,css,md,json}\"",
-    "clean": "rimraf dist"
+    "clean": "rimraf dist",
+    "radar:collect": "tsx server/scripts/collect-ads.ts"
   },
   "dependencies": {
     "@electric-sql/pglite": "^0.5.8",
