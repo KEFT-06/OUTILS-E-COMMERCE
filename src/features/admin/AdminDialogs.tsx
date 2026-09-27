@@ -3,6 +3,7 @@ import { formatMoney, fractionDigits } from '@server/shared/currency';
 import { CountryCombobox } from '@/shared/components/CountryCombobox';
 import type { PlanCatalog } from '@/shared/types/auth';
 import { useEffect, useState } from 'react';
+import { parseAmount } from '@/shared/lib/parseAmount';
 import { toast } from 'sonner';
 import { Banknote, Ban, KeyRound, LogOut, Minus, Plus, RotateCcw, Search, TriangleAlert, UserPlus, Zap } from 'lucide-react';
 import type { AdminMeta, AdminPayment, AdminUserDetail, UserList } from '@/features/admin/adminApi';
@@ -78,7 +79,13 @@ export function GrantCreditsDialog({ detail, onDone }: { detail: AdminUserDetail
   const [amount, setAmount] = useState('50');
   const [note, setNote] = useState('');
 
-  const value = Number.parseInt(amount, 10);
+  /*
+    parseInt lisait « 1 000 » comme 1 : il s'arrête au premier caractère qui n'est pas un
+    chiffre. Un administrateur qui accordait mille points en accordait un. Les points sont
+    entiers : une valeur décimale est refusée plutôt qu'arrondie en silence.
+  */
+  const lu = parseAmount(amount);
+  const value = lu !== null && Number.isInteger(lu) ? lu : Number.NaN;
   const valid = Number.isInteger(value) && value > 0 && value <= 100_000 && note.trim().length >= 3;
 
   const submit = (event: React.FormEvent) => {
@@ -431,7 +438,9 @@ export function RecordPaymentDialog({
     };
   }, [search, presetUser, state.open]);
 
-  const value = Number.parseFloat(amount.replace(',', '.'));
+  // parseFloat lisait « 50 000 » comme 50 : il s'arrête au premier espace. Un paiement de
+  // cinquante mille francs était enregistré à cinquante. Voir parseAmount.
+  const value = parseAmount(amount) ?? Number.NaN;
   const valid = Boolean(user) && Number.isFinite(value) && value > 0;
 
   const submit = (event: React.FormEvent) => {

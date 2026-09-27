@@ -1,4 +1,5 @@
 import { useMemo, useState } from 'react';
+import { parseAmount } from '@/shared/lib/parseAmount';
 import {
   AlertCircle,
   ArrowRight,
@@ -127,7 +128,8 @@ interface KeywordRow {
   intent: SearchTrendKeyword['intent'];
 }
 
-const parseNumber = (value: string | null) => (value ? Number.parseFloat(value.replace(/[^0-9,.-]/g, '').replace(',', '.')) || 0 : 0);
+// « 1.200 % » valait 1,2 : le point des milliers y était pris pour une virgule. Voir parseAmount.
+const parseNumber = (value: string | null) => parseAmount(value) ?? 0;
 const parseVolume = (value: string | null) => (value ? Number.parseInt(value.replace(/[^0-9]/g, ''), 10) || 0 : 0);
 const compact = new Intl.NumberFormat('fr-FR', { notation: 'compact', maximumFractionDigits: 1 });
 

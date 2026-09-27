@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState, type ComponentType } from 'react';
+import { parseAmount } from '@/shared/lib/parseAmount';
 import { AlertTriangle, ExternalLink, Eye, Scissors, TrendingUp } from 'lucide-react';
 import { PageHeader } from '@/shared/components/PageHeader';
 import { type ApiError, readApiError, toApiError } from '@/shared/lib/apiError';
@@ -43,8 +44,9 @@ function formatAmount(value: number, currency: string): string {
 
 /** Nombre positif saisi, ou null : un champ vide ne doit pas produire « 0 FCFA par jour ». */
 function positiveNumber(raw: string): number | null {
-  const value = Number(raw.replace(/\s/g, '').replace(',', '.'));
-  return Number.isFinite(value) && value > 0 ? value : null;
+  // « 50.000 » valait 50 : le point des milliers y était pris pour une virgule. Voir parseAmount.
+  const value = parseAmount(raw);
+  return value !== null && value > 0 ? value : null;
 }
 
 export function CampaignBlueprintsView() {
