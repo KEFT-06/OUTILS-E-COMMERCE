@@ -206,7 +206,7 @@ describe('Guides multilingues', () => {
       .expect(201);
     assert.equal(submitted.body.cover.status, 'ready', 'Gemini renvoie l’image dans la réponse');
     const call = imageCalls.at(-1)!;
-    assert.equal(call.model, 'gemini-3.1-flash-image');
+    assert.equal(call.model, 'gemini-3-pro-image');
     assert.deepEqual(call.modalities, ['IMAGE']);
     assert.equal(call.aspectRatio, '9:16', 'format portrait des exports');
     assert.match(call.prompt, /no text, no letters, no numbers/);

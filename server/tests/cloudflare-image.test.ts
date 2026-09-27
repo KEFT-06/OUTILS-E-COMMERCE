@@ -244,18 +244,36 @@ describe('Visuels publicitaires produits chez nous', () => {
     purpose: 'content',
   };
 
-  it('produit le visuel chez Cloudflare, le garde, et le sert depuis notre origine', async () => {
+  /*
+    Un visuel publicitaire passe par le modèle le plus cher, et c'est voulu.
+
+    C'est le seul endroit de l'outil où l'image est vue par le PUBLIC d'un client, dans une
+    publicité qu'il paie pour diffuser. Comparé le 27/09/2026 sur la même consigne, Nano
+    Banana Pro rend une scène du pays visé reconnaissable là où FLUX.2 rend un intérieur qui
+    pourrait être partout — sur un outil qui promet d'ancrer les créatifs dans le pays du
+    client, l'écart porte exactement sur ce qu'on vend. Neuf fois le prix (0,134 $ contre
+    0,015 $), et une marge qui reste de trois sur un point facturé.
+
+    Une couverture de PDF, elle, reste chez Cloudflare : son auteur est son seul lecteur.
+  */
+  it('confie le visuel au modèle premium, puis le garde et le sert depuis notre origine', async () => {
     cloudflareMode = 'ok';
-    const agent = await author('visuel-cloudflare@exemple.com');
+    const avantCloudflare = cloudflareCalls.length;
+    const avantGemini = geminiImageCalls.length;
+    const agent = await author('visuel-premium@exemple.com');
 
     const lance = await agent.post('/api/creatives/visuals').send(BRIEF).expect(202);
     assert.equal(lance.body.status, 'completed', 'l’image est rendue dans la réponse, pas mise en file');
     assert.equal(lance.body.mediaType, 'image');
 
-    const call = cloudflareCalls.at(-1)!;
-    assert.equal(call.model, '@cf/black-forest-labs/flux-2-klein-9b');
-    assert.equal(call.width, 720, 'le format 9:16 du brief est respecté');
-    assert.equal(call.height, 1280);
+    assert.equal(geminiImageCalls.length, avantGemini + 1, 'le visuel part chez le modèle premium');
+    assert.equal(cloudflareCalls.length, avantCloudflare, 'et Cloudflare n’est pas appelé pour rien');
+
+    // Les deux lignes de garde voyagent avec la consigne : sans elles, ce modèle ajoute de
+    // lui-même un slogan et le logo d'une marque réelle. Mesuré, pas supposé.
+    const consigne = geminiImageCalls.at(-1)!.prompt;
+    assert.match(consigne, /No text, no logos, no watermarks/);
+    assert.match(consigne, /No real brand logos/);
 
     const requestId = lance.body.requestId as string;
     const suivi = await agent.get(`/api/creatives/requests/${requestId}`).expect(200);
@@ -266,7 +284,7 @@ describe('Visuels publicitaires produits chez nous', () => {
       est en base, servi par nous, et ne dépend plus d'aucune rétention chez un tiers.
     */
     const fichier = await agent.get(`/api/creatives/requests/${requestId}/file`).buffer(true).expect(200);
-    assert.equal(fichier.headers['content-type'], 'image/jpeg');
+    assert.equal(fichier.headers['content-type'], 'image/png', 'le format vient du fournisseur qui a produit');
     assert.ok(Number(fichier.headers['content-length']) > 0);
   });
 

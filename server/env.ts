@@ -127,7 +127,20 @@ const schema = z.object({
    * Modèle d'image de Gemini (couvertures des guides et des ebooks). Exige la facturation activée
    * sur le projet Google de la clé : l'offre gratuite n'autorise aucune image.
    */
-  GEMINI_IMAGE_MODEL: z.string().regex(/^[\w.-]+$/).default('gemini-3.1-flash-image'),
+  /**
+   * Modèle d'image de Gemini : secours des couvertures, et PREMIER CHOIX des visuels
+   * publicitaires (voir `services/ai/image.ts`).
+   *
+   * « gemini-3-pro-image » (Nano Banana Pro) et non le modèle Flash : comparé le
+   * 27 septembre 2026 sur la même consigne, il rend une scène du pays visé reconnaissable
+   * là où les autres rendent un intérieur qui pourrait être partout. Il coûte 0,134 $
+   * l'image contre 0,067 $ pour le Flash — réservé, pour cette raison, aux images qu'un
+   * public verra.
+   *
+   * Ce modèle écrit du texte et dessine des marques de lui-même dès que la consigne ne le
+   * lui interdit pas : les deux lignes de garde de `buildPrompt` ne sont pas décoratives.
+   */
+  GEMINI_IMAGE_MODEL: z.string().regex(/^[\w.-]+$/).default('gemini-3-pro-image'),
   /** Modèle d'image que Gamma utilise pour illustrer les storybooks (liste : developers.gamma.app, « Image models »). */
   GAMMA_IMAGE_MODEL: z.string().regex(/^[\w.-]+$/).default('gemini-3.1-flash-image'),
   /**

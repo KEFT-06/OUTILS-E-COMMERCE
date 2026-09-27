@@ -42,7 +42,9 @@ export async function createLocalVisual(
   auth: RequestAuth,
   input: LocalVisualInput,
 ): Promise<{ requestId: string; mimeType: string }> {
-  const image = await generateImage({ prompt: input.prompt, aspectRatio: input.format });
+  // « premium » : ce visuel part dans une publicité que le client paie pour diffuser. C'est le
+  // seul endroit de l'outil où l'image est vue par le public d'un client, et non par lui seul.
+  const image = await generateImage({ prompt: input.prompt, aspectRatio: input.format, tier: 'premium' });
   const requestId = mintRequestId();
 
   await getDb().insert(creativeImages).values({
