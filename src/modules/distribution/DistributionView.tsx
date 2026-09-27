@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
-import { AlertTriangle, CheckCircle2, Info, PackageSearch, XCircle } from 'lucide-react';
+import { AlertTriangle, CheckCircle2, Info, PackageOpen, PackageSearch, XCircle } from 'lucide-react';
 import { ConnectChariowLink } from '@/shared/components/ConnectChariowLink';
+import { NoDataState } from '@/shared/components/NoDataState';
 import { PageHeader } from '@/shared/components/PageHeader';
 import { type ApiError, readApiError, toApiError } from '@/shared/lib/apiError';
 import { cn } from '@/shared/lib/utils';
@@ -178,8 +179,19 @@ export function DistributionView() {
               </Alert>
             )}
 
+            {/*
+              Une phrase grise en bas d'une carte laissait l'auteur devant un cul-de-sac : sa
+              boutique est vide, et rien ne dit par où commencer. Or il vient précisément de
+              relier un compte pour voir ce qu'il vend — c'est le moment où le produit doit
+              indiquer le geste suivant, pas constater l'absence.
+            */}
             {catalog && catalog.products.length === 0 && (
-              <p className="text-sm text-muted-foreground">Aucun produit publié sur cette boutique.</p>
+              <NoDataState
+                icon={PackageOpen}
+                title="Aucun produit publié sur cette boutique"
+                reason="Le catalogue est bien lu : votre boutique n'a simplement rien en vente. Créez un produit dans le Studio, puis publiez-le sur Chariow — l'API permet de lire, pas de créer."
+                action={{ label: 'Ouvrir le Studio', to: '/app/studio' }}
+              />
             )}
 
             {catalog && catalog.products.length > 0 && (

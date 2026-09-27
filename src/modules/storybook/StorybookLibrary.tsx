@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { BookOpen, Download, ExternalLink } from 'lucide-react';
 import { countryName } from '@server/shared/countries';
+import { NoDataState } from '@/shared/components/NoDataState';
 import { apiRequest } from '@/shared/lib/api';
 import { toApiError } from '@/shared/lib/apiError';
 import { safeHttpUrl } from '@/shared/lib/safeUrl';
@@ -62,7 +63,16 @@ export function StorybookLibrary({ version }: { version: number }) {
             <Spinner /> Chargement de vos contes…
           </p>
         ) : entries.length === 0 ? (
-          <p className="text-sm text-muted-foreground">Aucun conte pour l’instant : remplissez le brief ci-dessus pour créer le premier.</p>
+          /*
+            Une phrase grise renseignait sans débloquer. Or un conte coûte quinze points, le
+            tarif le plus élevé après la vidéo : c'est exactement le moment où l'auteur hésite,
+            et où lui dire ce qu'il obtiendra vaut mieux que lui dire qu'il n'a rien.
+          */
+          <NoDataState
+            icon={BookOpen}
+            title="Aucun conte pour l’instant"
+            reason="Le brief ci-dessus suffit à en créer un : le prénom du personnage et le thème. L’IA écrit l’histoire page par page, puis chaque page est illustrée et mise en page — vous téléchargez le PDF."
+          />
         ) : (
           <Accordion type="single" collapsible className="w-full">
             {entries.map((entry) => {
