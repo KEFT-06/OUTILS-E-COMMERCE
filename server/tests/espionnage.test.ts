@@ -256,6 +256,25 @@ describe('Mur d’espionnage', () => {
     }
   });
 
+  /*
+    Chercher sans accents doit trouver les mots accentués, comme dans le catalogue des niches.
+
+    Ce n'était pas le cas : « editions » ne trouvait pas « Éditions Numériques ». Sur des
+    annonces en français, tapées au téléphone souvent sans accents, la recherche échouait une
+    fois sur deux — et le même produit se comportait différemment d'un écran à l'autre.
+  */
+  it('trouve un mot accentué quand on le cherche sans accent', async () => {
+    const { agent } = await signInWithPlan(app, 'espion-accents@exemple.test', 'pro');
+
+    const sans = await agent.get('/api/espionnage?search=editions').expect(200);
+    const titres = (sans.body.ads as { advertiser: string | null }[]).map((ad) => ad.advertiser);
+    assert.ok(titres.includes('Éditions Numériques'), '« editions » doit trouver « Éditions Numériques »');
+
+    // Et l'inverse : taper l'accent ne doit pas faire perdre les résultats.
+    const avec = await agent.get(`/api/espionnage?search=${encodeURIComponent('Éditions')}`).expect(200);
+    assert.equal(avec.body.ads.length, sans.body.ads.length, 'avec ou sans accent, les mêmes annonces');
+  });
+
   it('permet de passer d’une annonce à une surveillance du radar, et reste fermé aux non-membres', async () => {
     const { agent } = await signInWithPlan(app, 'espion-suivi@exemple.test', 'pro');
     const mur = await agent.get('/api/espionnage').expect(200);

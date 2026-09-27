@@ -1,4 +1,4 @@
-import { and, asc, count, desc, eq, gte, isNotNull, lte, or, sql, type SQL } from 'drizzle-orm';
+import { type AnyColumn, and, asc, count, desc, eq, gte, isNotNull, lte, or, sql, type SQL } from 'drizzle-orm';
 import { getDb } from '@server/db/client';
 import { spiedAds } from '@server/db/schema';
 import { providers } from '@server/env';
@@ -79,6 +79,20 @@ const JOUR_MS = 86_400_000;
 
 /** Plafond de page, tous paliers confondus : deux cents vignettes suffisent à alourdir l'écran. */
 const PLAFOND_ABSOLU = 200;
+
+/**
+ * Correspondance lettre accentuée → lettre nue, pour le `translate` SQL de la recherche.
+ * Les deux chaînes vont de pair, caractère pour caractère : les modifier ensemble ou pas du tout.
+ * Minuscules seulement, la colonne étant passée par `lower` avant.
+ *
+ * Les ligatures « œ » et « æ » en sont exclues à dessein : `translate` remplace un caractère
+ * par UN seul, si bien que « cœur » deviendrait « cour » — et une recherche sur « cour »
+ * trouverait des annonces sur le cœur. Mieux vaut ne pas plier que plier faux.
+ */
+const ACCENTUEES = 'àâäáãåéèêëíìîïóòôöõúùûüýÿçñ';
+const SANS_ACCENT = 'aaaaaaeeeeiiiiooooouuuuyycn';
+
+const sansAccents = (valeur: string) => valeur.normalize('NFD').replace(/[̀-ͯ]/g, '');
 
 /**
  * Durée pendant laquelle l'annonce a été VUE en diffusion : de sa date de début au dernier
@@ -170,12 +184,25 @@ export async function listSpiedAds(
 
       Rien d'injectable ici — la valeur est un paramètre — mais un motif faux reste faux.
     */
-    const motif = `%${filters.search.replace(/[\\%_]/g, '')}%`;
+    /*
+      INSENSIBLE AUX ACCENTS, comme la recherche des niches. Ce n'était pas le cas : chercher
+      « editions » ne trouvait pas « Éditions Numériques ». Sur des annonces rédigées en
+      français, souvent tapées au téléphone sans accents, c'était une recherche qui échouait
+      une fois sur deux — et un même produit qui se comportait différemment d'un écran à
+      l'autre.
+
+      Le motif est plié côté serveur (NFD, diacritiques retirés), et chaque colonne l'est en
+      SQL par `translate`, fonction native de PostgreSQL. L'extension `unaccent` aurait été
+      plus complète, mais elle doit être installée sur la base — ce qu'on ne contrôle pas
+      chez l'hébergeur, et que la base embarquée de développement n'a pas.
+    */
+    const motif = `%${sansAccents(filters.search).toLowerCase().replace(/[\\%_]/g, '')}%`;
+    const plier = (colonne: AnyColumn) => sql`translate(lower(${colonne}), ${ACCENTUEES}, ${SANS_ACCENT})`;
     conditions.push(
       or(
-        sql`${spiedAds.title} ilike ${motif}`,
-        sql`${spiedAds.bodyText} ilike ${motif}`,
-        sql`${spiedAds.advertiser} ilike ${motif}`,
+        sql`${plier(spiedAds.title)} like ${motif}`,
+        sql`${plier(spiedAds.bodyText)} like ${motif}`,
+        sql`${plier(spiedAds.advertiser)} like ${motif}`,
       )!,
     );
   }
