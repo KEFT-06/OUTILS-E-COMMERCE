@@ -6,6 +6,7 @@ import { AWARENESS_OPTIONS } from '@/shared/lib/awareness';
 import { findAdFramework } from '@server/shared/adFrameworks';
 import { useAuth } from '@/features/auth/AuthContext';
 import { AdFrameworkPicker } from '@/modules/creatifs/AdFrameworkPicker';
+import { type Brouillon, CLE_BROUILLON, VIDEO_DURATIONS, VIDEO_FORMATS, type VideoDuration, lireBrouillon } from '@/modules/creatifs/briefDraft';
 import { CountryCombobox } from '@/shared/components/CountryCombobox';
 import { guessCountryCode } from '@/shared/lib/geo';
 import { cn } from '@/shared/lib/utils';
@@ -42,20 +43,7 @@ const FORMAT_OPTIONS: { value: CreativeFormat; label: string }[] = [
   { value: '16:9', label: 'Horizontal 16:9' },
 ];
 
-/**
- * La vidéo n'offre pas les mêmes choix que l'image, et l'écran ne doit pas laisser croire
- * le contraire.
- *
- * Le modèle vidéo refuse le carré — mesuré sur l'API, et aucun modèle vidéo du catalogue
- * ne le rend. Proposer un bouton qui mène à un refus du serveur est pire que ne pas le
- * proposer : l'auteur écrit son brief, clique, et perd son travail sur une erreur.
- *
- * Ses durées forment un jeu de 4, 6 ou 8 secondes. Cinq et dix, proposés jusqu'ici, sont
- * tous deux refusés.
- */
-const VIDEO_FORMATS: CreativeFormat[] = ['9:16', '16:9'];
-const VIDEO_DURATIONS = [4, 6, 8] as const;
-type VideoDuration = (typeof VIDEO_DURATIONS)[number];
+
 
 /** Contrôles que l'auteur atteste avoir faits en regardant le fichier généré. */
 const ATTESTATIONS = [
@@ -75,20 +63,65 @@ const wait = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, 
 export function CreativeGeneratorPanel() {
   const { runWithCredits } = useCreditGate();
 
-  const [kind, setKind] = useState<CreativeKind>('visual');
-  const [productName, setProductName] = useState('');
-  const [awarenessLevel, setAwarenessLevel] = useState<AwarenessLevel | null>(null);
-  const [format, setFormat] = useState<CreativeFormat>('9:16');
+  // Lu une seule fois, au montage : relire le stockage à chaque rendu coûterait pour rien.
+  const [initial] = useState(lireBrouillon);
+
+  const [kind, setKind] = useState<CreativeKind>(initial.kind ?? 'visual');
+  const [productName, setProductName] = useState(initial.productName ?? '');
+  const [awarenessLevel, setAwarenessLevel] = useState<AwarenessLevel | null>(initial.awarenessLevel ?? null);
+  const [format, setFormat] = useState<CreativeFormat>(initial.format ?? '9:16');
   const { account } = useAuth();
-  const [market, setMarket] = useState(() => account?.country ?? guessCountryCode() ?? 'CI');
-  const [purpose, setPurpose] = useState<'ad' | 'content'>('ad');
-  const [adFramework, setAdFramework] = useState<string | null>(null);
-  const [frameworkBeats, setFrameworkBeats] = useState<string[]>([]);
-  const [audience, setAudience] = useState('');
-  const [sceneDescription, setSceneDescription] = useState('');
-  const [onScreenText, setOnScreenText] = useState('');
-  const [visualStyle, setVisualStyle] = useState('');
-  const [duration, setDuration] = useState<VideoDuration>(6);
+  const [market, setMarket] = useState(() => initial.market ?? account?.country ?? guessCountryCode() ?? 'CI');
+  const [purpose, setPurpose] = useState<'ad' | 'content'>(initial.purpose ?? 'ad');
+  const [adFramework, setAdFramework] = useState<string | null>(initial.adFramework ?? null);
+  const [frameworkBeats, setFrameworkBeats] = useState<string[]>(initial.frameworkBeats ?? []);
+  const [audience, setAudience] = useState(initial.audience ?? '');
+  const [sceneDescription, setSceneDescription] = useState(initial.sceneDescription ?? '');
+  const [onScreenText, setOnScreenText] = useState(initial.onScreenText ?? '');
+  const [visualStyle, setVisualStyle] = useState(initial.visualStyle ?? '');
+  const [duration, setDuration] = useState<VideoDuration>(initial.duration ?? 6);
+
+  // Enregistré à chaque changement. Le stockage local est synchrone et bon marché : attendre
+  // une pause de frappe ferait perdre les dernières secondes, justement celles d'une coupure.
+  useEffect(() => {
+    const brouillon: Brouillon = {
+      kind,
+      productName,
+      awarenessLevel,
+      format,
+      market,
+      purpose,
+      adFramework,
+      frameworkBeats,
+      audience,
+      sceneDescription,
+      onScreenText,
+      visualStyle,
+      duration,
+    };
+    try {
+      window.localStorage.setItem(CLE_BROUILLON, JSON.stringify(brouillon));
+    } catch {
+      // Stockage indisponible : le formulaire marche, il ne survivra simplement pas à un rechargement.
+    }
+  }, [kind, productName, awarenessLevel, format, market, purpose, adFramework, frameworkBeats, audience, sceneDescription, onScreenText, visualStyle, duration]);
+
+  /** Repartir d'une page blanche, sur demande explicite : un brouillon ne s'efface pas tout seul. */
+  const nouveauBrief = () => {
+    setProductName('');
+    setAwarenessLevel(null);
+    setAdFramework(null);
+    setFrameworkBeats([]);
+    setAudience('');
+    setSceneDescription('');
+    setOnScreenText('');
+    setVisualStyle('');
+    try {
+      window.localStorage.removeItem(CLE_BROUILLON);
+    } catch {
+      // Sans stockage il n'y a rien à effacer.
+    }
+  };
 
   const [isGenerating, setIsGenerating] = useState(false);
   const [progress, setProgress] = useState<CreativeStatus['status'] | null>(null);
@@ -434,10 +467,20 @@ export function CreativeGeneratorPanel() {
                 <span className="mt-1 block text-warning">Choisissez une méthode publicitaire pour continuer.</span>
               )}
             </p>
-            <Button type="submit" disabled={!canSubmit} className="shrink-0">
-              {isGenerating ? <Spinner /> : <Sparkles />}
-              {isGenerating ? 'Génération en cours…' : kind === 'visual' ? 'Générer le visuel' : 'Générer la vidéo'}
-            </Button>
+            <div className="flex shrink-0 flex-wrap gap-2">
+              {/*
+                Le brouillon est gardé d'une visite à l'autre : il faut donc un geste explicite
+                pour repartir de zéro. Sans lui, on ne pourrait vider le formulaire qu'en
+                effaçant chaque champ à la main.
+              */}
+              <Button type="button" variant="ghost" onClick={nouveauBrief} disabled={isGenerating}>
+                Nouveau brief
+              </Button>
+              <Button type="submit" disabled={!canSubmit}>
+                {isGenerating ? <Spinner /> : <Sparkles />}
+                {isGenerating ? 'Génération en cours…' : kind === 'visual' ? 'Générer le visuel' : 'Générer la vidéo'}
+              </Button>
+            </div>
           </div>
         </form>
 
