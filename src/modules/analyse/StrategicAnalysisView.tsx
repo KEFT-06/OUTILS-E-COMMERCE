@@ -97,9 +97,21 @@ const INTENT_LABEL: Record<SearchTrendKeyword['intent'], string> = {
   informational: 'Informationnelle',
 };
 
-/** Sur quoi repose un taux, en une ligne. */
+/**
+ * Sur quoi repose un taux, en une ligne.
+ *
+ * Le libellé de « measured » renvoyait à la collecte publicitaire Meta, retirée du site
+ * depuis. Il décrivait une méthode qui n'existe plus — et sur un produit dont la promesse
+ * est que chaque chiffre porte sa source, un libellé de provenance périmé est exactement le
+ * genre d'erreur qui se retourne contre lui : le lecteur qui va vérifier ne trouve rien.
+ *
+ * Un rapport reste un document DATÉ, et c'est voulu : les mesures du radar, qui changent
+ * chaque nuit, s'affichent à côté du rapport et jamais dedans (voir `RadarMeasuredPanel`).
+ * Aucun taux n'est donc « measured » aujourd'hui ; le cas reste traité pour les rapports
+ * anciens qui le portent encore.
+ */
 function basisLabel(rate: MarketRate): string {
-  if (rate.basis === 'measured' || rate.trace) return 'Calculé sur l’ancienne collecte publicitaire';
+  if (rate.basis === 'measured' || rate.trace) return 'Calculé sur des relevés, trace de calcul jointe';
   if (rate.basis === 'assessment') return 'Appréciation de l’IA, fondée sur les sources citées';
   if (rate.basis === 'unavailable') return 'Non évalué';
   return 'Méthode de calcul non publiée';
