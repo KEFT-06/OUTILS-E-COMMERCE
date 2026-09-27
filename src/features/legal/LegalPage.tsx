@@ -18,6 +18,16 @@ import { Button } from '@/shared/ui/button';
 
 export type LegalKind = 'mentions-legales' | 'confidentialite' | 'conditions';
 
+/**
+ * Date de dernière révision des pages légales, au format AAAA-MM-JJ.
+ *
+ * À METTRE À JOUR À LA MAIN, et seulement quand le TEXTE change. Elle n'est pas dérivée de la
+ * date de construction ni de celle du fichier : un déploiement sans rapport rajeunirait ces
+ * pages et laisserait croire à une révision qui n'a pas eu lieu — sur des pages qui engagent,
+ * c'est la date elle-même qui perdrait toute valeur.
+ */
+const DERNIERE_MAJ = '2026-09-27';
+
 const TITLES: Record<LegalKind, string> = {
   'mentions-legales': 'Mentions légales',
   confidentialite: 'Politique de confidentialité',
@@ -65,10 +75,22 @@ function MentionsLegales() {
       </Section>
       <Section title="Hébergement">
         <p>
-          Site : <ToComplete>nom, adresse et contact de l’hébergeur du site</ToComplete>
+          Site : <strong>Vercel Inc.</strong>, 440 N Barranca Ave #4133, Covina, CA 91723, États-Unis —{' '}
+          <a href="https://vercel.com" target="_blank" rel="noreferrer noopener" className="underline underline-offset-4">
+            vercel.com
+          </a>
+          .
         </p>
         <p>
           Base de données : <ToComplete>nom de l’hébergeur de la base de données et pays des serveurs</ToComplete>
+        </p>
+        <p className="text-sm text-muted-foreground">
+          L’hébergement du site est situé hors de l’Union européenne. Les garanties encadrant ces transferts sont
+          détaillées dans la{' '}
+          <Link to="/confidentialite" className="font-medium text-brand-green-text underline underline-offset-4">
+            politique de confidentialité
+          </Link>
+          .
         </p>
       </Section>
       <Section title="Propriété intellectuelle">
@@ -360,6 +382,21 @@ export function LegalPage({ kind }: { kind: LegalKind }) {
       <main className="mx-auto max-w-3xl space-y-10 px-4 py-12 sm:px-6">
         <div className="space-y-4">
           <h1 className="font-display text-3xl font-extrabold tracking-tight sm:text-4xl">{title}</h1>
+          {/*
+            La date de dernière modification est obligatoire sur une page qui engage : sans
+            elle, le lecteur ne sait pas si les conditions qu'il lit sont celles auxquelles il
+            a souscrit, ni si elles ont changé depuis.
+
+            Elle est écrite en clair, à la main, et volontairement PAS calculée depuis la date
+            du fichier ou de la construction : un déploiement sans rapport avec ces pages en
+            rajeunirait le texte, et laisserait croire à une révision qui n'a pas eu lieu.
+          */}
+          <p className="text-sm text-muted-foreground">
+            Dernière mise à jour :{' '}
+            <time dateTime={DERNIERE_MAJ}>
+              {new Date(DERNIERE_MAJ).toLocaleDateString('fr-FR', { day: 'numeric', month: 'long', year: 'numeric' })}
+            </time>
+          </p>
           <Alert variant="warning">
             <AlertTriangle />
             <AlertTitle>Page à compléter avant la mise en ligne</AlertTitle>

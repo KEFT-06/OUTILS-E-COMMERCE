@@ -1,5 +1,5 @@
 import { Suspense } from 'react';
-import { BrowserRouter, Navigate, Route, Routes } from 'react-router-dom';
+import { BrowserRouter, Navigate, Route, Routes, useLocation } from 'react-router-dom';
 import { AuthProvider } from '@/features/auth/AuthContext';
 import { LandingPage } from '@/features/landing/LandingPage';
 import { RequireAuth } from '@/app/layout/RequireAuth';
@@ -21,7 +21,10 @@ import {
   AdminUsersPage,
 } from '@/app/routes/AdminPages';
 import { NotFoundPage } from '@/app/routes/NotFoundPage';
+import { CookieNotice } from '@/shared/components/CookieNotice';
 import { ErrorBoundary } from '@/shared/components/ErrorBoundary';
+import { FloatingContact } from '@/shared/components/FloatingContact';
+import { ScrollAids } from '@/shared/components/ScrollAids';
 import { Toaster } from '@/shared/ui/sonner';
 import { Spinner } from '@/shared/ui/spinner';
 import { TooltipProvider } from '@/shared/ui/tooltip';
@@ -81,6 +84,7 @@ export default function App() {
   return (
     <BrowserRouter>
       <PreferencesProvider>
+        {/* Voir AppChrome, plus bas dans ce fichier. */}
         <AuthProvider>
           <CreditGateProvider>
             <TooltipProvider delayDuration={200}>
@@ -151,11 +155,44 @@ export default function App() {
               </Routes>
               </Suspense>
               </ErrorBoundary>
+              {/*
+                Hors des <Routes> : ces trois-là suivent le visiteur d'une page à l'autre, et
+                les remonter à chaque changement d'écran ferait repartir le bandeau cookies
+                et perdre la position de défilement mesurée.
+
+                La page d'impression est la seule exclue — voir `ScrollAids` et l'exclusion
+                de `/imprimer` ci-dessous : une barre de progression et un bouton flottant
+                sortiraient sur le papier.
+              */}
+              <AppChrome />
               <Toaster position="bottom-right" mobileOffset={{ bottom: 88 }} closeButton />
             </TooltipProvider>
           </CreditGateProvider>
         </AuthProvider>
       </PreferencesProvider>
     </BrowserRouter>
+  );
+}
+
+/**
+ * Ce qui accompagne le visiteur partout, en dehors du contenu de chaque page.
+ *
+ * Monté hors des <Routes> pour que rien ne se remonte à chaque changement d'écran : un
+ * bandeau cookies qui se recrée reviendrait après avoir été fermé, et la barre de
+ * progression repartirait de zéro avant même que la page ait défilé.
+ *
+ * La page d'impression est la seule où rien ne s'affiche : une barre de progression et un
+ * bouton flottant sortiraient sur le papier, où ils ne veulent rien dire.
+ */
+function AppChrome() {
+  const { pathname } = useLocation();
+  if (/^\/imprimer(\/|$)/.test(pathname)) return null;
+
+  return (
+    <>
+      <ScrollAids />
+      <FloatingContact />
+      <CookieNotice />
+    </>
   );
 }
