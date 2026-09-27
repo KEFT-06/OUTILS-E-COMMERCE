@@ -144,12 +144,55 @@ async function createCover(agent: request.Agent) {
     .expect(201);
 }
 
-describe('Couvertures par Cloudflare Workers AI', () => {
-  it('appelle le modèle de qualité au format demandé, sans lui présenter le sujet comme un titre', async () => {
+describe('Couvertures et visuels — quel fournisseur, et avec quelle consigne', () => {
+  /*
+    Une couverture part chez le modèle premium, comme un visuel publicitaire.
+
+    Elle allait chez Cloudflare tant qu'on la voyait comme une page de garde, lue par son
+    seul auteur. C'est faux : une couverture est la première chose qu'on voit d'un produit,
+    la seule qu'on voie avant de décider de l'ouvrir, et celle que l'auteur montre pour
+    vendre. Son auteur n'en est pas le seul lecteur.
+
+    Ce que ce test protège n'a pas changé de nature pour autant — la consigne reste la même,
+    quel que soit le modèle, et c'est elle qui empêche un titre inventé.
+  */
+  it('confie la couverture au modèle premium, sans jamais lui présenter le sujet comme un titre', async () => {
     cloudflareMode = 'ok';
-    const agent = await author('couverture-cloudflare@exemple.com');
+    const avantCloudflare = cloudflareCalls.length;
+    const agent = await author('couverture-premium@exemple.com');
     const response = await createCover(agent);
     assert.equal(response.body.cover.status, 'ready');
+
+    assert.equal(cloudflareCalls.length, avantCloudflare, 'Cloudflare n’est pas appelé pour une couverture');
+    const prompt = geminiImageCalls.at(-1)!.prompt;
+
+    /*
+      Le cœur du correctif d'origine, et il vaut plus encore ici : le sujet reste nécessaire
+      au modèle, mais il ne lui est pas présenté COMME un titre. Sur la vraie API,
+      « Cover artwork for a guide titled "…" » rendait une maquette complète, titre compris,
+      en caractères inventés. Le modèle premium écrit encore plus volontiers que l'autre —
+      mesuré : sur une consigne nue, il ajoute un slogan et un logo de marque réelle.
+    */
+    assert.doesNotMatch(prompt, /titled|book cover|cover artwork/i, 'rien ne présente le sujet comme un titre');
+    assert.ok(!prompt.includes(`"${GUIDE.title}"`), 'le sujet n’est jamais cité entre guillemets');
+    assert.match(prompt, /no text, no letters, no numbers/);
+    assert.match(prompt, /upper third stays calm and empty/, 'la place du titre est réservée dans l’image');
+    assert.match(prompt, /Cameroun/, 'la scène est ancrée dans le pays du compte');
+
+    // Le format est reconnu aux premiers octets : aucun fournisseur ne le déclare.
+    const image = await agent.get(`/api/covers/${response.body.cover.id as string}/image`).buffer(true).expect(200);
+    assert.equal(image.headers['content-type'], 'image/png');
+  });
+
+  /*
+    Cloudflare garde les SÉRIES : les pages d'un conte, où l'on paie au nombre d'images.
+    C'est le seul endroit où son écart de prix — vingt fois moins — pèse plus que son écart
+    de rendu, et c'est là que vivent les exigences mesurées de la famille FLUX.
+  */
+  it('garde Cloudflare pour les séries, en multipart et au format libre', async () => {
+    cloudflareMode = 'ok';
+    const { generateImage } = await import('@server/services/ai/image');
+    await generateImage({ prompt: 'un panier de mangues sur une table', aspectRatio: '9:16' });
 
     const call = cloudflareCalls.at(-1)!;
     assert.equal(call.model, '@cf/black-forest-labs/flux-2-klein-9b', 'le modèle de qualité du catalogue Cloudflare');
@@ -163,19 +206,6 @@ describe('Couvertures par Cloudflare Workers AI', () => {
     assert.equal(call.height, 1280);
     assert.equal(call.steps, 20);
     assert.match(call.negativePrompt ?? '', /text/, 'la consigne négative retient le modèle d’écrire');
-
-    // Le cœur du correctif : le sujet reste nécessaire au modèle, mais il ne lui est plus
-    // présenté COMME un titre. Sur la vraie API, « Cover artwork for a guide titled "…" »
-    // rendait une maquette complète, titre compris, en caractères inventés — malgré la consigne
-    // « aucun texte ». Sans ce cadrage, et avec la consigne négative, la scène reste muette.
-    assert.doesNotMatch(call.prompt, /titled|book cover|cover artwork/i, 'rien ne présente le sujet comme un titre');
-    assert.ok(!call.prompt.includes(`"${GUIDE.title}"`), 'le sujet n’est jamais cité entre guillemets');
-    assert.match(call.prompt, /no text, no letters, no numbers/);
-    assert.match(call.prompt, /Cameroun/, 'la scène est ancrée dans le pays du compte');
-
-    // Le format est reconnu aux premiers octets : Cloudflare ne le déclare nulle part.
-    const image = await agent.get(`/api/covers/${response.body.cover.id as string}/image`).buffer(true).expect(200);
-    assert.equal(image.headers['content-type'], 'image/jpeg');
   });
 
   /*
@@ -207,19 +237,18 @@ describe('Couvertures par Cloudflare Workers AI', () => {
   it('bascule sur Gemini quand la réserve Cloudflare du jour est vide, plutôt que de refuser', async () => {
     cloudflareMode = 'quota';
     const avant = geminiImageCalls.length;
-    const agent = await author('couverture-reserve-vide@exemple.com');
-    const response = await createCover(agent);
+    const { generateImage } = await import('@server/services/ai/image');
 
-    assert.equal(response.body.cover.status, 'ready', 'le client paie ses points : il obtient sa couverture');
+    const image = await generateImage({ prompt: 'un panier de mangues', aspectRatio: '9:16' });
     assert.equal(geminiImageCalls.length, avant + 1, 'Gemini a pris le relais');
-    const image = await agent.get(`/api/covers/${response.body.cover.id as string}/image`).buffer(true).expect(200);
-    assert.equal(image.headers['content-type'], 'image/png', 'l’image vient bien du second fournisseur');
+    assert.equal(image.mimeType, 'image/png', 'l’image vient bien du second fournisseur');
   });
 
   it('signale un jeton sans droits dans l’état des services, une fois le repli consommé', async () => {
     cloudflareMode = 'refus';
-    const agent = await author('couverture-jeton-refuse@exemple.com');
-    await createCover(agent);
+    const { generateImage } = await import('@server/services/ai/image');
+    // Une série passe par Cloudflare : c'est le chemin qui révèle un jeton refusé.
+    await generateImage({ prompt: 'un panier de mangues', aspectRatio: '9:16' });
 
     const { checkServices } = await import('@server/services/admin/services');
     const report = await checkServices({ refresh: true });

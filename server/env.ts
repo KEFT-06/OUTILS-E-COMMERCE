@@ -141,8 +141,18 @@ const schema = z.object({
    * lui interdit pas : les deux lignes de garde de `buildPrompt` ne sont pas décoratives.
    */
   GEMINI_IMAGE_MODEL: z.string().regex(/^[\w.-]+$/).default('gemini-3-pro-image'),
-  /** Modèle d'image que Gamma utilise pour illustrer les storybooks (liste : developers.gamma.app, « Image models »). */
-  GAMMA_IMAGE_MODEL: z.string().regex(/^[\w.-]+$/).default('gemini-3.1-flash-image'),
+  /**
+   * Modèle d'image que Gamma utilise pour illustrer les storybooks.
+   *
+   * Liste des valeurs acceptées : developers.gamma.app, « Image model accepted values ».
+   * Vérifié le 27 septembre 2026 — `gemini-3-pro-image` y figure, et dans le MÊME palier de
+   * crédits Gamma (« Premium ») que le modèle Flash qu'il remplace. Meilleur rendu, sans
+   * surcoût sur l'abonnement Gamma : c'est ce qui rend l'échange évident.
+   *
+   * Ne pas prendre `gemini-3-pro-image-hd` : il passe en palier « Ultra », à 120 crédits
+   * Gamma par image. Un conte de vingt pages s'y paierait vingt fois.
+   */
+  GAMMA_IMAGE_MODEL: z.string().regex(/^[\w.-]+$/).default('gemini-3-pro-image'),
   /**
    * Génération d'images par Cloudflare Workers AI : fournisseur principal, Gemini en secours.
    * Le jeton demande les droits « Workers AI » en lecture ET en écriture

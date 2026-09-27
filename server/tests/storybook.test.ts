@@ -172,7 +172,7 @@ describe('Storybook', () => {
     assert.match(cards[0]!, /^# Awa et le manguier/);
     assert.match(cards[3]!, /^# Scène 3\nAwa découvre la scène 3/);
     assert.equal(request.imageOptions.source, 'aiGenerated');
-    assert.equal(request.imageOptions.model, 'gemini-3.1-flash-image');
+    assert.equal(request.imageOptions.model, 'gemini-3-pro-image');
     assert.ok(request.imageOptions.style.length <= 500);
     assert.ok(request.additionalInstructions.length <= 5000, 'limite de Gamma respectée malgré de longues descriptions');
     assert.match(request.additionalInstructions, /Card 1: Awa smiling under a young mango tree/);

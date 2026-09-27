@@ -110,7 +110,13 @@ export async function createCover(auth: RequestAuth, input: CoverRequest): Promi
     actionId: 'cover_generation',
     kind: 'cover',
     provider: 'cloudflare',
-    run: () => generateImage({ prompt, aspectRatio: '9:16' }),
+    /*
+      « premium » : une couverture est la première chose qu'on voit d'un produit, et la seule
+      qu'on voit avant de décider de l'ouvrir. Elle est aussi ce que l'auteur montre pour
+      vendre. Son auteur n'est donc pas son seul lecteur, contrairement à ce qu'on pouvait
+      croire tant qu'elle n'était qu'une page de garde.
+    */
+    run: () => generateImage({ prompt, aspectRatio: '9:16', tier: 'premium' }),
     describe: (image) => ({ providerRef: null, state: 'completed', fileFormat: image.mimeType === 'image/jpeg' ? 'jpg' : image.mimeType.split('/')[1] }),
   });
 
