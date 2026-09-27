@@ -100,6 +100,14 @@ export const users = pgTable(
     savedNiches: jsonb('saved_niches').$type<string[]>().notNull().default(sql`'[]'::jsonb`),
     /** Résumé du radar par e-mail. Vrai par défaut : un radar dont personne n'est averti ne sert à rien. */
     radarAlertsEnabled: boolean('radar_alerts_enabled').notNull().default(true),
+    /**
+     * Participation aux repères partagés de performance (server/services/performanceLoop).
+     *
+     * FAUX par défaut, contrairement aux alertes du radar, et la différence est voulue : les
+     * alertes ne concernent que soi, alors qu'ici on verse ses propres chiffres de vente dans
+     * un calcul commun. Cela se demande, cela ne se suppose pas.
+     */
+    performanceOptIn: boolean('performance_opt_in').notNull().default(false),
     /** Dernier résumé envoyé : borne la fréquence et fixe le point de départ du suivant. */
     radarAlertedAt: moment('radar_alerted_at'),
     /** Langues maternelles déclarées par un relecteur de guides (codes BCP 47). */
@@ -259,6 +267,44 @@ export const covers = pgTable(
     updatedAt: moment('updated_at').notNull().defaultNow(),
   },
   (table) => [index('covers_subject_idx').on(table.userId, table.subject, table.subjectId)],
+).enableRLS();
+
+/**
+ * Chiffres de vente versés au repère partagé, un relevé par vendeur et par jour.
+ *
+ * Pourquoi accumuler avant de pouvoir publier : la règle de `performanceLoop` interdit de
+ * publier un groupe de moins de cinq vendeurs, et cette règle ne bougera pas — une médiane
+ * calculée sur deux vendeurs, dans une niche étroite, les désigne. Tant que le cinquième
+ * n'est pas là, rien ne s'affiche. Mais le jour où il arrive, un repère sans historique ne
+ * vaut rien : c'est exactement l'argument du radar lui-même — seul celui qui relevait hier
+ * sait ce qui a changé. La collecte doit donc commencer avant d'être utile.
+ *
+ * Un relevé par jour, et non un par vente : ce qu'on compare, ce sont des rythmes.
+ *
+ * `metrics` ne contient que des nombres, et aucun ne nomme un produit, un client ou une
+ * commande. On y verse des cadences — ventes du mois, taille du catalogue — jamais le détail
+ * de ce qui s'est vendu.
+ */
+export const performanceContributions = pgTable(
+  'performance_contributions',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    userId: uuid('user_id')
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
+    /** Niche de la dernière analyse du vendeur : c'est elle qui décide du groupe de comparaison. */
+    niche: text('niche').notNull(),
+    /** Pays visé (ISO 3166-1 alpha-2). */
+    market: text('market').notNull(),
+    metrics: jsonb('metrics').$type<Record<string, number>>().notNull(),
+    /** Jour du relevé, en date seule : un vendeur ne pèse qu'une fois par jour. */
+    day: text('day').notNull(),
+    createdAt: createdAt(),
+  },
+  (table) => [
+    uniqueIndex('performance_contributions_day_unique').on(table.userId, table.day),
+    index('performance_contributions_group_idx').on(table.niche, table.market),
+  ],
 ).enableRLS();
 
 /**
@@ -1044,3 +1090,4 @@ export type DiscoveredStoreRow = typeof discoveredStores.$inferSelect;
 export type NicheBenchmarkRow = typeof nicheBenchmarks.$inferSelect;
 export type SpiedAdRow = typeof spiedAds.$inferSelect;
 export type CreativeImageRow = typeof creativeImages.$inferSelect;
+export type PerformanceContributionRow = typeof performanceContributions.$inferSelect;

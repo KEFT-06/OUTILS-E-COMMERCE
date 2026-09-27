@@ -3,6 +3,7 @@ import { getDb } from '@server/db/client';
 import { users, watches } from '@server/db/schema';
 import { env } from '@server/env';
 import { sendDueRadarDigests } from '@server/services/radar/alerts';
+import { collectPerformanceContributions } from '@server/services/performanceLoop/collect';
 import { discoveryIsDue, runDiscovery } from '@server/services/radar/discovery';
 import { sweepWatch } from '@server/services/radar/sweep';
 
@@ -145,6 +146,15 @@ export function startRadarSweeper(intervalMs = 30 * 60_000): () => void {
         // donc le message dit ce qui vient d'être constaté et pas ce qui l'était hier.
         const { sent } = await sendDueRadarDigests();
         if (sent > 0) console.log(`  Radar : ${sent} résumé${sent > 1 ? 's' : ''} envoyé${sent > 1 ? 's' : ''}`);
+
+        /*
+          Relevé quotidien des vendeurs consentants. Il ne servira à rien avant que cinq
+          vendeurs d'une même niche aient accepté — et c'est pour cela qu'il commence
+          maintenant : un repère qui débute sa collecte le jour où on le lit n'a aucune
+          profondeur, et c'est la profondeur qu'on vend.
+        */
+        const { collected } = await collectPerformanceContributions();
+        if (collected > 0) console.log(`  Repère : ${collected} vendeur${collected > 1 ? 's' : ''} relevé${collected > 1 ? 's' : ''}`);
 
         // Découverte de nouvelles boutiques : payante au résultat, donc pilotée par le seul
         // rythme configuré et jamais par une action d'utilisateur.

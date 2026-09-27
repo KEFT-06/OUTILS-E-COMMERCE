@@ -3,6 +3,7 @@ import { Router, type Request } from 'express';
 import { env } from '@server/env';
 import { AppError, asyncRoute } from '@server/middleware';
 import { sendDueRadarDigests } from '@server/services/radar/alerts';
+import { collectPerformanceContributions } from '@server/services/performanceLoop/collect';
 import { discoveryIsDue, runDiscovery } from '@server/services/radar/discovery';
 import { sweepDueWatches } from '@server/services/radar/sweeper';
 
@@ -55,6 +56,19 @@ cronRouter.get(
     const sweep = await sweepDueWatches();
     const digests = await sendDueRadarDigests();
 
+    /*
+      Un relevé par jour des vendeurs consentants. Il ne servira à rien avant que cinq
+      vendeurs d'une même niche aient accepté — et c'est précisément pourquoi il commence
+      maintenant : un repère qui débute sa collecte le jour où on le lit n'a aucune
+      profondeur, et c'est la profondeur qu'on vend.
+
+      Son échec ne doit pas emporter le compte rendu du relevé, qui a réussi.
+    */
+    const performance = await collectPerformanceContributions().catch((error: unknown) => {
+      console.warn('[cron] repère de performance :', error instanceof Error ? error.message : error);
+      return null;
+    });
+
     let discovery: Awaited<ReturnType<typeof runDiscovery>> | null = null;
     if (await discoveryIsDue()) {
       // Une découverte en échec ne doit pas annuler le compte rendu du relevé, qui a réussi.
@@ -64,6 +78,6 @@ cronRouter.get(
       });
     }
 
-    res.json({ sweep, digests, discovery });
+    res.json({ sweep, digests, discovery, performance });
   }),
 );

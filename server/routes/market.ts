@@ -3,6 +3,7 @@ import { z } from 'zod';
 import { asyncRoute, routeLimiter, validateBody } from '@server/middleware';
 import { requireAuth } from '@server/middleware/auth';
 import { cachedBenchmark, nicheBenchmark } from '@server/services/market/benchmark';
+import { performanceFor, setPerformanceOptIn } from '@server/services/performanceLoop/collect';
 
 /**
  * Mesures de marché : ce que l'on peut compter sur une niche, par opposition à ce que l'IA en
@@ -45,5 +46,37 @@ marketRouter.post(
 
     const cache = await cachedBenchmark(niche);
     res.json({ benchmark: cache, origin: cache ? 'cache' : 'plan' });
+  }),
+);
+
+/**
+ * Repère partagé de performance : où se situe le vendeur parmi ceux de sa niche.
+ *
+ * Lecture pure, aucun point facturé — le calcul porte sur des relevés déjà pris. Le
+ * consentement est relu à chaque appel, si bien qu'un retrait prend effet immédiatement.
+ */
+marketRouter.get(
+  '/performance',
+  asyncRoute(async (req, res) => {
+    res.json(await performanceFor(req.auth!.account.user.id));
+  }),
+);
+
+const optInSchema = z.object({ enabled: z.boolean() });
+
+/**
+ * Accepter ou retirer sa participation.
+ *
+ * Le retrait EFFACE les relevés déjà versés : on ne garde pas des chiffres d'affaires que
+ * leur propriétaire a repris. C'est aussi pourquoi le verbe est POST et non GET.
+ */
+marketRouter.post(
+  '/performance/opt-in',
+  routeLimiter(10, 20),
+  validateBody(optInSchema),
+  asyncRoute(async (req, res) => {
+    const { enabled } = req.body as z.infer<typeof optInSchema>;
+    await setPerformanceOptIn(req.auth!.account.user.id, enabled);
+    res.json(await performanceFor(req.auth!.account.user.id));
   }),
 );
