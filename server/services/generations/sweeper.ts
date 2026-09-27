@@ -23,7 +23,7 @@ const RESUME_AFTER_MS = 10 * 60_000;
 const ABANDON_AFTER_MS = 48 * 3_600_000;
 const BATCH_SIZE = 25;
 
-const NOT_FOUND_CODES = new Set(['HIGGSFIELD_NOT_FOUND', 'GAMMA_GENERATION_NOT_FOUND', 'FAL_NOT_FOUND']);
+const NOT_FOUND_CODES = new Set(['HIGGSFIELD_NOT_FOUND', 'GAMMA_GENERATION_NOT_FOUND', 'FAL_NOT_FOUND', 'VEO_NOT_FOUND']);
 
 async function checkWithProvider(generation: GenerationRow): Promise<GenerationRow> {
   if (!generation.providerRef) return settleGeneration(generation, 'failed');
@@ -32,6 +32,12 @@ async function checkWithProvider(generation: GenerationRow): Promise<GenerationR
     // Les vidéos sont chez fal.ai depuis la bascule, les visuels — et les créatifs plus
     // anciens — restent chez Higgsfield : le balayeur suit les deux, sans quoi une
     // génération abandonnée ne rendrait jamais ses points.
+    // Veo rend les vidéos depuis la bascule ; sa clé est celle de Gemini. L'oublier ici
+    // laissait toute vidéo Veo abandonnée « en cours » jusqu'au filet des 48 heures.
+    if (generation.provider === 'veo' && providers.gemini) {
+      const status = await getCreativeStatus(generation.providerRef, 'veo');
+      return settleGeneration(generation, generationStateOf(status.status), fileFormatOf(status));
+    }
     if (generation.provider === 'fal' && providers.fal) {
       const status = await getCreativeStatus(generation.providerRef, 'fal');
       return settleGeneration(generation, generationStateOf(status.status), fileFormatOf(status));
@@ -55,13 +61,21 @@ async function checkWithProvider(generation: GenerationRow): Promise<GenerationR
   return generation;
 }
 
-export async function sweepPendingGenerations(now = new Date()): Promise<{ checked: number; settled: number }> {
+/**
+ * `limit` : combien de générations un tour examine. Le minuteur du serveur classique passe
+ * toutes les cinq minutes et se contente de vingt-cinq. Le planificateur de production, lui,
+ * ne passe qu'UNE fois par jour : il doit pouvoir rattraper la file d'une journée entière.
+ */
+export async function sweepPendingGenerations(
+  now = new Date(),
+  limit = BATCH_SIZE,
+): Promise<{ checked: number; settled: number }> {
   const rows = await getDb()
     .select()
     .from(generations)
     .where(and(eq(generations.status, 'pending'), lt(generations.createdAt, new Date(now.getTime() - RESUME_AFTER_MS))))
     .orderBy(asc(generations.createdAt))
-    .limit(BATCH_SIZE);
+    .limit(limit);
 
   let settled = 0;
   for (const row of rows) {

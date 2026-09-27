@@ -39,8 +39,12 @@ const isAvailable = (row: { status: string; provider: string; providerRef: strin
   return now - row.createdAt.getTime() < PROVIDER_FILE_RETENTION_DAYS * 86_400_000;
 };
 
-/** Fournisseurs de créatifs : vidéo chez fal.ai, visuels chez Cloudflare, et l'historique Higgsfield. */
-const CREATIVE_PROVIDERS = ['fal', 'higgsfield', STORED_LOCALLY] as const;
+/**
+ * Fournisseurs de créatifs. « veo » manquait depuis la bascule de la vidéo : les vidéos Veo
+ * étaient invisibles dans cette bibliothèque, alors qu'elles sont désormais les seules produites.
+ * « fal » et « higgsfield » restent pour l'historique.
+ */
+const CREATIVE_PROVIDERS = ['veo', 'fal', 'higgsfield', STORED_LOCALLY] as const;
 
 export async function listCreatives(query: CreativeListQuery) {
   const db = getDb();

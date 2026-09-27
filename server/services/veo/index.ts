@@ -76,6 +76,11 @@ function veoFailure(status: number, detail: string): AppError {
   if (status === 400) {
     return new AppError(502, 'Google a refusé la description de la vidéo. Reformulez-la : vos points ont été rendus.', 'VEO_BAD_INPUT');
   }
+  // Opération inconnue ou expirée chez Google : elle ne produira jamais rien. Code distinct,
+  // pour que le balayeur des générations abandonnées puisse la solder et rendre les points.
+  if (status === 404) {
+    return new AppError(404, 'Ce rendu vidéo n’existe plus chez Google.', 'VEO_NOT_FOUND');
+  }
   if (status >= 500) {
     return new AppError(503, 'Le rendu vidéo est momentanément indisponible. Réessayez : vos points ont été rendus.', 'VEO_UNAVAILABLE');
   }

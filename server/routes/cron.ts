@@ -5,6 +5,8 @@ import { AppError, asyncRoute } from '@server/middleware';
 import { sendDueRadarDigests } from '@server/services/radar/alerts';
 import { collectPerformanceContributions } from '@server/services/performanceLoop/collect';
 import { discoveryIsDue, runDiscovery } from '@server/services/radar/discovery';
+import { sweepSessions } from '@server/services/auth/sessions';
+import { sweepPendingGenerations } from '@server/services/generations/sweeper';
 import { sweepDueWatches } from '@server/services/radar/sweeper';
 
 /**
@@ -21,6 +23,14 @@ import { sweepDueWatches } from '@server/services/radar/sweeper';
  */
 
 export const cronRouter = Router();
+
+/**
+ * Générations examinées par tour quotidien. Le minuteur du serveur classique en prend
+ * vingt-cinq toutes les cinq minutes, soit plus de sept mille par jour ; un seul tour doit
+ * donc voir large. Au-delà, le reliquat attend le lendemain — sans perte, puisque le filet
+ * des 48 heures les rattrape de toute façon.
+ */
+const GENERATIONS_PAR_TOUR = 500;
 
 /** Comparaison à durée constante : une comparaison ordinaire laisserait deviner le secret. */
 function secretIsValid(req: Request): boolean {
@@ -53,6 +63,29 @@ cronRouter.get(
       throw new AppError(401, 'Déclencheur refusé.', 'CRON_DENIED');
     }
 
+    /*
+      LES GÉNÉRATIONS ABANDONNÉES D'ABORD, parce que c'est de l'argent de clients.
+
+      Le serveur classique suit ces générations par un minuteur toutes les cinq minutes. Sur
+      un hébergement sans serveur, un minuteur ne survit pas à la requête qui l'a créé : ce
+      balayage ne tournait donc JAMAIS en production. Une vidéo lancée puis abandonnée — onglet
+      fermé avant la fin — restait « en cours » pour toujours, ses points réservés à jamais, et
+      le filet des 48 heures ne se déclenchait pas non plus puisqu'il vit dans ce même balayage.
+
+      Le radar avait reçu cette adresse pour la même raison ; les générations avaient été
+      oubliées. Un tour quotidien les rattrape, avec un plafond à la mesure d'une journée.
+    */
+    const generations = await sweepPendingGenerations(new Date(), GENERATIONS_PAR_TOUR).catch((error: unknown) => {
+      console.warn('[cron] suivi des générations :', error instanceof Error ? error.message : error);
+      return null;
+    });
+
+    // Même oubli, conséquence moindre : les sessions expirées n'étaient jamais purgées.
+    const sessions = await sweepSessions().catch((error: unknown) => {
+      console.warn('[cron] purge des sessions :', error instanceof Error ? error.message : error);
+      return null;
+    });
+
     const sweep = await sweepDueWatches();
     const digests = await sendDueRadarDigests();
 
@@ -78,6 +111,6 @@ cronRouter.get(
       });
     }
 
-    res.json({ sweep, digests, discovery, performance });
+    res.json({ generations, sessions, sweep, digests, discovery, performance });
   }),
 );

@@ -162,3 +162,42 @@ describe('Radar — déclencheur périodique', () => {
     assert.equal(relevés, avant + 1);
   });
 });
+
+/*
+  Le planificateur de production doit solder les générations abandonnées.
+
+  Le serveur classique les suit par un minuteur toutes les cinq minutes. Sur un hébergement
+  sans serveur, un minuteur ne survit pas à la requête qui l'a créé : ce suivi ne tournait
+  donc JAMAIS en production. Une vidéo lancée puis abandonnée restait « en cours » pour
+  toujours, ses points réservés à jamais — et le filet des 48 heures ne se déclenchait pas non
+  plus, puisqu'il vit dans ce même balayage. Seul le radar avait reçu une adresse de cron.
+*/
+describe('Déclencheur périodique — générations abandonnées', () => {
+  it('solde une génération restée en cours au-delà de 48 heures', async () => {
+    const { default: request } = await import('supertest');
+    const { eq } = await import('drizzle-orm');
+    const { getDb } = await import('@server/db/client');
+    const { generations } = await import('@server/db/schema');
+
+    const { userId } = await signInWithPlan(app, 'cron-abandon@exemple.test', 'pro');
+    const [ligne] = await getDb()
+      .insert(generations)
+      .values({
+        userId,
+        kind: 'video',
+        provider: 'veo',
+        providerRef: 'op-abandonnee',
+        status: 'pending',
+        // Trois jours : bien au-delà du filet des 48 heures.
+        createdAt: new Date(Date.now() - 3 * 86_400_000),
+      })
+      .returning({ id: generations.id });
+
+    const tour = await request(app).get('/api/cron/radar').set('Authorization', `Bearer ${SECRET}`).expect(200);
+    assert.ok(tour.body.generations, 'le planificateur rend compte du suivi des générations');
+    assert.ok(tour.body.generations.settled >= 1, 'au moins une génération a été soldée');
+
+    const [apres] = await getDb().select({ status: generations.status }).from(generations).where(eq(generations.id, ligne!.id));
+    assert.equal(apres?.status, 'failed', 'la génération abandonnée n’est plus « en cours » : ses points peuvent être rendus');
+  });
+});
