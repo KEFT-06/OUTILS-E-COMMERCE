@@ -18,6 +18,7 @@ import { Skeleton } from '@/shared/ui/skeleton';
 import { Spinner } from '@/shared/ui/spinner';
 import { Switch } from '@/shared/ui/switch';
 import { DiscoveredStoresPanel } from '@/modules/radar/DiscoveredStoresPanel';
+import { PerformanceBenchmarkPanel } from '@/modules/radar/PerformanceBenchmarkPanel';
 import { WatchItemsPanel } from '@/modules/radar/WatchItemsPanel';
 
 /**
@@ -357,6 +358,13 @@ export function RadarView() {
           <Skeleton className="h-64 rounded-xl" />
         </div>
       )}
+
+      {/*
+        Placé APRÈS les surveillances et avant les boutiques à découvrir : on lit d'abord ce
+        qu'on observe, puis où l'on se situe, puis qui d'autre observer. L'ordre suit la
+        question que l'auteur se pose, pas l'ordre dans lequel les écrans ont été écrits.
+      */}
+      {!sansAcces && <PerformanceBenchmarkPanel />}
 
       {!sansAcces && <DiscoveredStoresPanel onWatch={watchFromList} disabled={quotaAtteint} />}
 

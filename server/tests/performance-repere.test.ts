@@ -116,6 +116,22 @@ describe('Repère de performance — le seuil de cinq vendeurs', () => {
     assert.equal(vue.body.sellers, 0);
   });
 
+  /*
+    L'écran de comparaison lit sept champs, et les affiche sans les recalculer. S'il en manque
+    un, la carte ne plante pas : elle se tait, et le vendeur perd l'information sans jamais
+    savoir qu'elle existait. Une réponse silencieusement incomplète est pire qu'une erreur.
+  */
+  it('rend tout ce que l’écran de comparaison consomme, même sans repère publiable', async () => {
+    const { agent } = await signInWithPlan(app, 'repere-contrat@exemple.test', 'pro');
+    const vue = (await agent.get('/api/market/performance').expect(200)).body as Record<string, unknown>;
+
+    for (const champ of ['optedIn', 'group', 'own', 'medians', 'sellers', 'sellersNeeded', 'minSellers']) {
+      assert.ok(champ in vue, `le champ « ${champ} » manque : l’écran l’affiche`);
+    }
+    assert.equal(typeof vue.minSellers, 'number', 'le seuil est annoncé au client, jamais recopié dans son code');
+    assert.equal(typeof vue.sellersNeeded, 'number');
+  });
+
   it('ne verse rien sans consentement, et le consentement est fermé par défaut', async () => {
     const { agent } = await signInWithPlan(app, 'repere-silencieux@exemple.test', 'pro');
     const vue = await agent.get('/api/market/performance').expect(200);
