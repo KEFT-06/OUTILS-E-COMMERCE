@@ -1,6 +1,6 @@
 {
-  "version": "2026.09.9",
-  "updatedAt": "2026-09-23",
+  "version": "2026.09.10",
+  "updatedAt": "2026-09-27",
   "note": "Grille tarifaire des research points (CdC §8). Table de configuration éditable sans déploiement, au même titre que la table de conformité. À migrer en base lors du Lot 2, avec un historique de versions : un coût qui change doit rester traçable pour les factures déjà émises.",
   "currency": "FCFA",
   "pointValueFcfa": 250,
@@ -13,10 +13,22 @@
       "description": "Rapport d'une niche, conservé sur votre compte : faits de marché tirés de sources web citées, idées de produits, scripts publicitaires et plan d'action proposés par l'IA. Points rendus si l'analyse échoue."
     },
     {
+      "id": "storybook_story",
+      "label": "Écriture d’un conte",
+      "cost": 3,
+      "description": "Le texte du conte, page par page, à partir de votre brief. Un cinquième du prix complet : on lit avant d’illustrer, et on recommence si l’histoire ne va pas. Points rendus si l’écriture échoue."
+    },
+    {
       "id": "storybook_generation",
-      "label": "Génération d'un conte illustré",
+      "label": "Conte illustré, écriture et mise en page",
       "cost": 15,
-      "description": "Conte illustré généré à partir de votre brief. Points réservés au lancement et rendus automatiquement si la génération échoue."
+      "description": "Le conte écrit puis illustré d’un seul geste, sans relecture intermédiaire. Les deux étapes séparées coûtent le même total et permettent de lire avant d’illustrer. Points rendus si la génération échoue."
+    },
+    {
+      "id": "storybook_illustration",
+      "label": "Illustration d’un conte déjà écrit",
+      "cost": 12,
+      "description": "Chaque page illustrée et mise en page, puis le PDF, à partir d’un texte que vous avez lu et validé. C’est l’étape qui coûte : elle ne part plus à l’aveugle. Points rendus si la génération échoue."
     },
     {
       "id": "product_generation",

@@ -224,6 +224,53 @@ describe('Storybook', () => {
     assert.deepEqual((await stranger.get('/api/storybook/books').expect(200)).body.storybooks, []);
   });
 
+  /*
+    Lire avant d'illustrer, et payer chaque étape à son prix.
+
+    Les deux gestes partaient ensemble : quinze points engagés avant que l'auteur ait lu une
+    seule ligne de son histoire. Une histoire qui ne lui convenait pas était déjà entièrement
+    illustrée — l'étape qui coûte.
+
+    Écrire vaut trois points, illustrer douze. Le total ne bouge pas ; ce qui change, c'est
+    qu'on peut refuser une histoire pour un cinquième du prix.
+  */
+  it('écrit le conte sans appeler Gamma, puis n’illustre que le texte validé', async () => {
+    const { agent } = await signInWithPlan(app, 'conteuse-apercu@exemple.com', 'pro');
+    const depart = (await agent.get('/api/account/credits').expect(200)).body.credits.total as number;
+    const gammaAvant = gammaCalls.length;
+
+    // Étape 1 : le texte seul.
+    const ecrit = await agent.post('/api/storybook/stories').send(BRIEF).expect(200);
+    assert.equal(ecrit.body.story.title, 'Awa et le manguier');
+    assert.equal(ecrit.body.story.pages.length, BRIEF.pages, 'toutes les pages demandées sont écrites');
+    assert.equal(gammaCalls.length, gammaAvant, 'aucun appel à Gamma : rien n’a encore été illustré');
+
+    const apresEcriture = (await agent.get('/api/account/credits').expect(200)).body.credits.total as number;
+    assert.equal(apresEcriture, depart - 3, 'l’écriture seule coûte trois points');
+
+    /*
+      Étape 2 : l'auteur a corrigé une page, et c'est SON texte qui doit être illustré. Le
+      réécrire produirait une autre histoire que celle qu'il vient de valider, et referait
+      payer l'écriture.
+    */
+    const corrige = {
+      ...ecrit.body.story,
+      pages: ecrit.body.story.pages.map((page: { text: string }, rang: number) =>
+        rang === 0 ? { ...page, text: 'Awa corrige elle-même la première page.' } : page,
+      ),
+    };
+
+    await agent.post('/api/storybook/generations').send({ ...BRIEF, story: corrige }).expect(202);
+
+    // Le DERNIER envoi : les tests précédents en ont déjà déposé un dans le journal partagé.
+    const envoi = gammaCalls.filter((call) => call.method === 'POST' && call.path === '/generations').at(-1);
+    assert.ok(envoi, 'Gamma reçoit bien la demande d’illustration');
+    assert.match(JSON.stringify(envoi.body), /Awa corrige elle-même la première page/, 'c’est le texte corrigé qui part');
+
+    const total = (await agent.get('/api/account/credits').expect(200)).body.credits.total as number;
+    assert.equal(total, depart - 15, 'trois plus douze : le total ne change pas');
+  });
+
   it('rend les points et n’enregistre rien quand la rédaction ou Gamma échoue', async () => {
     const { agent } = await signInWithPlan(app, 'conte-rate@exemple.com', 'pro');
     const before = (await agent.get('/api/account/credits').expect(200)).body.credits.total as number;

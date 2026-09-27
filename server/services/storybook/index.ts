@@ -264,12 +264,41 @@ export async function submitStorybook(brief: StorybookBrief, story: StoryDraft):
   return { generationId: parsed.data.generationId };
 }
 
-/** Rédige le conte puis lance sa mise en page chez Gamma. */
+/**
+ * Rédige le conte puis lance sa mise en page chez Gamma, d'un seul geste.
+ *
+ * Conservé pour les appels qui ne passent pas par l'aperçu. Le parcours normal écrit
+ * d'abord (`writeStory`), montre le texte, et n'illustre qu'après validation : voir la
+ * remarque sur les deux étapes dans `routes/storybook.ts`.
+ */
 export async function createStorybook(brief: StorybookBrief): Promise<{ generationId: string; story: StoryDraft }> {
   const story = await writeStory(brief);
   const { generationId } = await submitStorybook(brief, story);
   return { generationId, story };
 }
+
+/**
+ * Le conte tel qu'il revient de l'aperçu, avant d'être envoyé à l'illustration.
+ *
+ * Il repart du navigateur, donc il est validé comme n'importe quelle entrée : longueurs
+ * bornées, nombre de pages contrôlé. L'auteur peut avoir corrigé son texte — c'est le but —
+ * mais il ne doit pas pouvoir faire porter à Gamma un contenu arbitrairement volumineux.
+ */
+export const storyDraftSchema = z.object({
+  title: z.string().trim().min(1).max(200),
+  characterSheet: z.string().trim().min(1).max(2_000),
+  coverIllustration: z.string().trim().min(1).max(2_000),
+  pages: z
+    .array(
+      z.object({
+        heading: z.string().trim().max(200),
+        text: z.string().trim().min(1).max(4_000),
+        illustration: z.string().trim().min(1).max(2_000),
+      }),
+    )
+    .min(1)
+    .max(20),
+});
 
 /* -------------------------------------------------------------------------- */
 /*  3. Suivi, liste et téléchargement                                          */
