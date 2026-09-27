@@ -35,8 +35,32 @@ import { Spinner } from '@/shared/ui/spinner';
 
 const IS_MAC = typeof navigator !== 'undefined' && /Mac|iPhone|iPad/.test(navigator.userAgent);
 
+/**
+ * Écrans dont le contenu DÉPEND de la niche choisie, et eux seuls.
+ *
+ * Le sélecteur s'affichait partout. Sur le Radar, le mur d'espionnage, la Distribution,
+ * l'Affiliation, les Campagnes, le Storybook, Mon compte et toute l'administration, il
+ * proposait de changer une valeur qui ne changeait rien à l'écran. Un contrôle qui ne
+ * commande rien n'est pas neutre : il occupe la barre, il attire l'œil, et il apprend à
+ * l'utilisateur que les contrôles de cette interface ne font pas ce qu'ils annoncent.
+ *
+ * LISTE BLANCHE, et non liste noire. Un écran ajouté demain n'héritera pas du sélecteur
+ * sans qu'on l'ait décidé — le défaut correct est de ne rien encombrer.
+ */
+const RAPPORT_UTILE = [
+  '/app/cockpit',
+  '/app/analyse',
+  '/app/dossier-pdf',
+  '/app/studio',
+  '/app/creatifs',
+  '/app/pages-produits',
+  '/app/kit-lancement',
+  '/app/multilingue',
+];
+
 export function AppHeader() {
   const { pathname } = useLocation();
+  const rapportUtileIci = RAPPORT_UTILE.some((route) => pathname === route || pathname.startsWith(`${route}/`));
   const { theme, toggleTheme } = usePreferences();
   const {
     reports,
@@ -97,7 +121,7 @@ export function AppHeader() {
       </Breadcrumb>
 
       <div className="ml-auto flex shrink-0 items-center gap-1.5 sm:gap-2">
-        {currentReport && reports.length > 0 && (
+        {currentReport && reports.length > 0 && rapportUtileIci && (
         <Select value={currentReport.id} onValueChange={selectReport}>
           <SelectTrigger size="sm" aria-label="Niche analysée" className="w-[8.5rem] sm:w-[13rem] xl:w-[17rem]">
             <SelectValue />
