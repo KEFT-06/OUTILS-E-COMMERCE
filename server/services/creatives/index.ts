@@ -5,13 +5,20 @@ import type { Response as ExpressResponse } from 'express';
 import { z } from 'zod';
 import { env, isProd, providers } from '@server/env';
 import { AppError, marketSchema } from '@server/middleware';
-import { type FalQueueStatus, getFalGeneration, submitFalGeneration } from '@server/services/fal';
+import { type FalQueueStatus, getFalGeneration } from '@server/services/fal';
 import {
   HiggsfieldStatus,
   fetchMedia,
   getGenerationStatus,
   submitGeneration,
 } from '@server/services/higgsfield';
+import {
+  VEO_FORMATS,
+  type VeoGeneration,
+  fetchVeoMedia,
+  getVeoGeneration,
+  submitVeoGeneration,
+} from '@server/services/veo';
 import { AD_FRAMEWORK_IDS, findAdFramework } from '@server/shared/adFrameworks';
 import { countryName } from '@server/shared/countries';
 
@@ -73,7 +80,7 @@ export const VISUAL_RESOLUTION = '1080p';
  * La vidéo est chez fal.ai : Kling 2.5 Turbo Pro y coûte 0,35 $ les cinq secondes, payés au
  * rendu réussi. Higgsfield garde les visuels d'avant la bascule, qui restent consultables.
  */
-export type CreativeProvider = 'higgsfield' | 'fal' | 'interne';
+export type CreativeProvider = 'higgsfield' | 'fal' | 'veo' | 'interne';
 
 /**
  * Fournisseur des visuels, décidé à chaque demande et non figé ici.
@@ -86,7 +93,7 @@ export function visualProvider(): CreativeProvider {
   return providers.cloudflareImages ? 'interne' : 'higgsfield';
 }
 
-export const VIDEO_PROVIDER: CreativeProvider = 'fal';
+export const VIDEO_PROVIDER: CreativeProvider = 'veo';
 
 /** Longueur maximale du prompt acceptée par Kling. */
 const VIDEO_PROMPT_MAX = 2500;
@@ -109,10 +116,21 @@ const baseBrief = {
 
 export const visualBriefSchema = z.object(baseBrief);
 
+/*
+  La vidéo n'accepte ni les mêmes formats ni les mêmes durées que l'image, et le schéma doit
+  le dire plutôt que de le laisser découvrir en production.
+
+  Veo ne rend que le 9:16 et le 16:9 — le carré est refusé par l'API, et aucun modèle vidéo
+  du catalogue Google ne le rend. Ses durées forment un JEU DISCRET de 4, 6 et 8 secondes :
+  5 et 7 sont refusés, alors même que le message d'erreur annonce « une valeur entre 4 et 8 ».
+
+  Les visuels, eux, gardent le carré : leur modèle sait le faire.
+*/
 export const videoBriefSchema = z.object({
   ...baseBrief,
+  format: z.enum(VEO_FORMATS),
   sceneDescription: z.string().trim().min(3).max(1500),
-  duration: z.union([z.literal(5), z.literal(10)]),
+  duration: z.union([z.literal(4), z.literal(6), z.literal(8)]),
 });
 
 export type VisualBrief = z.infer<typeof visualBriefSchema>;
@@ -210,10 +228,16 @@ export function buildVisualInput(brief: VisualBrief) {
 export function buildVideoInput(brief: VideoBrief) {
   return {
     prompt: buildPrompt(brief, { maxLength: VIDEO_PROMPT_MAX, durationSeconds: brief.duration }),
-    duration: String(brief.duration),
-    aspect_ratio: brief.format,
-    cfg_scale: 0.5,
-    negative_prompt: 'distorted hands, unreadable text, brand logos, watermark',
+    /*
+      Veo accepte une consigne négative, là où le modèle d'image de Google n'en propose
+      aucune. C'est par elle que passe l'interdiction des marques et du texte à l'écran —
+      et ce n'est pas décoratif : les modèles récents dessinent spontanément des logos
+      existants dès que rien ne le leur interdit, ce qui ferait diffuser à un client une
+      publicité portant la marque d'autrui.
+    */
+    negativePrompt: 'distorted hands, unreadable text, brand logos, watermark',
+    aspectRatio: brief.format,
+    durationSeconds: brief.duration,
   };
 }
 
@@ -288,8 +312,28 @@ export async function submitVisual(brief: VisualBrief): Promise<CreativeStatus> 
   return toClientStatus(await submitGeneration(VISUAL_MODEL_PATH, buildVisualInput(brief)));
 }
 
+/** Veo ne connaît que trois états ; la file de rendu n'expose pas d'étape intermédiaire. */
+function veoToClientStatus(generation: VeoGeneration): CreativeStatus {
+  if (generation.status === 'failed') {
+    return { requestId: generation.requestId, status: 'failed', ...(generation.error ? { message: generation.error } : {}) };
+  }
+  return {
+    requestId: generation.requestId,
+    status: generation.status === 'completed' ? 'completed' : 'queued',
+    ...(generation.status === 'completed' ? { mediaType: 'video' as const } : {}),
+  };
+}
+
 export async function submitVideo(brief: VideoBrief): Promise<CreativeStatus> {
-  return falToClientStatus(await submitFalGeneration(env.FAL_VIDEO_MODEL, buildVideoInput(brief)));
+  const input = buildVideoInput(brief);
+  return veoToClientStatus(
+    await submitVeoGeneration({
+      prompt: input.prompt,
+      negativePrompt: input.negativePrompt,
+      aspectRatio: input.aspectRatio,
+      durationSeconds: input.durationSeconds,
+    }),
+  );
 }
 
 /**
@@ -298,6 +342,9 @@ export async function submitVideo(brief: VideoBrief): Promise<CreativeStatus> {
  * donc un identifiant de demande seul ne suffit pas à retrouver le rendu.
  */
 export async function getCreativeStatus(requestId: string, provider: CreativeProvider): Promise<CreativeStatus> {
+  if (provider === 'veo') return veoToClientStatus(await getVeoGeneration(requestId));
+  // Les vidéos lancées avant la bascule restent suivies chez fal.ai jusqu'à leur terme :
+  // rien de ce qui a été payé ne devient inaccessible.
   if (provider === 'fal') return falToClientStatus(await getFalGeneration(env.FAL_VIDEO_MODEL, requestId));
   return toClientStatus(await getGenerationStatus(requestId));
 }
@@ -368,6 +415,21 @@ export async function streamCreativeFile(
   disposition: 'inline' | 'attachment',
   res: ExpressResponse,
 ): Promise<void> {
+  /*
+    Veo est à part sur un point : son lien de téléchargement N'EST PAS public, il exige la
+    clé du serveur. Le relais générique, qui va chercher l'adresse sans en-tête, ramènerait
+    un 403. C'est donc `fetchVeoMedia` qui télécharge, avec la clé — et le client ne voit ni
+    le lien, ni la clé, comme pour tous les autres fournisseurs.
+  */
+  if (provider === 'veo') {
+    const generation = await getVeoGeneration(requestId);
+    if (generation.status !== 'completed' || !generation.mediaUrl) {
+      throw new AppError(409, "Aucun fichier disponible : la génération n'est pas terminée.", 'CREATIVE_NOT_READY');
+    }
+    await relayMedia(await fetchVeoMedia(generation.mediaUrl), 'video', requestId, disposition, res);
+    return;
+  }
+
   const media =
     provider === 'fal'
       ? await (async () => {
@@ -381,8 +443,24 @@ export async function streamCreativeFile(
     throw new AppError(409, "Aucun fichier disponible : la génération n'est pas terminée.", 'CREATIVE_NOT_READY');
   }
 
-  const upstream = await fetchGeneratedMedia(media.url);
-  const contentType = servedMediaType(upstream.headers.get('content-type'), media.mediaType);
+  await relayMedia(await fetchGeneratedMedia(media.url), media.mediaType, requestId, disposition, res);
+}
+
+/**
+ * Écrit la réponse du fournisseur dans celle du navigateur, en-têtes de sécurité compris.
+ *
+ * Extrait parce que chaque fournisseur va chercher ses octets différemment — Veo exige la
+ * clé du serveur, les autres non — mais que la façon de les SERVIR ne doit pas varier : le
+ * type est toujours contraint, le contenu jamais deviné, et l'exécution toujours interdite.
+ */
+async function relayMedia(
+  upstream: Response,
+  mediaType: 'image' | 'video',
+  requestId: string,
+  disposition: 'inline' | 'attachment',
+  res: ExpressResponse,
+): Promise<void> {
+  const contentType = servedMediaType(upstream.headers.get('content-type'), mediaType);
   const extension = EXTENSIONS[contentType]!;
 
   res.setHeader('Content-Type', contentType);

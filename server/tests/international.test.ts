@@ -228,7 +228,7 @@ describe('Méthodes publicitaires', () => {
       format: '9:16',
       market: 'US',
       sceneDescription: 'x'.repeat(1500),
-      duration: 10,
+      duration: 8,
       purpose: 'ad',
       adFramework: 'aida',
       frameworkBeats: ['Une question : vos tableaux vous font perdre des heures ?'],
@@ -237,8 +237,10 @@ describe('Méthodes publicitaires', () => {
     const { prompt } = buildVideoInput(brief);
     assert.ok(prompt.length <= 2500, `consigne de ${prompt.length} caractères`);
     assert.match(prompt, /structure: AIDA/);
-    assert.match(prompt, /1\. Attention \(0–2\.5 s\): Une question/);
-    assert.match(prompt, /4\. Action \(7\.5–10 s\)/);
+    // Huit secondes en quatre étapes : 0–2, 2–4, 4–6, 6–8. Le découpage suit désormais une
+    // durée que le modèle accepte, là où dix secondes étaient refusées.
+    assert.match(prompt, /1\. Attention \(0–2 s\): Une question/);
+    assert.match(prompt, /4\. Action \(6–8 s\)/);
     assert.match(prompt, /United States/);
     assert.match(prompt, /No real brand logos/);
   });

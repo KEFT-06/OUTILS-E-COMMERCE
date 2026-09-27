@@ -201,6 +201,20 @@ const schema = z.object({
   /** File d'attente de fal.ai. Surchargeable pour tester contre un serveur factice. */
   FAL_API_URL: z.string().url().default('https://queue.fal.run'),
   FAL_VIDEO_MODEL: z.string().regex(/^[\w./-]+$/).default('fal-ai/kling-video/v2.5-turbo/pro/text-to-video'),
+  /**
+   * Rendu vidéo par Veo 3.1, sur la clé Gemini — un seul abonnement pour l'image et la vidéo.
+   *
+   * « fast » et non le modèle complet : mesuré sur la grille de Google, la variante rapide
+   * coûte 0,12 $ la seconde en 1080p contre 0,40 $ pour la complète. Huit secondes reviennent
+   * donc à 0,96 $ au lieu de 3,20 $, sur une vidéo facturée douze points (~5 $). La complète
+   * ne laisserait qu'une marge de 1,6 — intenable si le prix en points baisse un jour.
+   *
+   * Les bornes de ce modèle sont mesurées dans `services/veo` : 9:16 et 16:9 seulement,
+   * durées 4, 6 ou 8 secondes, et rien d'autre.
+   */
+  VEO_VIDEO_MODEL: z.string().regex(/^[\w.-]+$/).default('veo-3.1-fast-generate-preview'),
+  /** 720p, 1080p ou 4k — mesuré ; « 2160p » est refusé bien qu'il désigne la même chose. */
+  VEO_RESOLUTION: z.enum(['720p', '1080p', '4k']).default('1080p'),
   GAMMA_API_KEY: z.string().min(1).optional(),
   /** Surchargeable pour tester contre un serveur factice. */
   GAMMA_API_URL: z.string().url().default('https://public-api.gamma.app'),

@@ -42,6 +42,21 @@ const FORMAT_OPTIONS: { value: CreativeFormat; label: string }[] = [
   { value: '16:9', label: 'Horizontal 16:9' },
 ];
 
+/**
+ * La vidéo n'offre pas les mêmes choix que l'image, et l'écran ne doit pas laisser croire
+ * le contraire.
+ *
+ * Le modèle vidéo refuse le carré — mesuré sur l'API, et aucun modèle vidéo du catalogue
+ * ne le rend. Proposer un bouton qui mène à un refus du serveur est pire que ne pas le
+ * proposer : l'auteur écrit son brief, clique, et perd son travail sur une erreur.
+ *
+ * Ses durées forment un jeu de 4, 6 ou 8 secondes. Cinq et dix, proposés jusqu'ici, sont
+ * tous deux refusés.
+ */
+const VIDEO_FORMATS: CreativeFormat[] = ['9:16', '16:9'];
+const VIDEO_DURATIONS = [4, 6, 8] as const;
+type VideoDuration = (typeof VIDEO_DURATIONS)[number];
+
 /** Contrôles que l'auteur atteste avoir faits en regardant le fichier généré. */
 const ATTESTATIONS = [
   "Il n'affiche aucune promesse de gain chiffrée ni garantie de résultat.",
@@ -73,7 +88,7 @@ export function CreativeGeneratorPanel() {
   const [sceneDescription, setSceneDescription] = useState('');
   const [onScreenText, setOnScreenText] = useState('');
   const [visualStyle, setVisualStyle] = useState('');
-  const [duration, setDuration] = useState<5 | 10>(5);
+  const [duration, setDuration] = useState<VideoDuration>(6);
 
   const [isGenerating, setIsGenerating] = useState(false);
   const [progress, setProgress] = useState<CreativeStatus['status'] | null>(null);
@@ -213,7 +228,16 @@ export function CreativeGeneratorPanel() {
               size="sm"
               variant={kind === 'video' ? 'secondary' : 'ghost'}
               aria-pressed={kind === 'video'}
-              onClick={() => setKind('video')}
+              onClick={() => {
+                setKind('video');
+                /*
+                  Le carré disparaît de la liste en passant à la vidéo, mais un format déjà
+                  choisi y resterait — et partirait au serveur, qui le refuserait. L'auteur
+                  aurait écrit son brief pour rien. On retombe donc sur le vertical, qui est
+                  le format des placements où ces vidéos sont diffusées.
+                */
+                if (!VIDEO_FORMATS.includes(format)) setFormat('9:16');
+              }}
               disabled={isGenerating}
             >
               <Clapperboard />
@@ -314,7 +338,7 @@ export function CreativeGeneratorPanel() {
             <fieldset className="space-y-2">
               <legend className="mb-2 text-sm font-medium">Format</legend>
               <div className="flex flex-wrap gap-1.5">
-                {FORMAT_OPTIONS.map((option) => (
+                {FORMAT_OPTIONS.filter((option) => kind !== 'video' || VIDEO_FORMATS.includes(option.value)).map((option) => (
                   <Button
                     key={option.value}
                     type="button"
@@ -370,7 +394,7 @@ export function CreativeGeneratorPanel() {
               <fieldset className="space-y-2">
                 <legend className="mb-2 text-sm font-medium">Durée</legend>
                 <div className="flex flex-wrap gap-1.5">
-                  {([5, 10] as const).map((value) => (
+                  {VIDEO_DURATIONS.map((value) => (
                     <Button
                       key={value}
                       type="button"

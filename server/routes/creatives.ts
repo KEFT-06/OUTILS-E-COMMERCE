@@ -18,10 +18,12 @@ import {
   videoBriefSchema,
   visualBriefSchema,
   visualProvider,
+  VIDEO_PROVIDER,
 } from '@server/services/creatives';
 import { createLocalVisual, localVisualExists, sendLocalVisual } from '@server/services/creatives/local';
 import type { CreativeProvider } from '@server/services/creatives';
 import { falRequestIdSchema } from '@server/services/fal';
+import { veoConfigured, veoRequestIdSchema } from '@server/services/veo';
 import { findOwnedGeneration, runBilledGeneration, settleGeneration } from '@server/services/generations';
 import { requestIdSchema } from '@server/services/higgsfield';
 import { findAdFramework, isAdFrameworkAvailable } from '@server/shared/adFrameworks';
@@ -54,6 +56,13 @@ function parseCreativeRequestId(value: string | undefined): string {
   if (parsed.success) return parsed.data;
   const chezFal = falRequestIdSchema.safeParse(value);
   if (chezFal.success) return chezFal.data;
+  /*
+    Google nomme ses opérations `models/<modèle>/operations/<id>`. Seul l'`<id>` voyage, et
+    ce schéma le vérifie : laisser passer un chemin ferait interroger par le serveur une
+    adresse choisie par l'appelant.
+  */
+  const chezVeo = veoRequestIdSchema.safeParse(value);
+  if (chezVeo.success) return chezVeo.data;
   throw new AppError(400, 'Identifiant de génération invalide.', 'INVALID_GENERATION_ID');
 }
 
@@ -63,7 +72,9 @@ function parseCreativeRequestId(value: string | undefined): string {
  * Higgsfield jusqu'à leur terme : rien de ce qui a été payé ne devient inaccessible.
  */
 async function findCreative(req: Request, requestId: string) {
-  const candidats: CreativeProvider[] = ['interne', 'fal', 'higgsfield'];
+  // « fal » reste dans la liste : les vidéos lancées avant la bascule vers Veo doivent
+  // rester suivies et téléchargeables jusqu'à leur terme.
+  const candidats: CreativeProvider[] = ['interne', 'veo', 'fal', 'higgsfield'];
   for (const provider of candidats) {
     try {
       return { generation: await findOwnedGeneration(req.auth!, provider, requestId), provider };
@@ -142,13 +153,13 @@ creativesRouter.post(
       creativeText(brief),
       'Le brief de la vidéo contient des formulations non conformes : corrigez-les avant de lancer la génération.',
     );
-    if (!providers.fal) throw providerUnavailable('rendu vidéo');
+    if (!veoConfigured()) throw providerUnavailable('rendu vidéo');
 
     const { result } = await runBilledGeneration({
       auth: req.auth!,
       actionId: 'video_generation',
       kind: 'video',
-      provider: 'fal',
+      provider: VIDEO_PROVIDER,
       run: () => submitVideo(brief),
       describe: (status) => ({
         providerRef: status.requestId,
