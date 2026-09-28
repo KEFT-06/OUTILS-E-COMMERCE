@@ -84,6 +84,9 @@ export async function addWatch(
 
   const inserted = await getDb().transaction(async (tx) => {
     if (limit !== null) {
+      // Verrou sur le compte, comme pour les niches : sans lui, deux ajouts simultanés
+      // comptaient chacun sous la limite et la dépassaient ensemble.
+      await tx.select({ id: users.id }).from(users).where(eq(users.id, userId)).for('update');
       const [{ total }] = await tx
         .select({ total: count() })
         .from(watches)
