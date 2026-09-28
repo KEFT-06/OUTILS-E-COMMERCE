@@ -48,7 +48,7 @@ import {
   DialogTrigger,
 } from '@/shared/ui/dialog';
 import { LegalNotice } from '@/modules/analyse/LegalNotice';
-import { MarketReportPanel } from '@/modules/analyse/MarketReportPanel';
+import { WrittenReportPanel } from '@/modules/analyse/WrittenReportPanel';
 import { NoDataState } from '@/shared/components/NoDataState';
 import { Progress } from '@/shared/ui/progress';
 import { RateBadge } from '@/shared/components/RateBadge';
@@ -801,7 +801,7 @@ export function StrategicAnalysisView({ report, onNavigateToProducts, onNavigate
         )}
       </Tabs>
 
-      <MarketReportPanel reportId={report.id} nicheName={report.nicheName} />
+      <WrittenReportPanel reportId={report.id} nicheName={report.nicheName} />
 
       <LegalNotice variant="block" />
 

@@ -277,3 +277,41 @@ export interface AnalysisJob {
    */
   sources?: WebGroundingSource[];
 }
+
+/** Site consulté par l'étude, listé en annexe du rapport rédigé. */
+export interface ReportDocumentSource {
+  id: number;
+  title: string;
+  url: string;
+  /** Nom de domaine lisible : « agri.example ». */
+  site: string;
+  publishedAt: string | null;
+  /** Le texte du rapport y renvoie au moins une fois. */
+  cited: boolean;
+}
+
+/** Contrôle de conformité du rapport rédigé, fait par le serveur à la fin de la rédaction. */
+export interface ReportDocumentCompliance {
+  exportAllowed: boolean;
+  rulesVersion: string;
+  checkedAt: string;
+  findings: { ruleId: string; category: string; severity: 'block' | 'warn'; matched: string; offset: number; action: string; rewriteHint: string }[];
+  requiredDisclaimer: string;
+}
+
+/**
+ * Rapport rédigé à la demande après une analyse : plan libre, aucun taux, renvois [n] vers
+ * la bibliographie des sites consultés, ajoutée par le serveur et non par le rédacteur.
+ */
+export interface ReportDocument {
+  reportId: string;
+  status: 'writing' | 'ready' | 'failed';
+  title: string | null;
+  /** Corps en Markdown, sans la bibliographie. */
+  markdown: string | null;
+  bibliography: ReportDocumentSource[];
+  compliance: ReportDocumentCompliance | null;
+  error: { code: string; message: string } | null;
+  startedAt: string;
+  completedAt: string | null;
+}

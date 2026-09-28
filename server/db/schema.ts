@@ -367,9 +367,47 @@ export const reports = pgTable(
     /** Pays visé (ISO 3166-1 alpha-2) ; null : tous marchés. */
     market: text('market'),
     report: jsonb('report').$type<Record<string, unknown>>().notNull(),
+    /**
+     * Notes de l'étude du web, telles que la recherche les a rendues. Le rapport rédigé à la
+     * demande s'en sert : il dit tout ce que l'étude a trouvé, pas seulement ce que la fiche
+     * en a retenu. Null sur les rapports antérieurs à septembre 2026.
+     */
+    researchMemo: text('research_memo'),
     createdAt: createdAt(),
   },
   (table) => [index('reports_user_idx').on(table.userId, table.createdAt)],
+).enableRLS();
+
+/**
+ * Rapport rédigé à la demande après une analyse : texte libre dont le plan est choisi par le
+ * rédacteur, sans les taux de la fiche, suivi de la bibliographie des sites consultés.
+ * Un seul par analyse ; le réécrire remplace le précédent.
+ */
+export const reportDocuments = pgTable(
+  'report_documents',
+  {
+    reportId: uuid('report_id')
+      .primaryKey()
+      .references(() => reports.id, { onDelete: 'cascade' }),
+    userId: uuid('user_id')
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
+    /** writing · ready · failed */
+    status: text('status').notNull(),
+    markdown: text('markdown'),
+    title: text('title'),
+    compliance: jsonb('compliance').$type<Record<string, unknown>>(),
+    errorCode: text('error_code'),
+    errorMessage: text('error_message'),
+    model: text('model'),
+    creditsCharged: integer('credits_charged').notNull().default(0),
+    debitTransactionId: uuid('debit_transaction_id'),
+    refunded: boolean('refunded').notNull().default(false),
+    startedAt: moment('started_at').notNull().defaultNow(),
+    completedAt: moment('completed_at'),
+    updatedAt: moment('updated_at').notNull().defaultNow(),
+  },
+  (table) => [index('report_documents_user_idx').on(table.userId)],
 ).enableRLS();
 
 /**

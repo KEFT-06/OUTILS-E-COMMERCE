@@ -1,4 +1,4 @@
-import { MarketAnalysisReport } from '@/shared/types/analysis';
+import type { MarketAnalysisReport, ReportDocument } from '@/shared/types/analysis';
 import {
   ComplianceSection,
   ComplianceVerdict,
@@ -188,6 +188,55 @@ export async function exportReportPDF(
   // Le verdict est apposé sur le document : mention légale obligatoire sur
   // chaque page, version de la table de règles et horodatage du contrôle.
   await generateAnalysisPDF(report, {
+    rulesVersion: verdict.rulesVersion,
+    checkedAt: verdict.checkedAt,
+    warningCount: verdict.findings.filter((f) => f.severity === 'warn').length,
+    disclaimer: verdict.requiredDisclaimer || FALLBACK_DISCLAIMER,
+  });
+
+  recordExport('report_pdf', 'pdf');
+  return verdict;
+}
+
+/** Le rapport rédigé, découpé par parties (## …) pour que chaque constat dise où corriger. */
+export function collectDocumentSections(document: ReportDocument): ComplianceSection[] {
+  const sections: ComplianceSection[] = [];
+  let label = document.title ?? 'Introduction';
+  let lines: string[] = [];
+  const push = () => {
+    const text = lines.join('\n').trim();
+    for (let start = 0; start < text.length; start += MAX_SECTION_CHARS) {
+      sections.push({ label, text: text.slice(start, start + MAX_SECTION_CHARS) });
+    }
+    lines = [];
+  };
+  for (const line of (document.markdown ?? '').split('\n')) {
+    const heading = /^##\s+(.+)$/.exec(line);
+    if (heading) {
+      push();
+      label = heading[1]!.replace(/[*_`]/g, '').trim();
+    }
+    lines.push(line);
+  }
+  push();
+  return sections;
+}
+
+/**
+ * **Seul** chemin d'export du rapport rédigé : vérifié avec les règles du jour — et non avec le
+ * verdict enregistré à la rédaction, qui a pu vieillir — puis exporté.
+ *
+ * @throws {ComplianceBlockedError} si une règle bloquante est déclenchée ou si le verdict n'a pas pu être obtenu.
+ */
+export async function exportReportDocumentPDF(
+  document: ReportDocument,
+  meta: { nicheName: string; dateLabel: string },
+): Promise<ReportComplianceVerdict> {
+  const verdict = await checkSectionsCompliance(collectDocumentSections(document));
+  if (!verdict.exportAllowed) throw new ComplianceBlockedError(verdict);
+
+  const { generateDocumentPDF } = await import('@/shared/lib/documentPdf');
+  generateDocumentPDF(document, meta, {
     rulesVersion: verdict.rulesVersion,
     checkedAt: verdict.checkedAt,
     warningCount: verdict.findings.filter((f) => f.severity === 'warn').length,

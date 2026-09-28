@@ -417,6 +417,7 @@ export async function writeReport(input: {
     nicheName: report.nicheName,
     market,
     report: report as unknown as Record<string, unknown>,
+    researchMemo: research.memo.trim() || null,
     createdAt: now,
   });
 

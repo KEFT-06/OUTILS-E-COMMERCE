@@ -13,6 +13,12 @@
       "description": "Rapport d'une niche, conservé sur votre compte : faits de marché tirés de sources web citées, idées de produits, scripts publicitaires et plan d'action proposés par l'IA. Points rendus si l'analyse échoue."
     },
     {
+      "id": "market_report_write",
+      "label": "Rapport rédigé d’une analyse",
+      "cost": 3,
+      "description": "Le rapport complet d’une analyse déjà faite, rédigé sur le plan qui convient le mieux à la niche, sans les taux de la fiche, avec la bibliographie des sites consultés et le contrôle de conformité. Téléchargeable en PDF. Points rendus si la rédaction échoue."
+    },
+    {
       "id": "storybook_story",
       "label": "Écriture d’un conte",
       "cost": 3,

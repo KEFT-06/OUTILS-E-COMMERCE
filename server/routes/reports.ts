@@ -1,9 +1,10 @@
 import { Router } from 'express';
 import { asyncRoute } from '@server/middleware';
 import { requireAuth } from '@server/middleware/auth';
-import { deleteReport, getReport, listReports } from '@server/services/analysis';
+import { deleteReport, getReport, listReports, todayLabel } from '@server/services/analysis';
+import { getReportDocument, startReportDocument } from '@server/services/analysis/document';
 
-/** Rapports d'analyse du compte connecté : liste, lecture et suppression. */
+/** Rapports d'analyse du compte connecté : liste, lecture, suppression, et rapport rédigé à la demande. */
 
 export const reportsRouter = Router();
 
@@ -23,6 +24,23 @@ reportsRouter.get(
   '/:reportId',
   asyncRoute(async (req, res) => {
     res.json({ report: await getReport(req.auth!, req.params.reportId) });
+  }),
+);
+
+/** Rapport rédigé de l'analyse : null tant qu'il n'a pas été demandé. */
+reportsRouter.get(
+  '/:reportId/document',
+  asyncRoute(async (req, res) => {
+    res.json({ document: await getReportDocument(req.auth!, req.params.reportId) });
+  }),
+);
+
+/** Lance la rédaction (points débités, rendus si elle échoue) ; le navigateur suit ensuite l'avancement. */
+reportsRouter.post(
+  '/:reportId/document',
+  asyncRoute(async (req, res) => {
+    const { document, created } = await startReportDocument(req.auth!, req.params.reportId, todayLabel(new Date()));
+    res.status(created ? 202 : 200).json({ document });
   }),
 );
 

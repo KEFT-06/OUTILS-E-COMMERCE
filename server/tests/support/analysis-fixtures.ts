@@ -176,9 +176,15 @@ export function fakeWrittenReport(input: string): string {
     'La demande urbaine progresse nettement [1], et les éleveurs demandent un accompagnement pratique [2].',
     '## Le terrain concurrentiel',
     'PouletPro Académie vend une formation à 15 000 FCFA [3] ; une offre locale en français reste à construire.',
+    'Un chiffre sans source existante ne doit pas garder son renvoi [42], ni un renvoi en lien [1](https://agri.example/poulets).',
+    '## Les attentes des acheteurs',
+    'Les éleveurs débutants cherchent surtout des gestes concrets : préparer le poulailler, choisir les poussins, prévenir les maladies courantes et vendre la production sans intermédiaire. ' +
+      'Les échanges du forum montrent une demande de suivi dans la durée plutôt qu’un simple guide à lire une fois [5]. ' +
+      'Une offre qui combine un guide court, des fiches à imprimer et un groupe d’entraide répond mieux à cette attente qu’un long ebook théorique.',
     '## Recommandations',
-    '- Valider la demande avec une page de précommande.',
-    '- Lancer un premier module court, puis enrichir.',
+    '- Valider la demande avec une page de précommande pendant deux semaines, avant d’écrire le produit complet.',
+    '- Lancer un premier module court, puis enrichir à partir des questions posées par les premiers acheteurs.',
+    '- Fixer le prix d’entrée sous celui de la formation concurrente relevée, le temps de réunir des avis.',
     '## Bibliographie',
     '1. Une source inventée par le modèle — https://invente.example',
   ].join('\n\n');
@@ -241,6 +247,8 @@ export async function startFakeProviders(): Promise<FakeProviders> {
             if (input.includes('« panne')) return send(500, { error: { message: 'erreur interne' } });
             if (input.includes('« illisible')) return send(200, completed('{}'));
             if ((body as { response_format?: unknown }).response_format) return send(200, completed(JSON.stringify(fakeAnalysis(input))));
+            // L'analyse aboutit, seul le rapport rédigé ensuite échoue.
+            if (input.includes('rapport refusé')) return send(400, { error: { message: 'requête refusée' } });
             return send(200, completed(fakeWrittenReport(input)));
           }
           if (input.includes('« crédit épuisé')) return send(402, { error: { message: 'insufficient credits' } });
