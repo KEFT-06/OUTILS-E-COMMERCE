@@ -5,6 +5,7 @@ import { z, type ZodType } from 'zod';
 import { env, isProd } from '@server/env';
 import { SESSION_COOKIE, readCookie } from '@server/lib/cookies';
 import { isCountryCode } from '@server/shared/countries';
+import { keepsProviderNames, neutralizeCode, neutralizeMessage } from '@server/shared/whiteLabel';
 
 /* -------------------------------------------------------------------------- */
 /*  Erreurs                                                                    */
@@ -43,7 +44,7 @@ export const providerUnavailable = (capability: string) =>
  */
 export const errorHandler = (
   err: unknown,
-  _req: Request,
+  req: Request,
   res: Response,
   _next: NextFunction,
 ): void => {
@@ -61,8 +62,14 @@ export const errorHandler = (
   if (err instanceof AppError) {
     const retryAfter = (err.details as { retryAfterSeconds?: unknown } | undefined)?.retryAfterSeconds;
     if (typeof retryAfter === 'number') res.setHeader('Retry-After', String(retryAfter));
+    // Marque blanche : aucun nom de fournisseur ne part vers un utilisateur (server/shared/whiteLabel.ts).
+    const brut = keepsProviderNames(req.originalUrl ?? req.path);
     res.status(err.status).json({
-      error: { code: err.code, message: err.message, details: err.details },
+      error: {
+        code: brut ? err.code : neutralizeCode(err.code),
+        message: brut ? err.message : neutralizeMessage(err.message),
+        details: err.details,
+      },
     });
     return;
   }

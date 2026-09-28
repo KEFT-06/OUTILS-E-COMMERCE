@@ -1,10 +1,9 @@
 import { useEffect, useState } from 'react';
-import { BookOpen, Download, ExternalLink } from 'lucide-react';
+import { BookOpen, Download } from 'lucide-react';
 import { countryName } from '@server/shared/countries';
 import { NoDataState } from '@/shared/components/NoDataState';
 import { apiRequest } from '@/shared/lib/api';
 import { toApiError } from '@/shared/lib/apiError';
-import { safeHttpUrl } from '@/shared/lib/safeUrl';
 import { type StorybookEntry, storybookPdfPath } from '@/shared/types/storybook';
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from '@/shared/ui/accordion';
 import { Badge } from '@/shared/ui/badge';
@@ -71,13 +70,12 @@ export function StorybookLibrary({ version }: { version: number }) {
           <NoDataState
             icon={BookOpen}
             title="Aucun conte pour l’instant"
-            reason="Le brief ci-dessus suffit à en créer un : le prénom du personnage et le thème. L’IA écrit l’histoire page par page, puis chaque page est illustrée et mise en page — vous téléchargez le PDF."
+            reason="Le brief ci-dessus suffit à en créer un : le prénom du personnage et le thème. L’histoire est écrite page par page, puis chaque page est illustrée et mise en page — vous téléchargez le PDF."
           />
         ) : (
           <Accordion type="single" collapsible className="w-full">
             {entries.map((entry) => {
               const status = STATUS[entry.status];
-              const gammaUrl = safeHttpUrl(entry.gammaUrl ?? undefined);
               return (
                 <AccordionItem key={entry.id} value={entry.id}>
                   <AccordionTrigger className="gap-3 text-left">
@@ -101,14 +99,6 @@ export function StorybookLibrary({ version }: { version: number }) {
                             Télécharger le PDF
                           </a>
                         </Button>
-                        {gammaUrl && (
-                          <Button asChild size="sm" variant="outline">
-                            <a href={gammaUrl} target="_blank" rel="noopener noreferrer">
-                              Ouvrir en ligne
-                              <ExternalLink />
-                            </a>
-                          </Button>
-                        )}
                       </div>
                     )}
                     <ol className="space-y-3">
@@ -121,7 +111,7 @@ export function StorybookLibrary({ version }: { version: number }) {
                         </li>
                       ))}
                     </ol>
-                    <p className="text-xs text-muted-foreground">Texte, mise en page et illustrations produits par l’IA.</p>
+                    <p className="text-xs text-muted-foreground">Texte, mise en page et illustrations produits automatiquement.</p>
                   </AccordionContent>
                 </AccordionItem>
               );

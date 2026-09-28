@@ -230,7 +230,7 @@ describe('Guides multilingues', () => {
 
     // Sans facturation Google, l'offre gratuite refuse toute image : message clair, points rendus, rien d'enregistré.
     const refused = await agent.post('/api/covers').send({ subject: 'guide', subjectId: guideId, title: 'Facturation absente' }).expect(503);
-    assert.equal(refused.body.error.code, 'GEMINI_IMAGE_BILLING_REQUIRED');
+    assert.equal(refused.body.error.code, 'IMAGE_BILLING_REQUIRED', 'code neutre : aucun nom de fournisseur');
     assert.match(refused.body.error.message, /points ont été rendus/);
     assert.equal((await agent.get('/api/auth/me').expect(200)).body.account.credits.total, before - 1);
     assert.equal((await agent.get(`/api/guides/${guideId}`).expect(200)).body.guide.cover.id, submitted.body.cover.id, 'la couverture précédente reste');

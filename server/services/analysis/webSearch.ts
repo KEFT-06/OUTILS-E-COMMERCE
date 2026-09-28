@@ -97,7 +97,7 @@ async function perplexitySearch(query: string, market: string | null) {
   if (!response.ok) {
     console.error('[recherche web] le fournisseur a répondu', response.status);
     if (response.status === 401 || response.status === 403) {
-      throw new AppError(503, 'L’accès à la recherche web est refusé : clé Perplexity invalide sur le serveur.', 'WEB_SEARCH_ACCESS_DENIED');
+      throw new AppError(503, 'L’accès à la recherche web est refusé : l’administrateur doit vérifier la configuration du serveur.', 'WEB_SEARCH_ACCESS_DENIED');
     }
     if (response.status === 429) {
       throw new AppError(429, 'La recherche web est saturée. Réessayez dans une minute : vos points ont été rendus.', 'WEB_SEARCH_RATE_LIMITED');

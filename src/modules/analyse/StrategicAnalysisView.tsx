@@ -113,7 +113,7 @@ const INTENT_LABEL: Record<SearchTrendKeyword['intent'], string> = {
  */
 function basisLabel(rate: MarketRate): string {
   if (rate.basis === 'measured' || rate.trace) return 'Calculé sur des relevés, trace de calcul jointe';
-  if (rate.basis === 'assessment') return 'Appréciation de l’IA, fondée sur les sources citées';
+  if (rate.basis === 'assessment') return 'Appréciation argumentée, fondée sur les sources citées';
   if (rate.basis === 'unavailable') return 'Non évalué';
   return 'Méthode de calcul non publiée';
 }
@@ -347,7 +347,7 @@ export function StrategicAnalysisView({ report, onNavigateToProducts, onNavigate
                 </p>
                 <p>
                   Les faits de marché (concurrents, prix constatés, niveaux des taux) renvoient chacun à leurs sources, numérotées.
-                  Les idées de produits, les scripts et le plan d’action sont des propositions de l’IA fondées sur l’étude, à relire
+                  Les idées de produits, les scripts et le plan d’action sont des recommandations fondées sur l’étude, à relire
                   avant usage.
                 </p>
               </AlertDescription>

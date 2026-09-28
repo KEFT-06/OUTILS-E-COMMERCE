@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { AlertTriangle, BookOpen, CheckCircle2, Download, ExternalLink, PenLine, Sparkles } from 'lucide-react';
+import { AlertTriangle, BookOpen, CheckCircle2, Download, PenLine, Sparkles } from 'lucide-react';
 import { useCreditGate } from '@/app/providers/CreditGateProvider';
 import { PageHeader } from '@/shared/components/PageHeader';
 import { ApiError, readApiError, toApiError } from '@/shared/lib/apiError';
@@ -7,7 +7,6 @@ import { MAX_POLL_MISSES, lostTrackMessage, pollStatus } from '@/shared/lib/poll
 import { useAuth } from '@/features/auth/AuthContext';
 import { CountryCombobox } from '@/shared/components/CountryCombobox';
 import { guessCountryCode } from '@/shared/lib/geo';
-import { safeHttpUrl } from '@/shared/lib/safeUrl';
 import { type StoryDraft, type StorybookBrief, type StorybookStatus, storybookPdfPath } from '@/shared/types/storybook';
 import { StorybookLibrary } from '@/modules/storybook/StorybookLibrary';
 import { StoryPreviewPanel } from '@/modules/storybook/StoryPreviewPanel';
@@ -237,7 +236,6 @@ export function StorybookView() {
     }
   };
 
-  const storyUrl = safeHttpUrl(result?.gammaUrl);
 
   return (
     <div className="space-y-6">
@@ -358,7 +356,7 @@ export function StorybookView() {
                   placeholder="prénoms, lieux, plats, fêtes, proverbes que vous connaissez et souhaitez voir figurer"
                 />
                 <FieldDescription>
-                  L’IA reçoit la consigne de n’utiliser comme références culturelles précises que ces éléments, et
+                  La rédaction n’utilise comme références culturelles précises que ces éléments, et
                   d’éviter caricatures et stéréotypes. Rien n’est inventé à votre place.
                 </FieldDescription>
               </Field>
@@ -440,7 +438,7 @@ export function StorybookView() {
         </Alert>
       )}
 
-      {result && storyUrl && (
+      {result && result.storybookId && (
         <Card className="border-success-border">
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
@@ -458,17 +456,10 @@ export function StorybookView() {
                   </a>
                 </Button>
               )}
-              <Button asChild variant="outline">
-                <a href={storyUrl} target="_blank" rel="noopener noreferrer">
-                  Ouvrir le conte en ligne
-                  <ExternalLink />
-                </a>
-              </Button>
             </div>
             <ul className="list-disc space-y-1 pl-4 text-sm text-muted-foreground">
               <li>Le texte généré n’a pas été relu par le vérificateur de conformité : relisez-le avant toute diffusion.</li>
               <li>Vérifiez que le personnage reste reconnaissable d’une page à l’autre.</li>
-              <li>Toute personne disposant de ce lien peut consulter le conte.</li>
             </ul>
           </CardContent>
         </Card>

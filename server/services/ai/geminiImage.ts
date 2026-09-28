@@ -52,7 +52,7 @@ async function callOnce(
       signal: AbortSignal.timeout(TIMEOUT_MS),
     });
   } catch {
-    throw new AppError(504, 'Gemini n’a pas produit l’image à temps. Réessayez : vos points ont été rendus.', 'GEMINI_IMAGE_TIMEOUT');
+    throw new AppError(504, 'L’image n’a pas été produite à temps. Réessayez : vos points ont été rendus.', 'GEMINI_IMAGE_TIMEOUT');
   }
   return { status: response.status, payload: (await response.json().catch(() => null)) as ImagePayload | null };
 }
@@ -93,25 +93,25 @@ async function produceImage(input: {
     if (status === 429 && /free_tier|limit: 0/i.test(detail)) {
       throw new AppError(
         503,
-        'La génération d’images Gemini n’est pas activée pour le site : l’administrateur doit activer la facturation du projet Google de la clé. Vos points ont été rendus.',
+        'La génération d’images n’est pas encore activée pour le site : l’administrateur doit terminer sa configuration. Vos points ont été rendus.',
         'GEMINI_IMAGE_BILLING_REQUIRED',
       );
     }
     if (status === 429)
       throw new AppError(
         429,
-        'Gemini limite temporairement les images. Réessayez dans une minute : vos points ont été rendus.',
+        'Le service d’images est très demandé. Réessayez dans une minute : vos points ont été rendus.',
         'GEMINI_IMAGE_RATE_LIMITED',
       );
     if (status === 401 || status === 403)
-      throw new AppError(503, 'Google refuse la clé Gemini du serveur : l’administrateur doit la vérifier.', 'GEMINI_IMAGE_ACCESS_DENIED');
+      throw new AppError(503, 'Le service d’images refuse l’accès du serveur : l’administrateur doit vérifier sa configuration.', 'GEMINI_IMAGE_ACCESS_DENIED');
     if (status === 503)
       throw new AppError(
         503,
-        'Gemini est surchargé chez Google. Réessayez dans un instant : vos points ont été rendus.',
+        'Le service d’images est surchargé. Réessayez dans un instant : vos points ont été rendus.',
         'GEMINI_IMAGE_OVERLOADED',
       );
-    throw new AppError(502, 'Gemini n’a pas pu produire l’image. Réessayez : vos points ont été rendus.', 'GEMINI_IMAGE_FAILED');
+    throw new AppError(502, 'L’image n’a pas pu être produite. Réessayez : vos points ont été rendus.', 'GEMINI_IMAGE_FAILED');
   }
 
   const candidate = payload?.candidates?.[0];
@@ -121,11 +121,11 @@ async function produceImage(input: {
     if (/SAFETY|PROHIBITED|BLOCK|RECITATION/i.test(reason)) {
       throw new AppError(
         422,
-        'Google a refusé cette image (filtre de sécurité) : reformulez la description. Vos points ont été rendus.',
+        'Cette image a été refusée par le filtre de sécurité : reformulez la description. Vos points ont été rendus.',
         'GEMINI_IMAGE_BLOCKED',
       );
     }
-    throw new AppError(502, 'Gemini n’a renvoyé aucune image. Réessayez : vos points ont été rendus.', 'GEMINI_IMAGE_MISSING');
+    throw new AppError(502, 'Aucune image n’a été produite. Réessayez : vos points ont été rendus.', 'GEMINI_IMAGE_MISSING');
   }
 
   const mimeType = (image.mimeType ?? 'image/png').split(';')[0]!.trim();

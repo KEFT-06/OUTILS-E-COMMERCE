@@ -85,7 +85,7 @@ export function ScoreTracePanel({ rate, sources, open, onOpenChange }: ScoreTrac
           <div className="space-y-4">
             <Alert variant="info">
               <Info />
-              <AlertTitle>Appréciation de l’IA, fondée sur des sources</AlertTitle>
+              <AlertTitle>Appréciation argumentée, fondée sur des sources</AlertTitle>
               <AlertDescription>
                 <p>{rate.description}</p>
                 <p>

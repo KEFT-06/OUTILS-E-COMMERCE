@@ -212,27 +212,27 @@ export function buildGammaRequest(brief: StorybookBrief, story: StoryDraft) {
  * Traduit une erreur Gamma pour l'utilisateur de Smart Creator. Clé refusée et crédits Gamma
  * épuisés deviennent des 503 : ce sont des problèmes de configuration du serveur.
  */
-function gammaFailure(status: number, gammaMessage: string | undefined): AppError {
+function gammaFailure(status: number): AppError {
   if (status === 401 || status === 403) {
     return new AppError(
       503,
-      "L'accès à Gamma est refusé : clé API invalide, ou fonctionnalité absente de l'offre Gamma du serveur.",
+      "L'accès au service de mise en page est refusé : l'administrateur doit vérifier sa configuration.",
       'GAMMA_ACCESS_DENIED',
     );
   }
   if (status === 402) {
     return new AppError(
       503,
-      "Le compte Gamma du serveur n'a plus assez de crédits pour illustrer ce conte : l'administrateur doit le recharger.",
+      "Le service de mise en page n'a plus assez de réserve pour illustrer ce conte : réessayez plus tard, vos points ont été rendus.",
       'GAMMA_INSUFFICIENT_CREDITS',
     );
   }
-  if (status === 404) return new AppError(404, 'Génération introuvable chez Gamma.', 'GAMMA_GENERATION_NOT_FOUND');
+  if (status === 404) return new AppError(404, 'Génération introuvable.', 'GAMMA_GENERATION_NOT_FOUND');
   if (status === 429)
-    return new AppError(429, 'Gamma limite temporairement le nombre de demandes. Réessayez dans quelques instants.', 'GAMMA_RATE_LIMITED');
+    return new AppError(429, 'Le service de mise en page est très demandé. Réessayez dans quelques instants.', 'GAMMA_RATE_LIMITED');
   if (status === 400)
-    return new AppError(502, `Gamma a refusé la demande${gammaMessage ? ` : ${gammaMessage}` : '.'}`, 'GAMMA_REJECTED_REQUEST');
-  return new AppError(502, 'Gamma est momentanément indisponible.', 'GAMMA_UNAVAILABLE');
+    return new AppError(502, 'La mise en page a été refusée. Reformulez le conte, puis réessayez.', 'GAMMA_REJECTED_REQUEST');
+  return new AppError(502, 'Le service de mise en page est momentanément indisponible.', 'GAMMA_UNAVAILABLE');
 }
 
 async function gammaFetch(path: string, init: { method?: string; body?: string } = {}): Promise<unknown> {
@@ -248,13 +248,13 @@ async function gammaFetch(path: string, init: { method?: string; body?: string }
       signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
     });
   } catch {
-    throw new AppError(502, 'Gamma est injoignable.', 'GAMMA_UNREACHABLE');
+    throw new AppError(502, 'Le service de mise en page est injoignable.', 'GAMMA_UNREACHABLE');
   }
 
   if (!response.ok) {
     const payload = (await response.json().catch(() => null)) as { message?: string } | null;
     console.error('[gamma] le fournisseur a répondu', response.status, payload?.message ?? '');
-    throw gammaFailure(response.status, payload?.message);
+    throw gammaFailure(response.status);
   }
   return response.json();
 }
@@ -262,7 +262,7 @@ async function gammaFetch(path: string, init: { method?: string; body?: string }
 export async function submitStorybook(brief: StorybookBrief, story: StoryDraft): Promise<{ generationId: string }> {
   const payload = await gammaFetch('/generations', { method: 'POST', body: JSON.stringify(buildGammaRequest(brief, story)) });
   const parsed = z.object({ generationId: z.string().min(1) }).safeParse(payload);
-  if (!parsed.success) throw new AppError(502, 'Réponse inattendue de Gamma à la création.', 'GAMMA_UNEXPECTED_RESPONSE');
+  if (!parsed.success) throw new AppError(502, 'Réponse inattendue du service de mise en page.', 'GAMMA_UNEXPECTED_RESPONSE');
   return { generationId: parsed.data.generationId };
 }
 
@@ -331,7 +331,7 @@ export async function getStorybookGeneration(generationId: string): Promise<Stor
   const payload = await gammaFetch(`/generations/${encodeURIComponent(generationId)}`);
   const parsed = statusSchema.safeParse(payload);
   if (!parsed.success || (parsed.data.status === 'completed' && !parsed.data.gammaUrl)) {
-    throw new AppError(502, 'Réponse inattendue de Gamma au suivi de génération.', 'GAMMA_UNEXPECTED_RESPONSE');
+    throw new AppError(502, 'Réponse inattendue du service de mise en page.', 'GAMMA_UNEXPECTED_RESPONSE');
   }
 
   const { status, gammaUrl, gammaId, error } = parsed.data;
@@ -353,7 +353,7 @@ export async function getStorybookGeneration(generationId: string): Promise<Stor
     status,
     ...(gammaUrl ? { gammaUrl } : {}),
     ...(row ? { storybookId: row.id } : {}),
-    ...(status === 'failed' ? { errorMessage: error?.message ?? 'La génération a échoué chez Gamma : vos points ont été rendus.' } : {}),
+    ...(status === 'failed' ? { errorMessage: error?.message ?? 'La génération a échoué : vos points ont été rendus.' } : {}),
   };
 }
 
@@ -425,7 +425,7 @@ async function freshPdf(generationRef: string, gammaId: string | null): Promise<
   if (!fileId)
     throw new AppError(
       409,
-      'Le PDF de ce conte n’est pas encore disponible chez Gamma. Réessayez dans un instant.',
+      'Le PDF de ce conte n’est pas encore disponible. Réessayez dans un instant.',
       'STORYBOOK_PDF_UNAVAILABLE',
     );
 
@@ -434,7 +434,7 @@ async function freshPdf(generationRef: string, gammaId: string | null): Promise<
     .safeParse(
       await gammaFetch(`/gammas/${encodeURIComponent(fileId)}/export`, { method: 'POST', body: JSON.stringify({ exportAs: 'pdf' }) }),
     );
-  if (!started.success) throw new AppError(502, 'Réponse inattendue de Gamma à l’export.', 'GAMMA_UNEXPECTED_RESPONSE');
+  if (!started.success) throw new AppError(502, 'Réponse inattendue du service de mise en page.', 'GAMMA_UNEXPECTED_RESPONSE');
 
   const deadline = Date.now() + EXPORT_DEADLINE_MS;
   while (Date.now() < deadline) {
@@ -447,7 +447,7 @@ async function freshPdf(generationRef: string, gammaId: string | null): Promise<
     if (polled.success && polled.data.status === 'failed') break;
     await new Promise((resolve) => setTimeout(resolve, 3_000));
   }
-  throw new AppError(502, 'Gamma n’a pas pu produire le PDF de ce conte. Réessayez dans quelques minutes.', 'STORYBOOK_PDF_FAILED');
+  throw new AppError(502, 'Le PDF de ce conte n’a pas pu être produit. Réessayez dans quelques minutes.', 'STORYBOOK_PDF_FAILED');
 }
 
 const fileNameOf = (title: string) =>
@@ -464,7 +464,7 @@ export async function sendStorybookPdf(auth: RequestAuth, storybookId: string | 
   if (row.status !== 'completed') throw new AppError(409, 'Le conte n’est pas encore prêt.', 'STORYBOOK_NOT_READY');
 
   const pdf = await freshPdf(row.generationRef, row.gammaId);
-  const invalid = () => new AppError(502, 'Gamma a renvoyé un fichier qui n’est pas un PDF.', 'STORYBOOK_PDF_INVALID');
+  const invalid = () => new AppError(502, 'Le fichier reçu n’est pas un PDF valide.', 'STORYBOOK_PDF_INVALID');
   if (!pdf.body) throw invalid();
 
   /*

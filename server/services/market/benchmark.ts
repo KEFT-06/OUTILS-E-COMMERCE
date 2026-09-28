@@ -137,12 +137,12 @@ async function collect(query: string, now: Date): Promise<NicheBenchmark> {
   }
 
   if (response.status === 401 || response.status === 403) {
-    throw new AppError(502, 'Le jeton Apify est refusé : vérifiez-le dans la configuration.', 'BENCHMARK_DENIED');
+    throw new AppError(502, 'Le service de mesure du marché refuse l’accès du serveur : l’administrateur doit vérifier sa configuration.', 'BENCHMARK_DENIED');
   }
   if (response.status === 402) {
     throw new AppError(
       503,
-      'La réserve mensuelle Apify est épuisée : les mesures reprendront au prochain cycle.',
+      'La réserve mensuelle de mesures est épuisée : elles reprendront au prochain cycle.',
       'BENCHMARK_OUT_OF_CREDIT',
     );
   }

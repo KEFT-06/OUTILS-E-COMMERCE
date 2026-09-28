@@ -291,7 +291,7 @@ describe('Storybook', () => {
       .post('/api/storybook/generations')
       .send({ ...BRIEF, heroName: 'Sans crédit' })
       .expect(503);
-    assert.equal(noCredits.body.error.code, 'GAMMA_INSUFFICIENT_CREDITS');
+    assert.equal(noCredits.body.error.code, 'LAYOUT_INSUFFICIENT_CREDITS', 'code neutre : aucun nom de fournisseur');
 
     assert.equal((await agent.get('/api/account/credits').expect(200)).body.credits.total, before, 'points rendus');
     assert.deepEqual((await agent.get('/api/storybook/books').expect(200)).body.storybooks, []);

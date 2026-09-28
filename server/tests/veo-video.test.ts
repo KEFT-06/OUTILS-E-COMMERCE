@@ -199,7 +199,7 @@ describe('Rendu vidéo par Veo', () => {
     const avant = (await agent.get('/api/auth/me').expect(200)).body.account.credits.total as number;
 
     const refus = await agent.post('/api/creatives/videos').send(BRIEF).expect(429);
-    assert.equal(refus.body.error.code, 'VEO_QUOTA_EXHAUSTED');
+    assert.equal(refus.body.error.code, 'VIDEO_QUOTA_EXHAUSTED', 'code neutre : aucun nom de fournisseur');
 
     const apres = (await agent.get('/api/auth/me').expect(200)).body.account.credits.total as number;
     assert.equal(apres, avant, 'une vidéo qui n’existe pas n’est pas facturée');

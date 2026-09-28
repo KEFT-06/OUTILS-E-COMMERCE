@@ -212,7 +212,7 @@ function extensionRefusal(video: { status: string; resolution: string | null; du
     return `La vidéo atteint la durée maximale de ${VEO_MAX_TOTAL_SECONDS} secondes.`;
   }
   if (Date.now() - (video.completedAt ?? video.createdAt).getTime() > VEO_EXTENSION_WINDOW_MS) {
-    return 'Google ne prolonge une vidéo que dans les deux jours qui suivent sa création.';
+    return 'Une vidéo ne peut être prolongée que dans les deux jours qui suivent sa création.';
   }
   return null;
 }

@@ -248,7 +248,7 @@ export function LaunchKitView({ products, market }: { products: DigitalProductId
             <div className="space-y-1">
               <p className="flex items-center gap-2 font-semibold">
                 <Sparkles className="size-4 text-brand-green-text" aria-hidden="true" />
-                Rédaction par l’IA
+                Rédaction automatique
               </p>
               <p className="text-sm text-muted-foreground">
                 Trois textes publicitaires et les scripts de chaque durée, à partir de votre produit et de l’objectif
@@ -257,7 +257,7 @@ export function LaunchKitView({ products, market }: { products: DigitalProductId
             </div>
             <Button className="shrink-0" onClick={() => (kitHasText ? setReplaceOpen(true) : void writeWithAi())} disabled={isWriting}>
               {isWriting ? <Spinner /> : <Sparkles />}
-              {isWriting ? 'Rédaction…' : 'Rédiger avec l’IA'}
+              {isWriting ? 'Rédaction…' : 'Rédiger pour moi'}
             </Button>
           </CardContent>
         </Card>
@@ -265,7 +265,7 @@ export function LaunchKitView({ products, market }: { products: DigitalProductId
         <Alert variant="info">
           <Info />
           <AlertDescription>
-            La rédaction par l’IA n’est pas configurée sur le serveur : le kit vous guide et contrôle vos textes, sans les
+            La rédaction automatique n’est pas encore disponible : le kit vous guide et contrôle vos textes, sans les
             écrire. Le pré-remplissage reprend uniquement les données de votre produit.
           </AlertDescription>
         </Alert>
@@ -278,7 +278,7 @@ export function LaunchKitView({ products, market }: { products: DigitalProductId
           <DialogHeader>
             <DialogTitle>Remplacer vos textes ?</DialogTitle>
             <DialogDescription>
-              Les variantes et les scripts rédigés par l’IA remplacent ceux que vous avez déjà saisis pour ce produit. Les
+              Les variantes et les scripts rédigés automatiquement remplacent ceux que vous avez déjà saisis pour ce produit. Les
               boutons choisis par marché sont gardés.
             </DialogDescription>
           </DialogHeader>

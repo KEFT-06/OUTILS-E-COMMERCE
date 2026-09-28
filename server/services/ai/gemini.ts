@@ -198,7 +198,7 @@ export async function generateJson<T>(input: {
   }
   throw new AppError(
     503,
-    `Le ${service.name} rencontre une panne passagère chez Google. Réessayez dans quelques minutes : vos points ont été rendus.`,
+    `Le ${service.name} rencontre une panne passagère. Réessayez dans quelques minutes : vos points ont été rendus.`,
     `${service.code}_UNAVAILABLE`,
   );
 }

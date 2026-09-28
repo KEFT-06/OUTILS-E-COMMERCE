@@ -351,7 +351,7 @@ export async function extendVideo(parentRequestId: string, scene: string): Promi
   if (!source) {
     const parent = await getVeoGeneration(parentRequestId);
     if (parent.status !== 'completed' || !parent.mediaUrl) {
-      throw new AppError(409, 'La vidéo à prolonger n’est plus disponible chez Google.', 'VIDEO_NOT_EXTENDABLE');
+      throw new AppError(409, 'La vidéo à prolonger n’est plus disponible.', 'VIDEO_NOT_EXTENDABLE');
     }
     source = await fetchVeoMedia(parent.mediaUrl);
   }

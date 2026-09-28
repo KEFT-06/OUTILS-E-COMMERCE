@@ -111,7 +111,7 @@ export function DigitalProductsView({ report, onSelectProductForAd, onAnalyzeNic
     custom.add(product);
     setSelectedId(product.id);
     setJustCreatedId(product.id);
-    toast.success('Produit créé', { description: 'Complétez-le dans le mode Expert, ou faites rédiger ses modules par l’IA.' });
+    toast.success('Produit créé', { description: 'Complétez-le dans le mode Expert, ou faites rédiger ses modules automatiquement.' });
   };
 
   const onVideoProduct = (result: VideoProductResult) => {

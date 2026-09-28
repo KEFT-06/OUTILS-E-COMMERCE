@@ -66,7 +66,7 @@ function falFailure(status: number, detail: string): AppError {
   if (status === 401 || status === 403) {
     return new AppError(
       503,
-      'fal.ai refuse la clé du serveur : l’administrateur doit la vérifier (portée « API »).',
+      'Le service vidéo refuse l’accès du serveur : l’administrateur doit vérifier sa configuration.',
       'FAL_ACCESS_DENIED',
     );
   }
@@ -74,23 +74,23 @@ function falFailure(status: number, detail: string): AppError {
   if (status === 402) {
     return new AppError(
       503,
-      'Le crédit fal.ai du site est épuisé : l’administrateur doit le recharger. Vos points ont été rendus.',
+      'Le service vidéo est momentanément indisponible. Vos points ont été rendus.',
       'FAL_OUT_OF_CREDIT',
     );
   }
   if (status === 429) {
-    return new AppError(429, 'fal.ai limite les demandes en ce moment. Réessayez dans une minute : vos points ont été rendus.', 'FAL_RATE_LIMITED');
+    return new AppError(429, 'Le service vidéo est très demandé. Réessayez dans une minute : vos points ont été rendus.', 'FAL_RATE_LIMITED');
   }
   if (status === 404) {
-    return new AppError(404, 'Cette génération est introuvable chez fal.ai : elle a peut-être expiré.', 'FAL_NOT_FOUND');
+    return new AppError(404, 'Cette génération est introuvable : elle a peut-être expiré.', 'FAL_NOT_FOUND');
   }
   if (status === 400 || status === 422) {
-    return new AppError(502, 'fal.ai a refusé la demande. Reformulez le brief : vos points ont été rendus.', 'FAL_BAD_INPUT');
+    return new AppError(502, 'La demande a été refusée. Reformulez le brief : vos points ont été rendus.', 'FAL_BAD_INPUT');
   }
   if (status >= 500) {
-    return new AppError(503, 'fal.ai est momentanément indisponible. Réessayez : vos points ont été rendus.', 'FAL_UNAVAILABLE');
+    return new AppError(503, 'Le service vidéo est momentanément indisponible. Réessayez : vos points ont été rendus.', 'FAL_UNAVAILABLE');
   }
-  return new AppError(502, 'fal.ai n’a pas pu traiter la demande. Réessayez : vos points ont été rendus.', 'FAL_FAILED');
+  return new AppError(502, 'La demande n’a pas pu être traitée. Réessayez : vos points ont été rendus.', 'FAL_FAILED');
 }
 
 async function call(path: string, method: 'GET' | 'POST', body?: unknown): Promise<unknown> {
@@ -109,7 +109,7 @@ async function call(path: string, method: 'GET' | 'POST', body?: unknown): Promi
       signal: AbortSignal.timeout(TIMEOUT_MS),
     });
   } catch {
-    throw new AppError(504, 'fal.ai n’a pas répondu à temps. Réessayez : vos points ont été rendus.', 'FAL_TIMEOUT');
+    throw new AppError(504, 'Le service vidéo n’a pas répondu à temps. Réessayez : vos points ont été rendus.', 'FAL_TIMEOUT');
   }
 
   const payload = await response.json().catch(() => null);
@@ -123,7 +123,7 @@ export async function submitFalGeneration(model: string, input: unknown): Promis
   const parsed = falStatusSchema.safeParse(payload);
   if (!parsed.success) {
     console.error('[fal] réponse de dépôt inattendue', JSON.stringify(payload).slice(0, 300));
-    throw new AppError(502, 'Réponse inattendue de fal.ai. Vos points ont été rendus.', 'FAL_UNEXPECTED');
+    throw new AppError(502, 'Réponse inattendue du service vidéo. Vos points ont été rendus.', 'FAL_UNEXPECTED');
   }
   return { requestId: parsed.data.request_id, status: parsed.data.status };
 }
@@ -137,14 +137,14 @@ export async function getFalGeneration(model: string, requestId: string): Promis
   const etat = falStatusSchema.safeParse(await call(`/${model}/requests/${encodeURIComponent(id)}/status`, 'GET'));
   if (!etat.success) {
     console.error('[fal] état inattendu pour', id);
-    throw new AppError(502, 'Réponse inattendue de fal.ai.', 'FAL_UNEXPECTED');
+    throw new AppError(502, 'Réponse inattendue du service vidéo.', 'FAL_UNEXPECTED');
   }
   if (etat.data.status !== 'COMPLETED') return { requestId: id, status: etat.data.status };
 
   const resultat = falResultSchema.safeParse(await call(`/${model}/requests/${encodeURIComponent(id)}`, 'GET'));
   if (!resultat.success) {
     console.error('[fal] résultat inattendu pour', id);
-    throw new AppError(502, 'Réponse inattendue de fal.ai.', 'FAL_UNEXPECTED');
+    throw new AppError(502, 'Réponse inattendue du service vidéo.', 'FAL_UNEXPECTED');
   }
   const video = resultat.data.video?.url;
   const image = resultat.data.images?.[0]?.url;

@@ -64,7 +64,7 @@ export function veoConfigured(): boolean {
 function veoFailure(status: number, detail: string): AppError {
   console.error('[veo] le fournisseur a répondu', status, detail.slice(0, 200));
   if (status === 401 || status === 403) {
-    return new AppError(503, 'Google refuse la clé du serveur pour le rendu vidéo.', 'VEO_ACCESS_DENIED');
+    return new AppError(503, 'Le service vidéo refuse l’accès du serveur : l’administrateur doit vérifier sa configuration.', 'VEO_ACCESS_DENIED');
   }
   if (status === 429) {
     return new AppError(
@@ -74,12 +74,12 @@ function veoFailure(status: number, detail: string): AppError {
     );
   }
   if (status === 400) {
-    return new AppError(502, 'Google a refusé la description de la vidéo. Reformulez-la : vos points ont été rendus.', 'VEO_BAD_INPUT');
+    return new AppError(502, 'La description de la vidéo a été refusée. Reformulez-la : vos points ont été rendus.', 'VEO_BAD_INPUT');
   }
   // Opération inconnue ou expirée chez Google : elle ne produira jamais rien. Code distinct,
   // pour que le balayeur des générations abandonnées puisse la solder et rendre les points.
   if (status === 404) {
-    return new AppError(404, 'Ce rendu vidéo n’existe plus chez Google.', 'VEO_NOT_FOUND');
+    return new AppError(404, 'Ce rendu vidéo n’existe plus.', 'VEO_NOT_FOUND');
   }
   if (status >= 500) {
     return new AppError(503, 'Le rendu vidéo est momentanément indisponible. Réessayez : vos points ont été rendus.', 'VEO_UNAVAILABLE');
@@ -98,7 +98,7 @@ async function veoFetch(path: string, init: { method?: string; body?: string } =
       signal: AbortSignal.timeout(TIMEOUT_MS),
     });
   } catch {
-    throw new AppError(504, 'Google n’a pas répondu à temps pour le rendu vidéo.', 'VEO_TIMEOUT');
+    throw new AppError(504, 'Le service vidéo n’a pas répondu à temps.', 'VEO_TIMEOUT');
   }
 
   const payload = (await response.json().catch(() => null)) as { error?: { message?: string } } | null;

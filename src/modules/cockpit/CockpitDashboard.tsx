@@ -29,7 +29,7 @@ interface CockpitDashboardProps {
  * technique (« payments », « googleAuth »), ce qui se lisait comme une panne.
  */
 const SERVICE_LABELS: Record<string, string> = {
-  text: 'Analyse et rédaction IA',
+  text: 'Analyse et rédaction',
   webSearch: 'Recherche web des analyses',
   image: 'Visuels et couvertures',
   video: 'Vidéos',

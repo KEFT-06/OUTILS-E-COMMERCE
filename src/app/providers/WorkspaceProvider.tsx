@@ -82,7 +82,7 @@ const JOB_STEPS: Record<AnalysisJob['status'], string> = {
   queued: 'Préparation de l’analyse…',
   research: 'Étude de marché sur le web en cours : comptez 1 à 3 minutes.',
   writing: 'Rédaction du rapport à partir des sources trouvées…',
-  waiting: 'Le service d’IA est saturé. L’analyse reprendra d’elle-même : vos points restent réservés.',
+  waiting: 'Le service d’analyse est très demandé. L’analyse reprendra d’elle-même : vos points restent réservés.',
   completed: 'Rapport prêt.',
   failed: 'L’analyse n’a pas abouti.',
 };
@@ -101,13 +101,13 @@ export function analysisWaitingReason(code: string | null | undefined): string {
   if (code?.endsWith('_RATE_LIMITED')) {
     return search
       ? 'Le moteur de recherche web limite le nombre de demandes en ce moment.'
-      : 'Le quota de demandes du service d’IA est atteint pour le moment.';
+      : 'Le service d’analyse a atteint sa limite de demandes pour le moment.';
   }
   if (code?.endsWith('_TIMEOUT')) {
-    return search ? 'La recherche web n’a pas répondu à temps.' : 'Le service d’IA n’a pas répondu à temps.';
+    return search ? 'La recherche web n’a pas répondu à temps.' : 'Le service d’analyse n’a pas répondu à temps.';
   }
-  if (code?.endsWith('_UNAVAILABLE')) return 'Le service d’IA rencontre une panne passagère chez Google.';
-  return 'Le service d’IA de Google est saturé en ce moment.';
+  if (code?.endsWith('_UNAVAILABLE')) return 'Le service d’analyse rencontre une panne passagère.';
+  return 'Le service d’analyse est très demandé en ce moment.';
 }
 
 /**

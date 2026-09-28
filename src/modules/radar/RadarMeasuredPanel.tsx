@@ -55,8 +55,8 @@ export function RadarMeasuredPanel() {
         <CardDescription>
           Compté sur {data.stores} boutique{data.stores > 1 ? 's' : ''} surveillée{data.stores > 1 ? 's' : ''} depuis{' '}
           {data.observedDays} jour{data.observedDays > 1 ? 's' : ''}
-          {data.lastSweptAt ? `, dernier relevé ${formatRelativeFr(data.lastSweptAt)}` : ''}. Ces chiffres ne viennent pas de
-          l’IA : ils sont relevés.
+          {data.lastSweptAt ? `, dernier relevé ${formatRelativeFr(data.lastSweptAt)}` : ''}. Ces chiffres ne sont pas
+          estimés : ils sont relevés.
         </CardDescription>
         <CardAction>
           <Button asChild variant="outline" size="sm">

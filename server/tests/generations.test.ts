@@ -237,7 +237,7 @@ describe('Générations facturées', () => {
     submissionFails = true;
     try {
       const refused = await videaste.agent.post('/api/creatives/videos').send(videoBrief).expect(503);
-      assert.equal(refused.body.error.code, 'VEO_UNAVAILABLE');
+      assert.equal(refused.body.error.code, 'VIDEO_UNAVAILABLE', 'code neutre : aucun nom de fournisseur');
     } finally {
       submissionFails = false;
     }
