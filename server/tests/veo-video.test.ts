@@ -132,6 +132,8 @@ describe('Rendu vidéo par Veo', () => {
     const parametres = (depot.corps as { parameters: Record<string, unknown> }).parameters;
     assert.equal(parametres.aspectRatio, '9:16');
     assert.equal(parametres.durationSeconds, 6, 'une des trois durées que le modèle accepte');
+    // Google n'accepte le 1080p qu'en 8 secondes : une vidéo de 6 secondes part en 720p.
+    assert.equal(parametres.resolution, '720p', 'le 1080p en 6 secondes serait refusé par Google');
     // Veo accepte une consigne négative, là où le modèle d'IMAGE de Google n'en propose pas.
     // C'est par elle que passe l'interdiction des marques et du texte à l'écran.
     assert.match(String(parametres.negativePrompt), /brand logos/);

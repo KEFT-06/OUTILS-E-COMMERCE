@@ -3,8 +3,10 @@ import { useEffect, useState } from 'react';
 export interface ServerProviders {
   /** Analyse, rédaction et traduction. */
   text: boolean;
-  /** Visuels, vidéos et couvertures. */
+  /** Visuels et couvertures (Cloudflare ou Gemini). */
   images: boolean;
+  /** Vidéos (Veo). */
+  video: boolean;
   /** Recherche web des analyses de niche. */
   webSearch: boolean;
   /** Envoi des e-mails (mot de passe oublié, confirmation d'adresse). */
@@ -27,7 +29,10 @@ export function useProviders(): ServerProviders | null {
         if (!cancelled && data?.providers) {
           setProviders({
             text: Boolean(data.providers.text),
-            images: Boolean(data.providers.video),
+            // « images » est lu à part : il suivait l'indicateur vidéo du temps où un seul
+            // fournisseur faisait les deux, et une couverture était refusée quand la vidéo l'était.
+            images: Boolean(data.providers.image ?? data.providers.video),
+            video: Boolean(data.providers.video),
             webSearch: Boolean(data.providers.webSearch),
             email: Boolean(data.providers.email),
             payments: Boolean(data.providers.payments),

@@ -1,8 +1,9 @@
-import { desc, eq, sql } from 'drizzle-orm';
+import { and, desc, eq, sql } from 'drizzle-orm';
 import { databaseKind, getDb } from '@server/db/client';
-import { storybooks, watches } from '@server/db/schema';
+import { generations, storybooks, watches } from '@server/db/schema';
 import { env, isProd, providers } from '@server/env';
 import { lastImageOutcome } from '@server/services/ai/image';
+import { videoArchiveConfigured } from '@server/services/creatives/archive';
 
 /**
  * État des services du site, vérifié en direct pour l'administration.
@@ -264,29 +265,67 @@ async function checkGamma(): Promise<ServiceCheck> {
   return { ...base, state: 'ok', detail: `Clé acceptée · illustrations ${env.GAMMA_IMAGE_MODEL}${credits}.`, action: null };
 }
 
-async function checkHiggsfield(): Promise<ServiceCheck> {
-  const base = { id: 'higgsfield', name: 'Higgsfield', role: 'Vidéos publicitaires et visuels' };
-  if (!providers.higgsfield)
-    return {
-      ...base,
-      state: 'off',
-      detail: 'Aucune clé : vidéos et visuels fermés.',
-      action: 'Renseigner HIGGSFIELD_API_KEY_ID et HIGGSFIELD_API_KEY_SECRET.',
-    };
-  const result = await probe(`${trimmed(env.HIGGSFIELD_API_URL)}/requests/00000000-0000-4000-8000-000000000000/status`, {
-    Authorization: `Key ${env.HIGGSFIELD_API_KEY_ID}:${env.HIGGSFIELD_API_KEY_SECRET}`,
+/**
+ * Vidéos : Veo, par la clé Gemini. Le modèle est interrogé (lecture, gratuite) : une clé
+ * valide mais sans accès à Veo se voit ici, et non au premier client qui paie une vidéo.
+ */
+async function checkVeo(): Promise<ServiceCheck> {
+  const base = { id: 'veo', name: 'Veo (vidéos)', role: 'Vidéos publicitaires, formats 9:16 et 16:9' };
+  if (!env.GEMINI_API_KEY)
+    return { ...base, state: 'off', detail: 'Aucune clé Gemini : les vidéos sont fermées.', action: 'Renseigner GEMINI_API_KEY.' };
+  const result = await probe(`${trimmed(env.GEMINI_API_URL)}/v1beta/models/${encodeURIComponent(env.VEO_VIDEO_MODEL)}`, {
+    'x-goog-api-key': env.GEMINI_API_KEY,
   });
   if (!result) return unreachable(base);
-  if (result.status === 401 || result.status === 403) return refused(base, 'HIGGSFIELD_API_KEY_ID et HIGGSFIELD_API_KEY_SECRET');
-  if (result.status === 404 || result.status === 200) {
+  if (result.status === 401 || result.status === 403) return refused(base, 'GEMINI_API_KEY');
+  if (result.status === 404)
     return {
       ...base,
-      state: 'ok',
-      detail: 'Clé acceptée. Le solde de crédits ne se lit pas par l’API : une vidéo refusée pour crédits ne retire aucun point.',
-      action: 'Vérifier le solde sur higgsfield.ai avant de lancer des vidéos.',
+      state: 'error',
+      detail: `Le modèle ${env.VEO_VIDEO_MODEL} est inconnu de Google pour cette clé.`,
+      action: 'Vérifier VEO_VIDEO_MODEL, ou l’accès du projet Google de la clé aux modèles Veo.',
     };
-  }
-  return unreachable(base);
+  if (result.status !== 200) return unreachable(base);
+  return {
+    ...base,
+    state: 'ok',
+    detail: `Modèle ${env.VEO_VIDEO_MODEL} accessible · ${env.VEO_RESOLUTION} en 8 s, 720p en 4 et 6 s. Facturé à la seconde par Google.`,
+    action: null,
+  };
+}
+
+/** Copie des vidéos Veo dans le stockage de Supabase : Google n'en garde une que deux jours. */
+async function checkVideoArchive(): Promise<ServiceCheck> {
+  const base = { id: 'video-archive', name: 'Copie des vidéos', role: 'Garde les vidéos Veo au-delà des 2 jours de Google' };
+  if (!videoArchiveConfigured())
+    return {
+      ...base,
+      state: 'warning',
+      detail: 'Non configurée : une vidéo non téléchargée dans les 2 jours est perdue.',
+      action: 'Renseigner SUPABASE_API_SECRET_KEY (Supabase → Project Settings → API Keys → Secret keys), puis redéployer.',
+    };
+  const since = new Date(Date.now() - 2 * 86_400_000);
+  const [counts] = await getDb()
+    .select({
+      archived: sql<number>`count(*) filter (where ${generations.archivedAt} is not null)`.mapWith(Number),
+      waiting: sql<number>`count(*) filter (where ${generations.archivedAt} is null and ${generations.createdAt} > ${since.toISOString()}::timestamptz)`.mapWith(Number),
+      last: sql<string | null>`max(${generations.archivedAt})`,
+    })
+    .from(generations)
+    .where(and(eq(generations.provider, 'veo'), eq(generations.status, 'completed')));
+  const archived = counts?.archived ?? 0;
+  const waiting = counts?.waiting ?? 0;
+  const last = counts?.last ? new Date(counts.last).toLocaleString('fr-FR', { timeZone: env.REPORTING_TIMEZONE }) : null;
+  return {
+    ...base,
+    state: waiting > 0 ? 'warning' : 'ok',
+    detail:
+      `Active · espace privé « ${env.CREATIVES_BUCKET} » · ${archived} vidéo${archived > 1 ? 's' : ''} copiée${archived > 1 ? 's' : ''}` +
+      (last ? ` · dernière copie : ${last}` : ' · aucune vidéo copiée pour l’instant') +
+      (waiting > 0 ? ` · ${waiting} en attente de copie` : '') +
+      '.',
+    action: waiting > 0 ? 'Les copies manquées sont refaites par le relevé de nuit tant que Google garde l’original (2 jours).' : null,
+  };
 }
 
 async function checkChariow(): Promise<ServiceCheck> {
@@ -501,7 +540,8 @@ export async function checkServices(options: { refresh?: boolean } = {}): Promis
     Promise.resolve(checkImages()),
     checkPerplexity(),
     checkGamma(),
-    checkHiggsfield(),
+    checkVeo(),
+    checkVideoArchive(),
     checkChariow(),
     checkRadar(),
     checkStripe(),

@@ -129,6 +129,18 @@ export interface VeoInput {
   durationSeconds: VeoDuration;
 }
 
+/**
+ * Résolution demandée pour une durée donnée.
+ *
+ * Google n'accepte le 1080p et le 4K QU'EN 8 secondes (« must be 8s with 1080p/4k »,
+ * ai.google.dev/gemini-api/docs/veo, lu le 28 septembre 2026). La résolution configurée était
+ * envoyée pour toutes les durées : une vidéo de 4 ou 6 secondes était refusée, les points
+ * rendus, et l'utilisateur repartait sans vidéo. En dessous de 8 secondes, c'est donc 720p.
+ */
+export function veoResolutionFor(durationSeconds: VeoDuration): string {
+  return durationSeconds === 8 ? env.VEO_RESOLUTION : '720p';
+}
+
 /** Corps envoyé à Veo. Fonction pure, testable sans appel réseau. */
 export function buildVeoRequest(input: VeoInput) {
   return {
@@ -136,7 +148,7 @@ export function buildVeoRequest(input: VeoInput) {
     parameters: {
       aspectRatio: input.aspectRatio,
       durationSeconds: input.durationSeconds,
-      resolution: env.VEO_RESOLUTION,
+      resolution: veoResolutionFor(input.durationSeconds),
       negativePrompt: input.negativePrompt,
     },
   };

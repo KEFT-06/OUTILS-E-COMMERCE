@@ -22,7 +22,9 @@ const SERVICES_OF: Record<Capability, string[]> = {
   writing: ['gemini'],
   webSearch: ['perplexity'],
   images: ['images'],
-  video: ['higgsfield'],
+  // Veo depuis l'abandon de Higgsfield : c'était encore l'état de Higgsfield qui pouvait
+  // bloquer une vidéo rendue par Google.
+  video: ['veo'],
   layout: ['gamma'],
   database: ['database'],
 };

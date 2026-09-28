@@ -7,18 +7,14 @@ import { env, isProd, providers } from '@server/env';
 import { AppError, marketSchema } from '@server/middleware';
 import { type FalQueueStatus, getFalGeneration } from '@server/services/fal';
 import {
-  HiggsfieldStatus,
-  fetchMedia,
-  getGenerationStatus,
-  submitGeneration,
-} from '@server/services/higgsfield';
-import {
   VEO_FORMATS,
   type VeoGeneration,
   fetchVeoMedia,
   getVeoGeneration,
   submitVeoGeneration,
 } from '@server/services/veo';
+import { cloudflareImagesConfigured } from '@server/services/ai/cloudflareImage';
+import { geminiImagesConfigured } from '@server/services/ai/geminiImage';
 import { fetchArchivedVideo } from '@server/services/creatives/archive';
 import { AD_FRAMEWORK_IDS, findAdFramework } from '@server/shared/adFrameworks';
 import { countryName } from '@server/shared/countries';
@@ -62,12 +58,6 @@ const AWARENESS_DIRECTION: Record<AwarenessLevel, string> = {
 
 export const CREATIVE_FORMATS = ['1:1', '9:16', '16:9'] as const;
 
-export const VISUAL_MODEL_PATH = '/higgsfield-ai/soul/standard';
-/**
- * Résolution des visuels et des couvertures. La spécification publiée annonce « 2K » ou « 4K »,
- * mais l'API réelle les refuse et n'accepte que « 720p » ou « 1080p » (vérifié le 16 septembre 2026).
- */
-export const VISUAL_RESOLUTION = '1080p';
 
 /**
  * Où vit le fichier d'un créatif — ce que le suivi a besoin de savoir, et rien d'autre.
@@ -81,7 +71,7 @@ export const VISUAL_RESOLUTION = '1080p';
  * La vidéo est chez fal.ai : Kling 2.5 Turbo Pro y coûte 0,35 $ les cinq secondes, payés au
  * rendu réussi. Higgsfield garde les visuels d'avant la bascule, qui restent consultables.
  */
-export type CreativeProvider = 'higgsfield' | 'fal' | 'veo' | 'interne';
+export type CreativeProvider = 'fal' | 'veo' | 'interne';
 
 /**
  * Fournisseur des visuels, décidé à chaque demande et non figé ici.
@@ -91,7 +81,18 @@ export type CreativeProvider = 'higgsfield' | 'fal' | 'veo' | 'interne';
  * recours tant qu'il est configuré : un serveur sans clé Cloudflare continue de produire.
  */
 export function visualProvider(): CreativeProvider {
-  return providers.cloudflareImages ? 'interne' : 'higgsfield';
+  /*
+    Le rendu interne (`generateImage`) sait passer par Cloudflare OU par Gemini. Il n'était
+    choisi que si Cloudflare était configuré : un serveur doté de la seule clé Gemini
+    renvoyait chaque visuel vers Higgsfield, abandonné — et l'écran répondait « service non
+    configuré » alors qu'un moteur d'images était bel et bien disponible.
+  */
+  return 'interne';
+}
+
+/** Un moteur d'images est-il utilisable ? Cloudflare, ou Gemini à défaut. */
+export function imagesConfigured(): boolean {
+  return cloudflareImagesConfigured() || geminiImagesConfigured();
 }
 
 export const VIDEO_PROVIDER: CreativeProvider = 'veo';
@@ -109,7 +110,6 @@ export const VIDEO_PROVIDER: CreativeProvider = 'veo';
  */
 export const PROVIDER_RETENTION_DAYS: Record<CreativeProvider, number | null> = {
   veo: 2,
-  higgsfield: 7,
   fal: 7,
   interne: null,
 };
@@ -260,41 +260,17 @@ export function buildVideoInput(brief: VideoBrief) {
   };
 }
 
+/** États d'une génération, communs à tous les fournisseurs. « nsfw » : refusée par le filtre de sécurité. */
+export type CreativeState = 'queued' | 'in_progress' | 'completed' | 'failed' | 'nsfw' | 'canceled';
+
 export interface CreativeStatus {
   requestId: string;
-  status: HiggsfieldStatus['status'];
+  status: CreativeState;
   /** Présent quand un fichier est prêt. Le lien lui-même reste côté serveur. */
   mediaType?: 'image' | 'video';
   message?: string;
   /** Jours pendant lesquels le fichier reste récupérable ; null : sans limite. Ajouté par la route. */
   retentionDays?: number | null;
-}
-
-function resultMedia(status: HiggsfieldStatus): { mediaType: 'image' | 'video'; url: string } | null {
-  if (status.status !== 'completed') return null;
-  if (status.video?.url) return { mediaType: 'video', url: status.video.url };
-  const imageUrl = status.images?.[0]?.url;
-  return imageUrl ? { mediaType: 'image', url: imageUrl } : null;
-}
-
-const STATUS_MESSAGES: Partial<Record<HiggsfieldStatus['status'], string>> = {
-  nsfw: 'Le contenu généré a été refusé par le filtre de sécurité du fournisseur. Cette génération ne vous est pas facturée.',
-  canceled: 'La génération a été annulée.',
-};
-
-function toClientStatus(status: HiggsfieldStatus): CreativeStatus {
-  const media = resultMedia(status);
-  const message =
-    status.status === 'failed'
-      ? (status.error ?? 'La génération a échoué chez Higgsfield.')
-      : STATUS_MESSAGES[status.status];
-
-  return {
-    requestId: status.request_id,
-    status: status.status,
-    ...(media ? { mediaType: media.mediaType } : {}),
-    ...(message ? { message } : {}),
-  };
 }
 
 /**
@@ -327,10 +303,6 @@ function falToClientStatus(generation: { requestId: string; status: FalQueueStat
     status: FAL_STATUS[generation.status],
     ...(generation.mediaType ? { mediaType: generation.mediaType } : {}),
   };
-}
-
-export async function submitVisual(brief: VisualBrief): Promise<CreativeStatus> {
-  return toClientStatus(await submitGeneration(VISUAL_MODEL_PATH, buildVisualInput(brief)));
 }
 
 /** Veo ne connaît que trois états ; la file de rendu n'expose pas d'étape intermédiaire. */
@@ -367,7 +339,7 @@ export async function getCreativeStatus(requestId: string, provider: CreativePro
   // Les vidéos lancées avant la bascule restent suivies chez fal.ai jusqu'à leur terme :
   // rien de ce qui a été payé ne devient inaccessible.
   if (provider === 'fal') return falToClientStatus(await getFalGeneration(env.FAL_VIDEO_MODEL, requestId));
-  return toClientStatus(await getGenerationStatus(requestId));
+  throw new AppError(404, 'Génération introuvable chez le fournisseur.', 'GENERATION_NOT_FOUND');
 }
 
 const EXTENSIONS: Record<string, string> = {
@@ -411,8 +383,6 @@ async function fetchGeneratedMedia(url: string): Promise<Response> {
   if (target.protocol !== 'https:' && !enClairTolere) {
     throw new AppError(502, 'Lien de fichier non sécurisé renvoyé par le fournisseur.', 'CREATIVE_FILE_INSECURE');
   }
-  if (target.protocol === 'https:') return fetchMedia(url);
-
   let response: Response;
   try {
     response = await fetch(target, { signal: AbortSignal.timeout(60_000) });
@@ -457,15 +427,10 @@ export async function streamCreativeFile(
     return;
   }
 
-  const media =
-    provider === 'fal'
-      ? await (async () => {
-          const generation = await getFalGeneration(env.FAL_VIDEO_MODEL, requestId);
-          return generation.mediaUrl && generation.mediaType
-            ? { mediaType: generation.mediaType, url: generation.mediaUrl }
-            : null;
-        })()
-      : resultMedia(await getGenerationStatus(requestId));
+  // Vidéos d'avant Veo, rendues chez fal.ai : suivies jusqu'à ce que fal efface le fichier.
+  if (provider !== 'fal') throw new AppError(404, 'Contenu introuvable.', 'CREATIVE_NOT_FOUND');
+  const generation = await getFalGeneration(env.FAL_VIDEO_MODEL, requestId);
+  const media = generation.mediaUrl && generation.mediaType ? { mediaType: generation.mediaType, url: generation.mediaUrl } : null;
   if (!media) {
     throw new AppError(409, "Aucun fichier disponible : la génération n'est pas terminée.", 'CREATIVE_NOT_READY');
   }

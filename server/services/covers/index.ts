@@ -6,9 +6,7 @@ import { covers, guides } from '@server/db/schema';
 import { AppError } from '@server/middleware';
 import type { RequestAuth } from '@server/middleware/auth';
 import { generateImage } from '@server/services/ai/image';
-import { generationStateOf } from '@server/services/creatives';
 import { findOwnedGeneration, runBilledGeneration, settleGeneration } from '@server/services/generations';
-import { fetchMedia, getGenerationStatus } from '@server/services/higgsfield';
 import { countryName } from '@server/shared/countries';
 
 /**
@@ -16,8 +14,7 @@ import { countryName } from '@server/shared/countries';
  *
  * Générées par le modèle d'image de Gemini (GEMINI_IMAGE_MODEL), sans aucun texte : le titre
  * est posé ensuite par la mise en page, dans la langue de chaque export. L'image arrive dans la
- * réponse et reste en base : elle est disponible à chaque nouvel export. Les couvertures plus
- * anciennes, créées chez Higgsfield et encore en cours, sont suivies jusqu'au bout.
+ * réponse et reste en base : elle est disponible à chaque nouvel export.
  */
 
 export const COVER_STYLES = ['illustration', 'photo', 'minimal'] as const;
@@ -157,50 +154,21 @@ export async function latestCover(auth: RequestAuth, subject: string, subjectId:
 }
 
 /**
- * État d'une couverture. Tant qu'elle est en cours, interroge le fournisseur ;
- * prête, recopie l'image en base et remplace l'ancienne couverture du même sujet.
+ * État d'une couverture.
+ *
+ * Une couverture est désormais produite d'un seul appel et enregistrée prête. Seules les
+ * couvertures lancées chez Higgsfield, fournisseur abandonné, pouvaient rester « en cours » :
+ * il n'y a plus personne à interroger, et Higgsfield effaçait ses fichiers au bout de sept
+ * jours. Une telle couverture est donc close en échec, et ses points rendus.
  */
 export async function refreshCover(auth: RequestAuth, coverId: string | undefined): Promise<CoverView> {
   const row = await ownedCover(auth, coverId);
   if (row.status !== 'pending' || !row.providerRef) return serializeCover(row);
 
-  const status = await getGenerationStatus(row.providerRef);
-  const state = generationStateOf(status.status);
-  const generation = await findOwnedGeneration(auth, 'higgsfield', row.providerRef);
-  const db = getDb();
-
-  if (state === 'failed') {
-    await settleGeneration(generation, 'failed');
-    const [failed] = await db.update(covers).set({ status: 'failed', updatedAt: new Date() }).where(eq(covers.id, row.id)).returning();
-    return serializeCover(failed!);
-  }
-  if (state === 'pending') return serializeCover(row);
-
-  const imageUrl = status.images?.[0]?.url;
-  if (!imageUrl) throw new AppError(502, 'Le fournisseur n’a renvoyé aucune image.', 'COVER_IMAGE_MISSING');
-  const media = await fetchMedia(imageUrl);
-  const bytes = Buffer.from(await media.arrayBuffer());
-  if (bytes.length > MAX_COVER_BYTES) throw new AppError(502, 'L’image générée est trop lourde pour être conservée.', 'COVER_TOO_LARGE');
-  const mimeType = media.headers.get('content-type')?.split(';')[0]?.trim() || 'image/png';
-  if (!/^image\/(png|jpeg|webp)$/.test(mimeType)) throw new AppError(502, 'Format d’image inattendu.', 'COVER_UNEXPECTED_FORMAT');
-
-  await settleGeneration(generation, 'completed', mimeType === 'image/jpeg' ? 'jpg' : mimeType.split('/')[1]);
-  const ready = await db.transaction(async (tx) => {
-    const [updated] = await tx
-      .update(covers)
-      .set({ status: 'ready', mimeType, data: bytes.toString('base64'), updatedAt: new Date() })
-      .where(eq(covers.id, row.id))
-      .returning();
-    // Une seule couverture par sujet : la précédente est remplacée.
-    await tx
-      .delete(covers)
-      .where(and(eq(covers.userId, row.userId), eq(covers.subject, row.subject), eq(covers.subjectId, row.subjectId), ne(covers.id, row.id)));
-    if (row.subject === 'guide') {
-      await tx.update(guides).set({ coverId: row.id }).where(and(eq(guides.userId, row.userId), eq(guides.id, row.subjectId)));
-    }
-    return updated!;
-  });
-  return serializeCover(ready);
+  const generation = await findOwnedGeneration(auth, 'higgsfield', row.providerRef).catch(() => null);
+  if (generation) await settleGeneration(generation, 'failed');
+  const [failed] = await getDb().update(covers).set({ status: 'failed', updatedAt: new Date() }).where(eq(covers.id, row.id)).returning();
+  return serializeCover(failed!);
 }
 
 export async function sendCoverImage(auth: RequestAuth, coverId: string | undefined, res: ExpressResponse): Promise<void> {

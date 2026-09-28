@@ -8,7 +8,9 @@ import { stripeMode } from '@server/services/billing/stripe';
 import { BlueprintsUnavailableError, getCampaignBlueprints } from '@server/services/blueprints';
 import { getRulesMetadata } from '@server/services/compliance';
 import { asComplianceRouteError } from '@server/services/compliance/guard';
+import { imagesConfigured } from '@server/services/creatives';
 import { CreditConfigUnavailableError, getCostTable } from '@server/services/credits';
+import { veoConfigured } from '@server/services/veo';
 import { currencyForCountry, getRates, isSupportedCurrency } from '@server/services/currency';
 import { LaunchKitUnavailableError, getLaunchKitConfig } from '@server/services/launchKit';
 import { FEATURES, PlansUnavailableError, getPlanConfig, planPrice } from '@server/services/plans';
@@ -69,7 +71,13 @@ catalogRouter.get(
       database,
       providers: {
         text: providers.gemini,
-        video: providers.higgsfield,
+        /*
+          Ces deux indicateurs lisaient encore `providers.higgsfield`, fournisseur abandonné :
+          en production, l'écran annonçait vidéos et couvertures indisponibles alors que Veo
+          (clé Gemini) et le moteur d'images (Cloudflare ou Gemini) répondaient.
+        */
+        image: imagesConfigured(),
+        video: veoConfigured(),
         storybook: providers.gamma,
         webSearch: providers.webSearch,
         email: providers.email,
