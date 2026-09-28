@@ -1,3 +1,5 @@
+import { Readable } from 'node:stream';
+import { pipeline } from 'node:stream/promises';
 import type { Response as ExpressResponse } from 'express';
 import { and, desc, eq } from 'drizzle-orm';
 import { z } from 'zod';
@@ -462,13 +464,38 @@ export async function sendStorybookPdf(auth: RequestAuth, storybookId: string | 
   if (row.status !== 'completed') throw new AppError(409, 'Le conte n’est pas encore prêt.', 'STORYBOOK_NOT_READY');
 
   const pdf = await freshPdf(row.generationRef, row.gammaId);
-  const bytes = Buffer.from(await pdf.arrayBuffer());
-  if (bytes.subarray(0, 4).toString('latin1') !== '%PDF') {
-    throw new AppError(502, 'Gamma a renvoyé un fichier qui n’est pas un PDF.', 'STORYBOOK_PDF_INVALID');
+  const invalid = () => new AppError(502, 'Gamma a renvoyé un fichier qui n’est pas un PDF.', 'STORYBOOK_PDF_INVALID');
+  if (!pdf.body) throw invalid();
+
+  /*
+    Le PDF est RELAYÉ au fil de l'eau, pas chargé en entier puis renvoyé d'un bloc.
+
+    Un conte illustré pèse facilement plus de 4,5 Mo — une grande illustration par page —
+    et l'hébergeur refuse toute réponse d'un seul bloc au-delà de ce poids (413). En local,
+    rien ne le montrait. Seul le début est lu d'avance, pour vérifier que c'est bien un PDF.
+  */
+  const reader = pdf.body.getReader();
+  let head = Buffer.alloc(0);
+  while (head.length < 4) {
+    const chunk = await reader.read();
+    if (chunk.done) break;
+    head = Buffer.concat([head, Buffer.from(chunk.value)]);
   }
+  if (head.subarray(0, 4).toString('latin1') !== '%PDF') {
+    await reader.cancel().catch(() => undefined);
+    throw invalid();
+  }
+
   res.setHeader('Content-Type', 'application/pdf');
-  res.setHeader('Content-Length', String(bytes.length));
   res.setHeader('Content-Disposition', `attachment; filename="${fileNameOf(row.title)}.pdf"`);
   res.setHeader('Cache-Control', 'private, no-store');
-  res.end(bytes);
+  async function* body() {
+    yield head;
+    for (;;) {
+      const chunk = await reader.read();
+      if (chunk.done) return;
+      yield Buffer.from(chunk.value);
+    }
+  }
+  await pipeline(Readable.from(body()), res);
 }

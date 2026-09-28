@@ -3,6 +3,7 @@ import { AlertTriangle, BookOpen, CheckCircle2, Download, ExternalLink, PenLine,
 import { useCreditGate } from '@/app/providers/CreditGateProvider';
 import { PageHeader } from '@/shared/components/PageHeader';
 import { ApiError, readApiError, toApiError } from '@/shared/lib/apiError';
+import { MAX_POLL_MISSES, lostTrackMessage, pollStatus } from '@/shared/lib/polling';
 import { useAuth } from '@/features/auth/AuthContext';
 import { CountryCombobox } from '@/shared/components/CountryCombobox';
 import { guessCountryCode } from '@/shared/lib/geo';
@@ -195,6 +196,7 @@ export function StorybookView() {
           setTitle(storyTitle);
           setLibraryVersion((version) => version + 1);
           const deadline = Date.now() + MAX_WAIT_MS;
+          let misses = 0;
 
           while (Date.now() < deadline) {
             await wait(POLL_INTERVAL_MS);
@@ -202,10 +204,16 @@ export function StorybookView() {
               throw new ApiError("Suivi interrompu : l'écran a été quitté pendant la génération.");
             }
 
-            const polled = await fetch(`/api/storybook/generations/${encodeURIComponent(generationId)}`);
-            if (!polled.ok) throw await readApiError(polled, `Le suivi a échoué (${polled.status}).`);
-
-            const status = (await polled.json()) as StorybookStatus;
+            const status = await pollStatus<StorybookStatus>(
+              `/api/storybook/generations/${encodeURIComponent(generationId)}`,
+              'Le suivi a échoué',
+            );
+            if (!status) {
+              misses += 1;
+              if (misses >= MAX_POLL_MISSES) throw new ApiError(lostTrackMessage('dans « Mes contes » ci-dessous'));
+              continue;
+            }
+            misses = 0;
             if (status.status === 'completed') {
               setResult({ ...status, storybookId: status.storybookId ?? storybookId });
               setLibraryVersion((version) => version + 1);

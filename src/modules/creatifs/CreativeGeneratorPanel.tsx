@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { AlertTriangle, Clapperboard, Download, Image as ImageIcon, PenLine, ShieldCheck, Sparkles } from 'lucide-react';
 import { useCreditGate } from '@/app/providers/CreditGateProvider';
 import { ApiError, readApiError, toApiError } from '@/shared/lib/apiError';
+import { MAX_POLL_MISSES, lostTrackMessage, pollStatus } from '@/shared/lib/polling';
 import { AWARENESS_OPTIONS } from '@/shared/lib/awareness';
 import { findAdFramework } from '@server/shared/adFrameworks';
 import { useAuth } from '@/features/auth/AuthContext';
@@ -166,6 +167,7 @@ export function CreativeGeneratorPanel({ onVisualCreated }: { onVisualCreated?: 
   const suivre = async (initial: CreativeStatus, generationKind: 'visual' | 'video'): Promise<CreativeStatus> => {
     let status = initial;
     const deadline = Date.now() + MAX_WAIT_MS[generationKind];
+    let misses = 0;
     while (status.status !== 'completed') {
       if (FAILED_STATUSES.includes(status.status)) {
         throw new ApiError(status.message ?? 'La génération a échoué.');
@@ -179,9 +181,14 @@ export function CreativeGeneratorPanel({ onVisualCreated }: { onVisualCreated?: 
       if (unmountedRef.current) {
         throw new ApiError("Suivi interrompu : l'écran a été quitté pendant la génération.");
       }
-      const polled = await fetch(`/api/creatives/requests/${encodeURIComponent(status.requestId)}`);
-      if (!polled.ok) throw await readApiError(polled, `Le suivi a échoué (${polled.status}).`);
-      status = (await polled.json()) as CreativeStatus;
+      const polled = await pollStatus<CreativeStatus>(`/api/creatives/requests/${encodeURIComponent(status.requestId)}`, 'Le suivi a échoué');
+      if (!polled) {
+        misses += 1;
+        if (misses >= MAX_POLL_MISSES) throw new ApiError(lostTrackMessage('dans « Mes visuels »'));
+        continue;
+      }
+      misses = 0;
+      status = polled;
       setProgress(status.status);
     }
     if (!status.mediaType) {
