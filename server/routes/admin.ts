@@ -983,8 +983,8 @@ adminRouter.get(
 /** État des services branchés (clés, crédits, adresse IP du serveur), vérifié en direct sans rien consommer. */
 /**
  * Grille tarifaire complète, en lecture seule : ce qu'un palier donne et ce que chaque action
- * coûte. Les deux tables sont des fichiers modifiables sans redéploiement ; cet écran sert à les
- * RELIRE, pas à les éditer — une grille changée depuis une page web le serait sans trace.
+ * coûte. Les deux tables sont des fichiers du dépôt, mis en ligne par un redéploiement ; cet écran
+ * sert à les RELIRE, pas à les éditer — une grille changée depuis une page web le serait sans trace.
  */
 adminRouter.get(
   '/pricing',

@@ -3,6 +3,7 @@ import { Banknote, Lock } from 'lucide-react';
 import { PageHeader } from '@/shared/components/PageHeader';
 import { apiRequest } from '@/shared/lib/api';
 import { toApiError } from '@/shared/lib/apiError';
+import { formatDateFr } from '@/shared/lib/formatDate';
 import { Alert, AlertDescription, AlertTitle } from '@/shared/ui/alert';
 import { Badge } from '@/shared/ui/badge';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/shared/ui/card';
@@ -16,8 +17,8 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
  * action COÛTE en points. Elles vivaient dans deux fichiers de configuration qu'aucun écran ne
  * montrait — donc que personne ne relisait, et dont les incohérences ne se voyaient qu'à l'usage.
  *
- * Rien ne s'édite ici, et c'est un choix : les fichiers restent modifiables sans redéploiement,
- * mais une grille changée depuis une page web le serait sans trace ni relecture.
+ * Rien ne s'édite ici, et c'est un choix : une grille se change par un commit, relu et daté,
+ * que le déploiement met en ligne ; changée depuis une page web, elle le serait sans trace.
  */
 
 interface Pricing {
@@ -98,7 +99,7 @@ export function AdminPricingPage() {
       <PageHeader
         eyebrow="Administration"
         title="Tarifs"
-        description={`Ce que chaque palier donne, et ce que chaque action coûte. Grille ${data.version}, mise à jour le ${data.updatedAt}.`}
+        description={`Ce que chaque palier donne, et ce que chaque action coûte. Grille ${data.version}, mise à jour le ${formatDateFr(data.updatedAt)}.`}
       />
 
       {/* Les deux tables se déclarent provisoires tant qu'elles n'ont pas été validées
@@ -244,9 +245,9 @@ export function AdminPricingPage() {
       </Card>
 
       <p className="text-xs text-muted-foreground">
-        Lecture seule. Les deux tables sont des fichiers de configuration modifiables sans redéploiement
-        (<code>server/config/plans.json</code> et <code>server/config/credit-costs.json</code>) : les éditer depuis une
-        page web les changerait sans trace ni relecture.
+        Lecture seule. Les deux tables sont des fichiers de configuration (<code>server/config/plans.json</code> et{' '}
+        <code>server/config/credit-costs.json</code>) : un changement passe par une modification du code, puis un
+        redéploiement, ce qui en garde la trace. Les éditer depuis une page web les changerait sans trace ni relecture.
       </p>
     </div>
   );

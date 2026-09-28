@@ -10,9 +10,9 @@ import { FEATURES, getPlanConfig, type FeatureId } from '@server/services/plans'
  * points. Elles vivaient dans deux fichiers de configuration que personne ne pouvait consulter
  * depuis le site — donc que personne ne relisait.
  *
- * Lecture seule, et c'est volontaire : ces fichiers sont modifiables sans redéploiement, mais
- * une grille éditée depuis une page web finirait par l'être sans trace ni relecture. On montre,
- * on ne modifie pas.
+ * Lecture seule, et c'est volontaire : ces fichiers se changent par un commit et un redéploiement
+ * (ils sont lus une fois puis gardés en mémoire), ce qui laisse une trace ; une grille éditée depuis
+ * une page web l'aurait été sans trace ni relecture. On montre, on ne modifie pas.
  */
 
 export interface PricingOverview {

@@ -42,7 +42,7 @@ export const PERMISSIONS = {
   'admin.pricing.read': {
     label: 'Voir la grille tarifaire',
     description:
-      'Paliers, prix par devise, quotas de points, limites et fonctions ouvertes, ainsi que le coût en points de chaque action. Lecture seule : ces deux tables sont des fichiers de configuration, modifiables sans redéploiement.',
+      'Paliers, prix par devise, quotas de points, limites et fonctions ouvertes, ainsi que le coût en points de chaque action. Lecture seule : ces deux tables sont des fichiers de configuration, modifiés par un redéploiement du site.',
   },
   'admin.market.collect': {
     label: 'Lancer une collecte publicitaire',
