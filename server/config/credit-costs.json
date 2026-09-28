@@ -1,6 +1,6 @@
 {
   "version": "2026.09.10",
-  "updatedAt": "2026-09-27",
+  "updatedAt": "2026-09-28",
   "note": "Grille tarifaire des research points (CdC §8). Table de configuration éditable sans déploiement, au même titre que la table de conformité. À migrer en base lors du Lot 2, avec un historique de versions : un coût qui change doit rester traçable pour les factures déjà émises.",
   "currency": "FCFA",
   "pointValueFcfa": 250,
@@ -67,6 +67,12 @@
       "label": "Génération d'une vidéo",
       "cost": 12,
       "description": "Rendu vidéo par le fournisseur externe. Coût le plus élevé de la grille."
+    },
+    {
+      "id": "video_extension",
+      "label": "Prolongation d'une vidéo (7 s)",
+      "cost": 8,
+      "description": "Ajoute 7 secondes à une vidéo longue (720p), jusqu'à 2 min 28. Même marge qu'une vidéo : environ 0,70 $ de rendu chez Google. Points rendus si la prolongation échoue."
     },
     {
       "id": "image_generation",

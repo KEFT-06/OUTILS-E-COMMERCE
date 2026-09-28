@@ -14,4 +14,10 @@ export interface CreativeStatus {
   message?: string;
   /** Jours pendant lesquels le fichier reste récupérable chez le fournisseur ; null : gardé sans limite. */
   retentionDays?: number | null;
+  /** Vidéo Veo : durée totale en secondes. */
+  durationSeconds?: number | null;
+  /** Vidéo longue (720p) prolongeable de 7 s maintenant. */
+  extendable?: boolean;
+  /** Durée maximale atteignable par prolongations (148 s). */
+  maxDurationSeconds?: number;
 }

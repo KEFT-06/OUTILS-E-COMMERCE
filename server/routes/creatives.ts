@@ -9,6 +9,8 @@ import {
   type VisualBrief,
   buildVisualInput,
   creativeText,
+  extendVideo,
+  extensionSchema,
   fileFormatOf,
   generationStateOf,
   getCreativeStatus,
@@ -24,7 +26,16 @@ import { videoArchiveConfigured } from '@server/services/creatives/archive';
 import { createLocalVisual, listLocalVisuals, localVisualExists, sendLocalVisual } from '@server/services/creatives/local';
 import type { CreativeProvider } from '@server/services/creatives';
 import { falRequestIdSchema } from '@server/services/fal';
-import { veoConfigured, veoRequestIdSchema } from '@server/services/veo';
+import {
+  VEO_EXTENSION_RESOLUTION,
+  VEO_EXTENSION_SECONDS,
+  VEO_EXTENSION_WINDOW_MS,
+  VEO_MAX_INPUT_SECONDS,
+  VEO_MAX_TOTAL_SECONDS,
+  veoConfigured,
+  veoRequestIdSchema,
+  veoResolutionFor,
+} from '@server/services/veo';
 import { findOwnedGeneration, runBilledGeneration, settleGeneration } from '@server/services/generations';
 import { findAdFramework, isAdFrameworkAvailable } from '@server/shared/adFrameworks';
 
@@ -135,6 +146,7 @@ creativesRouter.post(
     );
     if (!veoConfigured()) throw providerUnavailable('rendu vidéo');
 
+    const duree = brief.extendable ? 8 : brief.duration;
     const { result } = await runBilledGeneration({
       auth: req.auth!,
       actionId: 'video_generation',
@@ -146,11 +158,73 @@ creativesRouter.post(
         state: generationStateOf(status.status),
         fileFormat: fileFormatOf(status),
       }),
+      video: { durationSeconds: duree, resolution: veoResolutionFor(duree, brief.extendable) },
     });
 
     res.status(202).json({ ...result, retentionDays: videoArchiveConfigured() ? null : PROVIDER_RETENTION_DAYS[VIDEO_PROVIDER] });
   }),
 );
+
+/**
+ * Prolonge de 7 secondes une vidéo longue de son auteur. Toutes les règles de Google sont
+ * vérifiées AVANT de retirer le moindre point : une prolongation vouée à l'échec ne se paie pas.
+ */
+creativesRouter.post(
+  '/videos/:requestId/extend',
+  requireAuth,
+  requireFeature('video_generation'),
+  aiLimiter,
+  validateBody(extensionSchema),
+  asyncRoute(async (req, res) => {
+    const parsedId = veoRequestIdSchema.safeParse(req.params.requestId);
+    if (!parsedId.success) throw new AppError(400, 'Identifiant de vidéo invalide.', 'INVALID_GENERATION_ID');
+    const parent = await findOwnedGeneration(req.auth!, 'veo', parsedId.data);
+    const refus = extensionRefusal(parent);
+    if (refus) throw new AppError(409, refus, 'VIDEO_NOT_EXTENDABLE');
+
+    const { sceneDescription } = req.body as { sceneDescription: string };
+    await assertCompliantBrief(sceneDescription, 'La scène décrite contient des formulations non conformes : corrigez-la avant de prolonger la vidéo.');
+    if (!veoConfigured()) throw providerUnavailable('rendu vidéo');
+
+    const { result } = await runBilledGeneration({
+      auth: req.auth!,
+      actionId: 'video_extension',
+      kind: 'video',
+      provider: VIDEO_PROVIDER,
+      run: () => extendVideo(parsedId.data, sceneDescription),
+      describe: (status) => ({ providerRef: status.requestId, state: generationStateOf(status.status), fileFormat: fileFormatOf(status) }),
+      video: { parentId: parent.id, durationSeconds: (parent.durationSeconds ?? 8) + VEO_EXTENSION_SECONDS, resolution: VEO_EXTENSION_RESOLUTION },
+    });
+    res.status(202).json({ ...result, retentionDays: videoArchiveConfigured() ? null : PROVIDER_RETENTION_DAYS[VIDEO_PROVIDER] });
+  }),
+);
+
+/**
+ * Raison pour laquelle une vidéo ne peut pas être prolongée, ou null si elle le peut.
+ * Règles de Google : vidéo Veo en 720p, de 141 s au plus, et de moins de deux jours.
+ */
+function extensionRefusal(video: { status: string; resolution: string | null; durationSeconds: number | null; completedAt: Date | null; createdAt: Date }): string | null {
+  if (video.status !== 'completed') return 'La vidéo n’est pas encore terminée.';
+  if (video.resolution !== VEO_EXTENSION_RESOLUTION || video.durationSeconds === null) {
+    return 'Seule une vidéo créée en mode « vidéo longue » (720p) peut être prolongée.';
+  }
+  if (video.durationSeconds + VEO_EXTENSION_SECONDS > VEO_MAX_TOTAL_SECONDS || video.durationSeconds > VEO_MAX_INPUT_SECONDS) {
+    return `La vidéo atteint la durée maximale de ${VEO_MAX_TOTAL_SECONDS} secondes.`;
+  }
+  if (Date.now() - (video.completedAt ?? video.createdAt).getTime() > VEO_EXTENSION_WINDOW_MS) {
+    return 'Google ne prolonge une vidéo que dans les deux jours qui suivent sa création.';
+  }
+  return null;
+}
+
+/** Durée et possibilité de prolonger, renvoyées avec l'état d'une vidéo Veo. */
+function videoChainInfo(video: Parameters<typeof extensionRefusal>[0]) {
+  return {
+    durationSeconds: video.durationSeconds,
+    extendable: video.status === 'completed' && extensionRefusal(video) === null,
+    maxDurationSeconds: VEO_MAX_TOTAL_SECONDS,
+  };
+}
 
 /** Suivi d'une génération de son auteur. Hors `aiLimiter` : le client sonde toutes les 5 secondes. */
 creativesRouter.get(
@@ -176,7 +250,11 @@ creativesRouter.get(
     const settled = await settleGeneration(generation, generationStateOf(status.status), fileFormatOf(status));
     // Une vidéo Veo copiée (ou en cours de copie, le dépôt partant à la fin du rendu) ne périme plus.
     const archived = provider === 'veo' && (settled.archivedAt !== null || videoArchiveConfigured());
-    res.json({ ...status, retentionDays: archived ? null : PROVIDER_RETENTION_DAYS[provider] });
+    res.json({
+      ...status,
+      retentionDays: archived ? null : PROVIDER_RETENTION_DAYS[provider],
+      ...(provider === 'veo' ? videoChainInfo(settled) : {}),
+    });
   }),
 );
 

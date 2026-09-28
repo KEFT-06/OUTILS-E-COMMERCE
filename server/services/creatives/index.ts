@@ -11,6 +11,7 @@ import {
   type VeoGeneration,
   fetchVeoMedia,
   getVeoGeneration,
+  submitVeoExtension,
   submitVeoGeneration,
 } from '@server/services/veo';
 import { cloudflareImagesConfigured } from '@server/services/ai/cloudflareImage';
@@ -140,6 +141,11 @@ export const videoBriefSchema = z.object({
   format: z.enum(VEO_FORMATS),
   sceneDescription: z.string().trim().min(3).max(1500),
   duration: z.union([z.literal(4), z.literal(6), z.literal(8)]),
+  /**
+   * Premier plan d'une vidéo longue, à prolonger ensuite par étapes de 7 s. Google ne prolonge
+   * qu'une vidéo en 720p : ce plan y est donc rendu, en 8 secondes.
+   */
+  extendable: z.boolean().optional(),
 });
 
 export type VisualBrief = z.infer<typeof visualBriefSchema>;
@@ -312,9 +318,45 @@ export async function submitVideo(brief: VideoBrief): Promise<CreativeStatus> {
       prompt: input.prompt,
       negativePrompt: input.negativePrompt,
       aspectRatio: input.aspectRatio,
-      durationSeconds: input.durationSeconds,
+      // Une vidéo longue part d'un plan de 8 s : c'est la base que Google prolonge.
+      durationSeconds: brief.extendable ? 8 : input.durationSeconds,
+      extendable: brief.extendable,
     }),
   );
+}
+
+/** Scène suivante d'une vidéo longue, décrite par l'auteur. */
+export const extensionSchema = z.object({ sceneDescription: z.string().trim().min(3).max(800) });
+
+/**
+ * Consigne d'une prolongation. Les deux garde-fous des créatifs y sont repris mot pour mot :
+ * une prolongation n'accepte pas de consigne négative documentée, et sans eux le modèle
+ * ajoute de lui-même texte et logos (constaté sur les images, voir services/ai/image.ts).
+ */
+export function buildExtensionPrompt(scene: string): string {
+  return [
+    `Continue the previous shot seamlessly: ${scene}`,
+    'Keep the same characters, setting, lighting and camera style as the end of the previous shot.',
+    'No text, no logos, no watermarks. No real brand logos.',
+  ].join(' ');
+}
+
+/**
+ * Lance la prolongation d'une vidéo Veo : ses octets partent chez Google avec la scène suivante.
+ * La copie archivée est lue d'abord (elle ne dépend pas de la conservation de Google), puis
+ * l'original chez Google à défaut.
+ */
+export async function extendVideo(parentRequestId: string, scene: string): Promise<CreativeStatus> {
+  let source = await fetchArchivedVideo(parentRequestId);
+  if (!source) {
+    const parent = await getVeoGeneration(parentRequestId);
+    if (parent.status !== 'completed' || !parent.mediaUrl) {
+      throw new AppError(409, 'La vidéo à prolonger n’est plus disponible chez Google.', 'VIDEO_NOT_EXTENDABLE');
+    }
+    source = await fetchVeoMedia(parent.mediaUrl);
+  }
+  const video = Buffer.from(await source.arrayBuffer());
+  return veoToClientStatus(await submitVeoExtension({ prompt: buildExtensionPrompt(scene), video }));
 }
 
 /**

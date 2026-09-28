@@ -30,6 +30,8 @@ export async function runBilledGeneration<T>(input: {
   provider: string;
   run: () => Promise<T>;
   describe: (result: T) => { providerRef: string | null; state: GenerationState; fileFormat?: string | null };
+  /** Vidéo longue : étape précédente, durée totale et résolution, enregistrées avec la génération. */
+  video?: { parentId?: string | null; durationSeconds?: number | null; resolution?: string | null };
 }): Promise<{ result: T; generation: GenerationRow }> {
   const { account } = input.auth;
   const cost = await getActionCost(input.actionId);
@@ -65,6 +67,9 @@ export async function runBilledGeneration<T>(input: {
       creditsCharged: debit.charged,
       debitTransactionId: debit.transactionId,
       completedAt: described.state === 'completed' ? new Date() : null,
+      parentId: input.video?.parentId ?? null,
+      durationSeconds: input.video?.durationSeconds ?? null,
+      resolution: input.video?.resolution ?? null,
     })
     .returning();
 

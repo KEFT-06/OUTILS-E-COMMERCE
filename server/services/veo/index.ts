@@ -127,7 +127,18 @@ export interface VeoInput {
   negativePrompt: string;
   aspectRatio: VeoFormat;
   durationSeconds: VeoDuration;
+  /** Premier plan d'une vidéo longue : rendu en 720p, seule résolution que Google sait prolonger. */
+  extendable?: boolean;
 }
+
+/** Résolution des prolongations, imposée par Google (« 720p only for extension »). */
+export const VEO_EXTENSION_RESOLUTION = '720p';
+/** Secondes ajoutées par une prolongation, et plafonds de Google (148 s au total, 141 s au plus en entrée). */
+export const VEO_EXTENSION_SECONDS = 7;
+export const VEO_MAX_TOTAL_SECONDS = 148;
+export const VEO_MAX_INPUT_SECONDS = 141;
+/** Une vidéo ne se prolonge que dans les deux jours où Google la garde. */
+export const VEO_EXTENSION_WINDOW_MS = 2 * 86_400_000;
 
 /**
  * Résolution demandée pour une durée donnée.
@@ -137,7 +148,8 @@ export interface VeoInput {
  * envoyée pour toutes les durées : une vidéo de 4 ou 6 secondes était refusée, les points
  * rendus, et l'utilisateur repartait sans vidéo. En dessous de 8 secondes, c'est donc 720p.
  */
-export function veoResolutionFor(durationSeconds: VeoDuration): string {
+export function veoResolutionFor(durationSeconds: VeoDuration, extendable = false): string {
+  if (extendable) return VEO_EXTENSION_RESOLUTION;
   return durationSeconds === 8 ? env.VEO_RESOLUTION : '720p';
 }
 
@@ -148,7 +160,7 @@ export function buildVeoRequest(input: VeoInput) {
     parameters: {
       aspectRatio: input.aspectRatio,
       durationSeconds: input.durationSeconds,
-      resolution: veoResolutionFor(input.durationSeconds),
+      resolution: veoResolutionFor(input.durationSeconds, input.extendable),
       negativePrompt: input.negativePrompt,
     },
   };
@@ -158,6 +170,29 @@ export async function submitVeoGeneration(input: VeoInput): Promise<VeoGeneratio
   const payload = await veoFetch(`models/${env.VEO_VIDEO_MODEL}:predictLongRunning`, {
     method: 'POST',
     body: JSON.stringify(buildVeoRequest(input)),
+  });
+  const parsed = operationSchema.safeParse(payload);
+  if (!parsed.success) throw new AppError(502, 'Réponse inattendue du service de rendu vidéo.', 'VEO_BAD_RESPONSE');
+  return { requestId: operationId(parsed.data.name), status: 'queued' };
+}
+
+/**
+ * Corps d'une prolongation, tel que documenté par Google (ai.google.dev/gemini-api/docs/veo,
+ * exemple REST, lu le 28 septembre 2026) : la vidéo précédente part en octets (`inlineData`),
+ * et la résolution est forcément 720p. Google rend la vidéo ENTIÈRE, prolongée de 7 secondes.
+ * Fonction pure, testable sans appel réseau.
+ */
+export function buildVeoExtensionRequest(input: { prompt: string; video: Buffer }) {
+  return {
+    instances: [{ prompt: input.prompt, video: { inlineData: { mimeType: 'video/mp4', data: input.video.toString('base64') } } }],
+    parameters: { numberOfVideos: 1, resolution: VEO_EXTENSION_RESOLUTION },
+  };
+}
+
+export async function submitVeoExtension(input: { prompt: string; video: Buffer }): Promise<VeoGeneration> {
+  const payload = await veoFetch(`models/${env.VEO_VIDEO_MODEL}:predictLongRunning`, {
+    method: 'POST',
+    body: JSON.stringify(buildVeoExtensionRequest(input)),
   });
   const parsed = operationSchema.safeParse(payload);
   if (!parsed.success) throw new AppError(502, 'Réponse inattendue du service de rendu vidéo.', 'VEO_BAD_RESPONSE');

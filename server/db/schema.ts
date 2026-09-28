@@ -681,6 +681,15 @@ export const generations = pgTable(
     completedAt: moment('completed_at'),
     /** Copie gardée dans notre stockage de fichiers : le fichier survit à la conservation du fournisseur. */
     archivedAt: moment('archived_at'),
+    /**
+     * Vidéo longue construite par étapes : la version précédente, que celle-ci prolonge de 7 s.
+     * Null pour un premier plan. Chaque étape rend la vidéo ENTIÈRE, pas seulement l'ajout.
+     */
+    parentId: uuid('parent_id'),
+    /** Durée totale de la vidéo rendue, en secondes (8 pour un premier plan, +7 par prolongation). */
+    durationSeconds: integer('duration_seconds'),
+    /** Résolution demandée au fournisseur : seules les vidéos en 720p se prolongent. */
+    resolution: text('resolution'),
   },
   (table) => [
     uniqueIndex('generations_provider_ref_unique').on(table.provider, table.providerRef),

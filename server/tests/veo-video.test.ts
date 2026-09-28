@@ -206,3 +206,70 @@ describe('Rendu vidéo par Veo', () => {
     mode = 'encours';
   });
 });
+
+describe('Vidéo longue, prolongée par étapes de 7 secondes', () => {
+  const solde = async (agent: import('supertest').Agent) => (await agent.get('/api/auth/me').expect(200)).body.account.credits.total as number;
+
+  it('part en 720p, puis se prolonge de 7 s avec la vidéo en octets, 8 points l’étape', async () => {
+    mode = 'termine';
+    const { agent } = await signInWithPlan(app, 'veo-longue@exemple.test', 'pro');
+    const lance = await agent.post('/api/creatives/videos').send({ ...BRIEF, duration: 6, extendable: true }).expect(202);
+    const premier = depots.at(-1)!.corps as { parameters: Record<string, unknown> };
+    assert.equal(premier.parameters.resolution, '720p', 'seul le 720p se prolonge');
+    assert.equal(premier.parameters.durationSeconds, 8, 'une vidéo longue part d’un plan de 8 s');
+
+    const base = await agent.get(`/api/creatives/requests/${lance.body.requestId}`).expect(200);
+    assert.equal(base.body.durationSeconds, 8);
+    assert.equal(base.body.extendable, true);
+
+    const avant = await solde(agent);
+    const etape = await agent
+      .post(`/api/creatives/videos/${lance.body.requestId}/extend`)
+      .send({ sceneDescription: 'la formatrice se retourne et sourit à la caméra' })
+      .expect(202);
+    assert.equal(avant - (await solde(agent)), 8, 'une prolongation coûte 8 points');
+
+    const corps = depots.at(-1)!.corps as { instances: { prompt: string; video?: { inlineData?: { mimeType: string; data: string } } }[]; parameters: Record<string, unknown> };
+    assert.equal(corps.parameters.resolution, '720p');
+    assert.equal(corps.instances[0]!.video?.inlineData?.mimeType, 'video/mp4');
+    assert.equal(corps.instances[0]!.video?.inlineData?.data, MP4.toString('base64'), 'la vidéo précédente part en octets, comme le documente Google');
+    assert.match(corps.instances[0]!.prompt, /No real brand logos/, 'les garde-fous suivent chaque étape');
+
+    const suite = await agent.get(`/api/creatives/requests/${etape.body.requestId}`).expect(200);
+    assert.equal(suite.body.durationSeconds, 15, '8 + 7 secondes');
+    assert.equal(suite.body.extendable, true);
+  });
+
+  it('refuse, sans rien facturer, une vidéo courte en 1080p ou une vidéo de plus de deux jours', async () => {
+    mode = 'termine';
+    const { agent } = await signInWithPlan(app, 'veo-longue-refus@exemple.test', 'pro');
+    const courte = await agent.post('/api/creatives/videos').send({ ...BRIEF, duration: 8 }).expect(202);
+    await agent.get(`/api/creatives/requests/${courte.body.requestId}`).expect(200);
+    const avant = await solde(agent);
+    const depotsAvant = depots.length;
+    const refus = await agent.post(`/api/creatives/videos/${courte.body.requestId}/extend`).send({ sceneDescription: 'suite de la scène' }).expect(409);
+    assert.equal(refus.body.error.code, 'VIDEO_NOT_EXTENDABLE');
+
+    const longue = await agent.post('/api/creatives/videos').send({ ...BRIEF, extendable: true }).expect(202);
+    await agent.get(`/api/creatives/requests/${longue.body.requestId}`).expect(200);
+    const { getDb } = await import('@server/db/client');
+    const { generations } = await import('@server/db/schema');
+    const { eq } = await import('drizzle-orm');
+    await getDb().update(generations).set({ completedAt: new Date(Date.now() - 3 * 86_400_000) }).where(eq(generations.providerRef, longue.body.requestId));
+    const tard = await agent.post(`/api/creatives/videos/${longue.body.requestId}/extend`).send({ sceneDescription: 'suite de la scène' }).expect(409);
+    assert.match(tard.body.error.message, /deux jours/);
+
+    assert.equal(depots.length, depotsAvant + 1, 'seule la seconde vidéo est partie chez Google, aucune prolongation');
+    assert.equal(await solde(agent), avant - 12, 'seule la vidéo elle-même a été facturée');
+  });
+
+  it('bloque une scène non conforme avant de facturer', async () => {
+    mode = 'termine';
+    const { agent } = await signInWithPlan(app, 'veo-longue-conformite@exemple.test', 'pro');
+    const longue = await agent.post('/api/creatives/videos').send({ ...BRIEF, extendable: true }).expect(202);
+    await agent.get(`/api/creatives/requests/${longue.body.requestId}`).expect(200);
+    const avant = await solde(agent);
+    await agent.post(`/api/creatives/videos/${longue.body.requestId}/extend`).send({ sceneDescription: 'elle annonce : gagnez 500 000 FCFA par mois' }).expect(422);
+    assert.equal(await solde(agent), avant);
+  });
+});

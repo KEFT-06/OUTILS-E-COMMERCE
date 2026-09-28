@@ -19,6 +19,7 @@ import { Checkbox } from '@/shared/ui/checkbox';
 import { Field, FieldDescription, FieldLabel } from '@/shared/ui/field';
 import { Input } from '@/shared/ui/input';
 import { Label } from '@/shared/ui/label';
+import { Progress } from '@/shared/ui/progress';
 import { Spinner } from '@/shared/ui/spinner';
 import { Textarea } from '@/shared/ui/textarea';
 
@@ -62,7 +63,8 @@ const wait = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, 
 
 /** `onVisualCreated` : un visuel vient d'être enregistré — « Mes visuels » se recharge. */
 export function CreativeGeneratorPanel({ onVisualCreated }: { onVisualCreated?: () => void } = {}) {
-  const { runWithCredits } = useCreditGate();
+  const { runWithCredits, costTable } = useCreditGate();
+  const extensionCost = costTable?.actions.find((action) => action.id === 'video_extension')?.cost ?? null;
 
   // Lu une seule fois, au montage : relire le stockage à chaque rendu coûterait pour rien.
   const [initial] = useState(lireBrouillon);
@@ -127,9 +129,19 @@ export function CreativeGeneratorPanel({ onVisualCreated }: { onVisualCreated?: 
   const [isGenerating, setIsGenerating] = useState(false);
   const [progress, setProgress] = useState<CreativeStatus['status'] | null>(null);
   const [error, setError] = useState<ApiError | null>(null);
-  const [result, setResult] = useState<{ requestId: string; mediaType: 'image' | 'video'; retentionDays?: number | null } | null>(
-    null,
-  );
+  const [result, setResult] = useState<{
+    requestId: string;
+    mediaType: 'image' | 'video';
+    retentionDays?: number | null;
+    /** Vidéo Veo : durée totale, et possibilité de la prolonger de 7 s. */
+    durationSeconds?: number | null;
+    extendable?: boolean;
+    maxDurationSeconds?: number;
+  } | null>(null);
+  /** Premier plan d'une vidéo longue : 8 s en 720p, à prolonger ensuite par étapes. */
+  const [longue, setLongue] = useState(false);
+  const [sceneSuivante, setSceneSuivante] = useState('');
+  const [isExtending, setIsExtending] = useState(false);
   const [attested, setAttested] = useState<boolean[]>(() => ATTESTATIONS.map(() => false));
 
   // Remis à false au montage : en mode strict, React démonte et remonte une fois.
@@ -149,6 +161,75 @@ export function CreativeGeneratorPanel({ onVisualCreated }: { onVisualCreated?: 
     (purpose === 'content' || adFramework !== null) &&
     !isGenerating;
   const allAttested = attested.every(Boolean);
+
+  /** Suit une génération jusqu'à son terme ; lève en cas d'échec, de délai dépassé ou d'écran quitté. */
+  const suivre = async (initial: CreativeStatus, generationKind: 'visual' | 'video'): Promise<CreativeStatus> => {
+    let status = initial;
+    const deadline = Date.now() + MAX_WAIT_MS[generationKind];
+    while (status.status !== 'completed') {
+      if (FAILED_STATUSES.includes(status.status)) {
+        throw new ApiError(status.message ?? 'La génération a échoué.');
+      }
+      if (Date.now() > deadline) {
+        throw new ApiError(
+          "La génération dépasse le délai d'attente : suivi abandonné sur cet écran. Si elle échoue chez le fournisseur, vos points vous seront rendus automatiquement.",
+        );
+      }
+      await wait(POLL_INTERVAL_MS);
+      if (unmountedRef.current) {
+        throw new ApiError("Suivi interrompu : l'écran a été quitté pendant la génération.");
+      }
+      const polled = await fetch(`/api/creatives/requests/${encodeURIComponent(status.requestId)}`);
+      if (!polled.ok) throw await readApiError(polled, `Le suivi a échoué (${polled.status}).`);
+      status = (await polled.json()) as CreativeStatus;
+      setProgress(status.status);
+    }
+    if (!status.mediaType) {
+      throw new ApiError("La génération s'est terminée sans produire de fichier.");
+    }
+    return status;
+  };
+
+  const resultOf = (status: CreativeStatus) => ({
+    requestId: status.requestId,
+    mediaType: status.mediaType!,
+    retentionDays: status.retentionDays,
+    durationSeconds: status.durationSeconds,
+    extendable: status.extendable,
+    maxDurationSeconds: status.maxDurationSeconds,
+  });
+
+  /** Prolonge la vidéo affichée de 7 s : la nouvelle version, entière, remplace la précédente. */
+  const prolonger = async () => {
+    if (!result || sceneSuivante.trim().length < 3) return;
+    const parent = result.requestId;
+    setError(null);
+    try {
+      await runWithCredits('video_extension', async () => {
+        setIsExtending(true);
+        setProgress('queued');
+        try {
+          const submitted = await fetch(`/api/creatives/videos/${encodeURIComponent(parent)}/extend`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ sceneDescription: sceneSuivante.trim() }),
+          });
+          if (!submitted.ok) throw await readApiError(submitted, `La prolongation a échoué (${submitted.status}).`);
+          const status = await suivre((await submitted.json()) as CreativeStatus, 'video');
+          setResult(resultOf(status));
+          setSceneSuivante('');
+          setAttested(ATTESTATIONS.map(() => false));
+        } finally {
+          if (!unmountedRef.current) {
+            setIsExtending(false);
+            setProgress(null);
+          }
+        }
+      });
+    } catch (caught) {
+      if (!unmountedRef.current) setError(toApiError(caught, 'La prolongation a échoué.'));
+    }
+  };
 
   const handleSubmit = async (event: React.FormEvent) => {
     event.preventDefault();
@@ -173,7 +254,7 @@ export function CreativeGeneratorPanel({ onVisualCreated }: { onVisualCreated?: 
       ...(audience.trim() ? { audience: audience.trim() } : {}),
       ...(onScreenText.trim() ? { onScreenText: onScreenText.trim() } : {}),
       ...(visualStyle.trim() ? { visualStyle: visualStyle.trim() } : {}),
-      ...(generationKind === 'video' ? { duration } : {}),
+      ...(generationKind === 'video' ? { duration: longue ? 8 : duration, ...(longue ? { extendable: true } : {}) } : {}),
     };
 
     setError(null);
@@ -195,34 +276,8 @@ export function CreativeGeneratorPanel({ onVisualCreated }: { onVisualCreated?: 
           });
           if (!submitted.ok) throw await readApiError(submitted, `La demande a échoué (${submitted.status}).`);
 
-          let status = (await submitted.json()) as CreativeStatus;
-          const deadline = Date.now() + MAX_WAIT_MS[generationKind];
-
-          while (status.status !== 'completed') {
-            if (FAILED_STATUSES.includes(status.status)) {
-              throw new ApiError(status.message ?? 'La génération a échoué.');
-            }
-            if (Date.now() > deadline) {
-              throw new ApiError(
-                "La génération dépasse le délai d'attente : suivi abandonné sur cet écran. Si elle échoue chez le fournisseur, vos points vous seront rendus automatiquement.",
-              );
-            }
-
-            await wait(POLL_INTERVAL_MS);
-            if (unmountedRef.current) {
-              throw new ApiError("Suivi interrompu : l'écran a été quitté pendant la génération.");
-            }
-
-            const polled = await fetch(`/api/creatives/requests/${encodeURIComponent(status.requestId)}`);
-            if (!polled.ok) throw await readApiError(polled, `Le suivi a échoué (${polled.status}).`);
-            status = (await polled.json()) as CreativeStatus;
-            setProgress(status.status);
-          }
-
-          if (!status.mediaType) {
-            throw new ApiError("La génération s'est terminée sans produire de fichier.");
-          }
-          setResult({ requestId: status.requestId, mediaType: status.mediaType, retentionDays: status.retentionDays });
+          const status = await suivre((await submitted.json()) as CreativeStatus, generationKind);
+          setResult(resultOf(status));
           if (status.mediaType === 'image' && status.retentionDays === null) onVisualCreated?.();
         } finally {
           if (!unmountedRef.current) {
@@ -437,14 +492,26 @@ export function CreativeGeneratorPanel({ onVisualCreated }: { onVisualCreated?: 
                       type="button"
                       variant="outline"
                       size="sm"
-                      aria-pressed={duration === value}
-                      onClick={() => setDuration(value)}
-                      className={choiceClass(duration === value)}
+                      aria-pressed={!longue && duration === value}
+                      onClick={() => {
+                        setLongue(false);
+                        setDuration(value);
+                      }}
+                      className={choiceClass(!longue && duration === value)}
                     >
                       {value} s
                     </Button>
                   ))}
+                  <Button type="button" variant="outline" size="sm" aria-pressed={longue} onClick={() => setLongue(true)} className={choiceClass(longue)}>
+                    Vidéo longue
+                  </Button>
                 </div>
+                {longue && (
+                  <p className="text-xs leading-relaxed text-muted-foreground">
+                    Un premier plan de 8 s en 720p, puis vous la prolongez par étapes de 7 s, en décrivant chaque scène, jusqu’à 2 min 28
+                    ({extensionCost ?? '…'} points l’étape). Chaque étape se lance dans les 2 jours qui suivent la précédente.
+                  </p>
+                )}
               </fieldset>
             ) : (
               <Field>
@@ -521,11 +588,56 @@ export function CreativeGeneratorPanel({ onVisualCreated }: { onVisualCreated?: 
 
         {result && (
           <div className="grid gap-5 rounded-xl border bg-muted/30 p-4 lg:grid-cols-2">
-            <div className="flex items-center justify-center overflow-hidden rounded-lg bg-muted">
-              {result.mediaType === 'video' ? (
-                <video src={fileUrl('inline')} controls className="max-h-96 w-full object-contain" />
-              ) : (
-                <img src={fileUrl('inline')} alt="Créatif généré" className="max-h-96 w-full object-contain" />
+            <div className="space-y-3">
+              <div className="flex items-center justify-center overflow-hidden rounded-lg bg-muted">
+                {result.mediaType === 'video' ? (
+                  // La clé change à chaque étape : le lecteur recharge la nouvelle version, entière.
+                  <video key={result.requestId} src={fileUrl('inline')} controls className="max-h-96 w-full object-contain" />
+                ) : (
+                  <img src={fileUrl('inline')} alt="Créatif généré" className="max-h-96 w-full object-contain" />
+                )}
+              </div>
+
+              {/* Vidéo longue : construite par étapes de 7 s, chaque étape décrite par l'auteur. */}
+              {result.mediaType === 'video' && typeof result.durationSeconds === 'number' && (result.extendable || result.durationSeconds > 8) && (
+                <div className="space-y-2 rounded-lg border bg-background p-3">
+                  <div className="flex items-center justify-between text-sm">
+                    <span className="font-medium">Vidéo longue</span>
+                    <span className="tabular-nums text-muted-foreground">
+                      {Math.floor(result.durationSeconds / 60)} min {String(result.durationSeconds % 60).padStart(2, '0')} s
+                      {' / '}
+                      {Math.floor((result.maxDurationSeconds ?? 148) / 60)} min {String((result.maxDurationSeconds ?? 148) % 60).padStart(2, '0')} s
+                    </span>
+                  </div>
+                  <Progress value={(result.durationSeconds / (result.maxDurationSeconds ?? 148)) * 100} aria-label="Durée de la vidéo longue" />
+                  {result.extendable ? (
+                    <>
+                      <Field>
+                        <FieldLabel htmlFor="scene-suivante">Scène suivante (7 s)</FieldLabel>
+                        <Textarea
+                          id="scene-suivante"
+                          value={sceneSuivante}
+                          onChange={(event) => setSceneSuivante(event.target.value)}
+                          rows={2}
+                          maxLength={800}
+                          placeholder="Ce qui se passe ensuite : action, geste, réplique…"
+                          disabled={isExtending}
+                        />
+                        <FieldDescription>
+                          Une voix ne se prolonge bien que si elle est présente dans la dernière seconde de l’étape précédente.
+                        </FieldDescription>
+                      </Field>
+                      <Button type="button" onClick={() => void prolonger()} disabled={isExtending || sceneSuivante.trim().length < 3}>
+                        {isExtending ? <Spinner /> : <Clapperboard />}
+                        {isExtending ? 'Prolongation en cours…' : `Prolonger de 7 s${extensionCost ? ` (${extensionCost} points)` : ''}`}
+                      </Button>
+                    </>
+                  ) : (
+                    <p className="text-xs text-muted-foreground">
+                      Cette vidéo ne peut plus être prolongée : durée maximale atteinte, ou délai de 2 jours dépassé.
+                    </p>
+                  )}
+                </div>
               )}
             </div>
 
