@@ -1106,12 +1106,63 @@ export const spiedAds = pgTable(
     active: boolean('active').notNull().default(true),
     firstSeenAt: createdAt(),
     lastSeenAt: moment('last_seen_at').notNull().defaultNow(),
+    /** Page Facebook annonceuse (`pageID`) : ouvre « toutes les annonces de cet annonceur ». */
+    pageId: text('page_id'),
+    /** Adresse publique de la page annonceuse. */
+    pageUrl: text('page_url'),
+    /** Bouton d'action, tel que Meta l'affiche (« En savoir plus », « Télécharger »…). */
+    ctaText: text('cta_text'),
+    /** IMAGE · VIDEO · DCO (création dynamique) · CAROUSEL… */
+    displayFormat: text('display_format'),
+    /** Légende du lien (domaine affiché sous le visuel) et sa description. */
+    linkCaption: text('link_caption'),
+    linkDescription: text('link_description'),
+    /** Variantes (cartes d'un carrousel ou d'une création dynamique) : titre, texte, lien, bouton. */
+    cards: jsonb('cards').$type<{ title: string | null; body: string | null; linkUrl: string | null; ctaText: string | null }[]>(),
+    /**
+     * Aperçu conservé dans notre stockage : les adresses de Meta expirent en quelques jours, et
+     * le mur se remplissait de cases « visuel expiré » entre deux collectes. Effacé trente jours
+     * après que l'annonce a cessé d'être vue.
+     */
+    thumbnailPath: text('thumbnail_path'),
+    /** Dernier échec de copie de l'aperçu : évite de réessayer une adresse morte à chaque passage. */
+    thumbnailFailedAt: moment('thumbnail_failed_at'),
   },
   (table) => [
     uniqueIndex('spied_ads_external_unique').on(table.externalId),
     index('spied_ads_started_idx').on(table.startedAt),
     index('spied_ads_store_idx').on(table.storeHost),
+    index('spied_ads_page_idx').on(table.pageId),
   ],
+).enableRLS();
+
+/**
+ * Passages de collecte publicitaire lancés chez Apify, suivis jusqu'à leur récolte.
+ *
+ * Un passage dure plusieurs minutes, au-delà de ce qu'une requête peut attendre sur un
+ * hébergement sans serveur : attendre sa fin coupait la requête, alors que le passage,
+ * lui, continuait, se facturait, et son résultat était perdu. Il est donc LANCÉ, inscrit
+ * ici, puis récolté plus tard — par le planificateur, l'administration ou le mur lui-même.
+ */
+export const adCollectionRuns = pgTable(
+  'ad_collection_runs',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    /** Identifiant du passage chez Apify. */
+    providerRunId: text('provider_run_id').notNull(),
+    datasetId: text('dataset_id').notNull(),
+    /** keywords : recherche par mots-clés · pages : toutes les annonces des annonceurs connus. */
+    kind: text('kind').notNull(),
+    /** running · harvested · failed */
+    status: text('status').notNull().default('running'),
+    urls: integer('urls').notNull().default(0),
+    adsExamined: integer('ads_examined'),
+    adsKept: integer('ads_kept'),
+    error: text('error'),
+    startedAt: createdAt(),
+    finishedAt: moment('finished_at'),
+  },
+  (table) => [uniqueIndex('ad_collection_runs_provider_unique').on(table.providerRunId), index('ad_collection_runs_status_idx').on(table.status)],
 ).enableRLS();
 
 export type UserRow = typeof users.$inferSelect;

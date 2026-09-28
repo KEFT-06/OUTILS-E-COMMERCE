@@ -15,6 +15,9 @@ import type { spiedAds } from '@server/db/schema';
  *    en avaient un. Son adresse est signée par Meta et expire : elle est rafraîchie à chaque
  *    collecte, et l'écran prévoit un repli.
  *  · dépense, impressions et portée sont vides hors Union européenne (0 sur 43). Rien ne les lit.
+ *  · les boutiques ne sont pas toutes en .com ou .shop. Mesuré le 28/09/2026 sur 30 annonces :
+ *    .store, .online et .market aussi — onze annonces sur trente étaient jetées pour cette seule
+ *    raison. Toute extension est donc acceptée derrière « mychariow ».
  */
 
 const mediaSchema = z
@@ -27,6 +30,13 @@ const mediaSchema = z
   })
   .passthrough();
 
+const cardSchema = mediaSchema.extend({
+  title: z.string().nullable().optional(),
+  body: z.string().nullable().optional(),
+  linkUrl: z.string().nullable().optional(),
+  ctaText: z.string().nullable().optional(),
+});
+
 export const metaAdSchema = z
   .object({
     adArchiveID: z.union([z.string(), z.number()]).nullable().optional(),
@@ -37,6 +47,8 @@ export const metaAdSchema = z
     collationCount: z.number().nullable().optional(),
     publisherPlatform: z.array(z.string()).nullable().optional(),
     pageName: z.string().nullable().optional(),
+    pageID: z.union([z.string(), z.number()]).nullable().optional(),
+    pageId: z.union([z.string(), z.number()]).nullable().optional(),
     snapshot: z
       .object({
         linkUrl: z.string().nullable().optional(),
@@ -45,7 +57,12 @@ export const metaAdSchema = z
         body: z.object({ text: z.string().nullable().optional() }).nullable().optional(),
         images: z.array(mediaSchema).nullable().optional(),
         videos: z.array(mediaSchema).nullable().optional(),
+        cards: z.array(cardSchema).nullable().optional(),
         pageName: z.string().nullable().optional(),
+        pageProfileUri: z.string().nullable().optional(),
+        ctaText: z.string().nullable().optional(),
+        displayFormat: z.string().nullable().optional(),
+        linkDescription: z.string().nullable().optional(),
       })
       .passthrough()
       .nullable()
@@ -55,8 +72,15 @@ export const metaAdSchema = z
 
 export type MetaAd = z.infer<typeof metaAdSchema>;
 
-/** Hôte de vitrine de la plateforme, avec son sous-domaine. */
-const STOREFRONT_HOST = /\b([a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?)\.mychariow\.(?:com|shop)\b/i;
+/** Hôte de vitrine de la plateforme, avec son sous-domaine, quelle que soit l'extension. */
+const STOREFRONT_HOST = /\b([a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?)\.mychariow\.[a-z]{2,12}\b/i;
+
+/** Texte court et propre, ou null ; les gabarits non remplis de Meta (« {{product.name}} ») sont écartés. */
+const shortText = (value: string | null | undefined, max: number): string | null => {
+  const text = value?.replace(/\s+/g, ' ').trim();
+  if (!text || /^\{\{.*\}\}$/.test(text)) return null;
+  return text.slice(0, max);
+};
 /** Sous-domaines techniques : ce ne sont pas des boutiques. */
 const NOT_A_STORE = new Set(['www', 'api', 'api-edge', 'app', 'cdn', 'images', 'assets', 'static']);
 
@@ -83,14 +107,19 @@ export function readMetaAd(raw: unknown, now: Date): SpiedAdInsert | null {
   const landingUrl = (snap.linkUrl ?? '').trim();
   if (!externalId || !landingUrl) return null;
 
-  const image = snap.images?.find((m) => m.originalImageUrl || m.resizedImageUrl);
-  const video = snap.videos?.find((m) => m.videoPreviewImageUrl || m.videoSdUrl || m.videoHdUrl);
+  // Création dynamique ou carrousel : le visuel est dans la première carte, pas à la racine.
+  const firstCard = snap.cards?.find((card) => card.resizedImageUrl || card.originalImageUrl || card.videoPreviewImageUrl);
+  const image =
+    snap.images?.find((m) => m.originalImageUrl || m.resizedImageUrl) ?? (firstCard && !firstCard.videoPreviewImageUrl ? firstCard : undefined);
+  const video =
+    snap.videos?.find((m) => m.videoPreviewImageUrl || m.videoSdUrl || m.videoHdUrl) ?? (firstCard?.videoPreviewImageUrl ? firstCard : undefined);
   // On préfère l'aperçu de la vidéo à la vidéo elle-même : une image suffit à reconnaître une
   // annonce, et relayer la vidéo d'un tiers serait la rediffuser.
   const media = video
     ? { url: video.videoPreviewImageUrl ?? null, kind: 'video' as const }
     : image
-      ? { url: image.originalImageUrl ?? image.resizedImageUrl ?? null, kind: 'image' as const }
+      ? // L'image redimensionnée d'abord : c'est elle qu'on conserve, et elle pèse dix fois moins.
+        { url: image.resizedImageUrl ?? image.originalImageUrl ?? null, kind: 'image' as const }
       : { url: null, kind: null };
 
   return {
@@ -111,5 +140,20 @@ export function readMetaAd(raw: unknown, now: Date): SpiedAdInsert | null {
     active: ad.isActive !== false,
     firstSeenAt: now,
     lastSeenAt: now,
+    pageId: String(ad.pageID ?? ad.pageId ?? '').trim().slice(0, 40) || null,
+    pageUrl: snap.pageProfileUri?.startsWith('https://') ? snap.pageProfileUri.slice(0, 500) : null,
+    ctaText: shortText(snap.ctaText, 60),
+    displayFormat: shortText(snap.displayFormat, 30),
+    linkCaption: shortText(snap.caption, 200),
+    linkDescription: shortText(snap.linkDescription, 600),
+    cards:
+      snap.cards && snap.cards.length > 1
+        ? snap.cards.slice(0, 10).map((card) => ({
+            title: shortText(card.title, 300),
+            body: shortText(card.body, 2_000),
+            linkUrl: card.linkUrl?.startsWith('http') ? card.linkUrl.slice(0, 2_000) : null,
+            ctaText: shortText(card.ctaText, 60),
+          }))
+        : null,
   };
 }

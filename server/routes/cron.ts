@@ -4,7 +4,8 @@ import { env } from '@server/env';
 import { AppError, asyncRoute } from '@server/middleware';
 import { sendDueRadarDigests } from '@server/services/radar/alerts';
 import { collectPerformanceContributions } from '@server/services/performanceLoop/collect';
-import { discoveryIsDue, runDiscovery } from '@server/services/radar/discovery';
+import { discoveryIsDue, harvestCollectionRuns, runDiscovery } from '@server/services/radar/discovery';
+import { purgeStaleThumbnails, storeMissingThumbnails } from '@server/services/espionnage/media';
 import { sweepSessions } from '@server/services/auth/sessions';
 import { archivePendingVideos, purgeExpiredVideos } from '@server/services/creatives/archive';
 import { purgeStaleVideoUploads } from '@server/services/writing/videoUpload';
@@ -104,6 +105,12 @@ cronRouter.get(
       return null;
     });
 
+    // Collecte de la veille terminée chez Apify : ses annonces rejoignent le mur.
+    const harvest = await harvestCollectionRuns().catch((error: unknown) => {
+      console.warn('[cron] récolte de la collecte :', error instanceof Error ? error.message : error);
+      return null;
+    });
+
     let discovery: Awaited<ReturnType<typeof runDiscovery>> | null = null;
     if (await discoveryIsDue()) {
       // Une découverte en échec ne doit pas annuler le compte rendu du relevé, qui a réussi.
@@ -133,6 +140,17 @@ cronRouter.get(
       return null;
     });
 
-    res.json({ generations, sessions, sweep, digests, discovery, performance, videos, expired, uploads });
+    // Aperçus des annonces : copiés tant que l'adresse de Meta est fraîche, effacés trente jours
+    // après la dernière fois qu'une annonce a été vue.
+    const thumbnails = await storeMissingThumbnails(300).catch((error: unknown) => {
+      console.warn('[cron] aperçus des annonces :', error instanceof Error ? error.message : error);
+      return null;
+    });
+    const staleThumbnails = await purgeStaleThumbnails().catch((error: unknown) => {
+      console.warn('[cron] effacement des aperçus :', error instanceof Error ? error.message : error);
+      return null;
+    });
+
+    res.json({ generations, sessions, sweep, digests, harvest, discovery, performance, videos, expired, uploads, thumbnails, staleThumbnails });
   }),
 );

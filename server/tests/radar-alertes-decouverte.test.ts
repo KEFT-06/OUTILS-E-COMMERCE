@@ -24,6 +24,8 @@ let catalogue = [{ id: 'prd_x1', name: 'Pack productivité', prix: 4_000, ventes
 
 /** Ce que le faux fournisseur de collecte a reçu : sert à vérifier le plafond facturé. */
 const collectes: { chemin: string; corps: Record<string, unknown> }[] = [];
+/** Résultat de chaque passage lancé, lu à la récolte. */
+const lots = new Map<string, unknown[]>();
 /** Pilote le faux fournisseur : vrai, il répond une collecte sans aucun résultat. */
 let collecteVide = false;
 /** Messages acceptés par le faux service d'e-mail. */
@@ -62,23 +64,36 @@ const faux = createServer((req, res) => {
     }
 
     // --- Collecte de publicités (Apify) ---
-    if (req.method === 'POST' && url.pathname.includes('/run-sync-get-dataset-items')) {
+    // API asynchrone d'Apify : lancer un passage, suivre son état, lire son résultat.
+    if (req.method === 'POST' && url.pathname === '/acts/apify~facebook-ads-scraper/runs') {
       collectes.push({
         chemin: url.pathname,
         corps: JSON.parse(Buffer.concat(chunks).toString('utf8')) as Record<string, unknown>,
       });
+      const numero = collectes.length;
       // Une collecte peut très bien ne rien rapporter : mot-clé sans résultat, champ renommé
       // chez le fournisseur, acteur interrompu. Elle est facturée quand même.
-      if (collecteVide) {
-        json(200, []);
-        return;
-      }
-      // Deux publicités, trois mentions de boutiques, dont un sous-domaine technique à écarter
-      // et la même boutique citée deux fois dans une seule publicité.
-      json(200, [
-        { ad_id: '1', snapshot: { link_url: 'https://mabelleboutique.mychariow.shop/produit-1' }, body: 'voir mabelleboutique.mychariow.com' },
-        { ad_id: '2', caption: 'https://autreshop.mychariow.com/x et https://api-edge.mychariow.com/interne' },
-      ]);
+      lots.set(
+        `lot-${numero}`,
+        collecteVide
+          ? []
+          : // Deux publicités, trois mentions de boutiques, dont un sous-domaine technique à écarter
+            // et la même boutique citée deux fois dans une seule publicité.
+            [
+              { ad_id: '1', snapshot: { link_url: 'https://mabelleboutique.mychariow.shop/produit-1' }, body: 'voir mabelleboutique.mychariow.com' },
+              { ad_id: '2', caption: 'https://autreshop.mychariow.com/x et https://api-edge.mychariow.com/interne' },
+            ],
+      );
+      json(201, { data: { id: `passage-${numero}`, defaultDatasetId: `lot-${numero}`, status: 'RUNNING' } });
+      return;
+    }
+    if (req.method === 'GET' && url.pathname.startsWith('/actor-runs/')) {
+      json(200, { data: { status: 'SUCCEEDED' } });
+      return;
+    }
+    const lot = /^\/datasets\/(lot-\d+)\/items$/.exec(url.pathname);
+    if (req.method === 'GET' && lot) {
+      json(200, lots.get(lot[1]!) ?? []);
       return;
     }
 
@@ -152,7 +167,7 @@ describe('Radar — découverte de boutiques', () => {
       le MUR d'espionnage, lui, exige le champ exact et écarte donc ces annonces. La forme réelle
       est éprouvée dans espionnage.test.ts.
     */
-    assert.deepEqual(collecte.body.outcome, { adsExamined: 2, storesFound: 2, storesNew: 2, adsKept: 0 });
+    assert.deepEqual(collecte.body.outcome, { adsExamined: 2, storesFound: 2, storesNew: 2, adsKept: 0, pending: 0 });
 
     const envoi = collectes.at(-1)!;
     assert.match(envoi.chemin, /apify~facebook-ads-scraper/, 'l’acteur configuré est bien celui appelé');
@@ -198,7 +213,7 @@ describe('Radar — découverte de boutiques', () => {
     collecteVide = true;
     try {
       const collecte = await agent.post('/api/radar/discover/refresh').expect(200);
-      assert.deepEqual(collecte.body.outcome, { adsExamined: 0, storesFound: 0, storesNew: 0, adsKept: 0 });
+      assert.deepEqual(collecte.body.outcome, { adsExamined: 0, storesFound: 0, storesNew: 0, adsKept: 0, pending: 0 });
       assert.equal(collectes.length, avant + 1, 'le fournisseur a bien été appelé, donc facturé');
 
       assert.equal(await discoveryIsDue(), false, 'le passage compte, même sans résultat : pas de seconde facture demain');

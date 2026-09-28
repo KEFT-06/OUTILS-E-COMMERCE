@@ -1,7 +1,7 @@
-import { desc, eq, inArray, sql } from 'drizzle-orm';
+import { and, desc, eq, gt, inArray, isNotNull, sql } from 'drizzle-orm';
 import { z } from 'zod';
 import { getDb } from '@server/db/client';
-import { auditLogs, discoveredStores, spiedAds } from '@server/db/schema';
+import { adCollectionRuns, auditLogs, discoveredStores, spiedAds } from '@server/db/schema';
 import { env, providers } from '@server/env';
 import { AppError } from '@server/middleware';
 import { recordAudit } from '@server/services/audit';
@@ -35,9 +35,23 @@ import { readMetaAd } from '@server/services/espionnage/parse';
  * réhébergées : seules leurs adresses, que chaque passage rafraîchit puisque Meta les signe.
  */
 
-const TIMEOUT_MS = 180_000;
-/** Hôtes de vitrine, tels qu'ils apparaissent dans les liens des publicités. */
-const STOREFRONT_HOST = /\b([a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?)\.mychariow\.(?:com|shop)\b/gi;
+/** Délai d'un appel à l'API d'Apify (lancer, suivre, lire) : aucun n'attend la fin d'un passage. */
+const TIMEOUT_MS = 30_000;
+/**
+ * Hôtes de vitrine, tels qu'ils apparaissent dans les liens des publicités, quelle que soit
+ * l'extension : .com, .shop, mais aussi .store, .online, .market (mesuré le 28/09/2026).
+ */
+const STOREFRONT_HOST = /\b([a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?)\.mychariow\.[a-z]{2,12}\b/gi;
+/**
+ * Attente de la fin des passages dans la requête qui les lance. Un petit passage finit vite et
+ * l'administrateur voit son résultat tout de suite ; un gros est récolté plus tard.
+ */
+const WAIT_FOR_RUNS_MS = 45_000;
+const POLL_EVERY_MS = 5_000;
+/** Un passage qui n'a pas fini en six heures est abandonné (l'acteur en prend quelques minutes). */
+const RUN_STALE_MS = 6 * 3_600_000;
+/** Annonceurs relevés page par page : ceux vus dans les soixante derniers jours. */
+const ADVERTISER_WINDOW_MS = 60 * 24 * 3_600_000;
 /** Sous-domaines techniques de la plateforme : ce ne sont pas des boutiques. */
 const NOT_A_STORE = new Set(['www', 'api', 'api-edge', 'app', 'cdn', 'images', 'assets', 'static']);
 
@@ -56,7 +70,19 @@ export interface DiscoveryOutcome {
   storesNew: number;
   /** Annonces retenues pour le mur d'espionnage : celles qui mènent vraiment à la plateforme. */
   adsKept: number;
+  /** Passages encore en cours chez Apify : leur résultat sera récolté plus tard. */
+  pending?: number;
 }
+
+const EMPTY_OUTCOME: DiscoveryOutcome = { adsExamined: 0, storesFound: 0, storesNew: 0, adsKept: 0, pending: 0 };
+
+const addOutcomes = (a: DiscoveryOutcome, b: DiscoveryOutcome): DiscoveryOutcome => ({
+  adsExamined: a.adsExamined + b.adsExamined,
+  storesFound: a.storesFound + b.storesFound,
+  storesNew: a.storesNew + b.storesNew,
+  adsKept: a.adsKept + b.adsKept,
+  pending: b.pending ?? 0,
+});
 
 const apifyUnavailable = (detail: string) =>
   new AppError(502, `La découverte de boutiques n’a pas abouti (${detail}).`, 'RADAR_DISCOVERY_UNAVAILABLE');
@@ -132,11 +158,177 @@ function adLibraryUrl(query: string): string {
   return `https://www.facebook.com/ads/library/?${params.toString()}`;
 }
 
-const datasetItemSchema = z.array(z.unknown());
+/** Toutes les annonces en cours d'un annonceur, par l'identifiant de sa page Facebook. */
+function advertiserPageUrl(pageId: string): string {
+  const params = new URLSearchParams({
+    active_status: 'active',
+    ad_type: 'all',
+    country: 'ALL',
+    view_all_page_id: pageId,
+    search_type: 'page',
+    media_type: 'all',
+  });
+  return `https://www.facebook.com/ads/library/?${params.toString()}`;
+}
+
+/** Mots-clés configurés, sans doublon ni vide ; cinq au plus, chacun étant facturé. */
+export function discoveryQueries(): string[] {
+  const queries = env.RADAR_DISCOVERY_QUERY.split(',').map((query) => query.trim()).filter((query) => query.length >= 2);
+  return [...new Set(queries)].slice(0, 5);
+}
+
+/** Les annonceurs les plus actifs du mur ces soixante derniers jours : ceux qu'on relève en entier. */
+async function topAdvertiserPages(limit: number, now: Date): Promise<string[]> {
+  if (limit <= 0) return [];
+  const rows = await getDb()
+    .select({ pageId: spiedAds.pageId, ads: sql<number>`count(*)` })
+    .from(spiedAds)
+    .where(and(isNotNull(spiedAds.pageId), gt(spiedAds.lastSeenAt, new Date(now.getTime() - ADVERTISER_WINDOW_MS))))
+    .groupBy(spiedAds.pageId)
+    .orderBy(desc(sql`count(*)`), desc(sql`max(${spiedAds.lastSeenAt})`))
+    .limit(limit);
+  return rows.flatMap((row) => (row.pageId && /^\d{5,30}$/.test(row.pageId) ? [row.pageId] : []));
+}
+
+const apifyUrl = (path: string, query = '') =>
+  `${env.APIFY_API_URL.replace(/\/+$/, '')}${path}?token=${encodeURIComponent(env.APIFY_TOKEN!)}${query}`;
+
+/** Appel à l'API d'Apify ; les refus de compte deviennent des erreurs lisibles. */
+async function apifyFetch(url: string, init: { method?: string; body?: string } = {}): Promise<Response> {
+  let response: Response;
+  try {
+    response = await fetch(url, {
+      method: init.method ?? 'GET',
+      headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
+      ...(init.body ? { body: init.body } : {}),
+      signal: AbortSignal.timeout(TIMEOUT_MS),
+    });
+  } catch (error) {
+    throw apifyUnavailable(error instanceof Error && error.name === 'TimeoutError' ? 'délai dépassé' : 'réseau');
+  }
+  if (response.status === 401 || response.status === 403) {
+    throw new AppError(502, 'Le jeton Apify est refusé : vérifiez-le dans la configuration.', 'RADAR_DISCOVERY_DENIED');
+  }
+  if (response.status === 402) {
+    throw new AppError(
+      503,
+      'La réserve mensuelle Apify est épuisée : la collecte reprendra au prochain cycle, ou après un rechargement.',
+      'RADAR_DISCOVERY_OUT_OF_CREDIT',
+    );
+  }
+  if (!response.ok) throw apifyUnavailable(`réponse ${response.status}`);
+  return response;
+}
+
+const runSchema = z.object({ data: z.object({ id: z.string().min(1), defaultDatasetId: z.string().min(1), status: z.string().optional() }) });
 
 /**
- * Lance une collecte et met la liste à jour. À n'appeler que depuis le planificateur ou une
- * route d'administration : chaque passage engage de l'argent réel.
+ * Lance un passage chez Apify SANS l'attendre, et l'inscrit pour la récolte.
+ *
+ * Il était lancé en mode synchrone, avec trois minutes de patience. Au-delà — et un passage de
+ * plusieurs centaines d'annonces les dépasse —, la requête abandonnait, mais le passage, lui,
+ * continuait chez Apify, se facturait, et son résultat était perdu.
+ */
+async function startRun(kind: 'keywords' | 'pages', urls: string[], resultsLimit: number): Promise<void> {
+  const response = await apifyFetch(apifyUrl(`/acts/${env.APIFY_ADS_ACTOR}/runs`), {
+    method: 'POST',
+    body: JSON.stringify({
+      startUrls: urls.map((url) => ({ url })),
+      // Plafond facturé, PAR ADRESSE : la borne du coût, pas une préférence d'affichage.
+      resultsLimit,
+      activeStatus: 'active',
+      /*
+        « total_impressions » et non « most recent » : mesuré le 23/09/2026, l'acteur REFUSE
+        toute autre valeur que "", "total_impressions" ou "relevancy_monthly_grouped", et
+        répond 400 « Input is not valid ». Trier par impressions sert aussi le propos : les
+        plus gros annonceurs d'abord.
+      */
+      sorting: 'total_impressions',
+    }),
+  });
+  const parsed = runSchema.safeParse(await response.json().catch(() => null));
+  if (!parsed.success) throw apifyUnavailable('réponse illisible au lancement');
+  await getDb()
+    .insert(adCollectionRuns)
+    .values({ providerRunId: parsed.data.data.id, datasetId: parsed.data.data.defaultDatasetId, kind, urls: urls.length })
+    .onConflictDoNothing();
+}
+
+const runStatusSchema = z.object({ data: z.object({ status: z.string() }) });
+const datasetItemSchema = z.array(z.unknown());
+const FAILED_RUN = new Set(['FAILED', 'ABORTED', 'TIMED-OUT', 'TIMED_OUT']);
+
+/**
+ * Récolte les passages terminés : leurs annonces rejoignent le mur, leurs boutiques le radar.
+ * Appelée par le planificateur, par l'administration, et par le mur lui-même en arrière-plan :
+ * un passage fini apparaît donc sans attendre le lendemain.
+ */
+export async function harvestCollectionRuns(now = new Date()): Promise<DiscoveryOutcome> {
+  if (!providers.apify) return { ...EMPTY_OUTCOME };
+  const runs = await getDb()
+    .select()
+    .from(adCollectionRuns)
+    .where(eq(adCollectionRuns.status, 'running'))
+    .orderBy(adCollectionRuns.startedAt)
+    .limit(10);
+
+  let outcome: DiscoveryOutcome = { ...EMPTY_OUTCOME };
+  let pending = 0;
+  for (const run of runs) {
+    try {
+      const state = runStatusSchema.safeParse(
+        await (await apifyFetch(apifyUrl(`/actor-runs/${encodeURIComponent(run.providerRunId)}`))).json().catch(() => null),
+      );
+      const status = state.success ? state.data.data.status.toUpperCase() : 'UNKNOWN';
+
+      if (status === 'SUCCEEDED') {
+        // Réservé d'abord : deux récoltes simultanées n'écrivent pas deux fois les mêmes annonces.
+        const [claimed] = await getDb()
+          .update(adCollectionRuns)
+          .set({ status: 'harvesting' })
+          .where(and(eq(adCollectionRuns.id, run.id), eq(adCollectionRuns.status, 'running')))
+          .returning({ id: adCollectionRuns.id });
+        if (!claimed) continue;
+        const items = datasetItemSchema.safeParse(
+          await (await apifyFetch(apifyUrl(`/datasets/${encodeURIComponent(run.datasetId)}/items`, '&clean=true&format=json'))).json().catch(() => null),
+        );
+        if (!items.success) throw apifyUnavailable('résultat illisible');
+        const harvested = await ingestDiscoveryItems(items.data, now);
+        outcome = addOutcomes(outcome, harvested);
+        await getDb()
+          .update(adCollectionRuns)
+          .set({ status: 'harvested', adsExamined: harvested.adsExamined, adsKept: harvested.adsKept, finishedAt: new Date() })
+          .where(eq(adCollectionRuns.id, run.id));
+      } else if (FAILED_RUN.has(status) || now.getTime() - run.startedAt.getTime() > RUN_STALE_MS) {
+        await getDb()
+          .update(adCollectionRuns)
+          .set({ status: 'failed', error: FAILED_RUN.has(status) ? `passage ${status.toLowerCase()} chez Apify` : 'abandonné après six heures', finishedAt: new Date() })
+          .where(eq(adCollectionRuns.id, run.id));
+      } else {
+        pending += 1;
+      }
+    } catch (error) {
+      // Un passage illisible une fois ne bloque pas les autres ; il sera relu au prochain appel.
+      await getDb().update(adCollectionRuns).set({ status: 'running' }).where(and(eq(adCollectionRuns.id, run.id), eq(adCollectionRuns.status, 'harvesting')));
+      console.warn('[collecte] récolte impossible :', run.providerRunId, error instanceof Error ? error.message : error);
+      pending += 1;
+    }
+  }
+  return { ...outcome, pending };
+}
+
+/** Passages encore en cours : l'écran peut annoncer que des annonces arrivent. */
+export async function pendingCollectionRuns(): Promise<number> {
+  const [row] = await getDb().select({ n: sql<number>`count(*)` }).from(adCollectionRuns).where(eq(adCollectionRuns.status, 'running'));
+  return Number(row?.n ?? 0);
+}
+
+const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+
+/**
+ * Lance une collecte : les mots-clés configurés, puis les annonceurs les plus actifs relevés en
+ * entier. À n'appeler que depuis le planificateur ou une route d'administration : chaque passage
+ * engage de l'argent réel.
  */
 export async function runDiscovery(now = new Date()): Promise<DiscoveryOutcome> {
   if (!providers.apify) {
@@ -147,72 +339,44 @@ export async function runDiscovery(now = new Date()): Promise<DiscoveryOutcome> 
     );
   }
 
-  const url =
-    `${env.APIFY_API_URL.replace(/\/+$/, '')}/acts/${env.APIFY_ADS_ACTOR}/run-sync-get-dataset-items` +
-    `?token=${encodeURIComponent(env.APIFY_TOKEN!)}`;
+  const queries = discoveryQueries();
+  const pages = await topAdvertiserPages(env.SPY_PAGES_MAX, now);
 
   /*
     Le passage est inscrit AVANT l'appel, et non après son succès.
 
     Ce qui décide du rythme, c'est la dépense engagée, pas le résultat obtenu. Inscrire après
     coup laissait une collecte infructueuse redevenir « due » le lendemain, et se refacturer
-    tous les jours au lieu d'une fois par mois.
-
-    Le risque retenu en échange est assumé et bien moindre : si l'appel échoue avant d'avoir
-    rien coûté — panne réseau, jeton refusé — le rythme aura tout de même avancé, et la
-    prochaine collecte attendra son tour. On perd un passage ; l'inverse perdait de l'argent.
+    tous les jours au lieu d'une fois par semaine.
   */
   await recordAudit({
     actor: SYSTEM_ACTOR,
     action: DISCOVERY_AUDIT_ACTION,
-    details: { query: env.RADAR_DISCOVERY_QUERY, resultsLimit: env.RADAR_DISCOVERY_LIMIT, actor: env.APIFY_ADS_ACTOR },
+    details: {
+      queries,
+      resultsLimit: env.RADAR_DISCOVERY_LIMIT,
+      pages: pages.length,
+      pageAdsLimit: env.SPY_PAGE_ADS_LIMIT,
+      actor: env.APIFY_ADS_ACTOR,
+    },
     client: { ipAddress: null, userAgent: null },
   });
 
-  let response: Response;
-  try {
-    response = await fetch(url, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
-      body: JSON.stringify({
-        startUrls: [{ url: adLibraryUrl(env.RADAR_DISCOVERY_QUERY) }],
-        // Plafond facturé : la borne du coût, pas une préférence d'affichage.
-        resultsLimit: env.RADAR_DISCOVERY_LIMIT,
-        activeStatus: 'active',
-        /*
-          « total_impressions » et non « most recent » : mesuré le 23/09/2026, l'acteur REFUSE
-          toute autre valeur que "", "total_impressions" ou "relevancy_monthly_grouped", et
-          répond 400 « Input is not valid ». Chaque collecte échouait donc en silence.
-          Trier par impressions sert aussi le propos : les plus gros annonceurs d'abord.
-        */
-        sorting: 'total_impressions',
-      }),
-      signal: AbortSignal.timeout(TIMEOUT_MS),
-    });
-  } catch (error) {
-    throw apifyUnavailable(error instanceof Error && error.name === 'TimeoutError' ? 'délai dépassé' : 'réseau');
-  }
-
-  if (response.status === 401 || response.status === 403) {
-    throw new AppError(502, 'Le jeton Apify est refusé : vérifiez-le dans la configuration.', 'RADAR_DISCOVERY_DENIED');
-  }
-  if (response.status === 402) {
-    throw new AppError(
-      503,
-      'La réserve mensuelle Apify est épuisée : la découverte reprendra au prochain cycle, ou après un rechargement.',
-      'RADAR_DISCOVERY_OUT_OF_CREDIT',
+  await startRun('keywords', queries.map(adLibraryUrl), env.RADAR_DISCOVERY_LIMIT);
+  if (pages.length > 0) {
+    // Un échec ici ne doit pas annuler la recherche par mots-clés, déjà lancée et payée.
+    await startRun('pages', pages.map(advertiserPageUrl), env.SPY_PAGE_ADS_LIMIT).catch((error: unknown) =>
+      console.warn('[collecte] relevé des annonceurs non lancé :', error instanceof Error ? error.message : error),
     );
   }
-  if (!response.ok) throw apifyUnavailable(`réponse ${response.status}`);
 
-  let items: unknown[];
-  try {
-    items = datasetItemSchema.parse(await response.json());
-  } catch {
-    throw apifyUnavailable('réponse illisible');
+  let outcome = await harvestCollectionRuns(now);
+  const deadline = Date.now() + WAIT_FOR_RUNS_MS;
+  while ((outcome.pending ?? 0) > 0 && Date.now() + POLL_EVERY_MS < deadline) {
+    await sleep(POLL_EVERY_MS);
+    outcome = addOutcomes(outcome, await harvestCollectionRuns(now));
   }
-
-  return ingestDiscoveryItems(items, now);
+  return outcome;
 }
 
 /**
@@ -312,6 +476,15 @@ export async function ingestDiscoveryItems(items: unknown[], now = new Date()): 
           platforms: sql`excluded.platforms`,
           active: sql`excluded.active`,
           lastSeenAt: now,
+          pageId: sql`coalesce(excluded.page_id, ${spiedAds.pageId})`,
+          pageUrl: sql`coalesce(excluded.page_url, ${spiedAds.pageUrl})`,
+          ctaText: sql`excluded.cta_text`,
+          displayFormat: sql`excluded.display_format`,
+          linkCaption: sql`excluded.link_caption`,
+          linkDescription: sql`excluded.link_description`,
+          cards: sql`excluded.cards`,
+          // Nouvelle adresse de visuel : la copie de l'aperçu a de nouveau sa chance.
+          thumbnailFailedAt: sql`case when excluded.media_url is distinct from ${spiedAds.mediaUrl} then null else ${spiedAds.thumbnailFailedAt} end`,
         },
       });
   }

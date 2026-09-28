@@ -94,12 +94,17 @@ const fauxApify = createServer((req, res) => {
   req.on('data', (c: Buffer) => chunks.push(c));
   req.on('end', () => {
     const url = new URL(req.url ?? '/', 'http://faux.test');
-    if (req.method === 'POST' && url.pathname.includes('/run-sync-get-dataset-items')) {
-      collectes.push(JSON.parse(Buffer.concat(chunks).toString('utf8')) as Record<string, unknown>);
+    const envoyer = (corps: unknown) => {
       res.writeHead(200, { 'content-type': 'application/json' });
-      res.end(JSON.stringify(ANNONCES));
-      return;
+      res.end(JSON.stringify(corps));
+    };
+    // API asynchrone d'Apify : lancer un passage, suivre son état, lire son résultat.
+    if (req.method === 'POST' && url.pathname === '/acts/apify~facebook-ads-scraper/runs') {
+      collectes.push(JSON.parse(Buffer.concat(chunks).toString('utf8')) as Record<string, unknown>);
+      return envoyer({ data: { id: `passage-${collectes.length}`, defaultDatasetId: `lot-${collectes.length}`, status: 'RUNNING' } });
     }
+    if (req.method === 'GET' && url.pathname.startsWith('/actor-runs/')) return envoyer({ data: { status: 'SUCCEEDED' } });
+    if (req.method === 'GET' && /^\/datasets\/lot-\d+\/items$/.test(url.pathname)) return envoyer(ANNONCES);
     res.writeHead(404, { 'content-type': 'application/json' });
     res.end(JSON.stringify({ detail: 'Not Found' }));
   });

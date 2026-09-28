@@ -3,7 +3,8 @@ import { z } from 'zod';
 import { asyncRoute } from '@server/middleware';
 import { requireAuth } from '@server/middleware/auth';
 import { effectiveLimits } from '@server/services/accounts';
-import { listSpiedAds, spiedStores } from '@server/services/espionnage';
+import { listSpiedAds, refreshWallInBackground, spiedStores } from '@server/services/espionnage';
+import { sendAdThumbnail } from '@server/services/espionnage/media';
 
 /**
  * Mur d'espionnage : lecture seule d'un cache partagé, alimenté par le passage payant de la
@@ -15,12 +16,25 @@ import { listSpiedAds, spiedStores } from '@server/services/espionnage';
 
 export const espionnageRouter = Router();
 
+/**
+ * Aperçu d'une annonce, conservé chez nous. Public, et mis en cache par l'hébergeur : ce sont des
+ * publicités que Meta montre à tout le monde, et une vignette ne doit pas coûter un appel au serveur
+ * à chaque affichage. L'identifiant est celui de la ligne, impossible à deviner.
+ */
+espionnageRouter.get(
+  '/media/:id',
+  asyncRoute(async (req, res) => {
+    await sendAdThumbnail(req.params.id, res);
+  }),
+);
+
 espionnageRouter.use(requireAuth);
 
 const filtersSchema = z.object({
   minDays: z.coerce.number().int().min(0).max(3_650).optional(),
   maxDays: z.coerce.number().int().min(0).max(3_650).optional(),
   storeHost: z.string().trim().max(200).optional(),
+  pageId: z.string().regex(/^\d{5,30}$/).optional(),
   mediaKind: z.enum(['image', 'video']).optional(),
   // « active » : ce que Meta déclarait en cours à la dernière collecte ; « arretee » : l'inverse.
   etat: z.enum(['active', 'arretee']).optional(),
@@ -36,6 +50,7 @@ espionnageRouter.get(
     const parsed = filtersSchema.safeParse(req.query);
     const limite = effectiveLimits(req.auth!.account).spiedAdsVisible;
     res.json(await listSpiedAds(parsed.success ? parsed.data : {}, limite));
+    refreshWallInBackground();
   }),
 );
 

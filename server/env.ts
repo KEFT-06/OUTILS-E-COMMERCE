@@ -364,63 +364,48 @@ const schema = z.object({
   RADAR_SWEEP_INTERVAL_HOURS: z.coerce.number().int().min(1).max(168).default(24),
 
   /**
-   * Découverte de boutiques : jeton Apify, créé sur console.apify.com → Settings → API & Integrations.
-   * Sans jeton, la découverte est simplement absente — le reste du radar fonctionne.
+   * Collecte publicitaire (découverte de boutiques et mur d'espionnage) : jeton Apify, créé sur
+   * console.apify.com → Settings → API & Integrations. Sans jeton, la collecte est absente et
+   * le reste fonctionne.
    *
-   * L'acteur facture AU RÉSULTAT, 5,80 $ les 1 000 publicités sur l'offre gratuite. Le compte
-   * gratuit reçoit 5 $ par mois et BLOQUE au dépassement au lieu de facturer : les valeurs par
-   * défaut ci-dessous (200 publicités par passage, un passage par semaine) coûtent donc environ
-   * 4,64 $ par mois et tiennent dans la franchise. Les augmenter engage de l'argent réel.
+   * L'acteur facture AU RÉSULTAT : 5,80 $ les 1 000 publicités sur l'offre gratuite (5 $ offerts
+   * par mois, qui BLOQUE au dépassement), 5,00 $ sur l'offre Starter (19 $ par mois, 19 $ d'usage
+   * inclus), mesuré le 28/09/2026 sur apify.com.
+   *
+   * RÉGLAGE PAR DÉFAUT : offre Starter, choisie par le propriétaire le 28/09/2026. Un passage par
+   * semaine = deux mots-clés × 250 publicités + les 25 annonceurs les plus actifs × 12, soit
+   * 800 au plus ≈ 3 470 par mois ≈ 17,40 $ : sous les 19 $ inclus. Le résultat est MUTUALISÉ
+   * entre tous les comptes : la dépense ne bouge pas avec le nombre d'utilisateurs.
+   *
+   * Sur l'offre gratuite, poser RADAR_DISCOVERY_QUERY=mychariow, RADAR_DISCOVERY_LIMIT=150 et
+   * SPY_PAGES_MAX=0 : 600 publicités par mois ≈ 3,50 $.
    */
   APIFY_TOKEN: z.string().min(1).optional(),
   APIFY_API_URL: z.string().url().default('https://api.apify.com/v2'),
   /** Acteur maintenu par Apify. Le « ~ » remplace le « / » dans les adresses de l'API. */
   APIFY_ADS_ACTOR: z.string().regex(/^[\w.~-]+$/).default('apify~facebook-ads-scraper'),
+  /** Publicités relevées au plus PAR MOT-CLÉ et par passage. Chaque unité est facturée. */
+  RADAR_DISCOVERY_LIMIT: z.coerce.number().int().min(10).max(2000).default(250),
   /**
-   * Publicités relevées par passage. Chaque unité est facturée : ne pas gonfler sans raison.
-   *
-   * Cent, et le calcul tient en une ligne. L'acteur facture 0,0058 $ l'annonce sur l'offre
-   * gratuite ; cent annonces par semaine font 2,52 $ par mois, soit la MOITIÉ des 5 $ que
-   * cette offre accorde. L'autre moitié reste disponible pour les collectes lancées à la main.
-   *
-   * Autrement dit : ce module n'a jamais eu besoin d'un abonnement payant. Il tournait à
-   * cinquante par passage — un quart du budget — par prudence héritée d'une époque où le
-   * rythme était mensuel et le plafond de deux cents. Le doubler ne coûte rien de plus qu'un
-   * budget déjà offert, et double ce que le mur montre.
-   *
-   * Ne pas aller au-delà de cent cinquante sans passer à une offre payante : on atteindrait
-   * 76 % du budget, et une seule collecte manuelle ferait déborder le mois.
-   *
-   * Le résultat étant MUTUALISÉ, cette dépense ne bouge pas avec le nombre d'utilisateurs.
-   * C'est ce qui rend l'offre gratuite tenable même avec mille comptes.
-   */
-  RADAR_DISCOVERY_LIMIT: z.coerce.number().int().min(10).max(2000).default(100),
-  /**
-   * Heures entre deux découvertes. Le résultat est MUTUALISÉ entre tous les comptes : la dépense
-   * ne dépend pas du nombre d'utilisateurs, seulement de ce rythme.
-   *
-   * Hebdomadaire, à budget inchangé — c'est le plafond d'annonces qui a payé le changement,
-   * pas la caisse. Un passage mensuel de 200 annonces coûte 1,16 $ ; quatre passages
-   * hebdomadaires de 50 en coûtent 1,26 $. On échange de la largeur contre de la fraîcheur.
-   *
-   * Ce qui a rendu l'échange nécessaire : le mur d'espionnage ne prétend plus qu'une annonce
-   * tourne encore, il dit depuis quand il ne l'a plus vue. À un rythme mensuel, cette mention
-   * s'affiche sur presque toutes les annonces presque tout le temps, et un avertissement
-   * permanent ne veut plus rien dire. Une annonce toujours en vie doit être RETROUVÉE assez
-   * souvent pour que son compteur avance — c'est la fréquence qui donne sa valeur au signal,
-   * pas le nombre d'annonces ramenées d'un coup.
-   *
-   * La mesure qui fixait l'ancien rythme reste vraie et reste la garde : un passage
-   * hebdomadaire de 200 annonces consommerait 4,64 $ des 5 $ offerts, soit 93 % du budget pour
-   * la brique la moins précieuse. C'est le plafond, et lui seul, qui rend l'hebdomadaire tenable.
+   * Heures entre deux passages. Hebdomadaire : une annonce toujours en vie est RETROUVÉE assez
+   * souvent pour que son ancienneté avance et que son état (en cours, arrêtée) reste juste ;
+   * l'aperçu, lui, est conservé chez nous et ne dépend plus du rythme.
    */
   RADAR_DISCOVERY_INTERVAL_HOURS: z.coerce.number().int().min(6).max(720).default(168),
   /**
-   * Mot-clé cherché dans la bibliothèque publicitaire. « mychariow » apparaît dans l'adresse de
-   * destination des publicités de toute boutique Chariow : c'est ce qui permet de trouver les
-   * vendeurs de la plateforme sans les connaître d'avance.
+   * Mots-clés cherchés dans la bibliothèque publicitaire, séparés par des virgules.
+   * « mychariow » apparaît dans l'adresse de destination de toute boutique Chariow ;
+   * « chariow » attrape aussi les annonces qui citent la plateforme dans leur texte.
    */
-  RADAR_DISCOVERY_QUERY: z.string().min(2).max(120).default('mychariow'),
+  RADAR_DISCOVERY_QUERY: z.string().min(2).max(300).default('mychariow,chariow'),
+  /**
+   * Annonceurs relevés en entier à chaque passage : les plus actifs du mur, page par page. Une
+   * recherche par mot-clé ne ramène que les annonces qui le contiennent ; la page d'un annonceur
+   * les ramène toutes, y compris celles dont le lien ne dit pas « mychariow ». 0 : désactivé.
+   */
+  SPY_PAGES_MAX: z.coerce.number().int().min(0).max(200).default(25),
+  /** Publicités relevées au plus par annonceur et par passage. */
+  SPY_PAGE_ADS_LIMIT: z.coerce.number().int().min(1).max(200).default(12),
 
   /**
    * Référence marché : combien de produits numériques existent déjà sur une niche, depuis quand,

@@ -3,7 +3,9 @@ import { getDb } from '@server/db/client';
 import { containsIgnoringAccents } from '@server/db/search';
 import { spiedAds } from '@server/db/schema';
 import { providers } from '@server/env';
-import { lastDiscoveryAt } from '@server/services/radar/discovery';
+import { harvestCollectionRuns, lastDiscoveryAt, pendingCollectionRuns } from '@server/services/radar/discovery';
+import { storeMissingThumbnails } from '@server/services/espionnage/media';
+import { runInBackground } from '@server/shared/backgroundWork';
 
 /**
  * Mur d'espionnage : les publicités qui tournent en ce moment et qui mènent à une boutique de la
@@ -47,6 +49,15 @@ export interface SpiedAdView {
   platforms: string[];
   active: boolean;
   lastSeenAt: string;
+  /** Aperçu conservé chez nous (ne périme pas) ; null : seule l'adresse de Meta, qui expire. */
+  thumbnailUrl: string | null;
+  pageId: string | null;
+  pageUrl: string | null;
+  ctaText: string | null;
+  displayFormat: string | null;
+  linkCaption: string | null;
+  linkDescription: string | null;
+  cards: { title: string | null; body: string | null; linkUrl: string | null; ctaText: string | null }[];
 }
 
 export interface EspionnageFilters {
@@ -55,6 +66,8 @@ export interface EspionnageFilters {
   /** Jours de diffusion au plus : pour ne voir que ce qui vient d'être lancé. */
   maxDays?: number;
   storeHost?: string;
+  /** Toutes les annonces d'un annonceur, comme « voir toutes les annonces » chez Meta. */
+  pageId?: string;
   mediaKind?: 'image' | 'video';
   /**
    * État déclaré par Meta à la dernière collecte qui a vu l'annonce. La bibliothèque de Meta
@@ -80,6 +93,8 @@ export interface EspionnageView {
   visibleLimit: number | null;
   /** Annonces retenues par les filtres mais masquées par le palier. Zéro : rien n'est caché. */
   hiddenByPlan: number;
+  /** Une collecte tourne chez le fournisseur : de nouvelles annonces arrivent dans quelques minutes. */
+  collecting: boolean;
 }
 
 const JOUR_MS = 86_400_000;
@@ -122,6 +137,14 @@ function viewOf(row: typeof spiedAds.$inferSelect, now: Date): SpiedAdView {
     platforms: row.platforms,
     active: row.active,
     lastSeenAt: row.lastSeenAt.toISOString(),
+    thumbnailUrl: row.thumbnailPath ? `/api/espionnage/media/${row.id}` : null,
+    pageId: row.pageId,
+    pageUrl: row.pageUrl,
+    ctaText: row.ctaText,
+    displayFormat: row.displayFormat,
+    linkCaption: row.linkCaption,
+    linkDescription: row.linkDescription,
+    cards: row.cards ?? [],
     daysSinceSeen: Math.max(0, Math.floor((now.getTime() - row.lastSeenAt.getTime()) / JOUR_MS)),
   };
 }
@@ -164,6 +187,7 @@ export async function listSpiedAds(
     conditions.push(and(isNotNull(spiedAds.startedAt), gte(spiedAds.startedAt, new Date(now.getTime() - filters.maxDays * JOUR_MS)))!);
   }
   if (filters.storeHost) conditions.push(eq(spiedAds.storeHost, filters.storeHost));
+  if (filters.pageId) conditions.push(eq(spiedAds.pageId, filters.pageId));
   if (filters.mediaKind) conditions.push(eq(spiedAds.mediaKind, filters.mediaKind));
   if (filters.etat) conditions.push(eq(spiedAds.active, filters.etat === 'active'));
   if (filters.search) {
@@ -230,7 +254,24 @@ export async function listSpiedAds(
     configured: providers.apify,
     visibleLimit,
     hiddenByPlan,
+    collecting: providers.apify ? (await pendingCollectionRuns()) > 0 : false,
   };
+}
+
+let lastBackgroundRefresh = 0;
+
+/**
+ * Tenue du mur à chaque consultation, en arrière-plan et au plus toutes les deux minutes par
+ * instance : récolte d'une collecte terminée, copie des aperçus manquants. Sans cela, une
+ * collecte finie n'apparaissait qu'au passage du planificateur, le lendemain.
+ */
+export function refreshWallInBackground(): void {
+  if (Date.now() - lastBackgroundRefresh < 120_000) return;
+  lastBackgroundRefresh = Date.now();
+  runInBackground(async () => {
+    if (providers.apify && (await pendingCollectionRuns()) > 0) await harvestCollectionRuns();
+    await storeMissingThumbnails(60);
+  }, 'tenue du mur d’espionnage');
 }
 
 /** Boutiques présentes sur le mur, pour alimenter le filtre par boutique. */
