@@ -95,6 +95,26 @@ export function StorybookView() {
   const update = <K extends keyof StorybookBrief>(key: K, value: StorybookBrief[K]) =>
     setBrief((previous) => ({ ...previous, [key]: value }));
 
+  /*
+    Nombre de pages : saisi en texte, borné en quittant le champ.
+
+    Il était borné à chaque frappe, si bien qu'on ne pouvait pas TAPER un nombre de 10 à 19 :
+    le « 1 » devenait aussitôt 4, puis le « 2 » faisait « 42 », ramené à 20. Seules les
+    flèches y menaient.
+  */
+  const [pagesDraft, setPagesDraft] = useState(() => String(brief.pages));
+  const bornerPages = (texte: string) => Math.min(20, Math.max(4, Math.round(Number(texte)) || 4));
+  const saisirPages = (texte: string) => {
+    setPagesDraft(texte);
+    const lu = Number(texte);
+    if (Number.isInteger(lu) && lu >= 4 && lu <= 20) update('pages', lu);
+  };
+  const validerPages = () => {
+    const borne = bornerPages(pagesDraft);
+    setPagesDraft(String(borne));
+    update('pages', borne);
+  };
+
   const canSubmit = brief.heroName.trim().length > 0 && brief.theme.trim().length >= 3 && !isGenerating;
 
   const requestBody = () => {
@@ -278,8 +298,9 @@ export function StorybookView() {
                   type="number"
                   min={4}
                   max={20}
-                  value={brief.pages}
-                  onChange={(event) => update('pages', Math.min(20, Math.max(4, Number(event.target.value) || 4)))}
+                  value={pagesDraft}
+                  onChange={(event) => saisirPages(event.target.value)}
+                  onBlur={validerPages}
                 />
                 <FieldDescription>Entre 4 et 20.</FieldDescription>
               </Field>
