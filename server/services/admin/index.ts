@@ -1,7 +1,8 @@
-import { and, desc, eq, exists, gt, gte, ilike, isNotNull, isNull, or, sql, type SQL } from 'drizzle-orm';
+import { and, desc, eq, exists, gt, gte, isNotNull, isNull, or, sql, type SQL } from 'drizzle-orm';
 import { alias } from 'drizzle-orm/pg-core';
 import { z } from 'zod';
 import { getDb, queryRows } from '@server/db/client';
+import { containsIgnoringAccents } from '@server/db/search';
 import {
   GENERATION_KINDS,
   PLAN_IDS,
@@ -382,8 +383,8 @@ export async function listUsers(query: UserListQuery) {
 
   const conditions: SQL[] = [];
   if (query.search) {
-    const pattern = `%${query.search.replace(/[\\%_]/g, (match) => `\\${match}`)}%`;
-    conditions.push(or(ilike(users.email, pattern), ilike(users.name, pattern))!);
+    // « Aicha » doit trouver « Aïcha » : les prénoms du public visé portent souvent un accent.
+    conditions.push(containsIgnoringAccents([users.email, users.name], query.search));
   }
   if (query.plan) conditions.push(eq(users.plan, query.plan));
   if (query.status) conditions.push(eq(users.status, query.status));
@@ -725,8 +726,7 @@ export async function connectionHistory(query: ConnectionQuery) {
   const conditions: SQL[] = [];
   if (query.userId) conditions.push(eq(sessionHistory.userId, query.userId));
   if (query.search) {
-    const pattern = `%${query.search.replace(/[\\%_]/g, (match) => `\\${match}`)}%`;
-    conditions.push(or(ilike(users.email, pattern), ilike(users.name, pattern))!);
+    conditions.push(containsIgnoringAccents([users.email, users.name], query.search));
   }
   if (query.state === 'open') conditions.push(isNull(sessionHistory.endedAt));
   if (query.state === 'closed') conditions.push(isNotNull(sessionHistory.endedAt));
