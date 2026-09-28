@@ -8,7 +8,7 @@ console.log(
     port: env.PORT,
     geminiApiUrl: env.GEMINI_API_URL,
     geminiApiKey: env.GEMINI_API_KEY ?? null,
-    higgsfieldId: env.HIGGSFIELD_API_KEY_ID ?? null,
+    supabaseKey: env.SUPABASE_API_SECRET_KEY ?? null,
     appUrl: env.APP_URL,
     reportingTimezone: env.REPORTING_TIMEZONE,
     databaseUrl: env.DATABASE_URL ?? null,

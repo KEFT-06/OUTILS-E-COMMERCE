@@ -25,8 +25,6 @@ const STYLE_DIRECTION: Record<(typeof COVER_STYLES)[number], string> = {
   minimal: 'Minimalist abstract composition, soft gradients and simple geometric shapes, calm negative space.',
 };
 
-/** Au-delà, l'image est refusée : elle alourdirait chaque export et la base. */
-const MAX_COVER_BYTES = 12 * 1024 * 1024;
 
 export const coverRequestSchema = z.object({
   subject: z.enum(['guide', 'product']),

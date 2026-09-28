@@ -44,9 +44,8 @@ describe('Configuration au démarrage', () => {
       PORT: '',
       GEMINI_API_KEY: '',
       GEMINI_API_URL: '',
-      HIGGSFIELD_API_KEY_ID: '',
-      HIGGSFIELD_API_KEY_SECRET: '',
-      HIGGSFIELD_API_URL: '',
+      SUPABASE_API_SECRET_KEY: '',
+      SUPABASE_URL: '',
       CHARIOW_API_KEY: '',
       CHARIOW_API_URL: '',
       DATABASE_URL: '',
@@ -57,7 +56,7 @@ describe('Configuration au démarrage', () => {
     assert.equal(result.geminiApiUrl, 'https://generativelanguage.googleapis.com');
     assert.equal(result.reportingTimezone, 'UTC', 'une valeur faite d’espaces vaut absente');
     assert.equal(result.geminiApiKey, null, 'une clé vide n’est pas une clé');
-    assert.equal(result.higgsfieldId, null);
+    assert.equal(result.supabaseKey, null, 'une clé de stockage vide n’active pas la copie des vidéos');
     assert.equal(result.databaseUrl, null);
   });
 

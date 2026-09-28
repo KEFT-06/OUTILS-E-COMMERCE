@@ -3,7 +3,7 @@ import { pipeline } from 'node:stream/promises';
 import type { ReadableStream as NodeReadableStream } from 'node:stream/web';
 import type { Response as ExpressResponse } from 'express';
 import { z } from 'zod';
-import { env, isProd, providers } from '@server/env';
+import { env, isProd } from '@server/env';
 import { AppError, marketSchema } from '@server/middleware';
 import { type FalQueueStatus, getFalGeneration } from '@server/services/fal';
 import {
@@ -68,29 +68,19 @@ export const CREATIVE_FORMATS = ['1:1', '9:16', '16:9'] as const;
  * d'après le modèle la rendrait fausse une fois sur dix, et c'est une valeur qui reste en
  * base pour toujours.
  *
- * La vidéo est chez fal.ai : Kling 2.5 Turbo Pro y coûte 0,35 $ les cinq secondes, payés au
- * rendu réussi. Higgsfield garde les visuels d'avant la bascule, qui restent consultables.
+ * La vidéo est rendue par Veo ; « fal » ne reste que pour les vidéos d'avant la bascule.
+ * Higgsfield, abandonné, n'est plus un fournisseur : ses anciennes lignes restent en base comme
+ * historique, sans fichier (il effaçait tout au bout de sept jours).
  */
 export type CreativeProvider = 'fal' | 'veo' | 'interne';
 
 /**
- * Fournisseur des visuels, décidé à chaque demande et non figé ici.
+ * Un moteur d'images est-il utilisable ? Gemini, ou Cloudflare s'il est configuré.
  *
- * Un visuel produit par notre façade coûte quelques centimes à l'unité, là où Higgsfield se
- * payait par abonnement mensuel dont les crédits périmaient sans report. Higgsfield reste le
- * recours tant qu'il est configuré : un serveur sans clé Cloudflare continue de produire.
+ * Le rendu interne n'était choisi que si Cloudflare était configuré : un serveur doté de la
+ * seule clé Gemini renvoyait chaque visuel vers Higgsfield, abandonné — et l'écran répondait
+ * « service non configuré » alors qu'un moteur d'images était bel et bien disponible.
  */
-export function visualProvider(): CreativeProvider {
-  /*
-    Le rendu interne (`generateImage`) sait passer par Cloudflare OU par Gemini. Il n'était
-    choisi que si Cloudflare était configuré : un serveur doté de la seule clé Gemini
-    renvoyait chaque visuel vers Higgsfield, abandonné — et l'écran répondait « service non
-    configuré » alors qu'un moteur d'images était bel et bien disponible.
-  */
-  return 'interne';
-}
-
-/** Un moteur d'images est-il utilisable ? Cloudflare, ou Gemini à défaut. */
 export function imagesConfigured(): boolean {
   return cloudflareImagesConfigured() || geminiImagesConfigured();
 }
@@ -228,12 +218,10 @@ function buildPrompt(brief: VisualBrief | VideoBrief, options: { maxLength: numb
   return [...head, `Scene: ${scene}`, ...tail].join('\n').slice(0, options.maxLength);
 }
 
-/** Corps envoyé au modèle d'image. Fonction pure, testable sans appel réseau. */
+/** Consigne et format envoyés au moteur d'images. Fonction pure, testable sans appel réseau. */
 export function buildVisualInput(brief: VisualBrief) {
   return {
     prompt: buildPrompt(brief, { maxLength: VISUAL_PROMPT_MAX }),
-    num_images: 1,
-    resolution: VISUAL_RESOLUTION,
     aspect_ratio: brief.format,
   };
 }

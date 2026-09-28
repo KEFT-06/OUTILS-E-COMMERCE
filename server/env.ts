@@ -182,13 +182,6 @@ const schema = z.object({
   CLOUDFLARE_AI_URL: z.string().url().default('https://api.cloudflare.com/client/v4'),
   CLOUDFLARE_IMAGE_MODEL: z.string().regex(/^@?[\w./-]+$/).default('@cf/black-forest-labs/flux-2-klein-9b'),
   CLOUDFLARE_IMAGE_MODEL_FAST: z.string().regex(/^@?[\w./-]+$/).default('@cf/black-forest-labs/flux-1-schnell'),
-  // Higgsfield authentifie par une paire identifiant + secret, envoyée sous la
-  // forme `Authorization: Key ID:SECRET` (docs.higgsfield.ai/docs/authentication).
-  // L'ancienne variable unique HIGGSFIELD_API_KEY ne pouvait fonctionner avec
-  // aucun appel réel : elle est remplacée par les deux noms de la documentation.
-  HIGGSFIELD_API_KEY_ID: z.string().min(1).optional(),
-  HIGGSFIELD_API_KEY_SECRET: z.string().min(1).optional(),
-  HIGGSFIELD_API_URL: z.string().url().default('https://api.higgsfield.ai'),
   /**
    * Rendu vidéo par fal.ai, payé à l'usage : 0,35 $ les cinq secondes, puis 0,07 $ par seconde,
    * contre un abonnement mensuel chez Higgsfield dont les crédits périmaient chaque mois.
@@ -482,7 +475,6 @@ export const providers = {
   payments: Boolean(env.STRIPE_API_KEY && !env.STRIPE_API_KEY.trim().startsWith('pk_')),
   cloudflareImages: Boolean(env.CLOUDFLARE_ACCOUNT_ID && env.CLOUDFLARE_AI_TOKEN),
   fal: Boolean(env.FAL_KEY),
-  higgsfield: Boolean(env.HIGGSFIELD_API_KEY_ID && env.HIGGSFIELD_API_KEY_SECRET),
   gamma: Boolean(env.GAMMA_API_KEY),
   chariow: Boolean(env.CHARIOW_API_KEY),
   apify: Boolean(env.APIFY_TOKEN),

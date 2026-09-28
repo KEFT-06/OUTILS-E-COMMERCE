@@ -1,5 +1,5 @@
 import { Router, type Request } from 'express';
-import { providers } from '@server/env';
+import { z } from 'zod';
 import { AppError, aiLimiter, asyncRoute, providerUnavailable, validateBody } from '@server/middleware';
 import { requireAuth, requireFeature } from '@server/middleware/auth';
 import { effectiveLimits } from '@server/services/accounts';
@@ -12,13 +12,12 @@ import {
   fileFormatOf,
   generationStateOf,
   getCreativeStatus,
+  imagesConfigured,
   PROVIDER_RETENTION_DAYS,
   streamCreativeFile,
   submitVideo,
-  submitVisual,
   videoBriefSchema,
   visualBriefSchema,
-  visualProvider,
   VIDEO_PROVIDER,
 } from '@server/services/creatives';
 import { videoArchiveConfigured } from '@server/services/creatives/archive';
@@ -27,10 +26,12 @@ import type { CreativeProvider } from '@server/services/creatives';
 import { falRequestIdSchema } from '@server/services/fal';
 import { veoConfigured, veoRequestIdSchema } from '@server/services/veo';
 import { findOwnedGeneration, runBilledGeneration, settleGeneration } from '@server/services/generations';
-import { requestIdSchema } from '@server/services/higgsfield';
 import { findAdFramework, isAdFrameworkAvailable } from '@server/shared/adFrameworks';
 
-/** Créatifs publicitaires : visuels par Cloudflare Workers AI, vidéos par fal.ai (feuille de route 4.1, 4.2, 4.4). */
+/** Créatifs publicitaires : visuels par le moteur d'images interne (Google), vidéos par Veo (feuille de route 4.1, 4.2, 4.4). */
+
+/** Identifiant d'un visuel interne : un UUID, frappé par le serveur à l'enregistrement. */
+const internalRequestIdSchema = z.string().uuid();
 
 export const creativesRouter = Router();
 
@@ -49,12 +50,12 @@ function assertFrameworkAllowed(req: Request, brief: VisualBrief | VideoBrief): 
 }
 
 /**
- * Les deux fournisseurs ne nomment pas leurs demandes de la même façon : Higgsfield rend un
- * UUID, fal.ai une chaîne alphanumérique plus libre. On accepte les deux formes, puis c'est
- * la génération enregistrée qui dit de quel fournisseur elle vient.
+ * Les fournisseurs ne nomment pas leurs demandes de la même façon : un visuel interne porte un
+ * UUID, fal.ai une chaîne alphanumérique plus libre, Veo un identifiant d'opération. On accepte
+ * ces formes, puis c'est la génération enregistrée qui dit de quel fournisseur elle vient.
  */
 function parseCreativeRequestId(value: string | undefined): string {
-  const parsed = requestIdSchema.safeParse(value);
+  const parsed = internalRequestIdSchema.safeParse(value);
   if (parsed.success) return parsed.data;
   const chezFal = falRequestIdSchema.safeParse(value);
   if (chezFal.success) return chezFal.data;
@@ -68,15 +69,11 @@ function parseCreativeRequestId(value: string | undefined): string {
   throw new AppError(400, 'Identifiant de génération invalide.', 'INVALID_GENERATION_ID');
 }
 
-/**
- * Retrouve la génération de son auteur, quel que soit le fournisseur qui l'a produite, et
- * dit lequel c'est. Les créatifs lancés avant la bascule vers fal.ai restent suivis chez
- * Higgsfield jusqu'à leur terme : rien de ce qui a été payé ne devient inaccessible.
- */
+/** Retrouve la génération de son auteur, quel que soit le fournisseur qui l'a produite, et dit lequel c'est. */
 async function findCreative(req: Request, requestId: string) {
   // « fal » reste dans la liste : les vidéos lancées avant la bascule vers Veo doivent
   // rester suivies et téléchargeables jusqu'à leur terme.
-  const candidats: CreativeProvider[] = ['interne', 'veo', 'fal', 'higgsfield'];
+  const candidats: CreativeProvider[] = ['interne', 'veo', 'fal'];
   for (const provider of candidats) {
     try {
       return { generation: await findOwnedGeneration(req.auth!, provider, requestId), provider };
@@ -102,43 +99,24 @@ creativesRouter.post(
       'Le brief du visuel contient des formulations non conformes : corrigez-les avant de lancer la génération.',
     );
     /*
-      Deux chemins, parce que les deux fournisseurs ne rendent pas la même chose : Cloudflare
-      répond l'image, Higgsfield un lien à relayer. Le client, lui, reçoit la même forme.
+      Un seul chemin : le moteur d'images interne (Google, Cloudflare en secours s'il est
+      configuré) rend l'image elle-même, enregistrée sur le compte de son auteur. Higgsfield,
+      qui rendait un lien à relayer, est abandonné.
     */
-    const provider = visualProvider();
-    if (provider === 'interne') {
-      const { result } = await runBilledGeneration({
-        auth: req.auth!,
-        actionId: 'image_generation',
-        kind: 'image',
-        provider,
-        run: () => createLocalVisual(req.auth!, { prompt: buildVisualInput(brief).prompt, format: brief.format }),
-        describe: (image) => ({
-          providerRef: image.requestId,
-          state: 'completed',
-          fileFormat: image.mimeType === 'image/jpeg' ? 'jpg' : (image.mimeType.split('/')[1] ?? 'png'),
-        }),
-      });
-      res.status(202).json({ requestId: result.requestId, status: 'completed', mediaType: 'image', retentionDays: PROVIDER_RETENTION_DAYS.interne });
-      return;
-    }
-
-    if (!providers.higgsfield) throw providerUnavailable('création de visuels et vidéos');
-
+    if (!imagesConfigured()) throw providerUnavailable('création de visuels');
     const { result } = await runBilledGeneration({
       auth: req.auth!,
       actionId: 'image_generation',
       kind: 'image',
-      provider: 'higgsfield',
-      run: () => submitVisual(brief),
-      describe: (status) => ({
-        providerRef: status.requestId,
-        state: generationStateOf(status.status),
-        fileFormat: fileFormatOf(status),
+      provider: 'interne',
+      run: () => createLocalVisual(req.auth!, { prompt: buildVisualInput(brief).prompt, format: brief.format }),
+      describe: (image) => ({
+        providerRef: image.requestId,
+        state: 'completed',
+        fileFormat: image.mimeType === 'image/jpeg' ? 'jpg' : (image.mimeType.split('/')[1] ?? 'png'),
       }),
     });
-
-    res.status(202).json({ ...result, retentionDays: PROVIDER_RETENTION_DAYS.higgsfield });
+    res.status(202).json({ requestId: result.requestId, status: 'completed', mediaType: 'image', retentionDays: PROVIDER_RETENTION_DAYS.interne });
   }),
 );
 

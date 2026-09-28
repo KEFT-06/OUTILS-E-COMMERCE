@@ -16,9 +16,6 @@ export async function createTestApp(overrides: Record<string, string> = {}): Pro
     DATABASE_URL: 'memory://',
     DATA_ENCRYPTION_KEY: randomBytes(32).toString('hex'),
     REPORTING_TIMEZONE: 'UTC',
-    HIGGSFIELD_API_KEY_ID: 'cle-de-test',
-    HIGGSFIELD_API_KEY_SECRET: 'secret-de-test',
-    HIGGSFIELD_API_URL: 'http://127.0.0.1:9',
     CHARIOW_API_KEY: 'sk_test_cle_du_proprietaire_0000',
     CHARIOW_API_URL: 'http://127.0.0.1:9',
     // Vitrine publique lue par le radar : neutralisée par défaut, sinon une suite lancée

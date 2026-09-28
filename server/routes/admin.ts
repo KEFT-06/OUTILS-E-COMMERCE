@@ -201,10 +201,9 @@ adminRouter.get(
     }
     /*
       Le fournisseur est lu sur la génération, sans valeur par défaut qui se tromperait :
-      l'ancien ternaire envoyait tout ce qui n'était pas « fal » chez Higgsfield — une vidéo
-      Veo y aurait été cherchée, et son téléchargement aurait échoué.
+      un créatif d'un fournisseur abandonné (Higgsfield) n'a plus de fichier à servir.
     */
-    const fournisseur = (['veo', 'fal', 'higgsfield'] as const).find((nom) => nom === creative.provider);
+    const fournisseur = (['veo', 'fal'] as const).find((nom) => nom === creative.provider);
     if (!fournisseur) throw new AppError(409, 'Fournisseur de ce créatif inconnu.', 'CREATIVE_PROVIDER_UNKNOWN');
     await streamCreativeFile(creative.providerRef, fournisseur, disposition, res);
   }),

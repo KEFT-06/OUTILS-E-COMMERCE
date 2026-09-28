@@ -5,20 +5,26 @@ import type { AddressInfo } from 'node:net';
 import { after, before, describe, it } from 'node:test';
 import type { Express } from 'express';
 import request from 'supertest';
+import { signInWithPlan } from './support/analysis-fixtures';
 import { STRONG_PASSWORD, closeTestApp, createAdmin, createTestApp, signUp } from './support/helpers';
 
 /**
- * Faux Higgsfield et faux Chariow : les générations et les boutiques sont testées
+ * Faux Google (images et Veo) et faux Chariow : les générations et les boutiques sont testées
  * de bout en bout sans jamais toucher un vrai fournisseur.
  */
 
 const OWNER_KEY = 'sk_test_cle_du_proprietaire_0000';
 const USER_KEY = 'sk_test_cle_utilisateur_valide_1234';
 
-const creativeStatuses = new Map<string, Record<string, unknown>>();
+const VEO = 'veo-3.1-fast-generate-preview';
+/** Image PNG d'un pixel, rendue par le faux modèle d'image. */
+const PNG = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==', 'base64');
+
+/** État de chaque opération Veo : en cours, échouée (refus du filtre, panne) ou terminée. */
+const veoOperations = new Map<string, 'encours' | 'echec' | 'termine'>();
 const chariowAuthorizations: string[] = [];
 let submissionFails = false;
-let outOfCredits = false;
+let compteurVeo = 0;
 
 const fakeProviders = createServer((req, res) => {
   const url = new URL(req.url ?? '/', 'http://fournisseurs.test');
@@ -27,18 +33,26 @@ const fakeProviders = createServer((req, res) => {
     res.end(JSON.stringify(body));
   };
 
-  if (url.pathname.startsWith('/higgsfield/')) {
-    if (req.method === 'POST') {
-      if (submissionFails) return send(500, { detail: 'panne simulée' });
-      // Réponse réelle d'un compte Higgsfield sans crédits (relevée le 16 septembre 2026).
-      if (outOfCredits) return send(403, { detail: 'not_enough_credits' });
-      const requestId = randomUUID();
-      creativeStatuses.set(requestId, { status: 'queued' });
-      return send(200, { request_id: requestId, status: 'queued' });
-    }
-    const match = url.pathname.match(/^\/higgsfield\/requests\/([^/]+)\/status$/);
-    const status = match ? creativeStatuses.get(match[1]!) : undefined;
-    return status ? send(200, { request_id: match![1], ...status }) : send(404, { detail: 'introuvable' });
+  // Modèle d'image de Google : l'image arrive dans la réponse.
+  if (req.method === 'POST' && /^\/v1beta\/models\/[\w.-]+-image:generateContent$/.test(url.pathname)) {
+    return send(200, { candidates: [{ content: { parts: [{ inlineData: { mimeType: 'image/png', data: PNG.toString('base64') } }] } }] });
+  }
+  // Veo : dépôt, puis suivi de l'opération.
+  if (req.method === 'POST' && url.pathname === `/v1beta/models/${VEO}:predictLongRunning`) {
+    if (submissionFails) return send(500, { error: { message: 'panne simulée' } });
+    compteurVeo += 1;
+    const id = `op-${String(compteurVeo).padStart(4, '0')}`;
+    veoOperations.set(id, 'encours');
+    return send(200, { name: `models/${VEO}/operations/${id}` });
+  }
+  const suivi = new RegExp(`^/v1beta/models/${VEO}/operations/(op-\\d{4})$`).exec(url.pathname);
+  if (req.method === 'GET' && suivi) {
+    const etat = veoOperations.get(suivi[1]!);
+    if (!etat) return send(404, { error: { message: 'Not Found' } });
+    const name = `models/${VEO}/operations/${suivi[1]!}`;
+    if (etat === 'encours') return send(200, { name, done: false });
+    if (etat === 'echec') return send(200, { name, done: true, error: { message: 'contenu refusé par le filtre de sécurité' } });
+    return send(200, { name, done: true, response: { generateVideoResponse: { generatedSamples: [{ video: { uri: 'https://fichiers.invalid/video.mp4' } }] } } });
   }
 
   if (url.pathname.startsWith('/chariow/')) {
@@ -77,7 +91,7 @@ let app: Express;
 before(async () => {
   await new Promise<void>((resolve) => fakeProviders.listen(0, '127.0.0.1', resolve));
   const base = `http://127.0.0.1:${(fakeProviders.address() as AddressInfo).port}`;
-  app = await createTestApp({ HIGGSFIELD_API_URL: `${base}/higgsfield`, CHARIOW_API_URL: `${base}/chariow` });
+  app = await createTestApp({ GEMINI_API_URL: base, CHARIOW_API_URL: `${base}/chariow` });
 });
 
 after(async () => {
@@ -92,21 +106,25 @@ async function balanceOf(agent: ReturnType<typeof request.agent>): Promise<numbe
 describe('Générations facturées', () => {
   let owner: Awaited<ReturnType<typeof signUp>>;
   let stranger: Awaited<ReturnType<typeof signUp>>;
+  /** Compte Pro : le palier Gratuit n'ouvre pas la vidéo. */
+  let videaste: Awaited<ReturnType<typeof signInWithPlan>>;
+  const videoBrief = { ...visualBrief, duration: 6 };
 
   before(async () => {
     owner = await signUp(app, { name: 'Mariam Coulibaly', email: 'mariam@exemple.com' });
     stranger = await signUp(app, { name: 'Olivier Nkoulou', email: 'olivier@exemple.com' });
+    videaste = await signInWithPlan(app, 'videaste@exemple.com', 'pro');
   });
 
-  it('réserve le point au lancement, rattache la génération à son auteur et la clôt', async () => {
+  it('facture le visuel, le rattache à son auteur et le garde sur son compte', async () => {
     const submitted = await owner.agent.post('/api/creatives/visuals').send(visualBrief).expect(202);
     const requestId = submitted.body.requestId as string;
+    assert.equal(submitted.body.status, 'completed', 'le moteur d’images de Google rend l’image dans la réponse');
     assert.equal(await balanceOf(owner.agent), 2);
 
-    creativeStatuses.set(requestId, { status: 'completed', images: [{ url: 'https://fichiers.invalid/visuel.png' }] });
     const polled = await owner.agent.get(`/api/creatives/requests/${requestId}`).expect(200);
     assert.equal(polled.body.status, 'completed');
-    assert.equal(polled.body.retentionDays, 7, 'l’écran annonce la durée de CE fournisseur');
+    assert.equal(polled.body.retentionDays, null, 'un visuel gardé chez nous ne périme pas');
 
     const { getDb } = await import('@server/db/client');
     const { generations } = await import('@server/db/schema');
@@ -188,35 +206,42 @@ describe('Générations facturées', () => {
     assert.ok(logged.some((row) => row.actorEmail === 'admin-creatifs@smartcreator.test'), 'ouverture inscrite au journal');
   });
 
-  it('rend les points une seule fois quand le filtre du fournisseur refuse le contenu', async () => {
-    const submitted = await owner.agent.post('/api/creatives/visuals').send(visualBrief).expect(202);
-    assert.equal(await balanceOf(owner.agent), 1);
+  it('réserve les points d’une vidéo au lancement, et les garde quand elle aboutit', async () => {
+    const avant = await balanceOf(videaste.agent);
+    const submitted = await videaste.agent.post('/api/creatives/videos').send(videoBrief).expect(202);
+    const requestId = submitted.body.requestId as string;
+    const reserve = avant - (await balanceOf(videaste.agent));
+    assert.ok(reserve > 0, 'les points sont réservés dès le lancement');
 
-    creativeStatuses.set(submitted.body.requestId, { status: 'nsfw' });
-    await owner.agent.get(`/api/creatives/requests/${submitted.body.requestId}`).expect(200);
-    await owner.agent.get(`/api/creatives/requests/${submitted.body.requestId}`).expect(200);
-    assert.equal(await balanceOf(owner.agent), 2, 'remboursé une fois, pas deux');
+    await videaste.agent.get(`/api/creatives/requests/${requestId}`).expect(200);
+    veoOperations.set(requestId, 'termine');
+    const fini = await videaste.agent.get(`/api/creatives/requests/${requestId}`).expect(200);
+    assert.equal(fini.body.status, 'completed');
+    assert.equal(fini.body.mediaType, 'video');
+    assert.equal(await balanceOf(videaste.agent), avant - reserve, 'une vidéo réussie reste facturée');
+  });
+
+  it('rend les points une seule fois quand le fournisseur refuse le contenu', async () => {
+    const avant = await balanceOf(videaste.agent);
+    const submitted = await videaste.agent.post('/api/creatives/videos').send(videoBrief).expect(202);
+    assert.ok((await balanceOf(videaste.agent)) < avant);
+
+    veoOperations.set(submitted.body.requestId, 'echec');
+    await videaste.agent.get(`/api/creatives/requests/${submitted.body.requestId}`).expect(200);
+    await videaste.agent.get(`/api/creatives/requests/${submitted.body.requestId}`).expect(200);
+    assert.equal(await balanceOf(videaste.agent), avant, 'remboursé une fois, pas deux');
   });
 
   it('rend les points quand l’envoi au fournisseur échoue', async () => {
+    const avant = await balanceOf(videaste.agent);
     submissionFails = true;
     try {
-      await owner.agent.post('/api/creatives/visuals').send(visualBrief).expect(502);
+      const refused = await videaste.agent.post('/api/creatives/videos').send(videoBrief).expect(503);
+      assert.equal(refused.body.error.code, 'VEO_UNAVAILABLE');
     } finally {
       submissionFails = false;
     }
-    assert.equal(await balanceOf(owner.agent), 2);
-  });
-
-  it('dit clairement que le compte Higgsfield du serveur n’a plus de crédits, et rend les points', async () => {
-    outOfCredits = true;
-    try {
-      const refused = await owner.agent.post('/api/creatives/visuals').send(visualBrief).expect(503);
-      assert.equal(refused.body.error.code, 'HIGGSFIELD_INSUFFICIENT_CREDITS');
-    } finally {
-      outOfCredits = false;
-    }
-    assert.equal(await balanceOf(owner.agent), 2);
+    assert.equal(await balanceOf(videaste.agent), avant);
   });
 
   it('refuse sans solde suffisant, et une fonction absente du palier', async () => {
@@ -250,33 +275,37 @@ describe('Générations facturées', () => {
 
 describe('Suivi des générations abandonnées', () => {
   it('rend les points d’une génération échouée que plus aucun écran ne suit, et abandonne après 48 h', async () => {
-    const creator = await signUp(app, { name: 'Binta Camara', email: 'binta@exemple.com' });
+    const creator = await signInWithPlan(app, 'binta@exemple.com', 'pro');
     const { getDb } = await import('@server/db/client');
     const { generations } = await import('@server/db/schema');
     const { eq } = await import('drizzle-orm');
+    const video = { ...visualBrief, duration: 6 };
+    const initial = await balanceOf(creator.agent);
 
-    const failed = await creator.agent.post('/api/creatives/visuals').send(visualBrief).expect(202);
-    creativeStatuses.set(failed.body.requestId, { status: 'failed', error: 'panne du modèle' });
+    // Échouée chez Google, mais plus aucun écran ne la suit.
+    const failed = await creator.agent.post('/api/creatives/videos').send(video).expect(202);
+    veoOperations.set(failed.body.requestId, 'echec');
     await getDb()
       .update(generations)
       .set({ createdAt: new Date(Date.now() - 20 * 60_000) })
       .where(eq(generations.providerRef, failed.body.requestId));
 
-    const forgotten = await creator.agent.post('/api/creatives/visuals').send(visualBrief).expect(202);
+    // Toujours « en cours » chez Google au bout de trois jours : abandonnée.
+    const forgotten = await creator.agent.post('/api/creatives/videos').send(video).expect(202);
     await getDb()
       .update(generations)
       .set({ createdAt: new Date(Date.now() - 72 * 3_600_000) })
       .where(eq(generations.providerRef, forgotten.body.requestId));
-    assert.equal(await balanceOf(creator.agent), 1);
+    assert.ok((await balanceOf(creator.agent)) < initial);
 
     const { sweepPendingGenerations } = await import('@server/services/generations/sweeper');
     const result = await sweepPendingGenerations();
     assert.ok(result.settled >= 2);
-    assert.equal(await balanceOf(creator.agent), 3, 'les deux points sont rendus');
+    assert.equal(await balanceOf(creator.agent), initial, 'les points des deux vidéos sont rendus');
 
     const again = await sweepPendingGenerations();
     assert.equal(again.settled, 0);
-    assert.equal(await balanceOf(creator.agent), 3, 'pas de double remboursement');
+    assert.equal(await balanceOf(creator.agent), initial, 'pas de double remboursement');
   });
 });
 
