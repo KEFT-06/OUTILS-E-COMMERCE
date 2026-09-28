@@ -305,7 +305,8 @@ function Conditions() {
       </Section>
       <Section title="Conformité publicitaire">
         <p>
-          Le vérificateur de conformité signale les formulations à risque avant chaque export. Il ne remplace ni la
+          Le vérificateur de conformité signale les formulations à risque avant l’export d’une fiche produit, d’une page
+          de vente, d’un kit de lancement ou d’un dossier PDF ; les guides, visuels et vidéos n’y passent pas. Il ne remplace ni la
           modération des plateformes publicitaires, qui garde la décision finale, ni un avis juridique.
         </p>
       </Section>

@@ -369,7 +369,7 @@ function SignupForm() {
 
 const PROMISES = [
   'Chaque taux s’ouvre sur le détail de son calcul.',
-  'La conformité publicitaire est vérifiée avant chaque export.',
+  'La conformité publicitaire est vérifiée avant d’exporter une page de vente ou un kit de lancement.',
   'Le coût en points s’affiche avant chaque action.',
 ];
 

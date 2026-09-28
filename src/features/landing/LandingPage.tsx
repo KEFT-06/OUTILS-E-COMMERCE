@@ -55,7 +55,7 @@ const COMMITMENTS = [
   {
     icon: ShieldCheck,
     title: 'La conformité a un droit de veto',
-    body: 'Promesses de gains chiffrées, avant/après trompeurs, témoignages non étayés : repérés avant chaque export, avec une reformulation proposée. Rien ne se télécharge sans ce contrôle.',
+    body: 'Promesses de gains chiffrées, avant/après trompeurs, témoignages non étayés : repérés avec une reformulation proposée. Fiche produit, page de vente, kit de lancement et dossier PDF ne se téléchargent pas sans ce contrôle.',
   },
   {
     icon: Wallet,
