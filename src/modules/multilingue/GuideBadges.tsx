@@ -4,6 +4,9 @@ import { Download, FileDown, FileText, Globe } from 'lucide-react';
 import { REVIEW_LEVELS, type ReviewLevel, type TranslationStatus } from '@server/shared/guides';
 import { type Guide } from '@/modules/multilingue/guidesApi';
 import { downloadGuideDocx, downloadGuideHtml, guideDocumentOf, guidePrintPath } from '@/modules/multilingue/guideExport';
+import { ComplianceBlockDialog } from '@/shared/components/ComplianceBlockDialog';
+import { ComplianceBlockedError } from '@/shared/lib/complianceGate';
+import type { ReportComplianceVerdict } from '@/shared/types/compliance';
 import { Badge } from '@/shared/ui/badge';
 import { Button } from '@/shared/ui/button';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/shared/ui/dropdown-menu';
@@ -27,6 +30,7 @@ export function StatusBadge({ status }: { status: TranslationStatus }) {
 /** Exports d'une version du guide : PDF par l'impression, Word, page HTML. */
 export function ExportMenu({ guide, language }: { guide: Guide; language: string }) {
   const [busy, setBusy] = useState(false);
+  const [blocked, setBlocked] = useState<ReportComplianceVerdict | null>(null);
   const printable = guideDocumentOf(guide, language);
 
   const download = async (format: 'docx' | 'html') => {
@@ -36,6 +40,10 @@ export function ExportMenu({ guide, language }: { guide: Guide; language: string
       if (format === 'docx') await downloadGuideDocx(printable);
       else await downloadGuideHtml(printable);
     } catch (error) {
+      if (error instanceof ComplianceBlockedError) {
+        setBlocked(error.verdict);
+        return;
+      }
       toast.error('L’export a échoué', { description: error instanceof Error ? error.message : undefined });
     } finally {
       setBusy(false);
@@ -43,6 +51,8 @@ export function ExportMenu({ guide, language }: { guide: Guide; language: string
   };
 
   return (
+    <>
+    <ComplianceBlockDialog verdict={blocked} open={blocked !== null} onOpenChange={(open) => !open && setBlocked(null)} />
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
         <Button variant="outline" size="sm" disabled={!printable || busy}>
@@ -65,5 +75,6 @@ export function ExportMenu({ guide, language }: { guide: Guide; language: string
         </DropdownMenuItem>
       </DropdownMenuContent>
     </DropdownMenu>
+    </>
   );
 }

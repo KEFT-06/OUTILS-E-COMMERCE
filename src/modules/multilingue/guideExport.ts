@@ -1,7 +1,9 @@
 import { REVIEW_LEVELS, type GuideSection, type ReviewLevel } from '@server/shared/guides';
 import { findLanguage } from '@server/shared/languages';
 import { type Guide, coversApi } from '@/modules/multilingue/guidesApi';
+import { ComplianceBlockedError, checkSectionsCompliance } from '@/shared/lib/complianceGate';
 import { triggerDownload } from '@/shared/lib/download';
+import type { ComplianceSection } from '@/shared/types/compliance';
 import { toFileSlug } from '@/shared/lib/pdfText';
 import { recordExport } from '@/shared/lib/usage';
 
@@ -124,7 +126,43 @@ ${sections}
 
 const fileName = (document: GuideExportDocument, extension: string) => `${toFileSlug(document.title, 'guide')}-${document.language}.${extension}`;
 
+/** Marge sous la limite de 20 000 caractères par section de l'API de conformité. */
+const MAX_SECTION_CHARS = 18_000;
+
+/**
+ * Sections soumises au vérificateur : le titre, puis chaque partie du guide, découpée si
+ * elle dépasse la taille admise — tronquer reviendrait à ne pas vérifier la fin tout en
+ * affirmant l'avoir fait.
+ */
+export function guideComplianceSections(document: GuideExportDocument): ComplianceSection[] {
+  const sections: ComplianceSection[] = [{ label: 'Titre du guide', text: document.title }];
+  document.sections.forEach((section, index) => {
+    const label = section.heading.trim() || `Partie ${index + 1}`;
+    const text = [section.heading, section.body].filter((part) => part.trim()).join('\n');
+    for (let start = 0; start < text.length; start += MAX_SECTION_CHARS) {
+      sections.push({ label, text: text.slice(start, start + MAX_SECTION_CHARS) });
+    }
+  });
+  return sections.filter((section) => section.text.trim());
+}
+
+/**
+ * Un guide est un produit VENDU : il passe le vérificateur de conformité avant tout export,
+ * comme la fiche produit et la page de vente. Il n'y passait pas — une promesse de gains
+ * chiffrée pouvait en sortir en Word, en HTML ou en PDF sans le moindre signalement.
+ *
+ * Les règles sont rédigées en français : une traduction est vérifiée elle aussi, mais une
+ * formulation à risque dans une autre langue n'y sera pas reconnue.
+ *
+ * @throws {ComplianceBlockedError} formulation bloquante, ou vérificateur injoignable.
+ */
+export async function assertGuideCompliant(document: GuideExportDocument): Promise<void> {
+  const verdict = await checkSectionsCompliance(guideComplianceSections(document));
+  if (!verdict.exportAllowed) throw new ComplianceBlockedError(verdict);
+}
+
 export async function downloadGuideHtml(document: GuideExportDocument): Promise<void> {
+  await assertGuideCompliant(document);
   let coverDataUrl: string | null = null;
   if (document.coverId) {
     try {
@@ -138,6 +176,7 @@ export async function downloadGuideHtml(document: GuideExportDocument): Promise<
 }
 
 export async function downloadGuideDocx(document: GuideExportDocument): Promise<void> {
+  await assertGuideCompliant(document);
   // Chargé à la demande : la bibliothèque DOCX est lourde et ne sert qu'à cet export.
   const { AlignmentType, Document, HeadingLevel, ImageRun, Packer, PageBreak, Paragraph, TextRun } = await import('docx');
   const rtl = document.direction === 'rtl';

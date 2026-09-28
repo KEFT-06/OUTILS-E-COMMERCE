@@ -2,8 +2,11 @@ import { useEffect, useRef, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import { ArrowLeft, Printer } from 'lucide-react';
 import { type Guide, coversApi, guidesApi } from '@/modules/multilingue/guidesApi';
-import { GUIDE_DOCUMENT_CSS, exportNotice, guideDocumentOf, paragraphsOf } from '@/modules/multilingue/guideExport';
+import { GUIDE_DOCUMENT_CSS, exportNotice, guideComplianceSections, guideDocumentOf, paragraphsOf } from '@/modules/multilingue/guideExport';
+import { ComplianceFindingsList } from '@/shared/components/ComplianceFindingsList';
 import { toApiError } from '@/shared/lib/apiError';
+import { checkSectionsCompliance } from '@/shared/lib/complianceGate';
+import type { ReportComplianceVerdict } from '@/shared/types/compliance';
 import { recordExport } from '@/shared/lib/usage';
 import { Button } from '@/shared/ui/button';
 import { Spinner } from '@/shared/ui/spinner';
@@ -39,7 +42,27 @@ export function GuidePrintView() {
   const printable = guide ? guideDocumentOf(guide, language) : null;
   const cover = guide?.cover?.status === 'ready' ? guide.cover : null;
   const title = printable?.title;
-  const readyToPrint = Boolean(printable) && (!cover || imageSettled);
+
+  /*
+    Le PDF passe la conformité comme le Word et le HTML. Le contrôle est fait ICI, sur la page
+    d'impression, et pas seulement sur le bouton qui l'ouvre : cette page s'ouvre aussi par
+    son adresse, et le texte n'est affiché qu'une fois le verdict favorable.
+  */
+  const [verdict, setVerdict] = useState<ReportComplianceVerdict | null>(null);
+  useEffect(() => {
+    if (!printable) return;
+    let cancelled = false;
+    void checkSectionsCompliance(guideComplianceSections(printable)).then((result) => {
+      if (!cancelled) setVerdict(result);
+    });
+    return () => {
+      cancelled = true;
+    };
+    // Le document ne change qu'avec le guide et la langue.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [guide, language]);
+  const allowed = verdict?.exportAllowed === true;
+  const readyToPrint = Boolean(printable) && allowed && (!cover || imageSettled);
 
   useEffect(() => {
     // Le navigateur propose le titre comme nom du fichier PDF.
@@ -68,7 +91,7 @@ export function GuidePrintView() {
             Retour au guide
           </Link>
         </Button>
-        <Button size="sm" onClick={print} disabled={!printable}>
+        <Button size="sm" onClick={print} disabled={!printable || !allowed}>
           <Printer />
           Imprimer ou enregistrer en PDF
         </Button>
@@ -88,6 +111,25 @@ export function GuidePrintView() {
         <p className="mx-auto max-w-xl p-8 text-center text-sm" role="alert">
           Ce guide n’a pas de traduction dans cette langue.
         </p>
+      ) : !verdict ? (
+        <div className="flex items-center justify-center gap-2 p-10 text-sm text-slate-600" role="status">
+          <Spinner />
+          Vérification de conformité…
+        </div>
+      ) : !allowed ? (
+        <div className="mx-auto max-w-2xl space-y-4 p-8" role="alert">
+          <h1 className="text-lg font-bold">Impression bloquée par le vérificateur de conformité</h1>
+          {verdict.unavailableReason ? (
+            <p className="text-sm">
+              {verdict.unavailableReason} L’impression reste bloquée tant que le contrôle n’a pas pu s’exécuter.
+            </p>
+          ) : (
+            <>
+              <p className="text-sm">Corrigez ces formulations dans le guide, puis relancez l’impression.</p>
+              <ComplianceFindingsList findings={verdict.findings} />
+            </>
+          )}
+        </div>
       ) : (
         <main className="guide my-6 rounded-xl shadow-sm print:my-0" lang={printable.language} dir={printable.direction}>
           <header className={`guide-cover${cover ? ' has-image' : ''}`}>
