@@ -244,26 +244,36 @@ export async function attemptLogin(input: { email: string; password: string; cli
 
   await clearFailures(emailKey);
 
+  return finishLogin(user, input.client);
+}
+
+/**
+ * Dernière étape de toute connexion réussie, quel que soit le moyen (mot de passe, Google) :
+ * un compte doté d'un second facteur reçoit un défi, les autres une session. Un seul endroit
+ * décide, pour qu'un moyen de connexion ne puisse pas devenir une porte sans second facteur.
+ */
+export async function finishLogin(user: UserRow, client: ClientInfo): Promise<LoginResult> {
   if (user.status === 'suspended') {
-    await recordAuthEvent('login_suspended', { userId: user.id, email: user.email, client: input.client });
+    await recordAuthEvent('login_suspended', { userId: user.id, email: user.email, client });
     throw new AppError(403, 'Ce compte est bloqué. Contactez l’administrateur de Smart Creator.', 'ACCOUNT_SUSPENDED');
   }
 
   if (hasSecondFactor(user)) {
+    const db = getDb();
     const challengeToken = randomToken();
     const expiresAt = new Date(Date.now() + MFA_CHALLENGE_TTL_MS);
     await db.delete(mfaChallenges).where(eq(mfaChallenges.userId, user.id));
     await db.insert(mfaChallenges).values({
       id: sha256(challengeToken),
       userId: user.id,
-      ipAddress: input.client.ipAddress,
+      ipAddress: client.ipAddress,
       expiresAt,
     });
-    await recordAuthEvent('mfa_challenge', { userId: user.id, email: user.email, client: input.client });
+    await recordAuthEvent('mfa_challenge', { userId: user.id, email: user.email, client });
     return { kind: 'mfa', challengeToken, expiresAt, methods: secondFactorMethods(user) };
   }
 
-  return { kind: 'session', ...(await openSession(user, false, input.client)) };
+  return { kind: 'session', ...(await openSession(user, false, client)) };
 }
 
 /**
@@ -573,7 +583,9 @@ export async function changePassword(
   user: UserRow,
   input: { currentPassword: string; newPassword: string; sessionId: string; client: ClientInfo },
 ): Promise<void> {
-  if (!(await verifyPassword(user.passwordHash, input.currentPassword))) {
+  // Un compte ouvert par Google n'a pas de mot de passe : il en DÉFINIT un, connecté, sans
+  // « mot de passe actuel » qu'il n'a jamais eu. Tout compte qui en a un doit le fournir.
+  if (user.passwordHash && !(await verifyPassword(user.passwordHash, input.currentPassword))) {
     await registerFailure(emailThrottleKey(user.email), EMAIL_POLICY);
     throw new AppError(400, 'Mot de passe actuel incorrect.', 'INVALID_PASSWORD');
   }
@@ -615,7 +627,10 @@ export async function verifyAccountOwner(user: UserRow, input: { password: strin
   const locked = await lockedFor([key]);
   if (locked > 0) throw tooManyAttempts(locked, 'Trop de tentatives');
 
-  if (!(await verifyPassword(user.passwordHash, input.password))) {
+  // Compte ouvert par Google, sans mot de passe : la preuve est la session ouverte par Google,
+  // plus le second facteur s'il en a un. Exiger un mot de passe inexistant l'empêcherait de
+  // supprimer son compte — un droit qu'il doit pouvoir exercer seul.
+  if (user.passwordHash && !(await verifyPassword(user.passwordHash, input.password))) {
     const lock = await registerFailure(key, EMAIL_POLICY);
     if (lock > 0) throw tooManyAttempts(lock, 'Trop de tentatives');
     throw new AppError(400, 'Mot de passe incorrect.', 'INVALID_PASSWORD');

@@ -47,6 +47,8 @@ export const AUTH_EVENT_LABELS = {
   password_reset_requested: 'Lien de mot de passe envoyé par e-mail',
   email_verified: 'Adresse e-mail confirmée',
   payment_completed: 'Paiement en ligne reçu',
+  google_linked: 'Compte relié à Google',
+  google_failure: 'Connexion Google refusée',
 } as const;
 
 export type AuthEventType = keyof typeof AUTH_EVENT_LABELS;

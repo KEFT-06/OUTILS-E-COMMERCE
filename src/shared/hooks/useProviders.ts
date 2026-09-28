@@ -13,6 +13,8 @@ export interface ServerProviders {
   email: boolean;
   /** Paiement en ligne des paliers. */
   payments: boolean;
+  /** « Continuer avec Google » à la connexion et à l'inscription. */
+  googleAuth: boolean;
   /** test : aucune carte réelle débitée ; null : paiement non configuré. */
   paymentMode: 'test' | 'live' | null;
 }
@@ -36,6 +38,7 @@ export function useProviders(): ServerProviders | null {
             webSearch: Boolean(data.providers.webSearch),
             email: Boolean(data.providers.email),
             payments: Boolean(data.providers.payments),
+            googleAuth: Boolean(data.providers.googleAuth),
             paymentMode: data.paymentMode ?? null,
           });
         }

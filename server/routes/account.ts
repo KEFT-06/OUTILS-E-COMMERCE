@@ -74,7 +74,8 @@ accountRouter.patch(
   }),
 );
 
-const passwordChangeSchema = z.object({ currentPassword: passwordInputSchema, newPassword: passwordInputSchema });
+// « currentPassword » vide : accepté pour un compte ouvert par Google, qui définit son premier mot de passe.
+const passwordChangeSchema = z.object({ currentPassword: passwordInputSchema.or(z.literal('')), newPassword: passwordInputSchema });
 
 accountRouter.post(
   '/password',

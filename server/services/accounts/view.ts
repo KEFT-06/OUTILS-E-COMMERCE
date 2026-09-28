@@ -41,6 +41,9 @@ export async function accountView(auth: RequestAuth) {
     },
     integrations: await integrationsOverview(user),
     savedNiches: user.savedNiches,
+    /** Faux pour un compte ouvert par Google : l'écran propose alors de DÉFINIR un mot de passe. */
+    emailLogin: Boolean(user.passwordHash),
+    googleLinked: Boolean(user.googleSub),
   };
 }
 

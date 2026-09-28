@@ -24,6 +24,14 @@ import {
   type OpenedSession,
 } from '@server/services/auth';
 import {
+  GOOGLE_STATE_TTL_MS,
+  type GoogleFlowState,
+  exchangeGoogleCode,
+  googleAuthConfigured,
+  loginWithGoogle,
+  startGoogleFlow,
+} from '@server/services/auth/google';
+import {
   SESSION_COOKIE,
   clearSessionCookie,
   revokeSession,
@@ -78,6 +86,93 @@ authRouter.post(
     const client = clientInfo(req);
     const user = await registerUser({ name, email, password, country, client });
     await respondWithSession(req, res, await openSession(user, false, client), 201);
+  }),
+);
+
+/* -------------------------------------------------------------------------- */
+/*  Continuer avec Google                                                      */
+/* -------------------------------------------------------------------------- */
+
+const GOOGLE_COOKIE = isProd ? '__Host-sc_google' : 'sc_google';
+
+/**
+ * Cookie du trajet vers Google. SameSite=Lax, et non Strict comme les autres : le retour de
+ * Google est une navigation partie d'un autre site, et un cookie Strict n'y serait pas joint —
+ * le `state` serait introuvable et toute connexion refusée. Il ne vit que dix minutes, ne porte
+ * aucun droit, et n'est lu qu'au retour.
+ */
+const googleCookieOptions = { httpOnly: true, secure: isProd, sameSite: 'lax' as const, path: '/', maxAge: GOOGLE_STATE_TTL_MS };
+
+/** Retour vers la page de connexion avec une raison lisible par l'écran. */
+const backToLogin = (res: Response, reason: string) => res.redirect(303, `/connexion?erreur=${encodeURIComponent(reason)}`);
+
+authRouter.get(
+  '/google/start',
+  routeLimiter(30, 60),
+  asyncRoute(async (req, res) => {
+    if (!googleAuthConfigured()) {
+      backToLogin(res, 'google_indisponible');
+      return;
+    }
+    const { flow, url } = startGoogleFlow(req.query.next);
+    res.cookie(GOOGLE_COOKIE, JSON.stringify(flow), googleCookieOptions);
+    res.redirect(303, url);
+  }),
+);
+
+authRouter.get(
+  '/google/callback',
+  routeLimiter(30, 60),
+  asyncRoute(async (req, res) => {
+    const raw = readCookie(req, GOOGLE_COOKIE);
+    res.clearCookie(GOOGLE_COOKIE, { ...googleCookieOptions, maxAge: undefined });
+    let flow: GoogleFlowState | null = null;
+    try {
+      flow = raw ? (JSON.parse(raw) as GoogleFlowState) : null;
+    } catch {
+      flow = null;
+    }
+
+    // Refus ou annulation chez Google : retour à la connexion, sans bruit.
+    if (typeof req.query.error === 'string') {
+      backToLogin(res, 'google_annule');
+      return;
+    }
+    const code = typeof req.query.code === 'string' ? req.query.code : null;
+    const state = typeof req.query.state === 'string' ? req.query.state : null;
+    // Une réponse que CE navigateur n'a pas demandée est refusée : c'est tout le rôle du `state`.
+    if (!flow || !code || !state || state !== flow.state || !googleAuthConfigured()) {
+      await recordAuthEvent('google_failure', { client: clientInfo(req), details: { reason: 'state' } });
+      backToLogin(res, 'google_expire');
+      return;
+    }
+
+    try {
+      const claims = await exchangeGoogleCode(code, flow);
+      const result = await loginWithGoogle(claims, clientInfo(req));
+      if (result.kind === 'mfa') {
+        res.cookie(MFA_COOKIE, result.challengeToken, authCookieOptions(result.expiresAt.getTime() - Date.now()));
+        const methods = [result.methods.app ? 'app' : null, result.methods.code ? 'code' : null].filter(Boolean).join(',');
+        res.redirect(303, `/connexion?etape=code&methodes=${methods}`);
+        return;
+      }
+      const previous = readCookie(req, SESSION_COOKIE);
+      if (previous) await revokeSession(sha256(previous), 'replaced');
+      setSessionCookie(res, result.token, result.expiresAt);
+      res.redirect(303, flow.next);
+    } catch (error) {
+      const reason =
+        error instanceof AppError
+          ? ({
+              GOOGLE_EMAIL_UNVERIFIED: 'google_non_verifie',
+              GOOGLE_ACCOUNT_MISMATCH: 'google_autre_compte',
+              ACCOUNT_SUSPENDED: 'compte_bloque',
+            } as Record<string, string>)[error.code ?? ''] ?? 'google_refuse'
+          : 'google_refuse';
+      await recordAuthEvent('google_failure', { client: clientInfo(req), details: { reason } });
+      if (!(error instanceof AppError)) console.error('[connexion Google]', error);
+      backToLogin(res, reason);
+    }
   }),
 );
 

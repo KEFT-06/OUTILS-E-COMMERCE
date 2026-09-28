@@ -567,7 +567,8 @@ function PlansCard({ account }: { account: Account }) {
 
 const passwordChangeSchema = z
   .object({
-    currentPassword: z.string().min(1, 'Indiquez votre mot de passe actuel.'),
+    // Vérifié à la soumission quand le compte a déjà un mot de passe (compte ouvert par Google : non).
+    currentPassword: z.string(),
     newPassword: z.string().min(PASSWORD_MIN_LENGTH, `${PASSWORD_MIN_LENGTH} caractères au moins.`).max(128),
     confirmation: z.string(),
   })
@@ -576,7 +577,8 @@ const passwordChangeSchema = z
     path: ['confirmation'],
   });
 
-function ChangePasswordDialog() {
+/** `emailLogin` faux : compte ouvert par Google, qui DÉFINIT son premier mot de passe. */
+function ChangePasswordDialog({ emailLogin }: { emailLogin: boolean }) {
   const [open, setOpen] = useState(false);
   const [error, setError] = useState<ApiError | null>(null);
   const form = useForm<z.infer<typeof passwordChangeSchema>>({
@@ -596,9 +598,17 @@ function ChangePasswordDialog() {
 
   const onSubmit = form.handleSubmit(async ({ currentPassword, newPassword: chosen }) => {
     setError(null);
+    if (emailLogin && !currentPassword) {
+      form.setError('currentPassword', { message: 'Indiquez votre mot de passe actuel.' });
+      return;
+    }
     try {
-      await apiRequest('/api/account/password', { method: 'POST', body: { currentPassword, newPassword: chosen } });
-      toast.success('Mot de passe modifié', { description: 'Vos sessions sur les autres appareils ont été fermées.' });
+      await apiRequest('/api/account/password', { method: 'POST', body: { currentPassword: emailLogin ? currentPassword : '', newPassword: chosen } });
+      toast.success(emailLogin ? 'Mot de passe modifié' : 'Mot de passe défini', {
+        description: emailLogin
+          ? 'Vos sessions sur les autres appareils ont été fermées.'
+          : 'Vous pouvez désormais vous connecter aussi avec votre adresse et ce mot de passe.',
+      });
       change(false);
     } catch (caught) {
       setError(toApiError(caught, 'Le mot de passe n’a pas pu être modifié.'));
@@ -610,14 +620,18 @@ function ChangePasswordDialog() {
       <DialogTrigger asChild>
         <Button variant="outline" size="sm">
           <KeyRound />
-          Changer le mot de passe
+          {emailLogin ? 'Changer le mot de passe' : 'Définir un mot de passe'}
         </Button>
       </DialogTrigger>
       <DialogContent className="sm:max-w-md">
         <form onSubmit={onSubmit} noValidate className="space-y-4">
           <DialogHeader>
-            <DialogTitle>Changer le mot de passe</DialogTitle>
-            <DialogDescription>Vos autres appareils seront déconnectés ; celui-ci reste connecté.</DialogDescription>
+            <DialogTitle>{emailLogin ? 'Changer le mot de passe' : 'Définir un mot de passe'}</DialogTitle>
+            <DialogDescription>
+              {emailLogin
+                ? 'Vos autres appareils seront déconnectés ; celui-ci reste connecté.'
+                : 'Votre compte a été ouvert avec Google. Un mot de passe vous permettra aussi de vous connecter sans Google.'}
+            </DialogDescription>
           </DialogHeader>
           <FieldGroup>
             {error && (
@@ -636,17 +650,19 @@ function ChangePasswordDialog() {
               </Alert>
             )}
             <input type="text" name="username" autoComplete="username" hidden readOnly />
-            <Controller
-              name="currentPassword"
-              control={form.control}
-              render={({ field, fieldState }) => (
-                <Field data-invalid={fieldState.invalid}>
-                  <FieldLabel htmlFor="current-password">Mot de passe actuel</FieldLabel>
-                  <PasswordInput {...field} id="current-password" autoComplete="current-password" aria-invalid={fieldState.invalid} />
-                  {fieldState.invalid && <FieldError errors={[fieldState.error]} />}
-                </Field>
-              )}
-            />
+            {emailLogin && (
+              <Controller
+                name="currentPassword"
+                control={form.control}
+                render={({ field, fieldState }) => (
+                  <Field data-invalid={fieldState.invalid}>
+                    <FieldLabel htmlFor="current-password">Mot de passe actuel</FieldLabel>
+                    <PasswordInput {...field} id="current-password" autoComplete="current-password" aria-invalid={fieldState.invalid} />
+                    {fieldState.invalid && <FieldError errors={[fieldState.error]} />}
+                  </Field>
+                )}
+              />
+            )}
             <Controller
               name="newPassword"
               control={form.control}
@@ -1093,9 +1109,14 @@ function SecurityCard({ account }: { account: Account }) {
             <h3 id="security-password" className="text-sm font-semibold">
               Mot de passe
             </h3>
-            <p className="text-sm text-muted-foreground">Le changer ferme vos sessions sur les autres appareils.</p>
+            <p className="text-sm text-muted-foreground">
+              {account.emailLogin
+                ? 'Le changer ferme vos sessions sur les autres appareils.'
+                : 'Aucun pour l’instant : vous vous connectez avec Google.'}
+              {account.googleLinked && account.emailLogin ? ' Connexion avec Google également active.' : ''}
+            </p>
           </div>
-          <ChangePasswordDialog />
+          <ChangePasswordDialog emailLogin={account.emailLogin} />
         </section>
 
         <Separator />
@@ -1351,7 +1372,7 @@ function DeleteAccountDialog({ account }: { account: Account }) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<ApiError | null>(null);
   const needsCode = account.twoFactor.enabled;
-  const ready = password.length > 0 && (!needsCode || code.trim().length >= 6) && confirmation.trim() === DELETION_WORD;
+  const ready = (!account.emailLogin || password.length > 0) && (!needsCode || code.trim().length >= 6) && confirmation.trim() === DELETION_WORD;
 
   const change = (next: boolean) => {
     setOpen(next);
@@ -1407,15 +1428,17 @@ function DeleteAccountDialog({ account }: { account: Account }) {
               </Alert>
             )}
             <input type="text" name="username" autoComplete="username" value={account.email} hidden readOnly />
-            <Field>
-              <FieldLabel htmlFor="delete-password">Mot de passe</FieldLabel>
-              <PasswordInput
-                id="delete-password"
-                value={password}
-                onChange={(event) => setPassword(event.target.value)}
-                autoComplete="current-password"
-              />
-            </Field>
+            {account.emailLogin && (
+              <Field>
+                <FieldLabel htmlFor="delete-password">Mot de passe</FieldLabel>
+                <PasswordInput
+                  id="delete-password"
+                  value={password}
+                  onChange={(event) => setPassword(event.target.value)}
+                  autoComplete="current-password"
+                />
+              </Field>
+            )}
             {needsCode && <CodeField id="delete-code" value={code} onChange={setCode} />}
             <Field>
               <FieldLabel htmlFor="delete-confirmation">Saisissez {DELETION_WORD} pour confirmer</FieldLabel>

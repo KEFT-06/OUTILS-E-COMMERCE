@@ -265,6 +265,17 @@ const schema = z.object({
    * L'adresse du projet est déduite de DATABASE_URL, sauf si SUPABASE_URL la donne.
    */
   SUPABASE_API_SECRET_KEY: z.string().min(20).optional(),
+
+  /**
+   * Facultatif : « Continuer avec Google ». Identifiants d'un client OAuth de type
+   * « Application Web » (Google Cloud Console → API et services → Identifiants), avec pour URI
+   * de redirection autorisée : <APP_URL>/api/auth/google/callback. Sans eux, le bouton n'apparaît pas.
+   */
+  GOOGLE_OAUTH_CLIENT_ID: z.string().min(10).optional(),
+  GOOGLE_OAUTH_CLIENT_SECRET: z.string().min(10).optional(),
+  /** Surchargeables pour tester contre un serveur factice. */
+  GOOGLE_OAUTH_AUTH_URL: z.string().url().default('https://accounts.google.com/o/oauth2/v2/auth'),
+  GOOGLE_OAUTH_TOKEN_URL: z.string().url().default('https://oauth2.googleapis.com/token'),
   SUPABASE_URL: z.string().url().optional(),
   /** Espace de stockage (privé) des vidéos archivées ; créé au premier dépôt. */
   CREATIVES_BUCKET: z.string().regex(/^[a-z0-9-]{3,63}$/).default('creatifs'),
@@ -479,6 +490,7 @@ export const providers = {
   chariow: Boolean(env.CHARIOW_API_KEY),
   apify: Boolean(env.APIFY_TOKEN),
   videoArchive: Boolean(env.SUPABASE_API_SECRET_KEY),
+  googleAuth: Boolean(env.GOOGLE_OAUTH_CLIENT_ID && env.GOOGLE_OAUTH_CLIENT_SECRET),
 } as const;
 
 /**

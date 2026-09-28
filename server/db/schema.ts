@@ -116,10 +116,20 @@ export const users = pgTable(
     /** Null tant que l'adresse n'a pas été confirmée par un lien reçu par e-mail. */
     emailVerifiedAt: moment('email_verified_at'),
     passwordChangedAt: moment('password_changed_at'),
+    /**
+     * Identifiant Google (« sub ») du compte, une fois relié par « Continuer avec Google ».
+     * Stable même si la personne change d'adresse chez Google : c'est lui, et non l'adresse,
+     * qui retrouve le compte aux connexions suivantes.
+     */
+    googleSub: text('google_sub'),
     createdAt: createdAt(),
     updatedAt: moment('updated_at').notNull().defaultNow(),
   },
-  (table) => [uniqueIndex('users_email_unique').on(table.email), index('users_created_idx').on(table.createdAt)],
+  (table) => [
+    uniqueIndex('users_email_unique').on(table.email),
+    uniqueIndex('users_google_sub_unique').on(table.googleSub),
+    index('users_created_idx').on(table.createdAt),
+  ],
 ).enableRLS();
 
 export const sessions = pgTable(

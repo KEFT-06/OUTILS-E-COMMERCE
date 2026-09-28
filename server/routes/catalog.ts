@@ -82,6 +82,7 @@ catalogRouter.get(
         webSearch: providers.webSearch,
         email: providers.email,
         payments: providers.payments,
+        googleAuth: providers.googleAuth,
       },
       /** test : aucune carte réelle débitée. */
       paymentMode: stripeMode(),

@@ -283,7 +283,8 @@ export type PersonalDataExport = Awaited<ReturnType<typeof exportPersonalData>>;
 export const DELETION_CONFIRMATION = 'SUPPRIMER';
 
 export const accountDeletionSchema = z.object({
-  password: passwordInputSchema,
+  /** Vide pour un compte ouvert par Google, qui n'a pas de mot de passe (voir verifyAccountOwner). */
+  password: passwordInputSchema.or(z.literal('')),
   /** Code de sécurité ou code de l'application, exigé quand le compte en a un. */
   code: z.string().trim().max(128).optional(),
   confirmation: z

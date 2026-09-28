@@ -79,6 +79,10 @@ export interface Account {
   permissions: Permission[];
   /** Détient au moins un privilège d'administration. */
   isStaff: boolean;
+  /** Faux pour un compte ouvert par Google : il n'a pas encore de mot de passe. */
+  emailLogin: boolean;
+  /** Le compte se connecte aussi par « Continuer avec Google ». */
+  googleLinked: boolean;
   twoFactor: {
     enabled: boolean;
     methods: SecondFactorMethods;

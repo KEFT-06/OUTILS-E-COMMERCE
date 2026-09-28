@@ -7,6 +7,7 @@ import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 import { ArrowLeft, Check, KeyRound, Lock, ShieldCheck, Smartphone, TriangleAlert, UserPlus } from 'lucide-react';
 import { useAuth } from '@/features/auth/AuthContext';
+import { useProviders } from '@/shared/hooks/useProviders';
 import { CountryCombobox } from '@/shared/components/CountryCombobox';
 import { guessCountryCode } from '@/shared/lib/geo';
 import type { SecondFactorMethods } from '@/shared/types/auth';
@@ -379,16 +380,52 @@ const SECURITY = [
   { icon: ShieldCheck, text: 'Code de sécurité ou application en second facteur, obligatoire pour l’administration.' },
 ];
 
+/** Raisons renvoyées par le retour de Google (`?erreur=`), traduites pour l'écran. */
+const GOOGLE_ERRORS: Record<string, string> = {
+  google_indisponible: 'La connexion avec Google n’est pas encore ouverte sur le site. Utilisez votre adresse et votre mot de passe.',
+  google_annule: 'Connexion avec Google annulée.',
+  google_expire: 'La connexion avec Google a expiré. Recommencez.',
+  google_non_verifie: 'Votre adresse n’est pas vérifiée chez Google. Connectez-vous avec votre mot de passe.',
+  google_autre_compte: 'Ce compte Smart Creator est déjà relié à un autre compte Google.',
+  compte_bloque: 'Ce compte est bloqué. Contactez l’administrateur de Smart Creator.',
+  google_refuse: 'Google a refusé la connexion. Réessayez, ou utilisez votre mot de passe.',
+};
+
+/** Bouton « Continuer avec Google » : une navigation vers le serveur, qui mène chez Google et en revient. */
+function GoogleButton({ next }: { next: string }) {
+  return (
+    <Button variant="outline" className="w-full" asChild>
+      <a href={`/api/auth/google/start?next=${encodeURIComponent(next)}`}>
+        <svg viewBox="0 0 24 24" className="size-4" aria-hidden="true">
+          <path fill="#4285F4" d="M23.5 12.3c0-.8-.1-1.6-.2-2.3H12v4.4h6.5a5.6 5.6 0 0 1-2.4 3.6v3h3.9c2.3-2.1 3.5-5.2 3.5-8.7z" />
+          <path fill="#34A853" d="M12 24c3.2 0 6-1.1 8-2.9l-3.9-3c-1.1.7-2.5 1.2-4.1 1.2-3.1 0-5.8-2.1-6.7-5H1.3v3.1A12 12 0 0 0 12 24z" />
+          <path fill="#FBBC05" d="M5.3 14.3a7.2 7.2 0 0 1 0-4.6V6.6H1.3a12 12 0 0 0 0 10.8l4-3.1z" />
+          <path fill="#EA4335" d="M12 4.8c1.8 0 3.3.6 4.6 1.8l3.4-3.4A12 12 0 0 0 1.3 6.6l4 3.1c.9-2.9 3.6-4.9 6.7-4.9z" />
+        </svg>
+        Continuer avec Google
+      </a>
+    </Button>
+  );
+}
+
 export function LoginPage() {
   useTrackVisit('/connexion');
   usePublicPageMeta('/connexion');
   const { status, isAuthenticated } = useAuth();
+  const providers = useProviders();
   const location = useLocation();
   const [params] = useSearchParams();
   const state = location.state as { from?: string; email?: string } | null;
   const [tab, setTab] = useState(params.get('mode') === 'inscription' ? 'signup' : 'login');
-  const [step, setStep] = useState<'credentials' | 'mfa'>('credentials');
-  const [methods, setMethods] = useState<SecondFactorMethods | null>(null);
+  // De retour de Google, un compte à double authentification arrive directement sur l'étape du code.
+  const retourGoogleCode = params.get('etape') === 'code';
+  const methodesGoogle = (params.get('methodes') ?? '').split(',');
+  const [step, setStep] = useState<'credentials' | 'mfa'>(retourGoogleCode ? 'mfa' : 'credentials');
+  const [methods, setMethods] = useState<SecondFactorMethods | null>(
+    retourGoogleCode ? { app: methodesGoogle.includes('app'), code: methodesGoogle.includes('code') } : null,
+  );
+  const googleError = GOOGLE_ERRORS[params.get('erreur') ?? ''];
+  const next = state?.from?.startsWith('/app') ? state.from : '/app/cockpit';
 
   if (isAuthenticated) {
     return <Navigate to={state?.from?.startsWith('/app') ? state.from : '/app/cockpit'} replace />;
@@ -463,6 +500,24 @@ export function LoginPage() {
                   Niches, analyses, studio de création et kit de lancement au même endroit.
                 </p>
               </div>
+
+              {googleError && (
+                <Alert variant="warning">
+                  <TriangleAlert />
+                  <AlertDescription>{googleError}</AlertDescription>
+                </Alert>
+              )}
+
+              {providers?.googleAuth && (
+                <div className="space-y-4">
+                  <GoogleButton next={next} />
+                  <div className="flex items-center gap-3 text-xs text-muted-foreground">
+                    <span className="h-px flex-1 bg-border" />
+                    ou avec votre adresse e-mail
+                    <span className="h-px flex-1 bg-border" />
+                  </div>
+                </div>
+              )}
 
               <Tabs value={tab} onValueChange={setTab}>
                 <TabsList className="grid w-full grid-cols-2">
