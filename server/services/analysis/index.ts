@@ -6,7 +6,7 @@ import { reports } from '@server/db/schema';
 import { env } from '@server/env';
 import { AppError, marketSchema, nicheQuerySchema } from '@server/middleware';
 import type { RequestAuth } from '@server/middleware/auth';
-import { generateJson } from '@server/services/ai/gemini';
+import { generateJsonWithPerplexity } from '@server/services/ai/perplexity';
 import {
   ANALYSIS_PROMPT_VERSION,
   ANALYSIS_RESPONSE_SCHEMA,
@@ -34,7 +34,8 @@ import type {
 import { countryName } from '@server/shared/countries';
 
 /**
- * Analyse de niche (module 2) : étude de marché menée par Perplexity, rédaction par Gemini,
+ * Analyse de niche (module 2) : étude de marché ET rédaction de la fiche par Perplexity (décision
+ * du propriétaire du 28/09/2026 : Google n'intervient plus dans l'analyse),
  * puis contrôle par le serveur de tout ce qui se présente comme un fait. L'enchaînement en
  * arrière-plan (suivi, reprise, facturation) est dans server/services/analysis/jobs.ts.
  *
@@ -300,7 +301,8 @@ export function assembleReport(input: {
     research?.mode === 'deep_research'
       ? `Étude approfondie du web (${research.searches} recherches, ${research.pagesConsulted} pages lues)`
       : 'Recherche web';
-  const writer = 'l’IA de rédaction';
+  // Marque blanche : la provenance affichée nomme le service, jamais un moteur ni « l'IA ».
+  const writer = 'Smart Creator';
   const cited = (source: string): DataProvenance => ({
     source,
     collectedAt,
@@ -374,8 +376,8 @@ export async function writeReport(input: {
   const market = request.market ?? null;
   const marketName = market ? countryName(market) : null;
 
-  let model = env.GEMINI_MODEL;
-  const response = await generateJson({
+  let model = env.PERPLEXITY_WRITER;
+  const response = await generateJsonWithPerplexity({
     service: SERVICE,
     prompt: buildAnalysisPrompt({
       query: request.query,

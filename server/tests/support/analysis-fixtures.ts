@@ -110,6 +110,8 @@ export interface AgentCall {
 export interface FakeProviders {
   base: string;
   geminiCalls: FakeCall[];
+  /** Rédactions demandées à Perplexity (fiche d'analyse et rapport rédigé). */
+  writerCalls: FakeCall[];
   searchQueries: { token: string | undefined; query: string | null; country: string | null }[];
   agentCalls: AgentCall[];
   /**
@@ -165,8 +167,26 @@ export function fakeStudyResponse(id: string) {
   };
 }
 
+/** Rapport rédigé factice : titres choisis librement, renvois aux sources, et une bibliographie à retirer. */
+export function fakeWrittenReport(input: string): string {
+  const niche = /« ([^»]+) »/.exec(input)?.[1] ?? 'la niche';
+  return [
+    `# Rapport stratégique : ${niche}`,
+    '## Ce que dit le marché',
+    'La demande urbaine progresse nettement [1], et les éleveurs demandent un accompagnement pratique [2].',
+    '## Le terrain concurrentiel',
+    'PouletPro Académie vend une formation à 15 000 FCFA [3] ; une offre locale en français reste à construire.',
+    '## Recommandations',
+    '- Valider la demande avec une page de précommande.',
+    '- Lancer un premier module court, puis enrichir.',
+    '## Bibliographie',
+    '1. Une source inventée par le modèle — https://invente.example',
+  ].join('\n\n');
+}
+
 export async function startFakeProviders(): Promise<FakeProviders> {
   const geminiCalls: FakeCall[] = [];
+  const writerCalls: FakeCall[] = [];
   const agentCalls: AgentCall[] = [];
   const studies = new Map<string, string>();
   const searchQueries: { token: string | undefined; query: string | null; country: string | null }[] = [];
@@ -206,6 +226,23 @@ export async function startFakeProviders(): Promise<FakeProviders> {
 
         if (req.method === 'POST') {
           const input = body?.input ?? '';
+          /*
+            Rédaction (réponse structurée ou rapport) : même agent, mais avec un schéma de réponse
+            ou sans recherche lancée en arrière-plan. Elle reprend les pannes que simulait le faux
+            Gemini, puisque c'est désormais Perplexity qui rédige l'analyse.
+          */
+          if (!body?.background) {
+            writerCalls.push({ key: token, prompt: input });
+            const completed = (text: string) => ({ id: `resp_${agentCalls.length}`, status: 'completed', model: 'openai/gpt-6-luna', output: [{ type: 'message', content: [{ type: 'output_text', text }] }] });
+            if (input.includes('« saturé') && overloadRemaining > 0) {
+              overloadRemaining -= 1;
+              return send(503, { error: { message: 'The model is overloaded. Please try again later.' } });
+            }
+            if (input.includes('« panne')) return send(500, { error: { message: 'erreur interne' } });
+            if (input.includes('« illisible')) return send(200, completed('{}'));
+            if ((body as { response_format?: unknown }).response_format) return send(200, completed(JSON.stringify(fakeAnalysis(input))));
+            return send(200, completed(fakeWrittenReport(input)));
+          }
           if (input.includes('« crédit épuisé')) return send(402, { error: { message: 'insufficient credits' } });
           const id = `resp_${agentCalls.length}`;
           studies.set(id, input.includes('« étude en échec') ? 'failed' : input.includes('« étude mince') ? 'thin' : 'ok');
@@ -247,6 +284,7 @@ export async function startFakeProviders(): Promise<FakeProviders> {
   return {
     base: `http://127.0.0.1:${(server.address() as AddressInfo).port}`,
     geminiCalls,
+    writerCalls,
     setOverload: (calls: number) => {
       overloadRemaining = calls;
     },

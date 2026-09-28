@@ -3,7 +3,7 @@ import { z } from 'zod';
 import { getDb } from '@server/db/client';
 import { analysisJobs, generations, users } from '@server/db/schema';
 import { providers } from '@server/env';
-import { AppError, providerUnavailable } from '@server/middleware';
+import { AppError } from '@server/middleware';
 import type { RequestAuth } from '@server/middleware/auth';
 import { debitCredits, refundDebit } from '@server/services/accounts';
 import { type AnalysisRequest, todayLabel, writeReport } from '@server/services/analysis';
@@ -219,7 +219,6 @@ async function runJob(jobId: string): Promise<void> {
  * nouvelle réservation de points.
  */
 export async function startAnalysis(auth: RequestAuth, request: AnalysisRequest): Promise<{ job: AnalysisJobView; created: boolean }> {
-  if (!providers.gemini) throw providerUnavailable('rédaction par IA');
   if (!providers.webSearch) {
     throw new AppError(
       503,
@@ -229,7 +228,7 @@ export async function startAnalysis(auth: RequestAuth, request: AnalysisRequest)
   }
   // Un service déjà relevé en panne : on refuse maintenant, avant tout débit, plutôt que
   // de faire attendre puis de rembourser.
-  ensureReady(['writing', 'webSearch', 'database']);
+  ensureReady(['webSearch', 'database']);
 
   const userId = auth.account.user.id;
   const db = getDb();

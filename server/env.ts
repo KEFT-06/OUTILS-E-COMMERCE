@@ -124,6 +124,17 @@ const schema = z.object({
    */
   PERPLEXITY_RESEARCH_PRESET: z.enum(['fast', 'low', 'medium', 'high', 'off']).default('medium'),
   /**
+   * Rédaction de l'analyse (fiche structurée) et du rapport, par l'Agent API de Perplexity.
+   * « preset:<nom> » laisse Perplexity choisir le modèle (mesuré le 28/09/2026 : « low » ≈ 0,003 $
+   * par appel court) ; un identifiant « fournisseur/modèle » l'impose (« perplexity/sonar » est
+   * le seul modèle maison accepté par l'Agent API, ≈ 0,0002 $). Google n'intervient plus dans
+   * l'analyse : décision du propriétaire du 28/09/2026.
+   */
+  PERPLEXITY_WRITER: z
+    .string()
+    .regex(/^(preset:(fast|low|medium|high)|[\w.-]+\/[\w.-]+)$/)
+    .default('preset:low'),
+  /**
    * Modèle d'image de Gemini (couvertures des guides et des ebooks). Exige la facturation activée
    * sur le projet Google de la clé : l'offre gratuite n'autorise aucune image.
    */

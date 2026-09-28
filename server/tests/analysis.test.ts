@@ -125,8 +125,8 @@ describe('Analyse de niche', () => {
 
     // Étude : Agent API en arrière-plan, préréglage de recherche approfondie, pays du marché, clé en en-tête.
     const calls = providers.agentCalls.slice(agentCallsBefore);
-    const creation = calls.find((call) => call.method === 'POST')!;
-    assert.equal(calls.filter((call) => call.method === 'POST').length, 1, 'une seule étude pour deux clics');
+    const creation = calls.find((call) => call.method === 'POST' && call.body?.background)!;
+    assert.equal(calls.filter((call) => call.method === 'POST' && call.body?.background).length, 1, 'une seule étude pour deux clics');
     assert.equal(creation.body?.preset, 'medium');
     assert.equal(creation.body?.background, true);
     assert.equal(creation.body?.tools?.[0]?.user_location?.country, 'CM');
@@ -146,8 +146,9 @@ describe('Analyse de niche', () => {
     );
     assert.equal(report.groundingSources[0]!.title, 'Élever des poulets en ville');
 
-    // Consigne de Gemini : l'étude aux marqueurs réécrits, puis les sources numérotées.
-    const prompt = providers.geminiCalls.at(-1)!.prompt;
+    // Consigne de rédaction (Perplexity) : l'étude aux marqueurs réécrits, puis les sources numérotées.
+    const prompt = providers.writerCalls.at(-1)!.prompt;
+    assert.equal(providers.geminiCalls.length, 0, 'Google n’intervient plus dans l’analyse');
     assert.match(prompt, /ÉTUDE DE MARCHÉ MENÉE PAR PERPLEXITY/);
     assert.match(prompt, /Le marché urbain grandit \[1\]\./);
     assert.match(prompt, /formation à 15 000 FCFA \[3\]/);
@@ -175,8 +176,8 @@ describe('Analyse de niche', () => {
     assert.equal(report.dataProvenance.rates!.sampleSize, 3);
     assert.match(report.dataProvenance.competitors!.source, /seuls les concurrents présents dans les sources/);
     assert.match(report.dataProvenance.searchTrends!.source, /volumes de recherche non mesurés/);
-    assert.match(report.dataProvenance.digitalProducts!.source, /l’IA de rédaction/);
-    assert.match(report.dataProvenance.adCampaigns!.source, /l’IA de rédaction/);
+    assert.match(report.dataProvenance.digitalProducts!.source, /Smart Creator/);
+    assert.match(report.dataProvenance.adCampaigns!.source, /Smart Creator/);
     assert.match(report.dataProvenance.strategicActionPlan!.source, /d’après l’étude/);
     assert.ok(Object.values(report.dataProvenance).every((entry) => entry!.isDemonstration === false));
     // Le rapport ne rend plus la question à l'auteur : il tranche, et dit sur quoi il s'appuie.
@@ -278,7 +279,7 @@ describe('Analyse de niche', () => {
       })
       .returning();
 
-    const postsBefore = providers.agentCalls.filter((call) => call.method === 'POST').length;
+    const postsBefore = providers.agentCalls.filter((call) => call.method === 'POST' && call.body?.background).length;
     assert.equal(await resumeAnalysisJobs(), 1);
 
     let row = interrupted!;
@@ -288,7 +289,7 @@ describe('Analyse de niche', () => {
     }
     assert.equal(row.status, 'completed');
     assert.ok(row.reportId);
-    assert.equal(providers.agentCalls.filter((call) => call.method === 'POST').length, postsBefore, 'aucune nouvelle étude payée');
+    assert.equal(providers.agentCalls.filter((call) => call.method === 'POST' && call.body?.background).length, postsBefore, 'aucune nouvelle étude payée');
     assert.ok(providers.agentCalls.some((call) => call.method === 'GET' && call.path.endsWith('/resp_reprise')));
 
     const [stale] = await getDb().select().from(analysisJobs).where(eq(analysisJobs.id, abandoned!.id));
