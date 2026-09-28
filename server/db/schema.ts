@@ -471,6 +471,15 @@ export const ebookJobs = pgTable(
     creditsCharged: integer('credits_charged').notNull().default(0),
     debitTransactionId: uuid('debit_transaction_id'),
     refunded: boolean('refunded').notNull().default(false),
+    /**
+     * Tranche réservée jusqu'à cette heure. En hébergement sans serveur, le suivi peut tomber
+     * sur une autre instance que celle qui rédige : sans cette réservation en base, deux
+     * instances écrivaient le même ouvrage en même temps, chacune avec son propre plan.
+     * Sert aussi de pause après un refus passager du fournisseur.
+     */
+    leaseUntil: moment('lease_until'),
+    /** Dernière fois qu'une section a été enregistrée : sans avancée trop longtemps, on renonce. */
+    progressAt: moment('progress_at'),
     createdAt: createdAt(),
     updatedAt: moment('updated_at').notNull().defaultNow(),
     completedAt: moment('completed_at'),

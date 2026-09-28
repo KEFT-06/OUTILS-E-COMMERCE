@@ -136,8 +136,11 @@ export function sectionPrompt(input: {
     .join('\n');
 }
 
-/** Rédige une section. L'échec est renvoyé tel quel : l'appelant décide de réessayer ou non. */
-export async function writeSection(input: Parameters<typeof sectionPrompt>[0]): Promise<WrittenSection> {
+/**
+ * Rédige une section. L'échec est renvoyé tel quel : l'appelant décide de réessayer ou non.
+ * `timeoutMs` : temps restant à la tranche, pour ne jamais courir au-delà de la requête.
+ */
+export async function writeSection(input: Parameters<typeof sectionPrompt>[0] & { timeoutMs?: number }): Promise<WrittenSection> {
   const response = await generateJson({
     service: SERVICE,
     prompt: sectionPrompt(input),
@@ -147,7 +150,7 @@ export async function writeSection(input: Parameters<typeof sectionPrompt>[0]): 
       if (!parsed.content.trim()) throw new Error('Section vide.');
       return parsed;
     },
-    timeoutMs: TIMEOUT_MS,
+    timeoutMs: Math.min(TIMEOUT_MS, input.timeoutMs ?? TIMEOUT_MS),
   });
 
   const content = clean(response.content, SECTION_CONTENT_MAX);

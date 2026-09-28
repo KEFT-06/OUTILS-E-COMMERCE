@@ -52,6 +52,8 @@ export interface EbookJob {
   pagesWritten: number;
   outline: { chapters: { index: number; title: string }[] } | null;
   error: { code: string; message: string } | null;
+  /** Pause après un refus passager du fournisseur : la rédaction reprend d'elle-même. */
+  notice?: { code: string; message: string } | null;
   createdAt: string;
   updatedAt: string;
 }

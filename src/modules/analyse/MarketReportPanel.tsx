@@ -182,11 +182,11 @@ export function MarketReportPanel({ reportId, nicheName }: MarketReportPanelProp
                   </>
                 )}
                 <br />
-                Vous pouvez quitter cette page : la rédaction continue sur le serveur.
+                {job.notice ? job.notice.message : 'Vous pouvez quitter cette page : la rédaction continue sur le serveur.'}
               </AlertDescription>
             </Alert>
             <Progress value={progress} aria-label="Avancement du dossier" />
-            <div className="flex items-center justify-between gap-3">
+            <div className="flex flex-wrap items-center justify-between gap-3">
               <p className="text-xs text-muted-foreground">Longueur mal choisie ?</p>
               <Button variant="outline" size="sm" onClick={() => void cancel()}>
                 <X />
@@ -197,7 +197,7 @@ export function MarketReportPanel({ reportId, nicheName }: MarketReportPanelProp
         ) : (
           <>
             <div className="space-y-2">
-              <div className="flex items-baseline justify-between">
+              <div className="flex flex-wrap items-baseline justify-between gap-x-3">
                 <Label htmlFor="dossier-pages">Longueur visée</Label>
                 <span className="text-sm tabular-nums text-muted-foreground">
                   {targetPages} pages — comptez environ {minutes} minutes

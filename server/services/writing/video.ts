@@ -19,7 +19,11 @@ import type { DigitalProductIdea } from '@server/shared/analysis';
  */
 
 const SERVICE = { name: 'service de rédaction', code: 'WRITING', log: 'vidéo vers produit' };
-const TIMEOUT_MS = 300_000;
+/**
+ * 240 s, et non 300 : l'hébergeur coupe la requête à 300 s. Un délai égal laissait Vercel
+ * couper le premier, avec une page d'erreur brute, et sans que les points soient rendus.
+ */
+const TIMEOUT_MS = 240_000;
 
 /** Limite d'une requête Gemini avec fichier joint (20 Mo après encodage en base64). */
 export const VIDEO_FILE_MAX_BYTES = 14 * 1024 * 1024;

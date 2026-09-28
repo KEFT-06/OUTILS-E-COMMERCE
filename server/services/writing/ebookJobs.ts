@@ -1,4 +1,4 @@
-import { and, eq, inArray, lt } from 'drizzle-orm';
+import { and, eq, inArray, isNull, lt, or } from 'drizzle-orm';
 import { z } from 'zod';
 import { getDb } from '@server/db/client';
 import { ebookJobs } from '@server/db/schema';
@@ -41,6 +41,28 @@ const ACTIVE: EbookJobStatus[] = ['queued', 'outline', 'writing'];
  */
 const SLICE_BUDGET_MS = 200_000;
 
+/**
+ * Aucun appel lancé par une tranche ne dépasse ce moment. Le budget ci-dessus ne bornait que
+ * le DÉPART des lots : un lot parti à 199 s avec trois minutes de délai courait jusqu'à 380 s,
+ * et l'hébergeur le coupait à 300 s — lot payé, perdu, et tranche jamais libérée.
+ */
+const SLICE_HARD_STOP_MS = 280_000;
+
+/** En deçà, un nouveau lot n'aurait pas le temps d'aboutir : on laisse la place à la tranche suivante. */
+const MIN_BATCH_MS = 60_000;
+
+/** Réservation d'une tranche : au-delà, une instance coupée par l'hébergeur ne bloque plus rien. */
+const LEASE_MS = 295_000;
+
+/** Pause après un refus passager du fournisseur, avant que le suivi ne relance. */
+const TRANSIENT_PAUSE_MS = 45_000;
+
+/** Pannes qui se règlent en attendant : saturation, débit, délai, indisponibilité. */
+const TRANSIENT = /_(OVERLOADED|RATE_LIMITED|TIMEOUT|UNAVAILABLE)$/;
+
+/** Sans aucune section enregistrée pendant ce temps, la rédaction est abandonnée et remboursée. */
+const STALL_MS = 20 * 60_000;
+
 /** Au-delà, une rédaction restée « en cours » est abandonnée et remboursée. */
 const JOB_DEADLINE_MS = 90 * 60_000;
 
@@ -60,12 +82,16 @@ export interface EbookJobView {
   pagesWritten: number;
   outline: { chapters: { index: number; title: string }[] } | null;
   error: { code: string; message: string } | null;
+  /** Rédaction en pause après un refus passager : elle reprend d'elle-même. */
+  notice: { code: string; message: string } | null;
   createdAt: string;
   updatedAt: string;
 }
 
 function viewOf(row: JobRow): EbookJobView {
   const outline = row.outline as unknown as Outline | null;
+  const active = ACTIVE.includes(row.status as EbookJobStatus);
+  const problem = row.errorCode ? { code: row.errorCode, message: row.errorMessage ?? 'La rédaction a échoué.' } : null;
   return {
     id: row.id,
     kind: row.kind as 'ebook' | 'market_report',
@@ -78,7 +104,8 @@ function viewOf(row: JobRow): EbookJobView {
     wordsWritten: row.wordsWritten,
     pagesWritten: Math.round(row.wordsWritten / WORDS_PER_PAGE),
     outline: outline ? { chapters: outline.chapters.map((chapter) => ({ index: chapter.index, title: chapter.title })) } : null,
-    error: row.errorCode ? { code: row.errorCode, message: row.errorMessage ?? 'La rédaction a échoué.' } : null,
+    error: active ? null : problem,
+    notice: active ? problem : null,
     createdAt: row.createdAt.toISOString(),
     updatedAt: row.updatedAt.toISOString(),
   };
@@ -134,16 +161,42 @@ async function failJob(jobId: string, error: unknown): Promise<void> {
 }
 
 /**
- * Écrit ce qui tient dans le budget, puis rend la main. Renvoie vrai si l'ouvrage est
- * terminé, faux s'il reste des sections — le suivi rappellera alors une tranche de plus.
+ * Réserve la tranche suivante en base, pour cette instance seule. Refusée si une autre tranche
+ * tourne encore (réservation en cours) ou si la rédaction marque une pause après un refus.
+ */
+async function claimSlice(jobId: string): Promise<boolean> {
+  const now = new Date();
+  const [claimed] = await getDb()
+    .update(ebookJobs)
+    .set({ leaseUntil: new Date(now.getTime() + LEASE_MS) })
+    .where(
+      and(
+        eq(ebookJobs.id, jobId),
+        inArray(ebookJobs.status, ACTIVE),
+        or(isNull(ebookJobs.leaseUntil), lt(ebookJobs.leaseUntil, now)),
+      ),
+    )
+    .returning({ id: ebookJobs.id });
+  return Boolean(claimed);
+}
+
+/**
+ * Écrit ce qui tient dans le budget, puis rend la main. S'il reste des sections, le suivi
+ * rappellera une tranche de plus.
  */
 async function runSlice(jobId: string): Promise<void> {
   if (running.has(jobId)) return;
   running.add(jobId);
   const db = getDb();
-  const until = Date.now() + SLICE_BUDGET_MS;
+  const started = Date.now();
+  const until = started + SLICE_BUDGET_MS;
+  const hardStop = started + SLICE_HARD_STOP_MS;
+  let claimed = false;
+  let pausedUntil: Date | null = null;
 
   try {
+    claimed = await claimSlice(jobId);
+    if (!claimed) return;
     const [job] = await db.select().from(ebookJobs).where(eq(ebookJobs.id, jobId)).limit(1);
     if (!job || !ACTIVE.includes(job.status as EbookJobStatus)) return;
 
@@ -178,6 +231,9 @@ async function runSlice(jobId: string): Promise<void> {
           outline: outline as unknown as Record<string, unknown>,
           sectionsTotal: outline.sections.length,
           status: 'writing',
+          errorCode: null,
+          errorMessage: null,
+          progressAt: new Date(),
           updatedAt: new Date(),
         })
         .where(and(eq(ebookJobs.id, jobId), inArray(ebookJobs.status, ACTIVE)))
@@ -189,7 +245,7 @@ async function runSlice(jobId: string): Promise<void> {
     let written = (job.sections as unknown as WrittenSection[]) ?? [];
     const done = new Set(written.map((section) => section.index));
 
-    while (Date.now() < until) {
+    while (Date.now() < until && hardStop - Date.now() >= MIN_BATCH_MS) {
       const remaining = outline.sections.filter((section) => !done.has(section.index));
       if (remaining.length === 0) break;
 
@@ -198,7 +254,12 @@ async function runSlice(jobId: string): Promise<void> {
         .filter((section) => done.has(section.index))
         .map((section) => ({ title: section.title, gist: written.find((entry) => entry.index === section.index)?.gist ?? '' }));
 
-      const results = await Promise.all(
+      /*
+        Chaque section du lot est gardée si elle aboutit, même quand une voisine échoue.
+        Avec un « tout ou rien », une seule section refusée jetait les deux autres, déjà
+        rédigées et payées, et elles étaient réécrites au passage suivant.
+      */
+      const settled = await Promise.allSettled(
         batch.map((section) =>
           writeSection({
             outline,
@@ -208,29 +269,38 @@ async function runSlice(jobId: string): Promise<void> {
             market: request.market ?? null,
             targetAudience: request.targetAudience,
             ...(request.findings ? { findings: request.findings } : {}),
+            timeoutMs: hardStop - Date.now(),
           }),
         ),
       );
+      const results = settled.flatMap((outcome) => (outcome.status === 'fulfilled' ? [outcome.value] : []));
+      const failure = settled.find((outcome): outcome is PromiseRejectedResult => outcome.status === 'rejected');
 
-      written = [...written, ...results].sort((a, b) => a.index - b.index);
-      for (const result of results) done.add(result.index);
-      const wordsWritten = written.reduce((total, section) => total + section.words, 0);
+      if (results.length > 0) {
+        written = [...written, ...results].sort((a, b) => a.index - b.index);
+        for (const result of results) done.add(result.index);
+        const wordsWritten = written.reduce((total, section) => total + section.words, 0);
 
-      // Enregistré après chaque lot : une coupure ne coûte que le lot en cours.
-      const [saved] = await db
-        .update(ebookJobs)
-        .set({
-          sections: written as unknown as Record<string, unknown>[],
-          sectionsDone: written.length,
-          wordsWritten,
-          updatedAt: new Date(),
-        })
-        .where(and(eq(ebookJobs.id, jobId), inArray(ebookJobs.status, ACTIVE)))
-        .returning();
+        // Enregistré après chaque lot : une coupure ne coûte que le lot en cours.
+        const [saved] = await db
+          .update(ebookJobs)
+          .set({
+            sections: written as unknown as Record<string, unknown>[],
+            sectionsDone: written.length,
+            wordsWritten,
+            errorCode: null,
+            errorMessage: null,
+            progressAt: new Date(),
+            updatedAt: new Date(),
+          })
+          .where(and(eq(ebookJobs.id, jobId), inArray(ebookJobs.status, ACTIVE)))
+          .returning();
 
-      // Plus rien à mettre à jour : l'utilisateur a renoncé pendant ce lot. Poursuivre
-      // ferait payer au propriétaire des appels dont personne ne verra jamais le texte.
-      if (!saved) return;
+        // Plus rien à mettre à jour : l'utilisateur a renoncé pendant ce lot. Poursuivre
+        // ferait payer au propriétaire des appels dont personne ne verra jamais le texte.
+        if (!saved) return;
+      }
+      if (failure) throw failure.reason;
     }
 
     // ---- Fin, ou tranche suivante.
@@ -241,9 +311,38 @@ async function runSlice(jobId: string): Promise<void> {
         .where(and(eq(ebookJobs.id, jobId), inArray(ebookJobs.status, ACTIVE)));
     }
   } catch (error) {
-    await failJob(jobId, error).catch((failure: unknown) => console.error('[ebook] échec non enregistré', failure));
+    if (error instanceof AppError && TRANSIENT.test(error.code)) {
+      /*
+        Refus passager : la rédaction marque une pause au lieu d'échouer. Les sections écrites
+        restent acquises ; le suivi relance après la pause. Faire échouer ici jetait tout un
+        ouvrage déjà à moitié rédigé pour une saturation de quelques secondes chez Google.
+        Le filet reste en place : sans section enregistrée pendant vingt minutes, on renonce.
+      */
+      pausedUntil = new Date(Date.now() + TRANSIENT_PAUSE_MS);
+      console.warn(`[ebook] ${jobId} en pause ${TRANSIENT_PAUSE_MS / 1000} s (${error.code})`);
+      await db
+        .update(ebookJobs)
+        .set({
+          leaseUntil: pausedUntil,
+          errorCode: error.code,
+          errorMessage: 'Le service de rédaction est saturé en ce moment : la rédaction reprend d’elle-même dans une minute. Rien de ce qui est écrit n’est perdu.',
+          updatedAt: new Date(),
+        })
+        .where(and(eq(ebookJobs.id, jobId), inArray(ebookJobs.status, ACTIVE)))
+        .catch((failure: unknown) => console.error('[ebook] pause non enregistrée', failure));
+    } else {
+      await failJob(jobId, error).catch((failure: unknown) => console.error('[ebook] échec non enregistré', failure));
+    }
   } finally {
     running.delete(jobId);
+    // Tranche finie : la suivante peut partir tout de suite, sur n'importe quelle instance.
+    if (claimed && !pausedUntil) {
+      await db
+        .update(ebookJobs)
+        .set({ leaseUntil: null })
+        .where(eq(ebookJobs.id, jobId))
+        .catch((failure: unknown) => console.error('[ebook] réservation non libérée', failure));
+    }
   }
 }
 
@@ -305,6 +404,7 @@ export async function startEbook(auth: RequestAuth, request: EbookRequest): Prom
         request: request as unknown as Record<string, unknown>,
         creditsCharged: debit.charged,
         debitTransactionId: debit.transactionId,
+        progressAt: new Date(),
       })
       .returning();
   } catch (error) {
@@ -336,8 +436,12 @@ export async function getEbookJob(auth: RequestAuth, jobId: string | undefined):
   if (!job) throw new AppError(404, 'Rédaction introuvable sur votre compte.', 'EBOOK_JOB_NOT_FOUND');
 
   if (ACTIVE.includes(job.status as EbookJobStatus) && !running.has(job.id)) {
-    if (Date.now() - job.createdAt.getTime() > JOB_DEADLINE_MS) {
+    // Rédactions lancées avant la colonne : leur dernier enregistrement fait foi.
+    const lastProgress = (job.progressAt ?? job.updatedAt).getTime();
+    if (Date.now() - job.createdAt.getTime() > JOB_DEADLINE_MS || Date.now() - lastProgress > STALL_MS) {
       await failJob(job.id, new AppError(504, 'La rédaction a été interrompue trop longtemps. Relancez-la : vos points ont été rendus.', 'EBOOK_INTERRUPTED'));
+      const [failed] = await getDb().select().from(ebookJobs).where(eq(ebookJobs.id, job.id)).limit(1);
+      return viewOf(failed ?? job);
     } else {
       runInBackground(() => runSlice(job.id), `tranche d’ebook ${job.id}`);
     }

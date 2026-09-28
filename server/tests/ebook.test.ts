@@ -22,6 +22,9 @@ import { closeTestApp, createTestApp } from './support/helpers';
 /** Consignes reçues par le faux service, pour vérifier le découpage réel. */
 const prompts: string[] = [];
 
+/** Refus « saturé » encore à servir pour la section « Les matériaux » : simule une panne chez Google. */
+let saturation = 0;
+
 const CHAPTERS = [
   { title: 'Choisir son emplacement', purpose: 'Poser le terrain', sections: ['Lire le terrain', 'Mesurer la surface'] },
   { title: 'Bâtir le poulailler', purpose: 'Construire', sections: ['Le plan', 'Les matériaux'] },
@@ -34,6 +37,13 @@ const fakeWriter = createServer((req, res) => {
     const body = JSON.parse(Buffer.concat(chunks).toString('utf8')) as { contents: { parts: { text: string }[] }[] };
     const prompt = body.contents[0]!.parts[0]!.text;
     prompts.push(prompt);
+
+    if (saturation > 0 && prompt.includes('Section 4 — Les matériaux')) {
+      saturation -= 1;
+      res.writeHead(503, { 'content-type': 'application/json' });
+      res.end(JSON.stringify({ error: { status: 'UNAVAILABLE', message: 'This model is currently experiencing high demand.' } }));
+      return;
+    }
 
     const answer = prompt.includes('tu construis la charpente')
       ? {
@@ -240,5 +250,47 @@ describe('Rédaction d’un ebook long', () => {
       before,
       'une rédaction terminée ne relance aucune section',
     );
+  });
+
+  it('marque une pause quand Google sature, garde les sections écrites, puis termine sans rien réécrire', async () => {
+    const { agent } = await signInWithPlan(app, 'autrice-patiente@exemple.com', 'pro');
+    const start = await balance(agent);
+    prompts.length = 0;
+    // Quatre refus : toutes les tentatives d'un même appel (deux par modèle) échouent.
+    saturation = 4;
+
+    const launch = await agent.post('/api/writing/ebook').send(REQUEST).expect(202);
+    const jobId = (launch.body as { job: { id: string } }).job.id;
+
+    type Job = { status: string; sectionsDone: number; error: unknown; notice: { code: string; message: string } | null };
+    let paused: Job | null = null;
+    for (let attempt = 0; attempt < 150 && !paused; attempt += 1) {
+      const job = (await agent.get(`/api/writing/ebook/${jobId}`).expect(200)).body.job as Job;
+      assert.notEqual(job.status, 'failed', 'une saturation ne fait plus échouer la rédaction');
+      if (job.notice) paused = job;
+      else await new Promise((resolve) => setTimeout(resolve, 100));
+    }
+    assert.ok(paused, 'la pause est annoncée à l’écran');
+    assert.equal(paused.status, 'writing');
+    assert.equal(paused.notice?.code, 'WRITING_OVERLOADED');
+    assert.match(paused.notice?.message ?? '', /reprend d’elle-même/);
+    assert.equal(paused.error, null, 'une pause n’est pas une erreur');
+    assert.equal(paused.sectionsDone, 3, 'les sections du premier lot sont gardées');
+
+    // Fin de la pause : on avance l'heure de la réservation au lieu d'attendre 45 s.
+    const { getDb } = await import('@server/db/client');
+    const { ebookJobs } = await import('@server/db/schema');
+    const { eq } = await import('drizzle-orm');
+    await getDb().update(ebookJobs).set({ leaseUntil: new Date(Date.now() - 1_000) }).where(eq(ebookJobs.id, jobId));
+
+    await waitForCompletion(agent, jobId);
+    for (const title of ['Lire le terrain', 'Mesurer la surface', 'Le plan']) {
+      assert.equal(
+        prompts.filter((prompt) => prompt.includes('Tu rédiges une section') && prompt.includes(`— ${title}\n`)).length,
+        1,
+        `« ${title} » n’est pas réécrite après la pause`,
+      );
+    }
+    assert.equal(start - (await balance(agent)), 4, 'facturé une seule fois, rien de rendu');
   });
 });

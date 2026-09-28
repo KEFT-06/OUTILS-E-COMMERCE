@@ -199,22 +199,22 @@ export function LongformEbookPanel({ product, market, onWritten }: LongformEbook
                 </>
               )}
               <br />
-              Vous pouvez quitter cet écran : la rédaction continue sur le serveur.
+              {job.notice ? job.notice.message : 'Vous pouvez quitter cet écran : la rédaction continue sur le serveur.'}
             </AlertDescription>
           </Alert>
           <Progress value={progress} aria-label="Avancement de la rédaction" />
-            <div className="flex items-center justify-between gap-3">
-              <p className="text-xs text-muted-foreground">Longueur mal choisie, ou titre à revoir ?</p>
-              <Button variant="outline" size="sm" onClick={() => void cancel()}>
-                <X />
-                Annuler la rédaction
-              </Button>
-            </div>
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <p className="text-xs text-muted-foreground">Longueur mal choisie, ou titre à revoir ?</p>
+            <Button variant="outline" size="sm" onClick={() => void cancel()}>
+              <X />
+              Annuler la rédaction
+            </Button>
+          </div>
         </div>
       ) : (
         <>
           <div className="space-y-2">
-            <div className="flex items-baseline justify-between">
+            <div className="flex flex-wrap items-baseline justify-between gap-x-3">
               <Label htmlFor="ebook-pages">Longueur visée</Label>
               <span className="text-sm tabular-nums text-muted-foreground">
                 {targetPages} pages — comptez environ {minutes} minutes
