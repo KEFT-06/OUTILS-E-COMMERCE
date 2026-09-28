@@ -21,6 +21,7 @@ import {
   visualProvider,
   VIDEO_PROVIDER,
 } from '@server/services/creatives';
+import { videoArchiveConfigured } from '@server/services/creatives/archive';
 import { createLocalVisual, listLocalVisuals, localVisualExists, sendLocalVisual } from '@server/services/creatives/local';
 import type { CreativeProvider } from '@server/services/creatives';
 import { falRequestIdSchema } from '@server/services/fal';
@@ -169,7 +170,7 @@ creativesRouter.post(
       }),
     });
 
-    res.status(202).json({ ...result, retentionDays: PROVIDER_RETENTION_DAYS[VIDEO_PROVIDER] });
+    res.status(202).json({ ...result, retentionDays: videoArchiveConfigured() ? null : PROVIDER_RETENTION_DAYS[VIDEO_PROVIDER] });
   }),
 );
 
@@ -194,8 +195,10 @@ creativesRouter.get(
     }
 
     const status = await getCreativeStatus(requestId, provider);
-    await settleGeneration(generation, generationStateOf(status.status), fileFormatOf(status));
-    res.json({ ...status, retentionDays: PROVIDER_RETENTION_DAYS[provider] });
+    const settled = await settleGeneration(generation, generationStateOf(status.status), fileFormatOf(status));
+    // Une vidéo Veo copiée (ou en cours de copie, le dépôt partant à la fin du rendu) ne périme plus.
+    const archived = provider === 'veo' && (settled.archivedAt !== null || videoArchiveConfigured());
+    res.json({ ...status, retentionDays: archived ? null : PROVIDER_RETENTION_DAYS[provider] });
   }),
 );
 

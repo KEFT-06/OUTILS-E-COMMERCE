@@ -33,6 +33,10 @@ export async function createTestApp(overrides: Record<string, string> = {}): Pro
     */
     APIFY_TOKEN: '',
     APIFY_API_URL: 'http://127.0.0.1:9',
+    // Stockage de fichiers de Supabase : le poste du propriétaire en porte la vraie clé. Sans
+    // ces lignes, une suite déposerait des vidéos de test dans son vrai projet.
+    SUPABASE_API_SECRET_KEY: '',
+    SUPABASE_URL: 'http://127.0.0.1:9',
     GEMINI_API_KEY: 'cle-gemini-de-test',
     GEMINI_API_URL: 'http://127.0.0.1:9',
     // Neutralisés par défaut : env.ts charge le .env du poste, et sans ces trois lignes une

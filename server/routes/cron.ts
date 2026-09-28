@@ -6,6 +6,7 @@ import { sendDueRadarDigests } from '@server/services/radar/alerts';
 import { collectPerformanceContributions } from '@server/services/performanceLoop/collect';
 import { discoveryIsDue, runDiscovery } from '@server/services/radar/discovery';
 import { sweepSessions } from '@server/services/auth/sessions';
+import { archivePendingVideos } from '@server/services/creatives/archive';
 import { sweepPendingGenerations } from '@server/services/generations/sweeper';
 import { sweepDueWatches } from '@server/services/radar/sweeper';
 
@@ -111,6 +112,12 @@ cronRouter.get(
       });
     }
 
-    res.json({ generations, sessions, sweep, digests, discovery, performance });
+    // Vidéos Veo terminées mais pas encore copiées (dépôt interrompu) : Google les efface au bout de deux jours.
+    const videos = await archivePendingVideos().catch((error: unknown) => {
+      console.warn('[cron] archive des vidéos :', error instanceof Error ? error.message : error);
+      return null;
+    });
+
+    res.json({ generations, sessions, sweep, digests, discovery, performance, videos });
   }),
 );

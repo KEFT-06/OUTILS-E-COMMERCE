@@ -46,7 +46,7 @@ export function AdminCreativesLibrary({ canOpenUsers }: { canOpenUsers: boolean 
         </CardTitle>
         <CardDescription>
           {data
-            ? `${data.counts.completed.toLocaleString('fr-FR')} ${noun}${data.counts.completed > 1 ? 's' : ''} terminé${kind === 'video' ? 'e' : ''}${data.counts.completed > 1 ? 's' : ''}, ${data.counts.pending} en cours, ${data.counts.failed} échoué${kind === 'video' ? 'e' : ''}${data.counts.failed > 1 ? 's' : ''}. ${kind === 'video' ? 'Une vidéo Veo reste 2 jours chez Google' : 'Un visuel généré en interne est gardé sans limite'} ; chaque ouverture est inscrite au journal.`
+            ? `${data.counts.completed.toLocaleString('fr-FR')} ${noun}${data.counts.completed > 1 ? 's' : ''} terminé${kind === 'video' ? 'e' : ''}${data.counts.completed > 1 ? 's' : ''}, ${data.counts.pending} en cours, ${data.counts.failed} échoué${kind === 'video' ? 'e' : ''}${data.counts.failed > 1 ? 's' : ''}. ${kind === 'video' ? 'Une vidéo Veo reste 2 jours chez Google, sans limite une fois copiée dans notre stockage' : 'Un visuel généré en interne est gardé sans limite'} ; chaque ouverture est inscrite au journal.`
             : 'Vidéos et visuels générés par les comptes.'}
         </CardDescription>
         <CardAction>

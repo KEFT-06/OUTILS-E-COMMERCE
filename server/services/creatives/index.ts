@@ -19,6 +19,7 @@ import {
   getVeoGeneration,
   submitVeoGeneration,
 } from '@server/services/veo';
+import { fetchArchivedVideo } from '@server/services/creatives/archive';
 import { AD_FRAMEWORK_IDS, findAdFramework } from '@server/shared/adFrameworks';
 import { countryName } from '@server/shared/countries';
 
@@ -442,6 +443,12 @@ export async function streamCreativeFile(
     le lien, ni la clé, comme pour tous les autres fournisseurs.
   */
   if (provider === 'veo') {
+    // La copie archivée d'abord : elle survit aux deux jours de conservation de Google.
+    const archived = await fetchArchivedVideo(requestId);
+    if (archived) {
+      await relayMedia(archived, 'video', requestId, disposition, res);
+      return;
+    }
     const generation = await getVeoGeneration(requestId);
     if (generation.status !== 'completed' || !generation.mediaUrl) {
       throw new AppError(409, "Aucun fichier disponible : la génération n'est pas terminée.", 'CREATIVE_NOT_READY');

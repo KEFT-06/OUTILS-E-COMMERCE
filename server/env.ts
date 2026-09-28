@@ -266,6 +266,17 @@ const schema = z.object({
   DATABASE_URL: z.string().optional(),
 
   /**
+   * Facultatif : copie des vidéos Veo dans le stockage de fichiers de Supabase. Google n'en
+   * garde une que deux jours ; sans cette clé, une vidéo non téléchargée à temps est perdue.
+   * Clé secrète du projet (Project Settings → API Keys → Secret keys, « sb_secret_… »).
+   * L'adresse du projet est déduite de DATABASE_URL, sauf si SUPABASE_URL la donne.
+   */
+  SUPABASE_API_SECRET_KEY: z.string().min(20).optional(),
+  SUPABASE_URL: z.string().url().optional(),
+  /** Espace de stockage (privé) des vidéos archivées ; créé au premier dépôt. */
+  CREATIVES_BUCKET: z.string().regex(/^[a-z0-9-]{3,63}$/).default('creatifs'),
+
+  /**
    * Clé de chiffrement des secrets stockés en base (double authentification, clés
    * API Chariow des utilisateurs) : 64 caractères hexadécimaux, soit 256 bits.
    * Générer avec : openssl rand -hex 32. La perdre rend ces secrets illisibles.
@@ -475,6 +486,7 @@ export const providers = {
   gamma: Boolean(env.GAMMA_API_KEY),
   chariow: Boolean(env.CHARIOW_API_KEY),
   apify: Boolean(env.APIFY_TOKEN),
+  videoArchive: Boolean(env.SUPABASE_API_SECRET_KEY),
 } as const;
 
 /**

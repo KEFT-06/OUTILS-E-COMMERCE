@@ -5,6 +5,8 @@ import { AppError } from '@server/middleware';
 import type { RequestAuth } from '@server/middleware/auth';
 import { debitCredits, refundDebit } from '@server/services/accounts';
 import { getActionCost } from '@server/services/credits';
+import { archiveVeoVideo, videoArchiveConfigured } from '@server/services/creatives/archive';
+import { runInBackground } from '@server/shared/backgroundWork';
 
 /**
  * Générations facturées et contenus créés.
@@ -107,6 +109,11 @@ export async function settleGeneration(
       .set({ status: 'completed', completedAt: new Date(), ...(fileFormat ? { fileFormat } : {}) })
       .where(and(eq(generations.id, generation.id), eq(generations.status, 'pending')))
       .returning();
+    // Une vidéo Veo ne reste que deux jours chez Google : la copie part dès la fin du rendu,
+    // après la réponse — le suivi de l'écran n'attend pas le dépôt.
+    if (updated && updated.provider === 'veo' && videoArchiveConfigured()) {
+      runInBackground(async () => void (await archiveVeoVideo(updated)), 'archive vidéo');
+    }
     return updated ?? generation;
   }
 

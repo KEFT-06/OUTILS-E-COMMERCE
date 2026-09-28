@@ -32,8 +32,13 @@ export type CreativeListQuery = z.infer<typeof creativeListQuerySchema>;
 /** Fichiers gardés chez nous : rien ne les efface, la conservation du fournisseur ne les concerne pas. */
 const STORED_LOCALLY = 'interne';
 
-const isAvailable = (row: { status: string; provider: string; providerRef: string | null; createdAt: Date }, now: number) => {
+const isAvailable = (
+  row: { status: string; provider: string; providerRef: string | null; createdAt: Date; archivedAt: Date | null },
+  now: number,
+) => {
   if (row.status !== 'completed' || !row.providerRef) return false;
+  // Copiée dans notre stockage : la conservation du fournisseur ne la concerne plus.
+  if (row.archivedAt) return true;
   const days = PROVIDER_RETENTION_DAYS[row.provider as CreativeProvider];
   if (days === null) return true;
   // Fournisseur inconnu : la durée la plus courte, plutôt que de promettre un fichier perdu.
@@ -63,6 +68,7 @@ export async function listCreatives(query: CreativeListQuery) {
         refunded: generations.refunded,
         createdAt: generations.createdAt,
         completedAt: generations.completedAt,
+        archivedAt: generations.archivedAt,
         userId: users.id,
         userName: users.name,
         userEmail: users.email,

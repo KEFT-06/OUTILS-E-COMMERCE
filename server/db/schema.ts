@@ -669,6 +669,8 @@ export const generations = pgTable(
     refunded: boolean('refunded').notNull().default(false),
     createdAt: createdAt(),
     completedAt: moment('completed_at'),
+    /** Copie gardée dans notre stockage de fichiers : le fichier survit à la conservation du fournisseur. */
+    archivedAt: moment('archived_at'),
   },
   (table) => [
     uniqueIndex('generations_provider_ref_unique').on(table.provider, table.providerRef),
