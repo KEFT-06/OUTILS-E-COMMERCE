@@ -156,10 +156,10 @@ export function LandingPage() {
       <header className="sticky top-0 z-40 border-b bg-background/85 backdrop-blur supports-[backdrop-filter]:bg-background/70">
         <div className="mx-auto flex h-16 max-w-6xl items-center justify-between gap-4 px-4 sm:px-6">
           <Link to="/" className="rounded-md" aria-label="Accueil Smart Creator">
-            {/* Sur mobile, le symbole seul : l'action principale reste entière à côté. */}
+            {/* Sur mobile, le symbole seul : l'action principale reste entière à côté. La devise n'a la place qu'à partir de 1280 px : à 1024, avec les liens de sections, elle poussait « Créer mon compte » hors de l'écran. */}
             <BrandLogo size="md" showText={false} className="sm:hidden" />
-            <BrandLogo size="md" className="hidden sm:inline-flex lg:hidden" />
-            <BrandLogo size="md" showTagline className="hidden lg:inline-flex" />
+            <BrandLogo size="md" className="hidden sm:inline-flex xl:hidden" />
+            <BrandLogo size="md" showTagline className="hidden xl:inline-flex" />
           </Link>
 
           {/*

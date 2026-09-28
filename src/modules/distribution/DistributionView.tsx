@@ -85,7 +85,7 @@ export function DistributionView() {
       )}
 
       {!marketplaces && !loadError && (
-        <div className="grid gap-4 md:grid-cols-3" aria-label="Chargement des connecteurs">
+        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3" aria-label="Chargement des connecteurs">
           <Skeleton className="h-44 rounded-xl" />
           <Skeleton className="h-44 rounded-xl" />
           <Skeleton className="h-44 rounded-xl" />
@@ -93,7 +93,7 @@ export function DistributionView() {
       )}
 
       {marketplaces && (
-        <div className="grid gap-4 md:grid-cols-3">
+        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
           {marketplaces.map((marketplace) => (
             <Card key={marketplace.id} className="gap-4 py-5">
               <CardHeader className="px-5">

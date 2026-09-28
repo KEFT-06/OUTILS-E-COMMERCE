@@ -23,12 +23,20 @@ interface CockpitDashboardProps {
   onOpenBilling: () => void;
 }
 
-/** Libellés des fournisseurs remontés par /api/health. */
+/**
+ * Libellés des fournisseurs remontés par /api/health, dans l'ordre d'affichage. Seuls ceux-ci
+ * s'affichent : un fournisseur ajouté côté serveur sans libellé ici apparaissait sous son nom
+ * technique (« payments », « googleAuth »), ce qui se lisait comme une panne.
+ */
 const SERVICE_LABELS: Record<string, string> = {
   text: 'Analyse et rédaction IA',
-  video: 'Visuels et vidéos',
-  storybook: 'Storybook illustré',
   webSearch: 'Recherche web des analyses',
+  image: 'Visuels et couvertures',
+  video: 'Vidéos',
+  storybook: 'Storybook illustré',
+  payments: 'Paiements',
+  email: 'E-mails du compte',
+  googleAuth: 'Connexion avec Google',
 };
 
 /** Parcours conseillé : c'est une vraie séquence, d'où la numérotation. */
@@ -91,7 +99,11 @@ export function CockpitDashboard({ report, onNavigateToModule, onOpenBilling }: 
   */
   const saturation = report?.rates.saturation;
 
-  const serviceEntries = providers ? Object.entries(providers) : [];
+  const serviceEntries = providers
+    ? Object.keys(SERVICE_LABELS)
+        .filter((key) => key in providers)
+        .map((key) => [key, providers[key]] as const)
+    : [];
   const connectedCount = serviceEntries.filter(([, connected]) => connected).length;
 
   return (
@@ -314,8 +326,8 @@ export function CockpitDashboard({ report, onNavigateToModule, onOpenBilling }: 
               <ul className="space-y-2.5">
                 {serviceEntries.map(([key, connected]) => (
                   <li key={key} className="flex items-center justify-between gap-3 text-sm">
-                    <span>{SERVICE_LABELS[key] ?? key}</span>
-                    <span className={cn('inline-flex items-center gap-1.5', connected ? 'text-success' : 'text-muted-foreground')}>
+                    <span className="min-w-0">{SERVICE_LABELS[key]}</span>
+                    <span className={cn('inline-flex shrink-0 items-center gap-1.5 whitespace-nowrap', connected ? 'text-success' : 'text-muted-foreground')}>
                       {connected ? (
                         <CircleCheck className="size-4" aria-hidden="true" />
                       ) : (
