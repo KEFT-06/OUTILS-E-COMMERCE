@@ -14,7 +14,7 @@
     "build": "npm run build:web && npm run build:api",
     "build:web": "vite build",
     "build:api": "esbuild server/index.ts --bundle --platform=node --format=esm --packages=external --sourcemap --outfile=dist/server.js",
-    "build:serverless": "esbuild server/vercel.ts --bundle --platform=node --format=esm --packages=external --sourcemap --outfile=dist/vercel.js",
+    "build:serverless": "node server/scripts/build-serverless.mjs",
     "vercel-build": "npm run db:migrate && npm run build:web && node server/scripts/prepare-vercel.mjs && npm run build:serverless",
     "db:migrate": "tsx server/scripts/migrate.ts",
     "start": "node dist/server.js",
