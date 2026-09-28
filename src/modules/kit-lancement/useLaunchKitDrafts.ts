@@ -71,5 +71,15 @@ export function useLaunchKitDrafts() {
     writeFailed: snapshot.writeFailed,
     get: (productId: string): LaunchKitDraft | undefined => snapshot.value[productId],
     save: (draft: LaunchKitDraft) => store.commit({ ...store.getState().value, [draft.productId]: draft }),
+    /**
+     * Applique des changements sur la version ENREGISTRÉE à cet instant, et non sur celle
+     * qu'avait l'écran quand l'action a commencé. La rédaction par l'IA dure une vingtaine de
+     * secondes : repartir de l'ancienne copie effaçait l'objectif ou les boutons par marché
+     * choisis entre-temps.
+     */
+    patch: (productId: string, changes: (current: LaunchKitDraft) => Partial<LaunchKitDraft>) => {
+      const current = store.getState().value[productId] ?? emptyKitDraft(productId);
+      store.commit({ ...store.getState().value, [productId]: { ...current, ...changes(current), productId } });
+    },
   };
 }

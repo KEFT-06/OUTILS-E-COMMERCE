@@ -199,10 +199,10 @@ export function LaunchKitView({ products, market }: { products: DigitalProductId
         }),
       );
       if (!result) return;
-      update({
-        copies: result.copies.length > 0 ? result.copies : draft.copies,
-        scripts: { ...draft.scripts, ...result.scripts },
-      });
+      kitDrafts.patch(product.id, (current) => ({
+        copies: result.copies.length > 0 ? result.copies : current.copies,
+        scripts: { ...current.scripts, ...result.scripts },
+      }));
       setFindings(result.findings);
       toast.success('Kit rédigé', { description: 'Relisez chaque texte et chaque script avant de l’exporter.' });
     } catch (error) {
