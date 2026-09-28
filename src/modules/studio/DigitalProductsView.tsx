@@ -424,8 +424,9 @@ export function DigitalProductsView({ report, onSelectProductForAd, onAnalyzeNic
               </div>
 
               {/*
-                Les bornes des curseurs de prix viennent de la table servie par l'API :
-                corriger un prix de marché ne demande pas de redéploiement.
+                Les bornes des curseurs de prix viennent de la table servie par l'API
+                (server/config/pricing.json) : une seule source, que l'écran ne peut pas
+                contredire. La corriger demande un redéploiement du serveur, qui la garde en mémoire.
               */}
               {!pricing ? (
                 isPricingLoading ? (
