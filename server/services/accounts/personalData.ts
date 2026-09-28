@@ -6,14 +6,17 @@ import {
   authEvents,
   contactMessages,
   covers,
+  creativeImages,
   creditTransactions,
   featureOverrides,
   generations,
   guideTranslations,
   guides,
   payments,
+  performanceContributions,
   reports,
   sessionHistory,
+  storybooks,
   userIntegrations,
   userPermissions,
   users,
@@ -44,7 +47,8 @@ const iso = (date: Date | null | undefined) => date?.toISOString() ?? null;
 export const EXPORT_NOTICE =
   'Copie des données de votre compte Smart Creator. Par sécurité, n’y figurent pas : l’empreinte de votre mot de passe, ' +
   'vos secrets de double authentification, vos codes de secours et vos clés API (seuls leurs 4 derniers caractères). ' +
-  'Les adresses IP sont tronquées. Les images de couverture se téléchargent depuis vos guides et vos produits.';
+  'Les adresses IP sont tronquées. Les images de couverture se téléchargent depuis vos guides et vos produits, ' +
+  'et chaque visuel publicitaire depuis l’adresse « file » indiquée à côté de lui, en étant connecté à votre compte.';
 
 export async function exportPersonalData(userId: string) {
   const db = getDb();
@@ -87,6 +91,22 @@ export async function exportPersonalData(userId: string) {
       db.select().from(reports).where(eq(reports.userId, userId)).orderBy(desc(reports.createdAt)),
       db.select().from(watchesTable).where(eq(watchesTable.userId, userId)).orderBy(desc(watchesTable.createdAt)),
     ]);
+  /*
+    Trois familles de données manquaient à la copie, alors que l'écran promet « tout ce que
+    Smart Creator conserve sur vous » : les storybooks (le texte du conte est de l'auteur),
+    les relevés partagés avec le repère de performance, et les visuels enregistrés chez nous.
+    Les images elles-mêmes restent hors du fichier, comme les couvertures : leurs octets en
+    base64 le rendraient illisible ; chaque visuel porte son adresse de téléchargement.
+  */
+  const [ownStorybooks, contributions, visuals] = await Promise.all([
+    db.select().from(storybooks).where(eq(storybooks.userId, userId)).orderBy(desc(storybooks.createdAt)),
+    db.select().from(performanceContributions).where(eq(performanceContributions.userId, userId)).orderBy(desc(performanceContributions.day)),
+    db
+      .select({ requestId: creativeImages.requestId, prompt: creativeImages.prompt, format: creativeImages.format, createdAt: creativeImages.createdAt })
+      .from(creativeImages)
+      .where(eq(creativeImages.userId, userId))
+      .orderBy(desc(creativeImages.createdAt)),
+  ]);
   const workspace = await listWorkspaceDocuments(userId);
   const messages = await db.select().from(contactMessages).where(eq(contactMessages.userId, userId)).orderBy(desc(contactMessages.createdAt));
 
@@ -219,6 +239,28 @@ export async function exportPersonalData(userId: string) {
     })),
     contactMessages: messages.map((entry) => ({ topic: entry.topic, message: entry.message, email: entry.email, status: entry.status, createdAt: iso(entry.createdAt) })),
     workspace: workspace.map((entry) => ({ kind: entry.kind, updatedAt: iso(entry.updatedAt), data: entry.data })),
+    storybooks: ownStorybooks.map((entry) => ({
+      id: entry.id,
+      title: entry.title,
+      language: entry.language,
+      country: entry.country,
+      pages: entry.pages,
+      story: entry.story,
+      status: entry.status,
+      gammaUrl: entry.gammaUrl,
+      createdAt: iso(entry.createdAt),
+      completedAt: iso(entry.completedAt),
+    })),
+    performanceBenchmark: {
+      optIn: user.performanceOptIn,
+      contributions: contributions.map((entry) => ({ day: entry.day, niche: entry.niche, market: entry.market, metrics: entry.metrics })),
+    },
+    visuals: visuals.map((entry) => ({
+      ...entry,
+      createdAt: iso(entry.createdAt),
+      /** Adresse de téléchargement, valable connecté à ce compte. */
+      file: `/api/creatives/requests/${encodeURIComponent(entry.requestId)}/file?disposition=attachment`,
+    })),
     reviewsAsReviewer: reviewed.map((entry) => ({
       translationId: entry.id,
       language: entry.language,

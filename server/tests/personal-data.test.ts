@@ -46,6 +46,35 @@ describe('Données personnelles', () => {
     await request(app).get('/api/account/data-export').expect(401);
   });
 
+  it('inclut les storybooks, les relevés partagés et les visuels enregistrés', async () => {
+    const { agent, account } = await signUp(app, { name: 'Kossi Export', email: 'kossi-export@exemple.com' });
+    const { getDb } = await import('@server/db/client');
+    const { creativeImages, performanceContributions, storybooks } = await import('@server/db/schema');
+    await getDb().insert(storybooks).values({
+      userId: account.id,
+      generationRef: 'gen-export-1',
+      title: 'Le baobab qui parlait',
+      language: 'fr',
+      country: 'TG',
+      pages: 8,
+      story: { pages: ['Il était une fois…'] },
+      status: 'completed',
+    });
+    await getDb().insert(performanceContributions).values({ userId: account.id, niche: 'cuisine', market: 'TG', metrics: { ventes: 4 }, day: '2026-09-27' });
+    await getDb().insert(creativeImages).values({ userId: account.id, requestId: 'visuel-export-1', prompt: 'un marché à Lomé', format: '1:1', mimeType: 'image/png', data: 'QUJD' });
+
+    const data = (await agent.get('/api/account/data-export').expect(200)).body as {
+      storybooks: { title: string }[];
+      performanceBenchmark: { contributions: { niche: string }[] };
+      visuals: { prompt: string; file: string }[];
+    };
+    assert.equal(data.storybooks[0]?.title, 'Le baobab qui parlait');
+    assert.equal(data.performanceBenchmark.contributions[0]?.niche, 'cuisine');
+    assert.equal(data.visuals[0]?.prompt, 'un marché à Lomé');
+    assert.match(data.visuals[0]!.file, /^\/api\/creatives\/requests\/visuel-export-1\/file/);
+    assert.ok(!JSON.stringify(data).includes('QUJD'), 'les octets de l’image restent hors du fichier');
+  });
+
   it('supprime le compte après mot de passe, code et confirmation, en gardant la comptabilité', async () => {
     const { agent, account } = await signUp(app, { name: 'Binta Départ', email: 'binta@exemple.com' });
     await agent.post('/api/account/two-factor/security-code').send({ password: STRONG_PASSWORD, newCode: SECURITY_CODE }).expect(200);
