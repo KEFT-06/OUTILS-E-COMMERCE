@@ -2,6 +2,7 @@ import { and, asc, count, eq, isNull, lt, or, sql } from 'drizzle-orm';
 import { getDb } from '@server/db/client';
 import { users, watches } from '@server/db/schema';
 import { env } from '@server/env';
+import { getPlanConfig } from '@server/services/plans';
 import { sendDueRadarDigests } from '@server/services/radar/alerts';
 import { collectPerformanceContributions } from '@server/services/performanceLoop/collect';
 import { discoveryIsDue, runDiscovery } from '@server/services/radar/discovery';
@@ -71,9 +72,6 @@ export async function sweepDueWatches(now = new Date(), budgetMs = BUDGET_MS): P
   const seuil = new Date(now.getTime() - env.RADAR_SWEEP_INTERVAL_HOURS * 3_600_000);
   const dues = and(eq(watches.active, true), or(isNull(watches.lastSweptAt), lt(watches.lastSweptAt, seuil)));
 
-  const [total] = await getDb().select({ value: count() }).from(watches).where(dues);
-  const due = Number(total?.value ?? 0);
-
   /*
     Les comptes payants passent avant les comptes gratuits, puis les plus anciennement
     relevés d'abord.
@@ -87,12 +85,46 @@ export async function sweepDueWatches(now = new Date(), budgetMs = BUDGET_MS): P
     client Plus n'a pas à attendre derrière un client Max — leurs boutiques sont relevées le
     même jour, et c'est ce qui leur a été vendu.
   */
+  /*
+    Qui a encore DROIT à ce relevé, calculé ici et non lu tel quel dans la base.
+
+    L'expiration d'un palier n'est appliquée qu'à la prochaine requête du compte. Un client
+    Pro parti sans revenir gardait donc « pro » en base indéfiniment : ses cinq boutiques
+    restaient relevées, et en priorité, comme s'il payait. De même, un compte passé de Pro à
+    Gratuit voyait ses cinq surveillances continuer au-delà de la limite de son palier, et un
+    compte suspendu restait relevé.
+
+    Désormais : palier effectif (expiré → gratuit), compte actif seulement, et au plus la
+    limite du palier — les surveillances les plus anciennes d'abord, celles que la personne a
+    choisies en premier. Les autres ne sont pas effacées : elles reprennent si le palier remonte.
+  */
+  const config = await getPlanConfig();
+  const palierEffectif = sql`(case when ${users.plan} <> 'free' and ${users.planExpiresAt} is not null and ${users.planExpiresAt} <= ${now.toISOString()}::timestamptz then 'free' else ${users.plan}::text end)`;
+  const bornes = config.plans.filter((plan) => plan.limits.watchedStores !== null);
+  const limite = bornes.length
+    ? sql`(case ${palierEffectif} ${sql.join(
+        bornes.map((plan) => sql`when ${plan.id} then ${plan.limits.watchedStores}::int`),
+        sql` `,
+      )} else null end)`
+    : sql`null::int`;
+  const rang = sql`(select count(*) from ${watches} as anterieures where anterieures.user_id = ${watches.userId} and anterieures.active and anterieures.created_at < ${watches.createdAt})`;
+  const autorisee = and(eq(users.status, 'active'), or(eq(users.role, 'admin'), sql`${limite} is null`, sql`${rang} < ${limite}`));
+
+  // « Dû » ne compte que ce qui a encore droit au relevé : une surveillance en attente de
+  // palier n'est pas un retard du planificateur, et ne doit pas en avoir l'air.
+  const [total] = await getDb()
+    .select({ value: count() })
+    .from(watches)
+    .innerJoin(users, eq(users.id, watches.userId))
+    .where(and(dues, autorisee));
+  const due = Number(total?.value ?? 0);
+
   const lot = await getDb()
     .select({ watch: watches })
     .from(watches)
     .innerJoin(users, eq(users.id, watches.userId))
-    .where(dues)
-    .orderBy(sql`case when ${users.plan} = 'free' then 1 else 0 end`, asc(watches.lastSweptAt))
+    .where(and(dues, autorisee))
+    .orderBy(sql`case when ${palierEffectif} = 'free' then 1 else 0 end`, asc(watches.lastSweptAt))
     .limit(BATCH_MAX);
 
   const echeance = Date.now() + budgetMs;

@@ -25,12 +25,17 @@ import { closeTestApp, createTestApp } from './support/helpers';
 const BOUTIQUE = 'store_calendrier';
 const PAGE = `<html><head><title>BOUTIQUE CAL</title></head><body>${BOUTIQUE}</body></html>`;
 
+/** Seconde boutique, pour distinguer deux surveillances d'un même compte. */
+const BOUTIQUE_2 = 'store_calendrier_2';
+
 let relevés = 0;
+let relevésBoutique2 = 0;
 
 const fausseVitrine = createServer((req, res) => {
   const url = new URL(req.url ?? '/', 'http://vitrine.test');
-  if (url.pathname === `/storefront/${BOUTIQUE}/products`) {
-    relevés += 1;
+  if (url.pathname === `/storefront/${BOUTIQUE}/products` || url.pathname === `/storefront/${BOUTIQUE_2}/products`) {
+    if (url.pathname.includes(BOUTIQUE_2)) relevésBoutique2 += 1;
+    else relevés += 1;
     res.writeHead(200, { 'content-type': 'application/json' });
     res.end(
       JSON.stringify({
@@ -133,6 +138,51 @@ describe('Radar — calendrier des relevés', () => {
     const avant = relevés;
     await sweepDueWatches();
     assert.equal(relevés, avant, 'une surveillance en pause ne visite plus le site du tiers');
+  });
+
+  /*
+    L'expiration d'un palier n'est appliquée qu'à la prochaine requête du compte : sans elle,
+    un client Pro parti sans revenir gardait ses cinq boutiques relevées, en priorité.
+  */
+  it('ne relève, pour un palier expiré, que ce que permet le palier Gratuit', async () => {
+    const { sweepDueWatches } = await import('@server/services/radar/sweeper');
+    const { eq } = await import('drizzle-orm');
+    const { getDb } = await import('@server/db/client');
+    const { users, watches } = await import('@server/db/schema');
+
+    const { agent, userId } = await signInWithPlan(app, 'calendrier-expire@exemple.test', 'pro');
+    const ajout = await agent.post('/api/radar/watches').send({ target: base }).expect(201);
+    const premiere = ajout.body.watch.id as string;
+    const [seconde] = await getDb()
+      .insert(watches)
+      .values({ userId, source: 'chariow_store', externalId: BOUTIQUE_2, label: 'BOUTIQUE 2', url: `${base}/2`, createdAt: new Date(Date.now() + 1_000) })
+      .returning({ id: watches.id });
+
+    // Palier échu depuis hier, jamais ramené à Gratuit faute de visite du compte.
+    await getDb().update(users).set({ planExpiresAt: new Date(Date.now() - 86_400_000) }).where(eq(users.id, userId));
+    await vieillirDernierRelevé(premiere, 48);
+    await vieillirDernierRelevé(seconde!.id, 48);
+
+    const avant = { premiere: relevés, seconde: relevésBoutique2 };
+    await sweepDueWatches();
+    assert.equal(relevés, avant.premiere + 1, 'la plus ancienne surveillance reste relevée');
+    assert.equal(relevésBoutique2, avant.seconde, 'la seconde dépasse la limite du palier Gratuit : elle attend');
+  });
+
+  it('ne relève pas les boutiques d’un compte suspendu', async () => {
+    const { sweepDueWatches } = await import('@server/services/radar/sweeper');
+    const { eq } = await import('drizzle-orm');
+    const { getDb } = await import('@server/db/client');
+    const { users } = await import('@server/db/schema');
+
+    const { agent, userId } = await signInWithPlan(app, 'calendrier-suspendu@exemple.test', 'pro');
+    const ajout = await agent.post('/api/radar/watches').send({ target: base }).expect(201);
+    await getDb().update(users).set({ status: 'suspended' }).where(eq(users.id, userId));
+    await vieillirDernierRelevé(ajout.body.watch.id as string, 48);
+
+    const avant = relevés;
+    await sweepDueWatches();
+    assert.equal(relevés, avant, 'un compte suspendu ne fait plus visiter le site du tiers');
   });
 });
 
