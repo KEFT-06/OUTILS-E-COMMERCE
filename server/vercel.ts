@@ -52,6 +52,19 @@ function prepare(): Promise<void> {
 }
 
 export default async function handler(request: IncomingMessage, response: ServerResponse): Promise<void> {
+  /*
+    Les pages du site n'ont pas besoin de la base : leur HTML part tout de suite. On attendait
+    la connexion à PostgreSQL avant d'envoyer quoi que ce soit, et au premier appel d'une
+    instance — base en Irlande, fonction aux États-Unis — l'écran restait noir plusieurs
+    secondes. La connexion se prépare quand même en parallèle, pour les appels qui suivent.
+  */
+  if (!(request.url ?? '/').startsWith('/api')) {
+    prepare().catch((error: unknown) => {
+      console.error('[démarrage] base de données inaccessible :', error instanceof Error ? error.message : error);
+    });
+    app(request as never, response as never);
+    return;
+  }
   try {
     await prepare();
   } catch (error) {
