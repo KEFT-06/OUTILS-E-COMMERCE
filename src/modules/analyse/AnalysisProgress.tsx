@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { CheckCircle2, Circle, ExternalLink, X } from 'lucide-react';
-import { useWorkspace } from '@/app/providers/WorkspaceProvider';
+import { analysisWaitingReason, useWorkspace } from '@/app/providers/WorkspaceProvider';
 import { countryName } from '@server/shared/countries';
 import type { AnalysisJob } from '@/shared/types/analysis';
 import { Badge } from '@/shared/ui/badge';
@@ -77,11 +77,14 @@ export function AnalysisProgress() {
         */}
         {enAttente && (
           <p className="mb-4 rounded-lg border border-amber-500/40 bg-amber-500/10 p-3 text-sm text-amber-700 dark:text-amber-400">
-            Le service d’IA est saturé en ce moment. L’analyse reprendra d’elle-même
+            {analysisWaitingReason(analysisJob.error?.code)} L’analyse reprendra d’elle-même
             {analysisJob.retryAfter
               ? `, vers ${new Date(analysisJob.retryAfter).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })}`
               : ''}
-            . L’étude du web est déjà faite et vos points restent réservés : rien n’est perdu.
+            .{' '}
+            {sources.length > 0
+              ? 'L’étude du web est déjà faite et vos points restent réservés : rien n’est perdu.'
+              : 'Vos points restent réservés : rien n’est perdu.'}
           </p>
         )}
         <ol className="grid gap-3 sm:grid-cols-3">

@@ -90,11 +90,35 @@ const JOB_STEPS: Record<AnalysisJob['status'], string> = {
 export const analysisStepLabel = (status: AnalysisJob['status']) => JOB_STEPS[status];
 
 /**
+ * Cause réelle d'une attente, lue sur le code d'erreur conservé par le serveur.
+ *
+ * L'écran disait « le service d'IA est saturé » pour toute attente, y compris quand c'était la
+ * recherche web qui tardait ou le quota du fournisseur qui était atteint. Nommer la vraie cause
+ * dit à l'utilisateur quoi attendre, et à l'administrateur où regarder.
+ */
+export function analysisWaitingReason(code: string | null | undefined): string {
+  const search = code?.startsWith('WEB_SEARCH_');
+  if (code?.endsWith('_RATE_LIMITED')) {
+    return search
+      ? 'Le moteur de recherche web limite le nombre de demandes en ce moment.'
+      : 'Le quota de demandes du service d’IA est atteint pour le moment.';
+  }
+  if (code?.endsWith('_TIMEOUT')) {
+    return search ? 'La recherche web n’a pas répondu à temps.' : 'Le service d’IA n’a pas répondu à temps.';
+  }
+  if (code?.endsWith('_UNAVAILABLE')) return 'Le service d’IA rencontre une panne passagère chez Google.';
+  return 'Le service d’IA de Google est saturé en ce moment.';
+}
+
+/**
  * Étape du suivi, avec l'heure du prochain essai quand il y en a un. Dire « ça reprendra » sans
  * dire quand laisse penser à un blocage : l'attente doit avoir une fin visible.
  */
-function stepDescription(status: AnalysisJob['status'], retryAfter?: string | null): string {
-  const base = JOB_STEPS[status];
+function stepDescription(status: AnalysisJob['status'], retryAfter?: string | null, code?: string | null): string {
+  const base =
+    status === 'waiting'
+      ? `${analysisWaitingReason(code)} L’analyse reprendra d’elle-même : vos points restent réservés.`
+      : JOB_STEPS[status];
   if (status !== 'waiting' || !retryAfter) return base;
   const heure = new Date(retryAfter);
   if (Number.isNaN(heure.getTime())) return base;
@@ -248,12 +272,13 @@ export const WorkspaceProvider: React.FC<{ children: React.ReactNode }> = ({ chi
   const analysisJobId = analysisJob?.id;
   const analysisJobStatus = analysisJob?.status;
   const analysisJobRetryAfter = analysisJob?.retryAfter ?? null;
+  const analysisJobErrorCode = analysisJob?.error?.code ?? null;
   useEffect(() => {
     if (!analysisJobId || analysisJobStatus === 'completed' || analysisJobStatus === 'failed') return;
     const toastId = `analyse-${analysisJobId}`;
     toast.loading('Analyse en cours', {
       id: toastId,
-      description: stepDescription(analysisJobStatus ?? 'queued', analysisJobRetryAfter),
+      description: stepDescription(analysisJobStatus ?? 'queued', analysisJobRetryAfter, analysisJobErrorCode),
       duration: Infinity,
     });
 
@@ -301,7 +326,7 @@ export const WorkspaceProvider: React.FC<{ children: React.ReactNode }> = ({ chi
       cancelled = true;
       clearInterval(timer);
     };
-  }, [accountId, analysisJobId, analysisJobStatus, analysisJobRetryAfter, navigate, refresh]);
+  }, [accountId, analysisJobId, analysisJobStatus, analysisJobRetryAfter, analysisJobErrorCode, navigate, refresh]);
 
   // Export PDF : passe obligatoirement par la porte de conformité.
   const exportPdf = useCallback(async () => {
