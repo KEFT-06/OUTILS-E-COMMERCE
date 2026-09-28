@@ -26,7 +26,8 @@ import type { EspionnageView as EspionnageData, SpiedAd } from '@/shared/types/r
 import { Alert, AlertDescription, AlertTitle } from '@/shared/ui/alert';
 import { Badge } from '@/shared/ui/badge';
 import { Button } from '@/shared/ui/button';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/shared/ui/card';
+import { Card } from '@/shared/ui/card';
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/shared/ui/dialog';
 import { Empty, EmptyDescription, EmptyHeader, EmptyTitle } from '@/shared/ui/empty';
 import { Input } from '@/shared/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/shared/ui/select';
@@ -106,130 +107,250 @@ function Plateformes({ noms }: { noms: string[] }) {
 const dateFr = (iso: string) =>
   new Date(iso).toLocaleDateString('fr-FR', { day: 'numeric', month: 'long', year: 'numeric' });
 
-function AdCard({ ad, onWatch, busy }: { ad: SpiedAd; onWatch: (host: string) => void; busy: string | null }) {
-  const [imageCassee, setImageCassee] = useState(false);
-  const lien = safeHttpUrl(ad.landingUrl);
-  const bibliotheque = `https://www.facebook.com/ads/library/?id=${encodeURIComponent(ad.externalId)}`;
+/** Boutons d'action tels que Meta les renvoie (en anglais), dits comme sur la bibliothèque en français. */
+const CTA_FR: Record<string, string> = {
+  'learn more': 'En savoir plus',
+  'see details': 'Voir les détails',
+  download: 'Télécharger',
+  'shop now': 'Acheter',
+  'buy now': 'Acheter',
+  'sign up': 'S’inscrire',
+  'order now': 'Commander',
+  'get offer': 'Profiter de l’offre',
+  'book now': 'Réserver',
+  'send message': 'Envoyer un message',
+  'send whatsapp message': 'Envoyer un message WhatsApp',
+  'contact us': 'Nous contacter',
+  subscribe: 'S’abonner',
+  'watch more': 'Regarder plus',
+  'apply now': 'Postuler',
+  'get quote': 'Demander un devis',
+};
+const ctaFr = (cta: string | null) => (cta ? (CTA_FR[cta.trim().toLowerCase()] ?? cta) : null);
 
+/** Visuel de l'annonce : l'aperçu conservé d'abord (il ne périme pas), sinon l'adresse de Meta. */
+function AdMedia({ ad }: { ad: SpiedAd }) {
+  const [cassee, setCassee] = useState(false);
+  const source = ad.thumbnailUrl ?? ad.mediaUrl;
   return (
-    <Card className="flex flex-col overflow-hidden">
-      <div className="relative aspect-square w-full bg-muted">
-        {/*
-          Les adresses de visuel de Meta sont signées et expirent. Sans ce repli, le mur se
-          remplirait d'images cassées quelques jours après chaque collecte.
-        */}
-        {ad.mediaUrl && !imageCassee ? (
-          <img
-            src={ad.mediaUrl}
-            alt={ad.title ?? 'Visuel de l’annonce'}
-            loading="lazy"
-            referrerPolicy="no-referrer"
-            className="size-full object-cover"
-            onError={() => setImageCassee(true)}
-          />
-        ) : (
-          <div className="flex size-full flex-col items-center justify-center gap-2 p-4 text-center text-muted-foreground">
-            <ImageOff className="size-6" aria-hidden="true" />
-            <span className="text-xs">Visuel expiré chez Meta</span>
-          </div>
-        )}
-        {ad.mediaKind === 'video' && (
-          <span className="absolute top-2 left-2 flex items-center gap-1 rounded-full bg-black/70 px-2 py-0.5 text-xs font-medium text-white">
-            <Play className="size-3" aria-hidden="true" />
-            Vidéo
-          </span>
-        )}
-        {ad.variants > 1 && (
-          <span className="absolute top-2 right-2 rounded-full bg-black/70 px-2 py-0.5 text-xs font-medium text-white">
-            {ad.variants} variantes
-          </span>
-        )}
-      </div>
+    <div className="relative aspect-square w-full overflow-hidden bg-muted">
+      {source && !cassee ? (
+        <img
+          src={source}
+          alt={ad.title ?? 'Visuel de l’annonce'}
+          loading="lazy"
+          referrerPolicy="no-referrer"
+          className="size-full object-cover"
+          onError={() => setCassee(true)}
+        />
+      ) : (
+        <div className="flex size-full flex-col items-center justify-center gap-2 p-4 text-center text-muted-foreground">
+          <ImageOff className="size-6" aria-hidden="true" />
+          <span className="text-xs">Aperçu pas encore disponible</span>
+        </div>
+      )}
+      {ad.mediaKind === 'video' && (
+        <span className="absolute top-2 left-2 flex items-center gap-1 rounded-full bg-black/70 px-2 py-0.5 text-xs font-medium text-white">
+          <Play className="size-3" aria-hidden="true" />
+          Vidéo
+        </span>
+      )}
+    </div>
+  );
+}
 
-      <CardHeader className="gap-1.5">
-        {/*
-          L'en-tête reprend ce que la bibliothèque de Meta affiche, et dans le même ordre :
-          l'état, l'identifiant, la date de lancement, les plateformes. Ces quatre éléments
-          étaient tous en base depuis la première collecte, et aucun n'était montré. Les
-          retrouver ici évite d'ouvrir Meta pour vérifier ce que l'outil savait déjà.
-        */}
-        <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-xs">
+/** Barre de lien sous le visuel, comme chez Meta : domaine, titre, description et bouton. */
+function LinkBar({ ad }: { ad: SpiedAd }) {
+  const lien = safeHttpUrl(ad.landingUrl);
+  const cta = ctaFr(ad.ctaText);
+  return (
+    <div className="flex items-center gap-3 border-t bg-muted/40 px-3 py-2.5">
+      <div className="min-w-0 flex-1">
+        <p className="truncate text-[11px] uppercase tracking-wide text-muted-foreground">{ad.linkCaption ?? ad.storeHost}</p>
+        {ad.title && <p className="line-clamp-2 text-sm font-semibold leading-snug">{ad.title}</p>}
+        {ad.linkDescription && <p className="line-clamp-1 text-xs text-muted-foreground">{ad.linkDescription}</p>}
+      </div>
+      {cta && lien && (
+        <Button asChild size="sm" variant="secondary" className="shrink-0">
+          <a href={lien} target="_blank" rel="noreferrer noopener">
+            {cta}
+          </a>
+        </Button>
+      )}
+    </div>
+  );
+}
+
+/** Initiale de l'annonceur, à la place de sa photo de profil (dont l'adresse expire aussi). */
+function AdvertiserAvatar({ name }: { name: string }) {
+  return (
+    <span className="flex size-9 shrink-0 items-center justify-center rounded-full bg-primary/10 text-sm font-bold text-brand-green-text" aria-hidden="true">
+      {name.trim().charAt(0).toUpperCase() || '?'}
+    </span>
+  );
+}
+
+/**
+ * Une annonce, présentée comme dans la bibliothèque publicitaire de Meta : état, identifiant,
+ * date de lancement, plateformes, puis l'annonce elle-même — annonceur, texte, visuel, barre de
+ * lien. C'est la disposition que connaissent ceux qui se servent déjà de la bibliothèque.
+ */
+function AdCard({
+  ad,
+  onWatch,
+  onShowDetails,
+  onShowAdvertiser,
+  busy,
+}: {
+  ad: SpiedAd;
+  onWatch: (host: string) => void;
+  onShowDetails: (ad: SpiedAd) => void;
+  onShowAdvertiser: (ad: SpiedAd) => void;
+  busy: string | null;
+}) {
+  const annonceur = ad.advertiser ?? ad.storeHost;
+  return (
+    <Card className="flex flex-col gap-0 overflow-hidden py-0">
+      <div className="space-y-1.5 p-4 text-xs">
+        <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
           {ad.active ? (
-            <span className="flex items-center gap-1 font-medium text-success">
+            <span className="flex items-center gap-1 font-semibold text-success">
               <CheckCircle2 className="size-3.5" aria-hidden="true" />
               Active
             </span>
           ) : (
-            <span className="font-medium text-muted-foreground">Arrêtée</span>
+            <span className="font-semibold text-muted-foreground">Inactive</span>
           )}
           <span className="text-muted-foreground">
-            ID <span className="font-mono tabular-nums">{ad.externalId}</span>
+            ID de la bibliothèque : <span className="font-mono tabular-nums">{ad.externalId}</span>
           </span>
         </div>
-        {ad.startedAt && <p className="text-xs text-muted-foreground">Lancée le {dateFr(ad.startedAt)}</p>}
-        <Plateformes noms={ad.platforms} />
-
-        <CardTitle className="text-sm leading-snug">{ad.title ?? 'Annonce sans titre'}</CardTitle>
-        <CardDescription className="flex flex-wrap items-center gap-1.5">
+        {ad.startedAt && <p className="text-muted-foreground">Diffusion commencée le {dateFr(ad.startedAt)}</p>}
+        <div className="flex flex-wrap items-center gap-2">
+          <span className="text-muted-foreground">Plateformes</span>
+          <Plateformes noms={ad.platforms} />
+        </div>
+        <div className="flex flex-wrap items-center gap-1.5 pt-0.5">
           <AgeBadge days={ad.runningDays} />
-          {/*
-            Une collecte ne ramène qu'un nombre plafonné d'annonces, triées par impressions :
-            ne plus retrouver une annonce ne prouve pas qu'elle s'est arrêtée. On dit donc ce
-            qu'on sait — la date de la dernière fois qu'on l'a vue — au lieu de laisser croire
-            qu'elle tourne encore. Sept jours : au-delà d'une semaine, l'incertitude compte.
-          */}
+          {ad.variants > 1 && <Badge variant="outline">{ad.variants} publicités utilisent ce contenu</Badge>}
           {ad.active && ad.daysSinceSeen > 7 && (
             <Badge variant="outline" title="Une collecte ne ramène qu'une partie des annonces : son absence ne prouve pas un arrêt.">
               Non revue depuis {ad.daysSinceSeen} jours
             </Badge>
           )}
-        </CardDescription>
-      </CardHeader>
+        </div>
+        <Button variant="outline" size="sm" className="mt-2 w-full" onClick={() => onShowDetails(ad)}>
+          Voir le détail de la publicité
+        </Button>
+      </div>
 
-      <CardContent className="flex flex-1 flex-col gap-3">
-        {ad.bodyText && <p className="line-clamp-4 text-xs leading-relaxed text-muted-foreground">{ad.bodyText}</p>}
-
-        <p className="flex items-center gap-1.5 text-xs text-muted-foreground">
-          <Store className="size-3.5 shrink-0" aria-hidden="true" />
-          <span className="truncate" title={ad.storeHost}>
-            {ad.advertiser ?? ad.storeHost}
-          </span>
-          <span className="shrink-0 text-[10px] uppercase opacity-70">Sponsorisé</span>
-        </p>
-
-        <div className="mt-auto flex flex-wrap gap-2">
-          {lien && (
-            <Button asChild size="sm" variant="secondary" className="flex-1">
-              <a href={lien} target="_blank" rel="noreferrer noopener">
-                Voir le produit
-                <ExternalLink />
-              </a>
-            </Button>
-          )}
-          <Button
-            size="sm"
-            variant="outline"
-            disabled={busy === ad.storeHost}
-            onClick={() => onWatch(ad.storeHost)}
-            title="Suivre cette boutique jour après jour"
-          >
+      <div className="flex flex-1 flex-col border-t">
+        <div className="flex items-center gap-2.5 px-4 pt-3 pb-2">
+          <AdvertiserAvatar name={annonceur} />
+          <div className="min-w-0">
+            <button
+              type="button"
+              className="block max-w-full truncate text-left text-sm font-semibold hover:underline"
+              onClick={() => onShowAdvertiser(ad)}
+              title="Voir toutes les annonces de cet annonceur"
+            >
+              {annonceur}
+            </button>
+            <p className="text-[11px] text-muted-foreground">Sponsorisé</p>
+          </div>
+        </div>
+        {ad.bodyText && <p className="line-clamp-4 px-4 pb-3 text-sm leading-relaxed whitespace-pre-line">{ad.bodyText}</p>}
+        <AdMedia ad={ad} />
+        <LinkBar ad={ad} />
+        <div className="mt-auto flex flex-wrap gap-2 border-t p-3">
+          <Button size="sm" variant="outline" disabled={busy === ad.storeHost} onClick={() => onWatch(ad.storeHost)} title="Suivre cette boutique jour après jour">
             <Eye />
-            Surveiller
-          </Button>
-          {/*
-            L'équivalent du « See ad details » de la bibliothèque. Le lien est juste par
-            construction : l'identifiant enregistré EST l'`adArchiveID` de Meta, celui que
-            sa bibliothèque affiche sous « Library ID » et attend dans « ?id= ».
-          */}
-          <Button asChild size="sm" variant="ghost">
-            <a href={bibliotheque} target="_blank" rel="noreferrer noopener">
-              Détail chez Meta
-              <ExternalLink />
-            </a>
+            Surveiller la boutique
           </Button>
         </div>
-      </CardContent>
+      </div>
     </Card>
+  );
+}
+
+/** Détail d'une annonce : tout le texte, toutes les variantes, les liens — ce que Meta montre en grand. */
+function AdDetailsDialog({ ad, onClose, onShowAdvertiser }: { ad: SpiedAd | null; onClose: () => void; onShowAdvertiser: (ad: SpiedAd) => void }) {
+  const lien = ad ? safeHttpUrl(ad.landingUrl) : null;
+  const bibliotheque = ad ? `https://www.facebook.com/ads/library/?id=${encodeURIComponent(ad.externalId)}` : '#';
+  const page = ad?.pageUrl ? safeHttpUrl(ad.pageUrl) : null;
+  return (
+    <Dialog open={ad !== null} onOpenChange={(open) => !open && onClose()}>
+      <DialogContent className="max-h-[90svh] overflow-y-auto sm:max-w-2xl">
+        {ad && (
+          <>
+            <DialogHeader>
+              <DialogTitle>{ad.advertiser ?? ad.storeHost}</DialogTitle>
+              <DialogDescription>
+                {ad.active ? 'Active' : 'Inactive'} · ID {ad.externalId}
+                {ad.startedAt ? ` · diffusion commencée le ${dateFr(ad.startedAt)}` : ''}
+                {ad.runningDays !== null ? ` · ${ad.runningDays} jours observés` : ''}
+              </DialogDescription>
+            </DialogHeader>
+            <div className="grid gap-4 sm:grid-cols-2">
+              <div className="overflow-hidden rounded-lg border">
+                <AdMedia ad={ad} />
+                <LinkBar ad={ad} />
+              </div>
+              <div className="space-y-3 text-sm">
+                {ad.bodyText && <p className="leading-relaxed whitespace-pre-line">{ad.bodyText}</p>}
+                <p className="text-xs text-muted-foreground">
+                  Boutique : <span className="font-medium text-foreground">{ad.storeHost}</span>
+                  {ad.displayFormat ? ` · format ${ad.displayFormat.toLowerCase()}` : ''}
+                </p>
+              </div>
+            </div>
+            {ad.cards.length > 1 && (
+              <div className="space-y-2">
+                <p className="text-sm font-semibold">{ad.cards.length} variantes de cette publicité</p>
+                <ol className="grid gap-2 sm:grid-cols-2">
+                  {ad.cards.map((carte, rang) => (
+                    <li key={rang} className="rounded-lg border p-3 text-sm">
+                      <p className="text-xs text-muted-foreground">Variante {rang + 1}</p>
+                      {carte.title && <p className="font-medium">{carte.title}</p>}
+                      {carte.body && <p className="line-clamp-4 text-muted-foreground">{carte.body}</p>}
+                      {carte.ctaText && <p className="mt-1 text-xs">Bouton : {ctaFr(carte.ctaText)}</p>}
+                    </li>
+                  ))}
+                </ol>
+              </div>
+            )}
+            <div className="flex flex-wrap gap-2">
+              {lien && (
+                <Button asChild size="sm">
+                  <a href={lien} target="_blank" rel="noreferrer noopener">
+                    Voir le produit
+                    <ExternalLink />
+                  </a>
+                </Button>
+              )}
+              <Button size="sm" variant="outline" onClick={() => onShowAdvertiser(ad)}>
+                <Store />
+                Toutes les annonces de cet annonceur
+              </Button>
+              <Button asChild size="sm" variant="ghost">
+                <a href={bibliotheque} target="_blank" rel="noreferrer noopener">
+                  Ouvrir chez Meta
+                  <ExternalLink />
+                </a>
+              </Button>
+              {page && (
+                <Button asChild size="sm" variant="ghost">
+                  <a href={page} target="_blank" rel="noreferrer noopener">
+                    Page Facebook
+                    <ExternalLink />
+                  </a>
+                </Button>
+              )}
+            </div>
+          </>
+        )}
+      </DialogContent>
+    </Dialog>
   );
 }
 
@@ -253,6 +374,10 @@ export function EspionnageView() {
   const [recherche, setRecherche] = useState('');
   const [recherchee, setRecherchee] = useState('');
   const [busy, setBusy] = useState<string | null>(null);
+  const [details, setDetails] = useState<SpiedAd | null>(null);
+  /** « Toutes les annonces de cet annonceur », comme sur la page d'un annonceur chez Meta. */
+  const [annonceur, setAnnonceur] = useState<{ pageId: string | null; storeHost: string; nom: string } | null>(null);
+  const [collecteEnCours, setCollecteEnCours] = useState(false);
 
   const load = useCallback(async () => {
     // Aucune limite demandée : le serveur sert ce que le palier autorise. En fixer une ici
@@ -262,17 +387,53 @@ export function EspionnageView() {
     if (format !== 'tous') params.set('mediaKind', format);
     if (etat !== 'toutes') params.set('etat', etat);
     if (recherchee) params.set('search', recherchee);
+    if (annonceur?.pageId) params.set('pageId', annonceur.pageId);
+    else if (annonceur) params.set('storeHost', annonceur.storeHost);
     try {
       setData(await apiRequest<EspionnageData>(`/api/espionnage?${params.toString()}`));
       setErreur(null);
     } catch (caught) {
       setErreur(toApiError(caught, 'Le mur d’espionnage n’a pas pu être chargé.').message);
     }
-  }, [anciennete, format, etat, tri, recherchee]);
+  }, [anciennete, format, etat, tri, recherchee, annonceur]);
 
   useEffect(() => {
     void load();
   }, [load]);
+
+  // Une collecte tourne : on relit le mur toutes les trente secondes, les annonces arrivent seules.
+  const collecting = data?.collecting === true;
+  useEffect(() => {
+    if (!collecting) return;
+    const timer = setInterval(() => void load(), 30_000);
+    return () => clearInterval(timer);
+  }, [collecting, load]);
+
+  const voirAnnonceur = (ad: SpiedAd) => {
+    setDetails(null);
+    setAnnonceur({ pageId: ad.pageId, storeHost: ad.storeHost, nom: ad.advertiser ?? ad.storeHost });
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  };
+
+  /** Réservé à l'administration : chaque passage est facturé par le fournisseur. */
+  async function lancerCollecte() {
+    setCollecteEnCours(true);
+    try {
+      const { outcome } = await apiRequest<{ outcome: { adsKept: number; adsExamined: number; pending?: number } }>('/api/radar/discover/refresh', {
+        method: 'POST',
+      });
+      toast.success(
+        (outcome.pending ?? 0) > 0
+          ? `Collecte lancée : ${outcome.adsKept} annonces déjà versées, la suite arrive dans quelques minutes.`
+          : `Collecte terminée : ${outcome.adsKept} annonces retenues sur ${outcome.adsExamined} examinées.`,
+      );
+      await load();
+    } catch (caught) {
+      toast.error(toApiError(caught, 'La collecte n’a pas pu être lancée.').message);
+    } finally {
+      setCollecteEnCours(false);
+    }
+  }
 
   async function surveiller(host: string) {
     setBusy(host);
@@ -301,6 +462,36 @@ export function EspionnageView() {
           <AlertTitle>Mur indisponible</AlertTitle>
           <AlertDescription>{erreur}</AlertDescription>
         </Alert>
+      )}
+
+      {collecting && (
+        <Alert variant="info" role="status">
+          <AlertTitle>Collecte en cours</AlertTitle>
+          <AlertDescription>De nouvelles annonces arrivent dans quelques minutes : le mur se met à jour tout seul.</AlertDescription>
+        </Alert>
+      )}
+
+      {estAdmin && data?.configured && (
+        <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-dashed p-3 text-sm">
+          <p className="text-muted-foreground">
+            Administration : la collecte tourne chaque semaine d’elle-même. Chaque passage est facturé par Apify.
+          </p>
+          <Button size="sm" variant="outline" disabled={collecteEnCours || collecting} onClick={() => void lancerCollecte()}>
+            {collecteEnCours ? 'Collecte…' : 'Lancer une collecte maintenant'}
+          </Button>
+        </div>
+      )}
+
+      {annonceur && (
+        <div className="flex flex-wrap items-center gap-2 rounded-lg bg-accent/60 px-3 py-2 text-sm">
+          <Store className="size-4 shrink-0" aria-hidden="true" />
+          <span className="min-w-0 flex-1">
+            Toutes les annonces de <span className="font-semibold">{annonceur.nom}</span>
+          </span>
+          <Button size="sm" variant="ghost" onClick={() => setAnnonceur(null)}>
+            Retirer ce filtre
+          </Button>
+        </div>
       )}
 
       {/*
@@ -396,7 +587,7 @@ export function EspionnageView() {
       </div>
 
       {data === null && !erreur && (
-        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+        <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4">
           {[0, 1, 2, 3].map((index) => (
             <Skeleton key={index} className="h-80 rounded-xl" />
           ))}
@@ -421,12 +612,14 @@ export function EspionnageView() {
       )}
 
       {data && data.ads.length > 0 && (
-        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+        <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4">
           {data.ads.map((ad) => (
-            <AdCard key={ad.id} ad={ad} onWatch={surveiller} busy={busy} />
+            <AdCard key={ad.id} ad={ad} onWatch={surveiller} onShowDetails={setDetails} onShowAdvertiser={voirAnnonceur} busy={busy} />
           ))}
         </div>
       )}
+
+      <AdDetailsDialog ad={details} onClose={() => setDetails(null)} onShowAdvertiser={voirAnnonceur} />
 
       {data && data.ads.length === 0 && (
         <Empty className="border border-dashed py-12">

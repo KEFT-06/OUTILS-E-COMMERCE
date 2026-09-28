@@ -124,6 +124,15 @@ export interface SpiedAd {
   platforms: string[];
   active: boolean;
   lastSeenAt: string;
+  /** Aperçu conservé sur le serveur : il ne périme pas. null : seule l'adresse de Meta. */
+  thumbnailUrl: string | null;
+  pageId: string | null;
+  pageUrl: string | null;
+  ctaText: string | null;
+  displayFormat: string | null;
+  linkCaption: string | null;
+  linkDescription: string | null;
+  cards: { title: string | null; body: string | null; linkUrl: string | null; ctaText: string | null }[];
 }
 
 export interface EspionnageView {
@@ -136,4 +145,6 @@ export interface EspionnageView {
   visibleLimit: number | null;
   /** Annonces correspondant aux filtres mais masquées par le palier. */
   hiddenByPlan: number;
+  /** Une collecte tourne : de nouvelles annonces arrivent dans quelques minutes. */
+  collecting?: boolean;
 }
