@@ -126,7 +126,9 @@ export function CreativeGeneratorPanel() {
   const [isGenerating, setIsGenerating] = useState(false);
   const [progress, setProgress] = useState<CreativeStatus['status'] | null>(null);
   const [error, setError] = useState<ApiError | null>(null);
-  const [result, setResult] = useState<{ requestId: string; mediaType: 'image' | 'video' } | null>(null);
+  const [result, setResult] = useState<{ requestId: string; mediaType: 'image' | 'video'; retentionDays?: number | null } | null>(
+    null,
+  );
   const [attested, setAttested] = useState<boolean[]>(() => ATTESTATIONS.map(() => false));
 
   // Remis à false au montage : en mode strict, React démonte et remonte une fois.
@@ -219,7 +221,7 @@ export function CreativeGeneratorPanel() {
           if (!status.mediaType) {
             throw new ApiError("La génération s'est terminée sans produire de fichier.");
           }
-          setResult({ requestId: status.requestId, mediaType: status.mediaType });
+          setResult({ requestId: status.requestId, mediaType: status.mediaType, retentionDays: status.retentionDays });
         } finally {
           if (!unmountedRef.current) {
             setIsGenerating(false);
@@ -567,8 +569,14 @@ export function CreativeGeneratorPanel() {
                 </Button>
               )}
 
+              {/* La durée vient du serveur, par fournisseur : une vidéo Veo ne reste que deux
+                  jours chez Google, un visuel généré en interne ne se périme pas. */}
               <p className="text-xs leading-relaxed text-muted-foreground">
-                Le fournisseur ne conserve le fichier qu’environ sept jours : téléchargez-le pour le garder.
+                {result.retentionDays === null
+                  ? 'Ce fichier est enregistré sur votre compte.'
+                  : result.retentionDays === undefined
+                    ? 'Le fournisseur ne conserve le fichier que quelques jours : téléchargez-le pour le garder.'
+                    : `Le fournisseur ne conserve le fichier que ${result.retentionDays} jours : téléchargez-le pour le garder.`}
               </p>
             </div>
           </div>

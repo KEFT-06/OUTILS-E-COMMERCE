@@ -12,6 +12,7 @@ import {
   fileFormatOf,
   generationStateOf,
   getCreativeStatus,
+  PROVIDER_RETENTION_DAYS,
   streamCreativeFile,
   submitVideo,
   submitVisual,
@@ -117,7 +118,7 @@ creativesRouter.post(
           fileFormat: image.mimeType === 'image/jpeg' ? 'jpg' : (image.mimeType.split('/')[1] ?? 'png'),
         }),
       });
-      res.status(202).json({ requestId: result.requestId, status: 'completed', mediaType: 'image' });
+      res.status(202).json({ requestId: result.requestId, status: 'completed', mediaType: 'image', retentionDays: PROVIDER_RETENTION_DAYS.interne });
       return;
     }
 
@@ -136,7 +137,7 @@ creativesRouter.post(
       }),
     });
 
-    res.status(202).json(result);
+    res.status(202).json({ ...result, retentionDays: PROVIDER_RETENTION_DAYS.higgsfield });
   }),
 );
 
@@ -168,7 +169,7 @@ creativesRouter.post(
       }),
     });
 
-    res.status(202).json(result);
+    res.status(202).json({ ...result, retentionDays: PROVIDER_RETENTION_DAYS[VIDEO_PROVIDER] });
   }),
 );
 
@@ -188,13 +189,13 @@ creativesRouter.get(
       if (!(await localVisualExists(req.auth!, requestId))) {
         throw new AppError(404, 'Visuel introuvable sur votre compte.', 'CREATIVE_FILE_MISSING');
       }
-      res.json({ requestId, status: 'completed', mediaType: 'image' });
+      res.json({ requestId, status: 'completed', mediaType: 'image', retentionDays: PROVIDER_RETENTION_DAYS.interne });
       return;
     }
 
     const status = await getCreativeStatus(requestId, provider);
     await settleGeneration(generation, generationStateOf(status.status), fileFormatOf(status));
-    res.json(status);
+    res.json({ ...status, retentionDays: PROVIDER_RETENTION_DAYS[provider] });
   }),
 );
 

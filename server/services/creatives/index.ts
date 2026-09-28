@@ -95,6 +95,24 @@ export function visualProvider(): CreativeProvider {
 
 export const VIDEO_PROVIDER: CreativeProvider = 'veo';
 
+/**
+ * Jours pendant lesquels le fichier reste récupérable, par fournisseur ; null : sans limite.
+ *
+ * Une seule durée (sept jours, celle de Higgsfield) valait pour tous, et elle était fausse
+ * deux fois : Google n'y garde une vidéo Veo que DEUX jours (« Generated videos are stored on
+ * the server for 2 days, after which they are removed », ai.google.dev/gemini-api/docs/veo,
+ * vérifié le 28 septembre 2026) — l'utilisateur qui revenait le troisième jour trouvait un
+ * fichier perdu qu'on lui avait promis pour une semaine ; et les visuels générés en interne,
+ * enregistrés en base, n'expirent jamais.
+ * fal.ai garde la durée précédemment appliquée, faute de durée publiée vérifiée.
+ */
+export const PROVIDER_RETENTION_DAYS: Record<CreativeProvider, number | null> = {
+  veo: 2,
+  higgsfield: 7,
+  fal: 7,
+  interne: null,
+};
+
 /** Longueur maximale du prompt acceptée par Kling. */
 const VIDEO_PROMPT_MAX = 2500;
 
@@ -247,6 +265,8 @@ export interface CreativeStatus {
   /** Présent quand un fichier est prêt. Le lien lui-même reste côté serveur. */
   mediaType?: 'image' | 'video';
   message?: string;
+  /** Jours pendant lesquels le fichier reste récupérable ; null : sans limite. Ajouté par la route. */
+  retentionDays?: number | null;
 }
 
 function resultMedia(status: HiggsfieldStatus): { mediaType: 'image' | 'video'; url: string } | null {

@@ -12,4 +12,6 @@ export interface CreativeStatus {
   /** Présent quand un fichier est prêt ; il se récupère via le relais du serveur. */
   mediaType?: 'image' | 'video';
   message?: string;
+  /** Jours pendant lesquels le fichier reste récupérable chez le fournisseur ; null : gardé sans limite. */
+  retentionDays?: number | null;
 }

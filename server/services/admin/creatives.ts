@@ -3,21 +3,20 @@ import { z } from 'zod';
 import { getDb } from '@server/db/client';
 import { generations, users } from '@server/db/schema';
 import { AppError } from '@server/middleware';
+import { type CreativeProvider, PROVIDER_RETENTION_DAYS } from '@server/services/creatives';
 
 /**
  * Bibliothèque des créatifs pour l'administration : vidéos et visuels générés par les comptes,
  * avec accès au fichier.
  *
- * Deux régimes, selon l'endroit où vit le fichier. Une vidéo reste chez fal.ai, qui ne la garde
- * qu'environ sept jours : passé ce délai, la ligne demeure (date, créateur, points) mais le
- * fichier est annoncé expiré. Un visuel produit par Cloudflare est enregistré chez nous : il ne
- * périme pas, et la bibliothèque ne doit pas le déclarer perdu au bout d'une semaine.
+ * La durée de vie du fichier dépend de son fournisseur (PROVIDER_RETENTION_DAYS) : une vidéo Veo
+ * ne reste que deux jours chez Google — elle était comptée sept, et le bouton « Voir » échouait
+ * du troisième au septième jour. Passé le délai, la ligne demeure (date, créateur, points) mais
+ * le fichier est annoncé expiré. Un visuel produit en interne est enregistré chez nous : il ne
+ * périme pas, et la bibliothèque ne doit pas le déclarer perdu.
  *
  * Les visuels d'avant la bascule restent chez Higgsfield, et gardent donc l'ancien régime.
  */
-
-/** Durée de conservation des fichiers chez Higgsfield (docs.higgsfield.ai, « Billing and retention »). */
-export const PROVIDER_FILE_RETENTION_DAYS = 7;
 
 const CREATIVE_KINDS = ['video', 'image'] as const;
 
@@ -35,8 +34,10 @@ const STORED_LOCALLY = 'interne';
 
 const isAvailable = (row: { status: string; provider: string; providerRef: string | null; createdAt: Date }, now: number) => {
   if (row.status !== 'completed' || !row.providerRef) return false;
-  if (row.provider === STORED_LOCALLY) return true;
-  return now - row.createdAt.getTime() < PROVIDER_FILE_RETENTION_DAYS * 86_400_000;
+  const days = PROVIDER_RETENTION_DAYS[row.provider as CreativeProvider];
+  if (days === null) return true;
+  // Fournisseur inconnu : la durée la plus courte, plutôt que de promettre un fichier perdu.
+  return now - row.createdAt.getTime() < (days ?? PROVIDER_RETENTION_DAYS.veo!) * 86_400_000;
 };
 
 /**
@@ -87,7 +88,6 @@ export async function listCreatives(query: CreativeListQuery) {
       completed: counts.find((entry) => entry.status === 'completed')?.value ?? 0,
       failed: counts.find((entry) => entry.status === 'failed')?.value ?? 0,
     },
-    retentionDays: PROVIDER_FILE_RETENTION_DAYS,
     entries: rows.map((row) => ({
       id: row.id,
       status: row.status,

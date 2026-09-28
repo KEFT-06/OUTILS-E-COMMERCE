@@ -106,6 +106,7 @@ describe('Générations facturées', () => {
     creativeStatuses.set(requestId, { status: 'completed', images: [{ url: 'https://fichiers.invalid/visuel.png' }] });
     const polled = await owner.agent.get(`/api/creatives/requests/${requestId}`).expect(200);
     assert.equal(polled.body.status, 'completed');
+    assert.equal(polled.body.retentionDays, 7, 'l’écran annonce la durée de CE fournisseur');
 
     const { getDb } = await import('@server/db/client');
     const { generations } = await import('@server/db/schema');
@@ -120,6 +121,44 @@ describe('Générations facturées', () => {
     await stranger.agent.get(`/api/creatives/requests/${requestId}/file`).expect(404);
     const ownFile = await owner.agent.get(`/api/creatives/requests/${requestId}/file`);
     assert.notEqual(ownFile.status, 404, 'l’auteur passe le contrôle de propriété');
+  });
+
+  /*
+    Google ne garde une vidéo Veo que deux jours (ai.google.dev/gemini-api/docs/veo). Elle était
+    comptée sept, comme chez Higgsfield : du troisième au septième jour, la bibliothèque proposait
+    « Voir » sur un fichier déjà effacé.
+  */
+  it('annonce expirée une vidéo Veo de plus de deux jours, et garde celle de la veille', async () => {
+    const admin = await createAdmin(app, 'admin-veo@smartcreator.test');
+    const { getDb } = await import('@server/db/client');
+    const { generations } = await import('@server/db/schema');
+    const { inArray } = await import('drizzle-orm');
+    const jour = 86_400_000;
+    const inserted = await getDb()
+      .insert(generations)
+      .values(
+        [3, 1].map((joursAvant) => ({
+          userId: owner.account.id,
+          kind: 'video' as const,
+          provider: 'veo',
+          providerRef: `veo-${joursAvant}-${randomUUID()}`,
+          status: 'completed' as const,
+          createdAt: new Date(Date.now() - joursAvant * jour),
+        })),
+      )
+      .returning({ id: generations.id, providerRef: generations.providerRef });
+
+    try {
+      const list = await admin.agent.get('/api/admin/creatives?kind=video&pageSize=100').expect(200);
+      const disponibilite = (prefix: string) =>
+        (list.body.entries as { id: string; available: boolean }[]).find(
+          (row) => row.id === inserted.find((entry) => entry.providerRef?.startsWith(prefix))?.id,
+        )?.available;
+      assert.equal(disponibilite('veo-3-'), false, 'trois jours : effacée chez Google');
+      assert.equal(disponibilite('veo-1-'), true, 'la veille : encore récupérable');
+    } finally {
+      await getDb().delete(generations).where(inArray(generations.id, inserted.map((entry) => entry.id)));
+    }
   });
 
   it('montre à l’administration les créatifs des comptes, et inscrit chaque ouverture au journal', async () => {

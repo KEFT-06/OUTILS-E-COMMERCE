@@ -13,9 +13,9 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { Tabs, TabsList, TabsTrigger } from '@/shared/ui/tabs';
 
 /**
- * Vidéos et visuels générés par les comptes, avec lecture et téléchargement. Le fichier est relayé
- * par le serveur depuis le fournisseur, qui ne le garde qu'environ sept jours ; chaque ouverture est
- * inscrite au journal d'audit.
+ * Vidéos et visuels générés par les comptes, avec lecture et téléchargement. Une vidéo est relayée
+ * depuis Google, qui ne la garde que deux jours ; un visuel interne est lu en base. Chaque ouverture
+ * est inscrite au journal d'audit.
  */
 
 type Kind = 'video' | 'image';
@@ -46,7 +46,7 @@ export function AdminCreativesLibrary({ canOpenUsers }: { canOpenUsers: boolean 
         </CardTitle>
         <CardDescription>
           {data
-            ? `${data.counts.completed.toLocaleString('fr-FR')} ${noun}${data.counts.completed > 1 ? 's' : ''} terminé${kind === 'video' ? 'e' : ''}${data.counts.completed > 1 ? 's' : ''}, ${data.counts.pending} en cours, ${data.counts.failed} échoué${kind === 'video' ? 'e' : ''}${data.counts.failed > 1 ? 's' : ''}. Fichiers disponibles ${data.retentionDays} jours chez le fournisseur ; chaque ouverture est inscrite au journal.`
+            ? `${data.counts.completed.toLocaleString('fr-FR')} ${noun}${data.counts.completed > 1 ? 's' : ''} terminé${kind === 'video' ? 'e' : ''}${data.counts.completed > 1 ? 's' : ''}, ${data.counts.pending} en cours, ${data.counts.failed} échoué${kind === 'video' ? 'e' : ''}${data.counts.failed > 1 ? 's' : ''}. ${kind === 'video' ? 'Une vidéo Veo reste 2 jours chez Google' : 'Un visuel généré en interne est gardé sans limite'} ; chaque ouverture est inscrite au journal.`
             : 'Vidéos et visuels générés par les comptes.'}
         </CardDescription>
         <CardAction>

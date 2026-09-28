@@ -105,7 +105,6 @@ export interface AdminCreativeList {
   pageSize: number;
   total: number;
   counts: { pending: number; completed: number; failed: number };
-  retentionDays: number;
   entries: {
     id: string;
     status: 'pending' | 'completed' | 'failed';
