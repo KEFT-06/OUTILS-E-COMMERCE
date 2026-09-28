@@ -207,12 +207,12 @@ export async function apifyFetch(url: string, init: { method?: string; body?: st
     throw apifyUnavailable(error instanceof Error && error.name === 'TimeoutError' ? 'délai dépassé' : 'réseau');
   }
   if (response.status === 401 || response.status === 403) {
-    throw new AppError(502, 'Le jeton Apify est refusé : vérifiez-le dans la configuration.', 'RADAR_DISCOVERY_DENIED');
+    throw new AppError(502, 'Le service de collecte publicitaire refuse l’accès du serveur : l’administrateur doit vérifier sa configuration.', 'RADAR_DISCOVERY_DENIED');
   }
   if (response.status === 402) {
     throw new AppError(
       503,
-      'La réserve mensuelle Apify est épuisée : la collecte reprendra au prochain cycle, ou après un rechargement.',
+      'La réserve mensuelle de collecte publicitaire est épuisée : elle reprendra au prochain cycle.',
       'RADAR_DISCOVERY_OUT_OF_CREDIT',
     );
   }
@@ -334,7 +334,7 @@ export async function runDiscovery(now = new Date()): Promise<DiscoveryOutcome> 
   if (!providers.apify) {
     throw new AppError(
       503,
-      'La découverte de boutiques n’est pas configurée sur ce serveur (jeton Apify absent).',
+      'La découverte de boutiques n’est pas configurée sur ce serveur.',
       'RADAR_DISCOVERY_NOT_CONFIGURED',
     );
   }
@@ -483,6 +483,8 @@ export async function ingestDiscoveryItems(items: unknown[], now = new Date()): 
           linkCaption: sql`excluded.link_caption`,
           linkDescription: sql`excluded.link_description`,
           cards: sql`excluded.cards`,
+          pageAvatarUrl: sql`coalesce(excluded.page_avatar_url, ${spiedAds.pageAvatarUrl})`,
+          impressionsText: sql`excluded.impressions_text`,
           // Nouvelle adresse de visuel : la copie de l'aperçu a de nouveau sa chance.
           thumbnailFailedAt: sql`case when excluded.media_url is distinct from ${spiedAds.mediaUrl} then null else ${spiedAds.thumbnailFailedAt} end`,
         },

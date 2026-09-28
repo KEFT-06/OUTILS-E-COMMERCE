@@ -4,7 +4,7 @@ import { containsIgnoringAccents } from '@server/db/search';
 import { spiedAds } from '@server/db/schema';
 import { providers } from '@server/env';
 import { harvestCollectionRuns, lastDiscoveryAt, pendingCollectionRuns } from '@server/services/radar/discovery';
-import { storeMissingThumbnails } from '@server/services/espionnage/media';
+import { storeMissingAvatars, storeMissingThumbnails } from '@server/services/espionnage/media';
 import { runInBackground } from '@server/shared/backgroundWork';
 
 /**
@@ -53,6 +53,10 @@ export interface SpiedAdView {
   thumbnailUrl: string | null;
   pageId: string | null;
   pageUrl: string | null;
+  /** Photo de profil de l'annonceur : notre copie si elle existe, sinon l'adresse de Meta. */
+  pageAvatarUrl: string | null;
+  /** Tranche d'impressions publiée par Meta (« <100 »…), quand elle existe. */
+  impressionsText: string | null;
   ctaText: string | null;
   displayFormat: string | null;
   linkCaption: string | null;
@@ -140,6 +144,8 @@ function viewOf(row: typeof spiedAds.$inferSelect, now: Date): SpiedAdView {
     thumbnailUrl: row.thumbnailPath ? `/api/espionnage/media/${row.id}` : null,
     pageId: row.pageId,
     pageUrl: row.pageUrl,
+    pageAvatarUrl: row.pageAvatarPath && row.pageId ? `/api/espionnage/avatar/${row.pageId}` : row.pageAvatarUrl,
+    impressionsText: row.impressionsText,
     ctaText: row.ctaText,
     displayFormat: row.displayFormat,
     linkCaption: row.linkCaption,
@@ -271,6 +277,7 @@ export function refreshWallInBackground(): void {
   runInBackground(async () => {
     if (providers.apify && (await pendingCollectionRuns()) > 0) await harvestCollectionRuns();
     await storeMissingThumbnails(60);
+    await storeMissingAvatars(30);
   }, 'tenue du mur d’espionnage');
 }
 

@@ -128,6 +128,10 @@ export interface SpiedAd {
   thumbnailUrl: string | null;
   pageId: string | null;
   pageUrl: string | null;
+  /** Photo de profil de l'annonceur (notre copie, ou l'adresse de Meta qui expire). */
+  pageAvatarUrl?: string | null;
+  /** Tranche d'impressions publiée par Meta (« <100 »…), pour certaines annonces seulement. */
+  impressionsText?: string | null;
   ctaText: string | null;
   displayFormat: string | null;
   linkCaption: string | null;

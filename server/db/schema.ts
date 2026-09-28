@@ -1127,6 +1127,12 @@ export const spiedAds = pgTable(
     thumbnailPath: text('thumbnail_path'),
     /** Dernier échec de copie de l'aperçu : évite de réessayer une adresse morte à chaque passage. */
     thumbnailFailedAt: moment('thumbnail_failed_at'),
+    /** Photo de profil de la page annonceuse, telle que Meta la signe (elle expire aussi). */
+    pageAvatarUrl: text('page_avatar_url'),
+    /** Copie de cette photo dans notre stockage, partagée par toutes les annonces de la page. */
+    pageAvatarPath: text('page_avatar_path'),
+    /** Tranche d'impressions publiée par Meta (« <100 »…), pour certaines annonces seulement. */
+    impressionsText: text('impressions_text'),
   },
   (table) => [
     uniqueIndex('spied_ads_external_unique').on(table.externalId),

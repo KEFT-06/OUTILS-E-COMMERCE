@@ -5,7 +5,7 @@ import { AppError, asyncRoute } from '@server/middleware';
 import { sendDueRadarDigests } from '@server/services/radar/alerts';
 import { collectPerformanceContributions } from '@server/services/performanceLoop/collect';
 import { discoveryIsDue, harvestCollectionRuns, runDiscovery } from '@server/services/radar/discovery';
-import { purgeStaleThumbnails, storeMissingThumbnails } from '@server/services/espionnage/media';
+import { purgeStaleThumbnails, storeMissingAvatars, storeMissingThumbnails } from '@server/services/espionnage/media';
 import { sweepSessions } from '@server/services/auth/sessions';
 import { archivePendingVideos, purgeExpiredVideos } from '@server/services/creatives/archive';
 import { purgeStaleVideoUploads } from '@server/services/writing/videoUpload';
@@ -146,11 +146,15 @@ cronRouter.get(
       console.warn('[cron] aperçus des annonces :', error instanceof Error ? error.message : error);
       return null;
     });
+    const avatars = await storeMissingAvatars(200).catch((error: unknown) => {
+      console.warn('[cron] photos des annonceurs :', error instanceof Error ? error.message : error);
+      return null;
+    });
     const staleThumbnails = await purgeStaleThumbnails().catch((error: unknown) => {
       console.warn('[cron] effacement des aperçus :', error instanceof Error ? error.message : error);
       return null;
     });
 
-    res.json({ generations, sessions, sweep, digests, harvest, discovery, performance, videos, expired, uploads, thumbnails, staleThumbnails });
+    res.json({ generations, sessions, sweep, digests, harvest, discovery, performance, videos, expired, uploads, thumbnails, avatars, staleThumbnails });
   }),
 );

@@ -106,6 +106,61 @@ export async function sendAdThumbnail(adId: string | undefined, res: ExpressResp
   res.end(bytes);
 }
 
+/**
+ * Copie la photo de profil des annonceurs, une fois par page Facebook : Meta la signe et la fait
+ * expirer comme les visuels, et la carte d'annonce la montre en tête, comme sur la bibliothèque.
+ */
+export async function storeMissingAvatars(limit = 60): Promise<{ stored: number; failed: number }> {
+  const target = supabaseStorage();
+  if (!target) return { stored: 0, failed: 0 };
+  const rows = await getDb()
+    .selectDistinctOn([spiedAds.pageId], { pageId: spiedAds.pageId, url: spiedAds.pageAvatarUrl })
+    .from(spiedAds)
+    .where(and(isNotNull(spiedAds.pageId), isNotNull(spiedAds.pageAvatarUrl), isNull(spiedAds.pageAvatarPath)))
+    .orderBy(spiedAds.pageId, desc(spiedAds.lastSeenAt))
+    .limit(limit);
+  let stored = 0;
+  let failed = 0;
+  for (const row of rows) {
+    const pageId = row.pageId!.replace(/\D/g, '');
+    if (!pageId || !row.url) continue;
+    try {
+      const { bytes, type } = await downloadMetaImage(row.url);
+      const path = `pages/${pageId}.${IMAGE_TYPES[type]}`;
+      await putObject(target, bucket(), path, bytes, type);
+      await getDb().update(spiedAds).set({ pageAvatarPath: path }).where(eq(spiedAds.pageId, row.pageId!));
+      stored += 1;
+    } catch (error) {
+      failed += 1;
+      // Adresse morte : on l'oublie, la collecte suivante en apportera une fraîche.
+      await getDb().update(spiedAds).set({ pageAvatarUrl: null }).where(eq(spiedAds.pageId, row.pageId!));
+      console.warn('[espionnage] photo de profil non copiée :', pageId, error instanceof Error ? error.message : error);
+    }
+  }
+  return { stored, failed };
+}
+
+/** Photo de profil d'un annonceur, publique et mise en cache comme les aperçus. */
+export async function sendPageAvatar(pageId: string | undefined, res: ExpressResponse): Promise<void> {
+  const notFound = new AppError(404, 'Photo introuvable.', 'SPY_AVATAR_NOT_FOUND');
+  if (!pageId || !/^\d{5,30}$/.test(pageId)) throw notFound;
+  const target = supabaseStorage();
+  const [row] = await getDb()
+    .select({ path: spiedAds.pageAvatarPath })
+    .from(spiedAds)
+    .where(and(eq(spiedAds.pageId, pageId), isNotNull(spiedAds.pageAvatarPath)))
+    .limit(1);
+  if (!target || !row?.path) throw notFound;
+  const object = await getObject(target, BUCKET_ID, row.path);
+  if (!object) throw notFound;
+  const bytes = Buffer.from(await object.arrayBuffer());
+  res.setHeader('Content-Type', object.headers.get('content-type') ?? 'image/jpeg');
+  res.setHeader('Content-Length', String(bytes.length));
+  res.setHeader('Cache-Control', 'public, max-age=86400, s-maxage=604800, stale-while-revalidate=86400');
+  res.setHeader('X-Content-Type-Options', 'nosniff');
+  res.end(bytes);
+}
+
 /** Efface les aperçus des annonces qu'on ne voit plus depuis trente jours. */
 export async function purgeStaleThumbnails(now = new Date(), limit = 500): Promise<{ purged: number }> {
   const target = supabaseStorage();

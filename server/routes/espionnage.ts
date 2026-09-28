@@ -5,7 +5,7 @@ import { asyncRoute, routeLimiter, validateBody } from '@server/middleware';
 import { requireAuth } from '@server/middleware/auth';
 import { effectiveLimits } from '@server/services/accounts';
 import { listSpiedAds, refreshWallInBackground, spiedStores } from '@server/services/espionnage';
-import { sendAdThumbnail } from '@server/services/espionnage/media';
+import { sendAdThumbnail, sendPageAvatar } from '@server/services/espionnage/media';
 import {
   type AdSearchRequest,
   adSearchRequestSchema,
@@ -34,6 +34,14 @@ espionnageRouter.get(
   '/media/:id',
   asyncRoute(async (req, res) => {
     await sendAdThumbnail(req.params.id, res);
+  }),
+);
+
+/** Photo de profil d'un annonceur, publique et mise en cache comme les aperçus. */
+espionnageRouter.get(
+  '/avatar/:pageId',
+  asyncRoute(async (req, res) => {
+    await sendPageAvatar(req.params.pageId, res);
   }),
 );
 

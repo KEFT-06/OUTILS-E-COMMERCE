@@ -76,6 +76,8 @@ export interface LibraryAdView {
   lastSeenAt: string;
   pageId: string | null;
   pageUrl: string | null;
+  pageAvatarUrl: string | null;
+  impressionsText: string | null;
   ctaText: string | null;
   displayFormat: string | null;
   linkCaption: string | null;
@@ -136,6 +138,8 @@ function adViewOf(fields: NonNullable<ReturnType<typeof readAnyMetaAd>>, searche
     lastSeenAt: searchedAt.toISOString(),
     pageId: fields.pageId ?? null,
     pageUrl: fields.pageUrl ?? null,
+    pageAvatarUrl: fields.pageAvatarUrl ?? null,
+    impressionsText: fields.impressionsText ?? null,
     ctaText: fields.ctaText ?? null,
     displayFormat: fields.displayFormat ?? null,
     linkCaption: fields.linkCaption ?? null,

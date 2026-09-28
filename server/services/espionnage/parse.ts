@@ -49,6 +49,11 @@ export const metaAdSchema = z
     pageName: z.string().nullable().optional(),
     pageID: z.union([z.string(), z.number()]).nullable().optional(),
     pageId: z.union([z.string(), z.number()]).nullable().optional(),
+    /** Tranche d'impressions (« <100 »…), publiée par Meta pour certaines annonces seulement. */
+    impressionsWithIndex: z
+      .object({ impressionsText: z.string().nullable().optional(), impressionsIndex: z.number().nullable().optional() })
+      .nullable()
+      .optional(),
     snapshot: z
       .object({
         linkUrl: z.string().nullable().optional(),
@@ -60,6 +65,7 @@ export const metaAdSchema = z
         cards: z.array(cardSchema).nullable().optional(),
         pageName: z.string().nullable().optional(),
         pageProfileUri: z.string().nullable().optional(),
+        pageProfilePictureUrl: z.string().nullable().optional(),
         ctaText: z.string().nullable().optional(),
         displayFormat: z.string().nullable().optional(),
         linkDescription: z.string().nullable().optional(),
@@ -156,6 +162,8 @@ export function readAnyMetaAd(raw: unknown, now: Date): MetaAdFields | null {
     lastSeenAt: now,
     pageId: String(ad.pageID ?? ad.pageId ?? '').trim().slice(0, 40) || null,
     pageUrl: snap.pageProfileUri?.startsWith('https://') ? snap.pageProfileUri.slice(0, 500) : null,
+    pageAvatarUrl: snap.pageProfilePictureUrl?.startsWith('https://') ? snap.pageProfilePictureUrl.slice(0, 2_000) : null,
+    impressionsText: shortText(ad.impressionsWithIndex?.impressionsText, 40),
     ctaText: shortText(snap.ctaText, 60),
     displayFormat: shortText(snap.displayFormat, 30),
     linkCaption: shortText(snap.caption, 200),
