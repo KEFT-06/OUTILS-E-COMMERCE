@@ -12,7 +12,11 @@ export function formatRelativeFr(iso: string, now = Date.now()): string {
 
 /** Date lisible en français ; renvoie l'entrée telle quelle si elle n'est pas une date. */
 export function formatDateFr(iso: string, withTime = false): string {
-  const date = new Date(iso);
+  // « 2026-09-23 » seul est lu par JavaScript comme minuit UTC : à l'ouest de Greenwich
+  // (Canada, États-Unis), la date affichée reculait d'un jour. Une date sans heure est
+  // un jour du calendrier, lu tel quel dans le fuseau de l'appareil.
+  const jour = /^(\d{4})-(\d{2})-(\d{2})$/.exec(iso);
+  const date = jour ? new Date(Number(jour[1]), Number(jour[2]) - 1, Number(jour[3])) : new Date(iso);
   if (Number.isNaN(date.getTime())) return iso;
 
   return withTime
