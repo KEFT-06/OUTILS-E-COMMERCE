@@ -42,6 +42,8 @@ export interface RevenueTotals {
   today: number;
   month: number;
   previousMonth: number;
+  /** Mois précédent arrêté au même jour et à la même heure : la seule base juste pour comparer un mois entamé. */
+  previousMonthToDate: number;
   year: number;
   total: number;
   payments: number;

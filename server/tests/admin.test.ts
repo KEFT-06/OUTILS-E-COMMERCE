@@ -121,6 +121,48 @@ describe('Administration : paiements et revenus', () => {
     assert.equal(afterRefund.body.revenue.today, 0);
     await admin.agent.post(`/api/admin/payments/${recorded.body.payment.id}/refund`).send({ note: 'Encore' }).expect(409);
   });
+
+  it('trouve un compte sans que l’on tape ses accents', async () => {
+    const adje = await signUp(app, { name: 'Adjé Kouassi', email: 'k.a@exemple.com' });
+    const trouves = await admin.agent.get('/api/admin/users').query({ search: 'adje' }).expect(200);
+    assert.ok(
+      trouves.body.users.some((user: { id: string }) => user.id === adje.account.id),
+      '« adje » doit trouver « Adjé Kouassi »',
+    );
+  });
+
+  it('compare le mois entamé au mois précédent arrêté à la même date, et non au mois complet', async () => {
+    const client = await signUp(app, { name: 'Mireille Ondoa', email: 'mireille@exemple.com' });
+    const before = (await admin.agent.get('/api/admin/revenue/totals').expect(200)).body;
+    const payer = (paidAt: Date, amount: number) =>
+      admin.agent
+        .post('/api/admin/payments')
+        .send({ userId: client.account.id, plan: 'plus', periodMonths: 1, amount, currency: 'XAF', method: 'cash', paidAt: paidAt.toISOString() })
+        .expect(201);
+
+    // Un mois plus tôt, une heure APRÈS l'instant présent : c'est la fin du mois précédent
+    // (ou déjà ce mois-ci), jamais « la même période ».
+    const apres = new Date();
+    apres.setUTCMonth(apres.getUTCMonth() - 1);
+    apres.setTime(apres.getTime() + 60 * 60_000);
+    await payer(apres, 7_000);
+
+    const jour = new Date().getUTCDate();
+    // Les bords de mois (le 1er, ou un 31 qui n'existe pas le mois d'avant) rendraient
+    // « un mois plus tôt » ambigu : l'inclusion n'est vérifiée qu'au milieu du mois.
+    const milieu = jour >= 2 && jour <= 28;
+    if (milieu) {
+      const avant = new Date();
+      avant.setUTCMonth(avant.getUTCMonth() - 1);
+      avant.setTime(avant.getTime() - 60 * 60_000);
+      await payer(avant, 3_000);
+    }
+
+    const after = (await admin.agent.get('/api/admin/revenue/totals').expect(200)).body;
+    assert.equal(after.previousMonthToDate - before.previousMonthToDate, milieu ? 3_000 : 0, 'seul le paiement antérieur à la même date compte');
+    if (milieu) assert.equal(after.previousMonth - before.previousMonth, 10_000, 'le mois complet compte les deux');
+    assert.ok(after.previousMonthToDate <= after.previousMonth);
+  });
 });
 
 describe('Administration : privilèges délégués', () => {

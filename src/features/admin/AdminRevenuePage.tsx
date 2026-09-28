@@ -52,7 +52,7 @@ export function AdminRevenuePage() {
   };
 
   const t = totals.data;
-  const monthChange = t ? changeRatio(t.month, t.previousMonth) : null;
+  const monthChange = t ? changeRatio(t.month, t.previousMonthToDate) : null;
   const points = series.data?.points.map((point) => ({ ...point, label: formatPeriod(point.period, granularity) })) ?? [];
 
   return (
@@ -94,7 +94,7 @@ export function AdminRevenuePage() {
               hint={
                 monthChange === null
                   ? `Mois précédent : ${formatFcfa(t.previousMonth)}`
-                  : `${monthChange >= 0 ? '+' : ''}${monthChange} % sur le mois précédent`
+                  : `${monthChange >= 0 ? '+' : ''}${monthChange} % sur la même période du mois précédent · mois complet : ${formatFcfa(t.previousMonth)}`
               }
             />
             <KpiCard label="Cette année" value={formatFcfa(t.year)} icon={CalendarRange} className="lg:col-span-2" />

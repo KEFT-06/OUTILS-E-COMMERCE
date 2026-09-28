@@ -59,7 +59,7 @@ export function AdminOverviewPage() {
   const permissionLabels = Object.fromEntries((meta?.permissions ?? []).map((permission) => [permission.id, permission.label]));
   const contentLast30 = data?.content.byKind.reduce((sum, row) => sum + row.last30d, 0) ?? 0;
   const contentTotal = data?.content.byKind.reduce((sum, row) => sum + row.total, 0) ?? 0;
-  const monthChange = data?.revenue ? changeRatio(data.revenue.month, data.revenue.previousMonth) : null;
+  const monthChange = data?.revenue ? changeRatio(data.revenue.month, data.revenue.previousMonthToDate) : null;
 
   const reloadAll = () => {
     void overview.reload();
@@ -97,7 +97,7 @@ export function AdminOverviewPage() {
                 hint={
                   monthChange === null
                     ? `Mois précédent : ${formatFcfa(data.revenue.previousMonth)}`
-                    : `${monthChange >= 0 ? '+' : ''}${monthChange} % par rapport au mois précédent (${formatFcfa(data.revenue.previousMonth)})`
+                    : `${monthChange >= 0 ? '+' : ''}${monthChange} % sur la même période du mois précédent (${formatFcfa(data.revenue.previousMonthToDate)}) · mois précédent complet : ${formatFcfa(data.revenue.previousMonth)}`
                 }
               />
             )}

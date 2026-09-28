@@ -77,6 +77,11 @@ export async function revenueTotals() {
       previousMonth: num(
         sql`coalesce(sum(${payments.amountFcfa}) filter (where ${payments.paidAt} >= ${startOf('month', 1)} and ${payments.paidAt} < ${startOf('month')}), 0)`,
       ),
+      // Le mois précédent arrêté au même moment du mois : comparer un mois entamé à un mois
+      // complet affichait, le 5 du mois, une chute d'environ 80 % qui n'en était pas une.
+      previousMonthToDate: num(
+        sql`coalesce(sum(${payments.amountFcfa}) filter (where ${payments.paidAt} >= ${startOf('month', 1)} and ${payments.paidAt} < least(${startOf('month')}, ((now() AT TIME ZONE ${zone()}) - interval '1 month') AT TIME ZONE ${zone()})), 0)`,
+      ),
       year: num(sql`coalesce(sum(${payments.amountFcfa}) filter (where ${payments.paidAt} >= ${startOf('year')}), 0)`),
       total: num(sql`coalesce(sum(${payments.amountFcfa}), 0)`),
       payments: num(sql`count(*)`),
