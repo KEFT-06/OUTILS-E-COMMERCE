@@ -38,7 +38,7 @@ export const authenticate: RequestHandler = asyncRoute(async (req, _res, next) =
       if (resolved.user.status !== 'active') {
         await revokeSession(resolved.session.id, 'suspended');
       } else {
-        const account = await loadAccount(resolved.user.id);
+        const account = await loadAccount(resolved.user.id, new Date(), resolved.user);
         if (account) {
           req.auth = { sessionId: resolved.session.id, mfaVerified: resolved.session.mfaVerified, account };
         }

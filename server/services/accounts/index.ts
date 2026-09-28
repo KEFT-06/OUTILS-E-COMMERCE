@@ -164,20 +164,25 @@ async function maintainCycle(user: UserRow, now: Date): Promise<UserRow> {
   });
 }
 
-export async function loadAccount(userId: string, now = new Date()): Promise<AccountSnapshot | null> {
+/**
+ * Compte complet d'un utilisateur. `knownUser` : la ligne déjà lue avec la session, pour ne pas
+ * la relire. Chaque lecture traverse l'Atlantique (fonction à Washington, base en Irlande) :
+ * elles se faisaient l'une après l'autre, quatre allers-retours à CHAQUE requête connectée.
+ * Désormais une seule lecture pour les droits et accès, menées ensemble.
+ */
+export async function loadAccount(userId: string, now = new Date(), knownUser?: typeof users.$inferSelect): Promise<AccountSnapshot | null> {
   const db = getDb();
-  const [row] = await db.select().from(users).where(eq(users.id, userId)).limit(1);
+  const row = knownUser ?? (await db.select().from(users).where(eq(users.id, userId)).limit(1))[0];
   if (!row) return null;
 
-  const user = await maintainCycle(row, now);
-  const grants = await db
-    .select({ permission: userPermissions.permission })
-    .from(userPermissions)
-    .where(eq(userPermissions.userId, userId));
-  const overrides = await db
-    .select({ feature: featureOverrides.feature, access: featureOverrides.access })
-    .from(featureOverrides)
-    .where(eq(featureOverrides.userId, userId));
+  const [user, grants, overrides] = await Promise.all([
+    maintainCycle(row, now),
+    db.select({ permission: userPermissions.permission }).from(userPermissions).where(eq(userPermissions.userId, userId)),
+    db
+      .select({ feature: featureOverrides.feature, access: featureOverrides.access })
+      .from(featureOverrides)
+      .where(eq(featureOverrides.userId, userId)),
+  ]);
   const plan = await getPlan(user.plan);
 
   const permissions = effectivePermissions(

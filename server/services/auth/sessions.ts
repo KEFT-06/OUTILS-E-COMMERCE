@@ -16,6 +16,7 @@ import { randomToken, sha256 } from '@server/lib/crypto';
 import { describeDevice, maskIp } from '@server/lib/device';
 import type { ClientInfo } from '@server/services/audit';
 import type { SessionEndReason } from '@server/shared/sessions';
+import { runInBackground } from '@server/shared/backgroundWork';
 
 /**
  * Sessions stockées en base, référencées par un cookie httpOnly.
@@ -164,8 +165,13 @@ export async function resolveSession(
   }
 
   if (idle > TOUCH_INTERVAL_MS) {
-    await db.update(sessions).set({ lastSeenAt: now }).where(eq(sessions.id, sessionId));
-    await db.update(sessionHistory).set({ lastSeenAt: now }).where(eq(sessionHistory.sessionId, sessionId));
+    // Écriture de « dernière activité » menée à côté de la réponse : elle n'a pas à la retarder.
+    runInBackground(async () => {
+      await Promise.all([
+        db.update(sessions).set({ lastSeenAt: now }).where(eq(sessions.id, sessionId)),
+        db.update(sessionHistory).set({ lastSeenAt: now }).where(eq(sessionHistory.sessionId, sessionId)),
+      ]);
+    }, 'activité de la session');
     session.lastSeenAt = now;
   }
 

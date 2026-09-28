@@ -1,4 +1,4 @@
-import { Router } from 'express';
+import { Router, type RequestHandler } from 'express';
 import { z } from 'zod';
 import { sql } from 'drizzle-orm';
 import { queryRows } from '@server/db/client';
@@ -17,6 +17,19 @@ import { FEATURES, PlansUnavailableError, getPlanConfig, planPrice } from '@serv
 import { PricingUnavailableError, getPricing } from '@server/services/pricing';
 import { AD_FRAMEWORKS } from '@server/shared/adFrameworks';
 import { findCountry } from '@server/shared/countries';
+
+/**
+ * Réponse identique pour tous les visiteurs, gardée par le réseau de l'hébergeur au plus près
+ * d'eux. La fonction tourne à Washington et les visiteurs arrivent par Cape Town : chaque appel
+ * évité fait gagner une demi-seconde. Réservé aux tables de configuration, jamais à ce qui
+ * dépend du compte.
+ */
+const cachePublic =
+  (seconds: number): RequestHandler =>
+  (_req, res, next) => {
+    res.setHeader('Cache-Control', `public, max-age=${Math.min(seconds, 60)}, s-maxage=${seconds}, stale-while-revalidate=86400`);
+    next();
+  };
 
 /**
  * Santé du serveur et configuration publique : paliers, coûts, fourchettes de prix,
@@ -57,6 +70,8 @@ function configRoute<T>(read: () => Promise<T>, unavailable: { error: new (...ar
  */
 catalogRouter.get(
   '/health',
+  // Trente secondes au réseau de l'hébergeur : chaque écran le lit, et il ne change pas à la seconde.
+  cachePublic(30),
   asyncRoute(async (_req, res) => {
     let database = false;
     try {
@@ -159,25 +174,28 @@ catalogRouter.get(
 /** Conformité — différenciateur n°2 : les règles appliquées avant tout export. */
 catalogRouter.get(
   '/compliance/rules',
+  cachePublic(300),
   asyncRoute(async (_req, res) => {
     res.json(await getRulesMetadata().catch(asComplianceRouteError));
   }),
 );
 
 /** Crédits — différenciateur n°3 : le coût est annoncé avant l'action. */
-catalogRouter.get('/credits/costs', configRoute(getCostTable, { error: CreditConfigUnavailableError, log: 'crédits', code: 'CREDIT_CONFIG_UNAVAILABLE' }));
+catalogRouter.get('/credits/costs', cachePublic(300), configRoute(getCostTable, { error: CreditConfigUnavailableError, log: 'crédits', code: 'CREDIT_CONFIG_UNAVAILABLE' }));
 
 /** Fourchettes de prix — CdC §2 : jamais figées dans le code. */
-catalogRouter.get('/pricing/ranges', configRoute(getPricing, { error: PricingUnavailableError, log: 'prix', code: 'PRICING_UNAVAILABLE' }));
+catalogRouter.get('/pricing/ranges', cachePublic(300), configRoute(getPricing, { error: PricingUnavailableError, log: 'prix', code: 'PRICING_UNAVAILABLE' }));
 
 /** Structures de campagnes Meta et TikTok (feuille de route 5.4). */
 catalogRouter.get(
   '/campaigns/blueprints',
+  cachePublic(300),
   configRoute(getCampaignBlueprints, { error: BlueprintsUnavailableError, log: 'campagnes', code: 'BLUEPRINTS_UNAVAILABLE' }),
 );
 
 /** Kit de lancement (feuille de route 5.1). */
 catalogRouter.get(
   '/launch-kit/config',
+  cachePublic(300),
   configRoute(getLaunchKitConfig, { error: LaunchKitUnavailableError, log: 'kit de lancement', code: 'LAUNCH_KIT_UNAVAILABLE' }),
 );

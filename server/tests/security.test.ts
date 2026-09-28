@@ -29,9 +29,21 @@ describe('Audit de sécurité', () => {
     assert.notEqual(checked.status, 401, 'un compte connecté passe');
   });
 
-  it('interdit la mise en cache des réponses de l’API', async () => {
-    const health = await request(app).get('/api/health').expect(200);
-    assert.equal(health.headers['cache-control'], 'no-store');
+  it('interdit la mise en cache des réponses de l’API liées à un compte', async () => {
+    const moi = await request(app).get('/api/auth/me').expect(200);
+    assert.equal(moi.headers['cache-control'], 'no-store');
+    const plans = await request(app).get('/api/plans?country=CM').expect(200);
+    assert.equal(plans.headers['cache-control'], 'no-store', 'le prix peut dépendre du compte connecté');
+  });
+
+  it('ne laisse en cache public que des tables identiques pour tous', async () => {
+    // Gagner une demi-seconde par écran (fonction à Washington, visiteurs par Cape Town), sans
+    // jamais exposer une donnée de compte : seules ces réponses-là sont publiques.
+    for (const chemin of ['/api/health', '/api/credits/costs']) {
+      const reponse = await request(app).get(chemin).expect(200);
+      assert.match(String(reponse.headers['cache-control']), /^public, /, chemin);
+      assert.equal(reponse.headers['set-cookie'], undefined, `${chemin} : aucun cookie dans une réponse publique`);
+    }
   });
 
   it('ignore un corps encodé en formulaire, que seul un envoi intersite produirait', async () => {
