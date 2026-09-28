@@ -1206,6 +1206,172 @@ function SecurityCard({ account }: { account: Account }) {
 /*  Connexions                                                                 */
 /* -------------------------------------------------------------------------- */
 
+interface StoreField {
+  name: string;
+  label: string;
+  placeholder: string;
+  secret?: boolean;
+}
+
+/** Ce que demande chaque service, et où l'utilisateur le trouve. */
+const STORE_FORMS: Record<'shopify' | 'woocommerce', { title: string; role: string; help: string; modes: { label: string; fields: StoreField[] }[] }> = {
+  shopify: {
+    title: 'Shopify',
+    role: 'Catalogue et commandes payées de votre boutique Shopify.',
+    help:
+      'Application créée avant 2026 dans Shopify (Paramètres → Applications → Développer des applications) : son jeton « shpat_… ». ' +
+      'Application plus récente (Dev Dashboard) : son identifiant et son secret. Portées : read_products et read_orders.',
+    modes: [
+      {
+        label: 'Jeton d’accès',
+        fields: [
+          { name: 'shop', label: 'Domaine de la boutique', placeholder: 'ma-boutique.myshopify.com' },
+          { name: 'accessToken', label: 'Jeton d’accès', placeholder: 'shpat_…', secret: true },
+        ],
+      },
+      {
+        label: 'Identifiant et secret',
+        fields: [
+          { name: 'shop', label: 'Domaine de la boutique', placeholder: 'ma-boutique.myshopify.com' },
+          { name: 'clientId', label: 'Identifiant client (Client ID)', placeholder: '' },
+          { name: 'clientSecret', label: 'Secret client (Client secret)', placeholder: '', secret: true },
+        ],
+      },
+    ],
+  },
+  woocommerce: {
+    title: 'WooCommerce',
+    role: 'Catalogue et commandes payées de votre site WordPress.',
+    help: 'Dans WordPress : WooCommerce → Réglages → Avancé → API REST → Ajouter une clé, droits « Lecture ». Le site doit être en https.',
+    modes: [
+      {
+        label: 'Clés REST',
+        fields: [
+          { name: 'siteUrl', label: 'Adresse du site', placeholder: 'https://www.ma-boutique.com' },
+          { name: 'consumerKey', label: 'Clé client', placeholder: 'ck_…', secret: true },
+          { name: 'consumerSecret', label: 'Secret client', placeholder: 'cs_…', secret: true },
+        ],
+      },
+    ],
+  },
+};
+
+/** Une boutique Shopify ou WooCommerce : vérifiée auprès du service, chiffrée, jamais réaffichée. */
+function StoreConnection({ provider, state }: { provider: 'shopify' | 'woocommerce'; state: Account['integrations']['shopify'] }) {
+  const { refresh } = useAuth();
+  const form = STORE_FORMS[provider];
+  const [mode, setMode] = useState(0);
+  const [values, setValues] = useState<Record<string, string>>({});
+  const [editing, setEditing] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<ApiError | null>(null);
+  const fields = form.modes[mode]!.fields;
+  const showForm = editing || !state.connected;
+  const complete = fields.every((field) => (values[field.name] ?? '').trim().length > 0);
+
+  const save = async (event: React.FormEvent) => {
+    event.preventDefault();
+    setBusy(true);
+    setError(null);
+    try {
+      const body = Object.fromEntries(fields.map((field) => [field.name, (values[field.name] ?? '').trim()]));
+      await apiRequest(`/api/account/integrations/${provider}`, { method: 'PUT', body });
+      setValues({});
+      setEditing(false);
+      await refresh();
+      toast.success(`${form.title} vérifié et relié`);
+    } catch (caught) {
+      setError(toApiError(caught, 'La connexion n’a pas pu être enregistrée.'));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const remove = async () => {
+    setBusy(true);
+    try {
+      await apiRequest(`/api/account/integrations/${provider}`, { method: 'DELETE' });
+      await refresh();
+      toast.success(`${form.title} déconnecté`);
+    } catch (caught) {
+      toast.error('La connexion n’a pas pu être retirée', { description: toApiError(caught, 'Erreur inconnue.').message });
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <div className="space-y-3 rounded-lg border p-4">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <div>
+          <h3 className="font-semibold">{form.title}</h3>
+          <p className="text-sm text-muted-foreground">{form.role}</p>
+        </div>
+        {state.connected ? <Badge variant="success">Connectée</Badge> : <Badge variant="outline">Non connectée</Badge>}
+      </div>
+      {state.connected && (
+        <p className="text-sm text-muted-foreground">
+          <span className="font-medium text-foreground">{state.label}</span> · clé se terminant par{' '}
+          <span className="font-mono font-semibold text-foreground">…{state.hint}</span>
+          {state.verifiedAt ? `, vérifiée le ${formatDateFr(state.verifiedAt, true)}` : ''}.
+        </p>
+      )}
+      {showForm ? (
+        <form onSubmit={(event) => void save(event)} className="space-y-3">
+          {error && (
+            <Alert variant="danger" role="alert">
+              <TriangleAlert />
+              <AlertDescription>{error.message}</AlertDescription>
+            </Alert>
+          )}
+          {form.modes.length > 1 && (
+            <div className="flex flex-wrap gap-2" role="group" aria-label={`Mode de connexion ${form.title}`}>
+              {form.modes.map((candidate, index) => (
+                <Button key={candidate.label} type="button" size="sm" variant={mode === index ? 'secondary' : 'outline'} aria-pressed={mode === index} onClick={() => setMode(index)}>
+                  {candidate.label}
+                </Button>
+              ))}
+            </div>
+          )}
+          {fields.map((field) => {
+            const id = `${provider}-${field.name}`;
+            const common = { id, value: values[field.name] ?? '', autoComplete: 'off', spellCheck: false, placeholder: field.placeholder };
+            const onChange = (event: React.ChangeEvent<HTMLInputElement>) => setValues((current) => ({ ...current, [field.name]: event.target.value }));
+            return (
+              <Field key={id}>
+                <FieldLabel htmlFor={id}>{field.label}</FieldLabel>
+                {field.secret ? <PasswordInput {...common} onChange={onChange} /> : <Input {...common} onChange={onChange} />}
+              </Field>
+            );
+          })}
+          <FieldDescription>{form.help} Vérifiées auprès du service, chiffrées, puis jamais réaffichées, même à vous.</FieldDescription>
+          <div className="flex flex-wrap gap-2">
+            <Button type="submit" disabled={busy || !complete}>
+              {busy && <Spinner />}
+              Vérifier et relier
+            </Button>
+            {state.connected && (
+              <Button type="button" variant="ghost" onClick={() => { setEditing(false); setError(null); }}>
+                Annuler
+              </Button>
+            )}
+          </div>
+        </form>
+      ) : (
+        <div className="flex flex-wrap gap-2">
+          <Button variant="outline" size="sm" onClick={() => setEditing(true)}>
+            <KeyRound />
+            Remplacer
+          </Button>
+          <Button variant="ghost" size="sm" onClick={() => void remove()} disabled={busy}>
+            Déconnecter
+          </Button>
+        </div>
+      )}
+    </div>
+  );
+}
+
 function ConnectionsCard({ account }: { account: Account }) {
   const { refresh } = useAuth();
   const chariow = account.integrations.chariow;
@@ -1334,6 +1500,9 @@ function ConnectionsCard({ account }: { account: Account }) {
             </div>
           )}
         </div>
+
+        <StoreConnection provider="shopify" state={account.integrations.shopify} />
+        <StoreConnection provider="woocommerce" state={account.integrations.woocommerce} />
 
         <dl className="divide-y">
           <div className="flex items-start justify-between gap-4 pb-4">

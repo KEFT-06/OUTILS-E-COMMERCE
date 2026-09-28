@@ -3,7 +3,7 @@ import { z } from 'zod';
 import { AppError, aiLimiter, asyncRoute, validateBody } from '@server/middleware';
 import { requireAuth, requireFeature } from '@server/middleware/auth';
 import { affiliateCodeSchema, getChariowAffiliate, invitationSchema, sendChariowInvitations } from '@server/services/affiliation';
-import { resolveChariowCredentials } from '@server/services/integrations';
+import { resolveChariowCredentials, resolveMarketplaceContext } from '@server/services/integrations';
 import { type MarketplaceContext, availableMarketplaces, getMarketplace, listMarketplaces } from '@server/services/marketplaces';
 
 /**
@@ -15,9 +15,9 @@ import { type MarketplaceContext, availableMarketplaces, getMarketplace, listMar
 export const marketplacesRouter = Router();
 export const affiliationRouter = Router();
 
+/** Toutes les boutiques reliées du compte : Chariow, Shopify, WooCommerce. */
 async function marketplaceContext(req: Request): Promise<MarketplaceContext> {
-  const credentials = await resolveChariowCredentials(req.auth);
-  return { chariowApiKey: credentials?.apiKey ?? null };
+  return resolveMarketplaceContext(req.auth);
 }
 
 /* -------------------------------------------------------------------------- */

@@ -52,9 +52,27 @@ export interface SalesSummary {
   collectedAt: string;
 }
 
+/** Boutique Shopify : jeton d'accès (application créée avant 2026), ou identifiant et secret (Dev Dashboard). */
+export interface ShopifyCredentials {
+  /** Domaine « boutique.myshopify.com ». */
+  shop: string;
+  accessToken?: string;
+  clientId?: string;
+  clientSecret?: string;
+}
+
+/** Site WooCommerce : adresse publique et clés REST en lecture. */
+export interface WooCommerceCredentials {
+  siteUrl: string;
+  consumerKey: string;
+  consumerSecret: string;
+}
+
 /** Identifiants du compte qui fait la demande : chaque utilisateur branche ses propres boutiques. */
 export interface MarketplaceContext {
   chariowApiKey: string | null;
+  shopify?: ShopifyCredentials | null;
+  woocommerce?: WooCommerceCredentials | null;
 }
 
 export interface MarketplaceAdapter {

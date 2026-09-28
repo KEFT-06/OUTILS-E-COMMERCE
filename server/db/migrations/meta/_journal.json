@@ -155,6 +155,13 @@
       "when": 1790596555620,
       "tag": "0021_connexion_google",
       "breakpoints": true
+    },
+    {
+      "idx": 22,
+      "version": "7",
+      "when": 1790598948371,
+      "tag": "0022_connexions_boutiques",
+      "breakpoints": true
     }
   ]
 }

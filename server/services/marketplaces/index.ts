@@ -1,5 +1,7 @@
 import { AppError } from '@server/middleware';
 import { chariowAdapter } from '@server/services/marketplaces/chariow';
+import { shopifyAdapter } from '@server/services/marketplaces/shopify';
+import { wooCommerceAdapter } from '@server/services/marketplaces/woocommerce';
 import { MarketplaceAdapter, MarketplaceContext } from '@server/services/marketplaces/types';
 
 export * from '@server/services/marketplaces/types';
@@ -29,6 +31,8 @@ function plannedAdapter(id: string, label: string): MarketplaceAdapter {
 
 const MARKETPLACES: Record<string, MarketplaceAdapter> = {
   [chariowAdapter.id]: chariowAdapter,
+  [shopifyAdapter.id]: shopifyAdapter,
+  [wooCommerceAdapter.id]: wooCommerceAdapter,
   maketou: plannedAdapter('maketou', 'Maketou'),
   taliopay: plannedAdapter('taliopay', 'Taliopay'),
 };

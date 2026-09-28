@@ -840,6 +840,8 @@ export const userIntegrations = pgTable(
     secret: text('secret').notNull(),
     /** Quatre derniers caractères, pour que l'utilisateur reconnaisse sa clé. */
     hint: text('hint').notNull(),
+    /** Boutique reliée, en clair (domaine Shopify, adresse du site WooCommerce) : ce n'est pas un secret. */
+    label: text('label'),
     verifiedAt: moment('verified_at').notNull(),
     createdAt: createdAt(),
     updatedAt: moment('updated_at').notNull().defaultNow(),

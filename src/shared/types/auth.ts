@@ -55,6 +55,14 @@ export interface SecondFactorMethods {
   code: boolean;
 }
 
+export interface StoreIntegration {
+  connected: boolean;
+  /** Boutique reliée, en clair (domaine Shopify, adresse du site). */
+  label: string | null;
+  hint: string | null;
+  verifiedAt: string | null;
+}
+
 export interface Account {
   id: string;
   name: string;
@@ -99,6 +107,9 @@ export interface Account {
       hint: string | null;
       verifiedAt: string | null;
     };
+    /** Boutiques sur d'autres services, reliées avec les clés de l'utilisateur. */
+    shopify: StoreIntegration;
+    woocommerce: StoreIntegration;
   };
   savedNiches: string[];
 }

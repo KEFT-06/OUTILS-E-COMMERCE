@@ -276,6 +276,9 @@ const schema = z.object({
   /** Surchargeables pour tester contre un serveur factice. */
   GOOGLE_OAUTH_AUTH_URL: z.string().url().default('https://accounts.google.com/o/oauth2/v2/auth'),
   GOOGLE_OAUTH_TOKEN_URL: z.string().url().default('https://oauth2.googleapis.com/token'),
+
+  /** Tests seulement (ignoré en production) : faux serveur Shopify à la place de <boutique>.myshopify.com. */
+  SHOPIFY_TEST_BASE_URL: z.string().url().optional(),
   SUPABASE_URL: z.string().url().optional(),
   /** Espace de stockage (privé) des vidéos archivées ; créé au premier dépôt. */
   CREATIVES_BUCKET: z.string().regex(/^[a-z0-9-]{3,63}$/).default('creatifs'),

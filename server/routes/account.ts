@@ -31,7 +31,7 @@ import {
   revokeUserSessions,
 } from '@server/services/auth/sessions';
 import { recordClientExport } from '@server/services/generations';
-import { chariowKeySchema, removeChariowKey, saveChariowKey } from '@server/services/integrations';
+import { STORE_PROVIDERS, chariowKeySchema, removeChariowKey, removeStoreKey, saveChariowKey, saveStoreKey } from '@server/services/integrations';
 
 /** Espace personnel : profil, mot de passe, sessions, double authentification, crédits et clés API. */
 
@@ -389,6 +389,28 @@ accountRouter.delete(
   '/integrations/chariow',
   asyncRoute(async (req, res) => {
     res.json({ integrations: await removeChariowKey(req.auth!, clientInfo(req)) });
+  }),
+);
+
+/** Boutiques Shopify et WooCommerce : même règle que Chariow, vérifiées avant d'être gardées. */
+const storeProviderSchema = z.enum(STORE_PROVIDERS);
+
+accountRouter.put(
+  '/integrations/:provider',
+  routeLimiter(15, 10),
+  asyncRoute(async (req, res) => {
+    const provider = storeProviderSchema.safeParse(req.params.provider);
+    if (!provider.success) throw new AppError(404, 'Service inconnu.', 'INTEGRATION_UNKNOWN');
+    res.json({ integrations: await saveStoreKey(req.auth!, provider.data, req.body, clientInfo(req)) });
+  }),
+);
+
+accountRouter.delete(
+  '/integrations/:provider',
+  asyncRoute(async (req, res) => {
+    const provider = storeProviderSchema.safeParse(req.params.provider);
+    if (!provider.success) throw new AppError(404, 'Service inconnu.', 'INTEGRATION_UNKNOWN');
+    res.json({ integrations: await removeStoreKey(req.auth!, provider.data, clientInfo(req)) });
   }),
 );
 

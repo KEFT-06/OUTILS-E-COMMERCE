@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { Link } from 'react-router-dom';
 import { AlertTriangle, CheckCircle2, Info, PackageOpen, PackageSearch, XCircle } from 'lucide-react';
 import { ConnectChariowLink } from '@/shared/components/ConnectChariowLink';
 import { NoDataState } from '@/shared/components/NoDataState';
@@ -32,9 +33,6 @@ const CAPABILITIES: { key: keyof MarketplaceInfo['capabilities']; label: string 
 export function DistributionView() {
   const [marketplaces, setMarketplaces] = useState<MarketplaceInfo[] | null>(null);
   const [loadError, setLoadError] = useState<ApiError | null>(null);
-  const [catalog, setCatalog] = useState<{ products: MarketplaceProduct[]; truncated: boolean } | null>(null);
-  const [isLoadingCatalog, setIsLoadingCatalog] = useState(false);
-  const [catalogError, setCatalogError] = useState<ApiError | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -58,23 +56,8 @@ export function DistributionView() {
     };
   }, []);
 
-  const chariow = marketplaces?.find((marketplace) => marketplace.id === 'chariow');
-
-  const loadCatalog = async () => {
-    setIsLoadingCatalog(true);
-    setCatalogError(null);
-    try {
-      const response = await fetch('/api/marketplaces/chariow/products');
-      if (!response.ok) {
-        throw await readApiError(response, `Le catalogue n'a pas pu être chargé (${response.status}).`);
-      }
-      setCatalog((await response.json()) as { products: MarketplaceProduct[]; truncated: boolean });
-    } catch (caught) {
-      setCatalogError(toApiError(caught, "Le catalogue n'a pas pu être chargé."));
-    } finally {
-      setIsLoadingCatalog(false);
-    }
-  };
+  // Un catalogue par boutique reliée qui sait le lire : Chariow, Shopify, WooCommerce.
+  const catalogs = marketplaces?.filter((marketplace) => marketplace.available && marketplace.capabilities.readProducts) ?? [];
 
   return (
     <div className="space-y-6">
@@ -144,6 +127,11 @@ export function DistributionView() {
                   <p className="border-t pt-3 text-xs leading-relaxed text-muted-foreground">{marketplace.reason}</p>
                 )}
                 {marketplace.id === 'chariow' && !marketplace.available && <ConnectChariowLink />}
+                {(marketplace.id === 'shopify' || marketplace.id === 'woocommerce') && !marketplace.available && (
+                  <Button variant="outline" size="sm" asChild>
+                    <Link to="/app/compte#connexions">Relier {marketplace.label}</Link>
+                  </Button>
+                )}
               </CardContent>
             </Card>
           ))}
@@ -156,73 +144,100 @@ export function DistributionView() {
         </CardContent>
       </Card>
 
-      {chariow?.available && (
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <PackageSearch className="size-4 text-brand-green-text" aria-hidden="true" />
-              Catalogue Chariow
-            </CardTitle>
-            <CardDescription>Les produits publiés sur votre boutique.</CardDescription>
-            <CardAction>
-              <Button variant="outline" size="sm" onClick={loadCatalog} disabled={isLoadingCatalog}>
-                {isLoadingCatalog && <Spinner />}
-                {catalog ? 'Actualiser' : 'Importer le catalogue'}
-              </Button>
-            </CardAction>
-          </CardHeader>
-          <CardContent className="space-y-3">
-            {catalogError && (
-              <Alert variant="danger">
-                <AlertTriangle />
-                <AlertDescription>{catalogError.message}</AlertDescription>
-              </Alert>
-            )}
-
-            {/*
-              Une phrase grise en bas d'une carte laissait l'auteur devant un cul-de-sac : sa
-              boutique est vide, et rien ne dit par où commencer. Or il vient précisément de
-              relier un compte pour voir ce qu'il vend — c'est le moment où le produit doit
-              indiquer le geste suivant, pas constater l'absence.
-            */}
-            {catalog && catalog.products.length === 0 && (
-              <NoDataState
-                icon={PackageOpen}
-                title="Aucun produit publié sur cette boutique"
-                reason="Le catalogue est bien lu : votre boutique n'a simplement rien en vente. Créez un produit dans le Studio, puis publiez-le sur Chariow — l'API permet de lire, pas de créer."
-                action={{ label: 'Ouvrir le Studio', to: '/app/studio' }}
-              />
-            )}
-
-            {catalog && catalog.products.length > 0 && (
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>Produit</TableHead>
-                    <TableHead>Type</TableHead>
-                    <TableHead className="text-right">Prix</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {catalog.products.map((product) => (
-                    <TableRow key={product.externalId}>
-                      <TableCell className="font-medium whitespace-normal">{product.name}</TableCell>
-                      <TableCell className="text-muted-foreground">{product.type}</TableCell>
-                      <TableCell className="text-right tabular-nums">
-                        {product.isFree ? 'Gratuit' : (product.price?.formatted ?? 'Prix non renseigné')}
-                      </TableCell>
-                    </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
-            )}
-
-            {catalog?.truncated && (
-              <p className="text-xs text-warning">Catalogue trop volumineux : seule une partie est affichée.</p>
-            )}
-          </CardContent>
-        </Card>
-      )}
+      {catalogs.map((marketplace) => (
+        <CatalogCard key={marketplace.id} marketplace={marketplace} />
+      ))}
     </div>
+  );
+}
+
+/** Catalogue d'une boutique reliée, importé à la demande. */
+function CatalogCard({ marketplace }: { marketplace: MarketplaceInfo }) {
+  const [catalog, setCatalog] = useState<{ products: MarketplaceProduct[]; truncated: boolean } | null>(null);
+  const [isLoadingCatalog, setIsLoadingCatalog] = useState(false);
+  const [catalogError, setCatalogError] = useState<ApiError | null>(null);
+
+  const loadCatalog = async () => {
+    setIsLoadingCatalog(true);
+    setCatalogError(null);
+    try {
+      const response = await fetch(`/api/marketplaces/${encodeURIComponent(marketplace.id)}/products`);
+      if (!response.ok) {
+        throw await readApiError(response, `Le catalogue n'a pas pu être chargé (${response.status}).`);
+      }
+      setCatalog((await response.json()) as { products: MarketplaceProduct[]; truncated: boolean });
+    } catch (caught) {
+      setCatalogError(toApiError(caught, "Le catalogue n'a pas pu être chargé."));
+    } finally {
+      setIsLoadingCatalog(false);
+    }
+  };
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle className="flex items-center gap-2">
+          <PackageSearch className="size-4 text-brand-green-text" aria-hidden="true" />
+          Catalogue {marketplace.label}
+        </CardTitle>
+        <CardDescription>Les produits publiés sur votre boutique.</CardDescription>
+        <CardAction>
+          <Button variant="outline" size="sm" onClick={loadCatalog} disabled={isLoadingCatalog}>
+            {isLoadingCatalog && <Spinner />}
+            {catalog ? 'Actualiser' : 'Importer le catalogue'}
+          </Button>
+        </CardAction>
+      </CardHeader>
+      <CardContent className="space-y-3">
+        {catalogError && (
+          <Alert variant="danger">
+            <AlertTriangle />
+            <AlertDescription>{catalogError.message}</AlertDescription>
+          </Alert>
+        )}
+
+        {/*
+          Une phrase grise en bas d'une carte laissait l'auteur devant un cul-de-sac : sa
+          boutique est vide, et rien ne dit par où commencer. Or il vient précisément de
+          relier un compte pour voir ce qu'il vend — c'est le moment où le produit doit
+          indiquer le geste suivant, pas constater l'absence.
+        */}
+        {catalog && catalog.products.length === 0 && (
+          <NoDataState
+            icon={PackageOpen}
+            title="Aucun produit publié sur cette boutique"
+            reason="Le catalogue est bien lu : votre boutique n'a simplement rien en vente. Créez un produit dans le Studio, puis publiez-le sur votre boutique : la connexion permet de lire, pas de créer."
+            action={{ label: 'Ouvrir le Studio', to: '/app/studio' }}
+          />
+        )}
+
+        {catalog && catalog.products.length > 0 && (
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>Produit</TableHead>
+                <TableHead>Type</TableHead>
+                <TableHead className="text-right">Prix</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {catalog.products.map((product) => (
+                <TableRow key={product.externalId}>
+                  <TableCell className="font-medium whitespace-normal">{product.name}</TableCell>
+                  <TableCell className="text-muted-foreground">{product.type}</TableCell>
+                  <TableCell className="text-right tabular-nums">
+                    {product.isFree ? 'Gratuit' : (product.price?.formatted ?? 'Prix non renseigné')}
+                  </TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+        )}
+
+        {catalog?.truncated && (
+          <p className="text-xs text-warning">Catalogue trop volumineux : seule une partie est affichée.</p>
+        )}
+      </CardContent>
+    </Card>
   );
 }
