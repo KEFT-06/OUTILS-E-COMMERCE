@@ -8,6 +8,13 @@ import { env, isProd } from '@server/env';
 import { apiLimiter, corsMiddleware, errorHandler, httpsRedirect, ipCeilingLimiter, notFoundHandler } from '@server/middleware';
 import { api } from '@server/routes';
 import { mountClient, mountSeoRoutes } from '@server/services/seo';
+import { supabaseStorage } from '@server/services/storage/supabase';
+
+/** Origine du stockage de fichiers, seulement s'il est configuré : le navigateur y dépose en direct. */
+const storageOrigins = (): string[] => {
+  const target = supabaseStorage();
+  return target ? [new URL(target.base).origin] : [];
+};
 
 export interface CreateAppOptions {
   /**
@@ -63,7 +70,9 @@ export function createApp(options: CreateAppOptions = {}) {
           fontSrc: ["'self'", 'data:'],
           imgSrc: ["'self'", 'data:', 'blob:', 'https:'],
           mediaSrc: ["'self'", 'blob:', 'https:'],
-          connectSrc: ["'self'", ...env.CORS_ORIGINS],
+          // Le stockage de Supabase reçoit directement les vidéos déposées (au-delà de 4,5 Mo,
+          // l'hébergeur refuse l'envoi au serveur) : services/writing/videoUpload.ts.
+          connectSrc: ["'self'", ...env.CORS_ORIGINS, ...storageOrigins()],
           objectSrc: ["'none'"],
           frameAncestors: ["'none'"],
           baseUri: ["'self'"],

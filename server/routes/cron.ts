@@ -6,7 +6,8 @@ import { sendDueRadarDigests } from '@server/services/radar/alerts';
 import { collectPerformanceContributions } from '@server/services/performanceLoop/collect';
 import { discoveryIsDue, runDiscovery } from '@server/services/radar/discovery';
 import { sweepSessions } from '@server/services/auth/sessions';
-import { archivePendingVideos } from '@server/services/creatives/archive';
+import { archivePendingVideos, purgeExpiredVideos } from '@server/services/creatives/archive';
+import { purgeStaleVideoUploads } from '@server/services/writing/videoUpload';
 import { sweepPendingGenerations } from '@server/services/generations/sweeper';
 import { sweepDueWatches } from '@server/services/radar/sweeper';
 
@@ -118,6 +119,20 @@ cronRouter.get(
       return null;
     });
 
-    res.json({ generations, sessions, sweep, digests, discovery, performance, videos });
+    /*
+      Le stockage ne garde rien sans date de fin : copies de vidéos arrivées au terme prévu par
+      le palier de leur auteur, et dépôts « vidéo vers produit » abandonnés depuis plus de 24 h.
+      Sans ce passage, l'espace se remplirait au rythme des inscriptions.
+    */
+    const expired = await purgeExpiredVideos().catch((error: unknown) => {
+      console.warn('[cron] effacement des vidéos échues :', error instanceof Error ? error.message : error);
+      return null;
+    });
+    const uploads = await purgeStaleVideoUploads().catch((error: unknown) => {
+      console.warn('[cron] effacement des dépôts abandonnés :', error instanceof Error ? error.message : error);
+      return null;
+    });
+
+    res.json({ generations, sessions, sweep, digests, discovery, performance, videos, expired, uploads });
   }),
 );

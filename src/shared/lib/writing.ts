@@ -1,5 +1,5 @@
 import { apiRequest } from '@/shared/lib/api';
-import { readApiError } from '@/shared/lib/apiError';
+import { ApiError, readApiError } from '@/shared/lib/apiError';
 import type { DigitalProductIdea } from '@/shared/types/analysis';
 import type { AdCopyVariant, KitObjective, LaunchKitDraft } from '@/shared/types/launchKit';
 
@@ -129,6 +129,39 @@ export const writingApi = {
 
   /** Le fichier part tel quel, sans passer par le JSON : 14 Mo au plus. */
   videoFile: async (file: File): Promise<VideoProductResult> => {
+    /*
+      Dépôt direct dans le stockage quand le serveur le propose : l'hébergeur refuse tout envoi
+      de plus de 4,5 Mo au serveur, soit la plupart des vraies vidéos. Le serveur relit le
+      fichier déposé, l'analyse, puis l'efface. Sans stockage (501), envoi direct comme avant.
+    */
+    const mimeType = file.type || 'application/octet-stream';
+    const prepared = await fetch('/api/writing/video-upload', {
+      method: 'POST',
+      credentials: 'same-origin',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ mimeType, size: file.size }),
+    });
+    if (prepared.ok) {
+      const { uploadId, uploadUrl } = (await prepared.json()) as { uploadId: string; uploadUrl: string };
+      const deposited = await fetch(uploadUrl, {
+        method: 'PUT',
+        headers: { 'Content-Type': mimeType, 'x-upsert': 'false' },
+        body: file,
+      }).catch(() => null);
+      if (!deposited?.ok) {
+        throw new ApiError('Le fichier n’a pas pu être envoyé : vérifiez votre connexion, puis réessayez. Aucun point n’a été retiré.');
+      }
+      const analysed = await fetch('/api/writing/video-uploaded', {
+        method: 'POST',
+        credentials: 'same-origin',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ uploadId, fileName: file.name.slice(0, 120) }),
+      });
+      if (!analysed.ok) throw await readApiError(analysed, `La vidéo n’a pas pu être transformée (${analysed.status}).`);
+      return (await analysed.json()) as VideoProductResult;
+    }
+    if (prepared.status !== 501) throw await readApiError(prepared, `La vidéo n’a pas pu être envoyée (${prepared.status}).`);
+
     const response = await fetch('/api/writing/video-file', {
       method: 'POST',
       credentials: 'same-origin',

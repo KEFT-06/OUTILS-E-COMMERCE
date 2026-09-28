@@ -1,5 +1,5 @@
 import express, { Router, type Request } from 'express';
-import { AppError, aiLimiter, asyncRoute, validateBody } from '@server/middleware';
+import { AppError, aiLimiter, asyncRoute, routeLimiter, validateBody } from '@server/middleware';
 import { requireAuth, requireFeature } from '@server/middleware/auth';
 import {
   VIDEO_FILE_MAX_BYTES,
@@ -8,6 +8,7 @@ import {
   videoToProduct,
   youtubeWatchUrl,
 } from '@server/services/writing/video';
+import { createVideoUpload, discardUploadedVideo, readUploadedVideo, videoUploadRequestSchema } from '@server/services/writing/videoUpload';
 import {
   type LaunchKitWritingRequest,
   type ProductRevisionRequest,
@@ -176,6 +177,42 @@ writingRouter.post(
       throw new AppError(415, 'Envoyez un fichier vidéo ou audio (MP4, MOV, WebM, MP3, M4A, WAV…).', 'VIDEO_TYPE_UNSUPPORTED');
     }
     res.json(await videoToProduct(req.auth!, { kind: 'file', mimeType, data: req.body, fileName: fileNameOf(req) }));
+  }),
+);
+
+/**
+ * Dépôt direct, en deux temps : un lien signé pour que le navigateur dépose le fichier dans le
+ * stockage (au-delà de 4,5 Mo, l'hébergeur refuse l'envoi au serveur), puis l'analyse du
+ * fichier déposé. Le fichier est effacé dès l'analyse faite, réussie ou non.
+ */
+writingRouter.post(
+  '/video-upload',
+  requireAuth,
+  requireFeature('ai_writing'),
+  routeLimiter(10, 30),
+  validateBody(videoUploadRequestSchema),
+  asyncRoute(async (req, res) => {
+    res.json(await createVideoUpload(req.auth!, req.body as { mimeType: string; size: number }));
+  }),
+);
+
+writingRouter.post(
+  '/video-uploaded',
+  requireAuth,
+  requireFeature('ai_writing'),
+  aiLimiter,
+  asyncRoute(async (req, res) => {
+    const { uploadId, fileName } = (req.body ?? {}) as { uploadId?: unknown; fileName?: unknown };
+    const { data, mimeType } = await readUploadedVideo(req.auth!, uploadId);
+    const name = typeof fileName === 'string' ? fileName.replace(/\p{Cc}/gu, '').trim().slice(0, 120) : '';
+    let result: Awaited<ReturnType<typeof videoToProduct>>;
+    try {
+      result = await videoToProduct(req.auth!, { kind: 'file', mimeType, data, fileName: name });
+    } finally {
+      // Effacé AVANT la réponse : une instance gelée juste après l'envoi ne laisse rien derrière elle.
+      await discardUploadedVideo(String(uploadId));
+    }
+    res.json(result);
   }),
 );
 
