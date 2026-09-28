@@ -691,6 +691,12 @@ export const generations = pgTable(
     /** Copie gardée dans notre stockage de fichiers : le fichier survit à la conservation du fournisseur. */
     archivedAt: moment('archived_at'),
     /**
+     * Fin de conservation de cette copie, fixée par le palier de l'auteur au moment de la copie
+     * (plans.json, `videoRetentionDays`). Passée cette date, le balayage de nuit l'efface ; la
+     * date reste, pour que l'écran dise « expirée » plutôt que « introuvable ».
+     */
+    archiveExpiresAt: moment('archive_expires_at'),
+    /**
      * Vidéo longue construite par étapes : la version précédente, que celle-ci prolonge de 7 s.
      * Null pour un premier plan. Chaque étape rend la vidéo ENTIÈRE, pas seulement l'ajout.
      */

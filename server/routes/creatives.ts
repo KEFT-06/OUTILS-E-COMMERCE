@@ -22,7 +22,7 @@ import {
   visualBriefSchema,
   VIDEO_PROVIDER,
 } from '@server/services/creatives';
-import { videoArchiveConfigured } from '@server/services/creatives/archive';
+import { VEO_KEEPS_DAYS, videoArchiveConfigured, videoRetentionDaysFor } from '@server/services/creatives/archive';
 import { createLocalVisual, listLocalVisuals, localVisualExists, sendLocalVisual } from '@server/services/creatives/local';
 import type { CreativeProvider } from '@server/services/creatives';
 import { falRequestIdSchema } from '@server/services/fal';
@@ -161,7 +161,7 @@ creativesRouter.post(
       video: { durationSeconds: duree, resolution: veoResolutionFor(duree, brief.extendable) },
     });
 
-    res.status(202).json({ ...result, retentionDays: videoArchiveConfigured() ? null : PROVIDER_RETENTION_DAYS[VIDEO_PROVIDER] });
+    res.status(202).json({ ...result, retentionDays: await videoRetentionDays(req.auth!.account.user.id) });
   }),
 );
 
@@ -195,7 +195,7 @@ creativesRouter.post(
       describe: (status) => ({ providerRef: status.requestId, state: generationStateOf(status.status), fileFormat: fileFormatOf(status) }),
       video: { parentId: parent.id, durationSeconds: (parent.durationSeconds ?? 8) + VEO_EXTENSION_SECONDS, resolution: VEO_EXTENSION_RESOLUTION },
     });
-    res.status(202).json({ ...result, retentionDays: videoArchiveConfigured() ? null : PROVIDER_RETENTION_DAYS[VIDEO_PROVIDER] });
+    res.status(202).json({ ...result, retentionDays: await videoRetentionDays(req.auth!.account.user.id) });
   }),
 );
 
@@ -226,6 +226,25 @@ function videoChainInfo(video: Parameters<typeof extensionRefusal>[0]) {
   };
 }
 
+const DAY_MS = 24 * 3_600_000;
+
+/**
+ * Jours pendant lesquels une vidéo de cet auteur reste téléchargeable : ceux de son palier,
+ * ou les deux jours de Google quand aucune copie ne peut être faite (stockage non configuré).
+ */
+async function videoRetentionDays(userId: string): Promise<number> {
+  const planned = await videoRetentionDaysFor(userId);
+  return videoArchiveConfigured() ? planned : Math.min(planned, VEO_KEEPS_DAYS);
+}
+
+/** Échéance d'une vidéo : celle de sa copie, ou sa fin de rendu plus la durée du palier. */
+function videoDeadline(
+  video: { archiveExpiresAt: Date | null; completedAt: Date | null; createdAt: Date },
+  retentionDays: number,
+): Date {
+  return video.archiveExpiresAt ?? new Date((video.completedAt ?? video.createdAt).getTime() + retentionDays * DAY_MS);
+}
+
 /** Suivi d'une génération de son auteur. Hors `aiLimiter` : le client sonde toutes les 5 secondes. */
 creativesRouter.get(
   '/requests/:requestId',
@@ -246,15 +265,39 @@ creativesRouter.get(
       return;
     }
 
+    if (provider === 'veo') {
+      const retentionDays = await videoRetentionDays(generation.userId);
+      const deadline = videoDeadline(generation, retentionDays);
+      /*
+        Vidéo échue : ni Google ni notre stockage ne l'ont plus. Le dire, sans interroger
+        Google — qui répondrait « introuvable », affiché comme une panne.
+      */
+      if (generation.status === 'completed' && deadline.getTime() < Date.now()) {
+        res.json({
+          requestId,
+          status: 'completed',
+          mediaType: 'video',
+          retentionDays,
+          availableUntil: deadline.toISOString(),
+          expired: true,
+          ...videoChainInfo(generation),
+        });
+        return;
+      }
+      const status = await getCreativeStatus(requestId, provider);
+      const settled = await settleGeneration(generation, generationStateOf(status.status), fileFormatOf(status));
+      res.json({
+        ...status,
+        retentionDays,
+        ...(settled.status === 'completed' ? { availableUntil: videoDeadline(settled, retentionDays).toISOString() } : {}),
+        ...videoChainInfo(settled),
+      });
+      return;
+    }
+
     const status = await getCreativeStatus(requestId, provider);
-    const settled = await settleGeneration(generation, generationStateOf(status.status), fileFormatOf(status));
-    // Une vidéo Veo copiée (ou en cours de copie, le dépôt partant à la fin du rendu) ne périme plus.
-    const archived = provider === 'veo' && (settled.archivedAt !== null || videoArchiveConfigured());
-    res.json({
-      ...status,
-      retentionDays: archived ? null : PROVIDER_RETENTION_DAYS[provider],
-      ...(provider === 'veo' ? videoChainInfo(settled) : {}),
-    });
+    await settleGeneration(generation, generationStateOf(status.status), fileFormatOf(status));
+    res.json({ ...status, retentionDays: PROVIDER_RETENTION_DAYS[provider] });
   }),
 );
 
@@ -274,8 +317,19 @@ creativesRouter.get(
   requireAuth,
   asyncRoute(async (req, res) => {
     const requestId = parseCreativeRequestId(req.params.requestId);
-    const { provider } = await findCreative(req, requestId);
+    const { generation, provider } = await findCreative(req, requestId);
     const disposition = req.query.disposition === 'attachment' ? 'attachment' : 'inline';
+    if (provider === 'veo' && generation.status === 'completed') {
+      const retentionDays = await videoRetentionDays(generation.userId);
+      const deadline = videoDeadline(generation, retentionDays);
+      if (deadline.getTime() < Date.now()) {
+        throw new AppError(
+          410,
+          `Cette vidéo a expiré le ${deadline.toLocaleDateString('fr-FR', { day: 'numeric', month: 'long' })} : votre palier la conserve ${retentionDays === 1 ? '24 heures' : `${retentionDays} jours`}.`,
+          'VIDEO_EXPIRED',
+        );
+      }
+    }
     // Le visuel produit chez nous n'a aucun fournisseur à interroger : il est déjà en base.
     if (provider === 'interne') {
       await sendLocalVisual(req.auth!, requestId, disposition, res);

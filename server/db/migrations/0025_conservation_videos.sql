@@ -1,0 +1,1 @@
+ALTER TABLE "generations" ADD COLUMN "archive_expires_at" timestamp with time zone;

@@ -256,7 +256,7 @@ export async function startFakeProviders(): Promise<FakeProviders> {
   };
 }
 
-export async function signInWithPlan(app: import('express').Express, email: string, plan: 'free' | 'pro') {
+export async function signInWithPlan(app: import('express').Express, email: string, plan: import('@server/db/schema').PlanId) {
   const { default: request } = await import('supertest');
   const { STRONG_PASSWORD } = await import('./helpers');
   const { createUserRecord } = await import('@server/services/accounts');

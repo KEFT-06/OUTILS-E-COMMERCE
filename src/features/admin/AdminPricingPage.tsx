@@ -44,13 +44,14 @@ interface Pricing {
 }
 
 /** Libellés des limites, dans l'ordre où elles racontent le parcours : voir, suivre, produire. */
-const LIMITES: { key: string; label: string; suffixe?: (total: number) => string }[] = [
+const LIMITES: { key: string; label: string; suffixe?: (total: number) => string; format?: (v: number | null | undefined) => string }[] = [
   { key: 'spiedAdsVisible', label: 'Annonces du mur d’espionnage' },
   { key: 'watchedStores', label: 'Boutiques surveillées par le radar' },
   { key: 'savedNiches', label: 'Niches enregistrées' },
   { key: 'adFrameworks', label: 'Méthodes publicitaires', suffixe: (total) => ` sur ${total}` },
   { key: 'guideLanguages', label: 'Langues par guide' },
   { key: 'ebookPages', label: 'Pages par ebook' },
+  { key: 'videoRetentionDays', label: 'Conservation des vidéos', format: (v) => (v === 1 ? '24 h' : v ? `${v} jours` : '—') },
 ];
 
 const valeur = (v: number | null | undefined) => (v === null || v === undefined ? 'illimité' : v.toLocaleString('fr-FR'));
@@ -175,7 +176,7 @@ export function AdminPricingPage() {
                   </TableCell>
                   {data.plans.map((plan) => (
                     <TableCell key={plan.id} className="text-right tabular-nums">
-                      {valeur(plan.limits[limite.key])}
+                      {(limite.format ?? valeur)(plan.limits[limite.key])}
                     </TableCell>
                   ))}
                 </TableRow>

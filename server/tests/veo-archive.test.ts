@@ -14,6 +14,9 @@ import { closeTestApp, createTestApp } from './support/helpers';
  * fin du rendu, dans un espace PRIVÉ créé au premier dépôt, avec la clé en en-tête ; elle est
  * servie ensuite même quand Google a effacé l'original ; et un dépôt manqué est rattrapé par
  * le balayage de nuit.
+ *
+ * Et la durée suit le palier : aucune copie pour 24 h (Google garde deux jours), une copie
+ * effacée à échéance sinon, une seule version gardée pour une vidéo longue.
  */
 
 const MODELE = 'veo-3.1-fast-generate-preview';
@@ -71,6 +74,10 @@ const faux = createServer((req, res) => {
         if (!espaceCree) return envoyer(400, { statusCode: '404', error: 'Bucket not found' });
         objets.set(depot[1]!, Buffer.concat(chunks));
         return envoyer(200, { Key: `creatifs/${depot[1]!}` });
+      }
+      if (req.method === 'DELETE' && url.pathname === '/storage/v1/object/creatifs') {
+        for (const chemin of (JSON.parse(Buffer.concat(chunks).toString('utf8')) as { prefixes: string[] }).prefixes) objets.delete(chemin);
+        return envoyer(200, []);
       }
       const lecture = /^\/storage\/v1\/object\/authenticated\/creatifs\/(.+)$/.exec(url.pathname);
       if (req.method === 'GET' && lecture) {
@@ -133,7 +140,8 @@ describe('Copie des vidéos Veo', () => {
 
     const suivi = await agent.get(`/api/creatives/requests/${requestId}`).expect(200);
     assert.equal(suivi.body.status, 'completed');
-    assert.equal(suivi.body.retentionDays, null, 'l’écran ne promet plus deux jours seulement');
+    assert.equal(suivi.body.retentionDays, 30, 'le palier Pro garde ses vidéos trente jours');
+    assert.ok(suivi.body.availableUntil, 'l’écran dit jusqu’à quand télécharger');
 
     assert.deepEqual(await attendreObjet(requestId), MP4, 'la vidéo est copiée à l’identique');
     assert.equal(espaceCree?.public, false, 'l’espace de stockage est privé');
@@ -162,5 +170,77 @@ describe('Copie des vidéos Veo', () => {
     const resultat = await archivePendingVideos();
     assert.ok(resultat.archived >= 1);
     assert.deepEqual(objets.get(`veo/${requestId}.mp4`), MP4);
+  });
+
+  it('ne copie rien pour un palier à 24 h, puis annonce la vidéo expirée au lieu d’une erreur', async () => {
+    googleEfface = false;
+    stockagePanne = false;
+    const { agent } = await signInWithPlan(app, 'veo-plus@exemple.test', 'plus');
+    const lance = await agent.post('/api/creatives/videos').send(BRIEF).expect(202);
+    const requestId = lance.body.requestId as string;
+    assert.equal(lance.body.retentionDays, 1);
+
+    const suivi = await agent.get(`/api/creatives/requests/${requestId}`).expect(200);
+    assert.equal(suivi.body.retentionDays, 1);
+    await new Promise((r) => setTimeout(r, 300));
+    assert.equal(objets.has(`veo/${requestId}.mp4`), false, 'Google la garde deux jours : aucune copie chez nous');
+
+    // Vingt-cinq heures plus tard.
+    const { getDb } = await import('@server/db/client');
+    const { generations } = await import('@server/db/schema');
+    const { eq } = await import('drizzle-orm');
+    await getDb().update(generations).set({ completedAt: new Date(Date.now() - 25 * 3_600_000) }).where(eq(generations.providerRef, requestId));
+
+    const expiree = await agent.get(`/api/creatives/requests/${requestId}`).expect(200);
+    assert.equal(expiree.body.expired, true);
+    const fichier = await agent.get(`/api/creatives/requests/${requestId}/file`).expect(410);
+    assert.equal(fichier.body.error.code, 'VIDEO_EXPIRED');
+    assert.match(fichier.body.error.message, /24 heures/);
+  });
+
+  it('efface la copie à son échéance, et ne garde que la dernière version d’une vidéo longue', async () => {
+    googleEfface = false;
+    stockagePanne = false;
+    const { agent } = await signInWithPlan(app, 'veo-echeance@exemple.test', 'max');
+    const lance = await agent.post('/api/creatives/videos').send(BRIEF).expect(202);
+    const requestId = lance.body.requestId as string;
+    await agent.get(`/api/creatives/requests/${requestId}`).expect(200);
+    assert.ok(await attendreObjet(requestId), 'copiée');
+
+    const { getDb } = await import('@server/db/client');
+    const { generations } = await import('@server/db/schema');
+    const { eq } = await import('drizzle-orm');
+    const [parent] = await getDb().select().from(generations).where(eq(generations.providerRef, requestId));
+    assert.ok(parent?.archiveExpiresAt, 'une échéance est fixée');
+    const jours = (parent.archiveExpiresAt.getTime() - (parent.completedAt ?? parent.createdAt).getTime()) / 86_400_000;
+    assert.equal(Math.round(jours), 90, 'palier Max : quatre-vingt-dix jours');
+
+    // Une prolongation terminée : la nouvelle version contient toute l'ancienne.
+    const [enfant] = await getDb()
+      .insert(generations)
+      .values({
+        userId: parent.userId,
+        kind: 'video',
+        provider: 'veo',
+        providerRef: 'op-9999',
+        status: 'completed',
+        parentId: parent.id,
+        creditsCharged: 0,
+        completedAt: new Date(),
+      })
+      .returning();
+    const { archiveVeoVideo, purgeExpiredVideos } = await import('@server/services/creatives/archive');
+    assert.equal(await archiveVeoVideo(enfant!), true);
+    assert.ok(objets.has('veo/op-9999.mp4'), 'la nouvelle version est copiée');
+    assert.equal(objets.has(`veo/${requestId}.mp4`), false, 'l’ancienne version est effacée');
+
+    // Échéance passée : le balayage de nuit efface la copie, la ligne garde sa date.
+    await getDb().update(generations).set({ archiveExpiresAt: new Date(Date.now() - 1_000) }).where(eq(generations.id, enfant!.id));
+    const { purged } = await purgeExpiredVideos();
+    assert.ok(purged >= 1);
+    assert.equal(objets.has('veo/op-9999.mp4'), false);
+    const [apres] = await getDb().select().from(generations).where(eq(generations.id, enfant!.id));
+    assert.equal(apres?.archivedAt, null);
+    assert.ok(apres?.archiveExpiresAt, 'la date reste, pour dire « expirée »');
   });
 });

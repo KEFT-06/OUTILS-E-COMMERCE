@@ -62,6 +62,19 @@ const PROGRESS_LABELS: Partial<Record<CreativeStatus['status'], string>> = {
 
 const wait = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
 
+/** Durée de conservation annoncée sous le résultat : l'utilisateur doit savoir jusqu'à quand télécharger. */
+function retentionNotice(result: { mediaType: 'image' | 'video'; retentionDays?: number | null; availableUntil?: string }): string {
+  if (result.retentionDays === null) return 'Ce fichier est enregistré sur votre compte.';
+  if (result.retentionDays === undefined) return 'Ce fichier n’est conservé que quelques jours : téléchargez-le pour le garder.';
+  const duree = result.retentionDays === 1 ? '24 heures' : `${result.retentionDays} jours`;
+  const jusquau = result.availableUntil
+    ? `, jusqu’au ${new Date(result.availableUntil).toLocaleString('fr-FR', { day: 'numeric', month: 'long', hour: '2-digit', minute: '2-digit' })}`
+    : '';
+  return result.mediaType === 'video'
+    ? `Vidéo téléchargeable pendant ${duree}${jusquau} : téléchargez-la pour la garder.`
+    : `Fichier téléchargeable pendant ${duree}${jusquau} : téléchargez-le pour le garder.`;
+}
+
 /** `onVisualCreated` : un visuel vient d'être enregistré — « Mes visuels » se recharge. */
 export function CreativeGeneratorPanel({ onVisualCreated }: { onVisualCreated?: () => void } = {}) {
   const { runWithCredits, costTable } = useCreditGate();
@@ -134,6 +147,7 @@ export function CreativeGeneratorPanel({ onVisualCreated }: { onVisualCreated?: 
     requestId: string;
     mediaType: 'image' | 'video';
     retentionDays?: number | null;
+    availableUntil?: string;
     /** Vidéo Veo : durée totale, et possibilité de la prolonger de 7 s. */
     durationSeconds?: number | null;
     extendable?: boolean;
@@ -201,6 +215,7 @@ export function CreativeGeneratorPanel({ onVisualCreated }: { onVisualCreated?: 
     requestId: status.requestId,
     mediaType: status.mediaType!,
     retentionDays: status.retentionDays,
+    availableUntil: status.availableUntil,
     durationSeconds: status.durationSeconds,
     extendable: status.extendable,
     maxDurationSeconds: status.maxDurationSeconds,
@@ -690,15 +705,9 @@ export function CreativeGeneratorPanel({ onVisualCreated }: { onVisualCreated?: 
                 </Button>
               )}
 
-              {/* La durée vient du serveur, par fournisseur : une vidéo Veo ne reste que deux
-                  jours chez Google, un visuel généré en interne ne se périme pas. */}
-              <p className="text-xs leading-relaxed text-muted-foreground">
-                {result.retentionDays === null
-                  ? 'Ce fichier est enregistré sur votre compte.'
-                  : result.retentionDays === undefined
-                    ? 'Le fournisseur ne conserve le fichier que quelques jours : téléchargez-le pour le garder.'
-                    : `Le fournisseur ne conserve le fichier que ${result.retentionDays} jours : téléchargez-le pour le garder.`}
-              </p>
+              {/* La durée vient du serveur : un visuel ne se périme pas, une vidéo reste
+                  téléchargeable le temps prévu par le palier (24 h, 30 ou 90 jours). */}
+              <p className="text-xs leading-relaxed text-muted-foreground">{retentionNotice(result)}</p>
             </div>
           </div>
         )}

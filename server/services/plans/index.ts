@@ -82,6 +82,14 @@ const limitsSchema = z.object({
    * un ebook « illimité » n'aurait aucun sens et coûterait sans borne.
    */
   ebookPages: z.number().int().min(1).max(EBOOK_PAGES_CEILING),
+  /**
+   * Jours pendant lesquels une vidéo générée reste téléchargeable. Au-delà de deux jours, le
+   * serveur en garde une copie dans le stockage de Supabase ; à deux jours ou moins, Google
+   * la garde lui-même et aucune copie n'est faite. La facture de stockage suit ainsi le prix
+   * du palier, et non le nombre de comptes : une plateforme qui grandit ne remplit pas le
+   * stockage avec les vidéos de paliers qui ne le paient pas.
+   */
+  videoRetentionDays: z.number().int().min(1).max(365).default(30),
 });
 
 const planSchema = z.object({
@@ -128,6 +136,7 @@ export const UNLIMITED: PlanLimits = {
   adFrameworks: null,
   guideLanguages: null,
   ebookPages: EBOOK_PAGES_CEILING,
+  videoRetentionDays: 90,
 };
 
 export class PlansUnavailableError extends Error {

@@ -12,8 +12,12 @@ export interface CreativeStatus {
   /** Présent quand un fichier est prêt ; il se récupère via le relais du serveur. */
   mediaType?: 'image' | 'video';
   message?: string;
-  /** Jours pendant lesquels le fichier reste récupérable chez le fournisseur ; null : gardé sans limite. */
+  /** Jours pendant lesquels le fichier reste téléchargeable (vidéo : selon le palier) ; null : gardé sans limite. */
   retentionDays?: number | null;
+  /** Vidéo : date jusqu'à laquelle elle reste téléchargeable. */
+  availableUntil?: string;
+  /** Vidéo : conservation échue, le fichier n'existe plus. */
+  expired?: boolean;
   /** Vidéo Veo : durée totale en secondes. */
   durationSeconds?: number | null;
   /** Vidéo longue (720p) prolongeable de 7 s maintenant. */

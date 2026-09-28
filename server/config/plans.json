@@ -1,7 +1,7 @@
 {
   "version": "2026.09.11",
-  "updatedAt": "2026-09-23",
-  "note": "Paliers d'abonnement, éditables sans redéploiement. « prices » : prix mensuel par devise ; une devise absente est convertie depuis la devise de base puis arrondie. null : prix pas encore fixé. « limits » : null = illimité. « guideLanguages » : langues de traduction par guide. « ebookPages » : pages au plus pour un ebook rédigé par l'IA (plafond absolu 250). Une fonction absente de « features » est ouverte ; false la ferme pour le palier.",
+  "updatedAt": "2026-09-28",
+  "note": "Paliers d'abonnement, éditables sans redéploiement. « prices » : prix mensuel par devise ; une devise absente est convertie depuis la devise de base puis arrondie. null : prix pas encore fixé. « limits » : null = illimité. « guideLanguages » : langues de traduction par guide. « ebookPages » : pages au plus pour un ebook rédigé par l'IA (plafond absolu 250). « videoRetentionDays » : jours pendant lesquels une vidéo générée reste téléchargeable ; au-delà de 2, une copie est gardée dans Supabase puis effacée à échéance. Une fonction absente de « features » est ouverte ; false la ferme pour le palier.",
   "pricing": {
     "baseCurrency": "EUR",
     "yearlyMonthsCharged": 10,
@@ -22,7 +22,8 @@
         "spiedAdsVisible": 6,
         "adFrameworks": 2,
         "guideLanguages": 1,
-        "ebookPages": 15
+        "ebookPages": 15,
+        "videoRetentionDays": 1
       },
       "features": {
         "video_generation": false,
@@ -47,7 +48,8 @@
         "spiedAdsVisible": 30,
         "adFrameworks": 4,
         "guideLanguages": 3,
-        "ebookPages": 40
+        "ebookPages": 40,
+        "videoRetentionDays": 1
       },
       "features": {
         "native_review": false
@@ -70,7 +72,8 @@
         "spiedAdsVisible": 100,
         "adFrameworks": 7,
         "guideLanguages": 5,
-        "ebookPages": 100
+        "ebookPages": 100,
+        "videoRetentionDays": 30
       },
       "features": {}
     },
@@ -90,7 +93,8 @@
         "spiedAdsVisible": 200,
         "adFrameworks": 10,
         "guideLanguages": 10,
-        "ebookPages": 180
+        "ebookPages": 180,
+        "videoRetentionDays": 90
       },
       "features": {}
     },
@@ -110,7 +114,8 @@
         "spiedAdsVisible": null,
         "adFrameworks": null,
         "guideLanguages": null,
-        "ebookPages": 250
+        "ebookPages": 250,
+        "videoRetentionDays": 90
       },
       "features": {}
     }
