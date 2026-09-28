@@ -90,6 +90,12 @@ const limitsSchema = z.object({
    * stockage avec les vidéos de paliers qui ne le paient pas.
    */
   videoRetentionDays: z.number().int().min(1).max(365).default(30),
+  /**
+   * Recherches NOUVELLES par mois dans la bibliothèque publicitaire ; null : illimité (dans le
+   * plafond mensuel du serveur). Relire une recherche déjà faite ne compte pas : seule une
+   * recherche qui part chez le fournisseur coûte, et c'est elle qu'on borne.
+   */
+  adSearchesPerMonth: z.number().int().min(0).nullable().default(0),
 });
 
 const planSchema = z.object({
@@ -137,6 +143,7 @@ export const UNLIMITED: PlanLimits = {
   guideLanguages: null,
   ebookPages: EBOOK_PAGES_CEILING,
   videoRetentionDays: 90,
+  adSearchesPerMonth: null,
 };
 
 export class PlansUnavailableError extends Error {

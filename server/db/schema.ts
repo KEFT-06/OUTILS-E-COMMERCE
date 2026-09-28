@@ -1165,6 +1165,55 @@ export const adCollectionRuns = pgTable(
   (table) => [uniqueIndex('ad_collection_runs_provider_unique').on(table.providerRunId), index('ad_collection_runs_status_idx').on(table.status)],
 ).enableRLS();
 
+/**
+ * Recherches par mot-clé dans la bibliothèque publicitaire, comme sur celle de Meta.
+ *
+ * Chaque recherche nouvelle est un passage payé chez Apify : le résultat est donc PARTAGÉ.
+ * La même recherche (mot-clé normalisé, pays) relancée dans les 24 heures, par n'importe quel
+ * compte, relit ce résultat au lieu de repayer. Le compte qui l'a lancée est gardé pour le
+ * quota de son palier.
+ */
+export const adSearches = pgTable(
+  'ad_searches',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    /** Tel que tapé, pour l'affichage. */
+    query: text('query').notNull(),
+    /** Minuscules, sans accents ni espaces doubles : la clé du partage. */
+    queryKey: text('query_key').notNull(),
+    /** Code pays de la bibliothèque (CM, CI…) ou ALL. */
+    country: text('country').notNull().default('ALL'),
+    /** running · done · failed */
+    status: text('status').notNull().default('running'),
+    providerRunId: text('provider_run_id'),
+    datasetId: text('dataset_id'),
+    requestedBy: uuid('requested_by').references(() => users.id, { onDelete: 'set null' }),
+    /** Plafond facturé du passage. */
+    resultsLimit: integer('results_limit').notNull(),
+    adsFound: integer('ads_found'),
+    error: text('error'),
+    createdAt: createdAt(),
+    finishedAt: moment('finished_at'),
+  },
+  (table) => [
+    index('ad_searches_key_idx').on(table.queryKey, table.country, table.createdAt),
+    index('ad_searches_user_idx').on(table.requestedBy, table.createdAt),
+  ],
+).enableRLS();
+
+/** Annonces rendues par une recherche, dans l'ordre de la bibliothèque. */
+export const adSearchResults = pgTable(
+  'ad_search_results',
+  {
+    searchId: uuid('search_id')
+      .notNull()
+      .references(() => adSearches.id, { onDelete: 'cascade' }),
+    position: integer('position').notNull(),
+    ad: jsonb('ad').$type<Record<string, unknown>>().notNull(),
+  },
+  (table) => [primaryKey({ columns: [table.searchId, table.position] })],
+).enableRLS();
+
 export type UserRow = typeof users.$inferSelect;
 export type SessionRow = typeof sessions.$inferSelect;
 export type PlanId = (typeof PLAN_IDS)[number];

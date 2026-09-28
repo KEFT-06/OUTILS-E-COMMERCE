@@ -372,20 +372,25 @@ const schema = z.object({
    * par mois, qui BLOQUE au dépassement), 5,00 $ sur l'offre Starter (19 $ par mois, 19 $ d'usage
    * inclus), mesuré le 28/09/2026 sur apify.com.
    *
-   * RÉGLAGE PAR DÉFAUT : offre Starter, choisie par le propriétaire le 28/09/2026. Un passage par
-   * semaine = deux mots-clés × 250 publicités + les 25 annonceurs les plus actifs × 12, soit
-   * 800 au plus ≈ 3 470 par mois ≈ 17,40 $ : sous les 19 $ inclus. Le résultat est MUTUALISÉ
-   * entre tous les comptes : la dépense ne bouge pas avec le nombre d'utilisateurs.
+   * RÉGLAGE PAR DÉFAUT : offre Starter (19 $ inclus), choisie par le propriétaire le 28/09/2026,
+   * partagée entre deux usages :
+   *   · collecte du mur, une fois par semaine : 2 mots-clés × 200 + 20 annonceurs × 10 = 600
+   *     publicités au plus ≈ 2 600 par mois ≈ 13 $ ;
+   *   · recherches à la demande (« comme sur Meta ») : 1 200 publicités par mois au plus ≈ 6 $,
+   *     soit 24 recherches nouvelles de 50 ; une recherche déjà faite depuis moins de 24 h est
+   *     relue gratuitement, pour tous les comptes.
+   * Le mur est MUTUALISÉ : sa dépense ne bouge pas avec le nombre d'utilisateurs. Les recherches,
+   * elles, sont bornées par le plafond mensuel ci-dessous et par le quota de chaque palier.
    *
-   * Sur l'offre gratuite, poser RADAR_DISCOVERY_QUERY=mychariow, RADAR_DISCOVERY_LIMIT=150 et
-   * SPY_PAGES_MAX=0 : 600 publicités par mois ≈ 3,50 $.
+   * Sur l'offre gratuite, poser RADAR_DISCOVERY_QUERY=mychariow, RADAR_DISCOVERY_LIMIT=150,
+   * SPY_PAGES_MAX=0 et SPY_SEARCH_MONTHLY_ADS=0 : 600 publicités par mois ≈ 3,50 $.
    */
   APIFY_TOKEN: z.string().min(1).optional(),
   APIFY_API_URL: z.string().url().default('https://api.apify.com/v2'),
   /** Acteur maintenu par Apify. Le « ~ » remplace le « / » dans les adresses de l'API. */
   APIFY_ADS_ACTOR: z.string().regex(/^[\w.~-]+$/).default('apify~facebook-ads-scraper'),
   /** Publicités relevées au plus PAR MOT-CLÉ et par passage. Chaque unité est facturée. */
-  RADAR_DISCOVERY_LIMIT: z.coerce.number().int().min(10).max(2000).default(250),
+  RADAR_DISCOVERY_LIMIT: z.coerce.number().int().min(10).max(2000).default(200),
   /**
    * Heures entre deux passages. Hebdomadaire : une annonce toujours en vie est RETROUVÉE assez
    * souvent pour que son ancienneté avance et que son état (en cours, arrêtée) reste juste ;
@@ -403,9 +408,18 @@ const schema = z.object({
    * recherche par mot-clé ne ramène que les annonces qui le contiennent ; la page d'un annonceur
    * les ramène toutes, y compris celles dont le lien ne dit pas « mychariow ». 0 : désactivé.
    */
-  SPY_PAGES_MAX: z.coerce.number().int().min(0).max(200).default(25),
+  SPY_PAGES_MAX: z.coerce.number().int().min(0).max(200).default(20),
   /** Publicités relevées au plus par annonceur et par passage. */
-  SPY_PAGE_ADS_LIMIT: z.coerce.number().int().min(1).max(200).default(12),
+  SPY_PAGE_ADS_LIMIT: z.coerce.number().int().min(1).max(200).default(10),
+  /** Publicités ramenées au plus par recherche nouvelle (facturées). */
+  SPY_SEARCH_RESULTS: z.coerce.number().int().min(10).max(500).default(50),
+  /**
+   * Publicités au plus par mois, toutes recherches nouvelles confondues : la borne de la dépense
+   * des recherches, quel que soit le nombre de comptes. 0 : recherche à la demande fermée.
+   */
+  SPY_SEARCH_MONTHLY_ADS: z.coerce.number().int().min(0).max(1_000_000).default(1_200),
+  /** Heures pendant lesquelles une recherche faite est relue gratuitement, par tous les comptes. */
+  SPY_SEARCH_CACHE_HOURS: z.coerce.number().int().min(1).max(720).default(24),
 
   /**
    * Référence marché : combien de produits numériques existent déjà sur une niche, depuis quand,

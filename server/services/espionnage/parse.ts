@@ -86,12 +86,26 @@ const NOT_A_STORE = new Set(['www', 'api', 'api-edge', 'app', 'cdn', 'images', '
 
 export type SpiedAdInsert = typeof spiedAds.$inferInsert;
 
+/** Une annonce quelconque de la bibliothèque : boutique de la plateforme et lien peuvent manquer. */
+export type MetaAdFields = Omit<SpiedAdInsert, 'storeHost' | 'landingUrl'> & { storeHost: string | null; landingUrl: string | null };
+
 /**
  * Traduit une annonce en ligne de mur d'espionnage, ou rend null quand elle ne mène pas à la
  * plateforme. On ne regarde que le lien de destination et la légende : ce sont les deux seuls
  * champs qui prouvent la redirection.
  */
 export function readMetaAd(raw: unknown, now: Date): SpiedAdInsert | null {
+  const ad = readAnyMetaAd(raw, now);
+  if (!ad?.storeHost || !ad.landingUrl) return null;
+  return { ...ad, storeHost: ad.storeHost, landingUrl: ad.landingUrl };
+}
+
+/**
+ * Lit n'importe quelle annonce, qu'elle mène ou non à la plateforme : c'est ce que rend une
+ * recherche par mot-clé, comme dans la bibliothèque de Meta. `storeHost` n'est renseigné que
+ * pour une boutique de la plateforme, prouvée par le lien ou la légende.
+ */
+export function readAnyMetaAd(raw: unknown, now: Date): MetaAdFields | null {
   const parsed = metaAdSchema.safeParse(raw);
   if (!parsed.success) return null;
   const ad = parsed.data;
@@ -101,11 +115,11 @@ export function readMetaAd(raw: unknown, now: Date): SpiedAdInsert | null {
   const preuve = `${snap.linkUrl ?? ''} ${snap.caption ?? ''}`;
   const trouve = STOREFRONT_HOST.exec(preuve);
   const sous = trouve?.[1]?.toLowerCase();
-  if (!sous || NOT_A_STORE.has(sous)) return null;
+  const chariow = sous && !NOT_A_STORE.has(sous) ? `${sous}.mychariow.com` : null;
 
   const externalId = String(ad.adArchiveID ?? ad.adArchiveId ?? '').trim();
   const landingUrl = (snap.linkUrl ?? '').trim();
-  if (!externalId || !landingUrl) return null;
+  if (!externalId) return null;
 
   // Création dynamique ou carrousel : le visuel est dans la première carte, pas à la racine.
   const firstCard = snap.cards?.find((card) => card.resizedImageUrl || card.originalImageUrl || card.videoPreviewImageUrl);
@@ -125,8 +139,8 @@ export function readMetaAd(raw: unknown, now: Date): SpiedAdInsert | null {
   return {
     externalId,
     // « .shop » et « .com » désignent la même boutique : une seule forme, celle que le radar surveille.
-    storeHost: `${sous}.mychariow.com`,
-    landingUrl: landingUrl.slice(0, 2_000),
+    storeHost: chariow,
+    landingUrl: landingUrl.startsWith('http') ? landingUrl.slice(0, 2_000) : null,
     title: snap.title?.replace(/\s+/g, ' ').trim().slice(0, 300) || null,
     bodyText: snap.body?.text?.trim().slice(0, 4_000) || null,
     advertiser: (snap.pageName ?? ad.pageName)?.trim().slice(0, 200) || null,

@@ -1,10 +1,19 @@
 import { Router } from 'express';
 import { z } from 'zod';
-import { asyncRoute } from '@server/middleware';
+import { providers } from '@server/env';
+import { asyncRoute, routeLimiter, validateBody } from '@server/middleware';
 import { requireAuth } from '@server/middleware/auth';
 import { effectiveLimits } from '@server/services/accounts';
 import { listSpiedAds, refreshWallInBackground, spiedStores } from '@server/services/espionnage';
 import { sendAdThumbnail } from '@server/services/espionnage/media';
+import {
+  type AdSearchRequest,
+  adSearchRequestSchema,
+  getAdSearch,
+  recentAdSearches,
+  searchQuota,
+  startAdSearch,
+} from '@server/services/espionnage/search';
 
 /**
  * Mur d'espionnage : lecture seule d'un cache partagé, alimenté par le passage payant de la
@@ -51,6 +60,35 @@ espionnageRouter.get(
     const limite = effectiveLimits(req.auth!.account).spiedAdsVisible;
     res.json(await listSpiedAds(parsed.success ? parsed.data : {}, limite));
     refreshWallInBackground();
+  }),
+);
+
+/**
+ * Recherche par mot-clé dans la bibliothèque publicitaire, comme sur celle de Meta.
+ * Une recherche NOUVELLE est facturée chez le fournisseur : quota par palier, plafond mensuel du
+ * serveur, et partage de chaque résultat pendant 24 heures (services/espionnage/search.ts).
+ */
+espionnageRouter.get(
+  '/searches',
+  asyncRoute(async (req, res) => {
+    res.json({ recent: await recentAdSearches(), quota: await searchQuota(req.auth!), configured: providers.apify });
+  }),
+);
+
+espionnageRouter.post(
+  '/searches',
+  routeLimiter(10, 20),
+  validateBody(adSearchRequestSchema),
+  asyncRoute(async (req, res) => {
+    res.status(202).json({ search: await startAdSearch(req.auth!, req.body as AdSearchRequest) });
+  }),
+);
+
+/** Suivi d'une recherche : le client relit toutes les quelques secondes jusqu'au résultat. */
+espionnageRouter.get(
+  '/searches/:id',
+  asyncRoute(async (req, res) => {
+    res.json({ search: await getAdSearch(req.auth!, req.params.id) });
   }),
 );
 

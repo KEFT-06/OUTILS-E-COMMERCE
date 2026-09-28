@@ -146,11 +146,11 @@ export async function lastDiscoveryAt(): Promise<Date | null> {
  * l'API officielle de Meta ne rend les publicités commerciales que pour l'Union européenne
  * et le Royaume-Uni — c'est justement pourquoi on passe par une collecte de la page publique.
  */
-function adLibraryUrl(query: string): string {
+export function adLibraryUrl(query: string, country = 'ALL'): string {
   const params = new URLSearchParams({
     active_status: 'active',
     ad_type: 'all',
-    country: 'ALL',
+    country,
     q: query,
     search_type: 'keyword_unordered',
     media_type: 'all',
@@ -190,11 +190,11 @@ async function topAdvertiserPages(limit: number, now: Date): Promise<string[]> {
   return rows.flatMap((row) => (row.pageId && /^\d{5,30}$/.test(row.pageId) ? [row.pageId] : []));
 }
 
-const apifyUrl = (path: string, query = '') =>
+export const apifyUrl = (path: string, query = '') =>
   `${env.APIFY_API_URL.replace(/\/+$/, '')}${path}?token=${encodeURIComponent(env.APIFY_TOKEN!)}${query}`;
 
 /** Appel à l'API d'Apify ; les refus de compte deviennent des erreurs lisibles. */
-async function apifyFetch(url: string, init: { method?: string; body?: string } = {}): Promise<Response> {
+export async function apifyFetch(url: string, init: { method?: string; body?: string } = {}): Promise<Response> {
   let response: Response;
   try {
     response = await fetch(url, {
@@ -220,7 +220,7 @@ async function apifyFetch(url: string, init: { method?: string; body?: string } 
   return response;
 }
 
-const runSchema = z.object({ data: z.object({ id: z.string().min(1), defaultDatasetId: z.string().min(1), status: z.string().optional() }) });
+export const runSchema = z.object({ data: z.object({ id: z.string().min(1), defaultDatasetId: z.string().min(1), status: z.string().optional() }) });
 
 /**
  * Lance un passage chez Apify SANS l'attendre, et l'inscrit pour la récolte.
@@ -254,9 +254,9 @@ async function startRun(kind: 'keywords' | 'pages', urls: string[], resultsLimit
     .onConflictDoNothing();
 }
 
-const runStatusSchema = z.object({ data: z.object({ status: z.string() }) });
-const datasetItemSchema = z.array(z.unknown());
-const FAILED_RUN = new Set(['FAILED', 'ABORTED', 'TIMED-OUT', 'TIMED_OUT']);
+export const runStatusSchema = z.object({ data: z.object({ status: z.string() }) });
+export const datasetItemSchema = z.array(z.unknown());
+export const FAILED_RUN = new Set(['FAILED', 'ABORTED', 'TIMED-OUT', 'TIMED_OUT']);
 
 /**
  * Récolte les passages terminés : leurs annonces rejoignent le mur, leurs boutiques le radar.
@@ -362,7 +362,7 @@ export async function runDiscovery(now = new Date()): Promise<DiscoveryOutcome> 
     client: { ipAddress: null, userAgent: null },
   });
 
-  await startRun('keywords', queries.map(adLibraryUrl), env.RADAR_DISCOVERY_LIMIT);
+  await startRun('keywords', queries.map((query) => adLibraryUrl(query)), env.RADAR_DISCOVERY_LIMIT);
   if (pages.length > 0) {
     // Un échec ici ne doit pas annuler la recherche par mots-clés, déjà lancée et payée.
     await startRun('pages', pages.map(advertiserPageUrl), env.SPY_PAGE_ADS_LIMIT).catch((error: unknown) =>

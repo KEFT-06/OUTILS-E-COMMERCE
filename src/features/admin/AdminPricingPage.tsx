@@ -46,6 +46,7 @@ interface Pricing {
 /** Libellés des limites, dans l'ordre où elles racontent le parcours : voir, suivre, produire. */
 const LIMITES: { key: string; label: string; suffixe?: (total: number) => string; format?: (v: number | null | undefined) => string }[] = [
   { key: 'spiedAdsVisible', label: 'Annonces du mur d’espionnage' },
+  { key: 'adSearchesPerMonth', label: 'Recherches publicitaires par mois' },
   { key: 'watchedStores', label: 'Boutiques surveillées par le radar' },
   { key: 'savedNiches', label: 'Niches enregistrées' },
   { key: 'adFrameworks', label: 'Méthodes publicitaires', suffixe: (total) => ` sur ${total}` },

@@ -135,6 +135,31 @@ export interface SpiedAd {
   cards: { title: string | null; body: string | null; linkUrl: string | null; ctaText: string | null }[];
 }
 
+/** Annonce quelconque de la bibliothèque (recherche par mot-clé) : sans boutique ni lien parfois. */
+export type LibraryAd = Omit<SpiedAd, 'storeHost' | 'landingUrl'> & { storeHost: string | null; landingUrl: string | null };
+
+/** Recherche par mot-clé dans la bibliothèque publicitaire (miroir de server/services/espionnage/search.ts). */
+export interface AdSearch {
+  id: string;
+  query: string;
+  country: string;
+  status: 'running' | 'done' | 'failed';
+  adsFound: number | null;
+  error: string | null;
+  createdAt: string;
+  finishedAt: string | null;
+  fromCache: boolean;
+  ads: LibraryAd[];
+  hiddenByPlan: number;
+  platformAds: number;
+}
+
+export interface AdSearchOverview {
+  recent: { id: string; query: string; country: string; adsFound: number; createdAt: string }[];
+  quota: { used: number; limit: number | null; serverLeft: number };
+  configured: boolean;
+}
+
 export interface EspionnageView {
   ads: SpiedAd[];
   total: number;
