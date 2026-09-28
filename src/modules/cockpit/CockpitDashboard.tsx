@@ -37,6 +37,7 @@ const SERVICE_LABELS: Record<string, string> = {
   payments: 'Paiements',
   email: 'E-mails du compte',
   googleAuth: 'Connexion avec Google',
+  adLibrary: 'Bibliothèque publicitaire (espionnage)',
 };
 
 /** Parcours conseillé : c'est une vraie séquence, d'où la numérotation. */

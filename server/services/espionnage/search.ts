@@ -26,7 +26,7 @@ import {
  *
  * Ce qui la sépare de la page de Meta, et que l'écran dit : Meta ne se laisse pas interroger
  * directement, chaque recherche nouvelle passe donc par une collecte chez Apify, qui prend
- * environ une minute et se paie au résultat. D'où trois règles :
+ * une trentaine de secondes (27 s mesurées le 28/09/2026) et se paie au résultat. D’où trois règles :
  *  1. le résultat est PARTAGÉ — la même recherche, par n'importe quel compte, dans les 24 heures,
  *     est relue gratuitement ;
  *  2. chaque palier a un quota de recherches nouvelles par mois (plans.json) ;

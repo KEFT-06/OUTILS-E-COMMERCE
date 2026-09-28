@@ -31,7 +31,7 @@ import { Switch } from "@/shared/ui/switch";
  * excel », « ebook »…
  *
  * Ce que l'écran doit dire, parce que c'est ce qui la distingue de la page de Meta : une
- * recherche nouvelle prend environ une minute (elle passe par une collecte), et chaque palier en
+ * recherche nouvelle prend une trentaine de secondes (mesuré : 27 s pour 20 publicités), et chaque palier en
  * a un nombre par mois. Une recherche déjà faite dans les 24 heures, par n'importe qui, s'affiche
  * tout de suite et ne compte pas.
  */
@@ -350,7 +350,7 @@ export function MetaSearchPanel() {
             Recherche de « {recherche.query} » dans la bibliothèque de Meta…
           </AlertTitle>
           <AlertDescription>
-            Environ une minute{secondes > 0 ? ` (${secondes} s)` : ""}. Les
+            Environ trente secondes{secondes > 0 ? ` (${secondes} s)` : ""}. Les
             publicités s’affichent ici dès qu’elles arrivent ; si vous quittez
             la page, la recherche continue et restera consultable 24 heures.
           </AlertDescription>

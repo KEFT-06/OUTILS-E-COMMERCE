@@ -83,6 +83,8 @@ catalogRouter.get(
         email: providers.email,
         payments: providers.payments,
         googleAuth: providers.googleAuth,
+        // Collecte et recherche publicitaires (Apify) : sans elle, l'espionnage ne se remplit pas.
+        adLibrary: providers.apify,
       },
       /** test : aucune carte réelle débitée. */
       paymentMode: stripeMode(),
