@@ -1,5 +1,6 @@
 import { useEffect, type ReactNode } from 'react';
 import { Link } from 'react-router-dom';
+import { formatDateFr } from '@/shared/lib/formatDate';
 import { useTrackVisit } from '@/shared/hooks/useTrackVisit';
 import { usePublicPageMeta } from '@/shared/hooks/usePublicPageMeta';
 import { AlertTriangle, ArrowLeft } from 'lucide-react';
@@ -26,7 +27,7 @@ export type LegalKind = 'mentions-legales' | 'confidentialite' | 'conditions';
  * pages et laisserait croire à une révision qui n'a pas eu lieu — sur des pages qui engagent,
  * c'est la date elle-même qui perdrait toute valeur.
  */
-const DERNIERE_MAJ = '2026-09-27';
+const DERNIERE_MAJ = '2026-09-28';
 
 const TITLES: Record<LegalKind, string> = {
   'mentions-legales': 'Mentions légales',
@@ -395,7 +396,9 @@ export function LegalPage({ kind }: { kind: LegalKind }) {
           <p className="text-sm text-muted-foreground">
             Dernière mise à jour :{' '}
             <time dateTime={DERNIERE_MAJ}>
-              {new Date(DERNIERE_MAJ).toLocaleDateString('fr-FR', { day: 'numeric', month: 'long', year: 'numeric' })}
+              {/* formatDateFr lit « 2026-09-27 » comme un jour : new Date() y voyait minuit UTC,
+                  et affichait la veille à tout visiteur situé à l'ouest de Greenwich. */}
+              {formatDateFr(DERNIERE_MAJ)}
             </time>
           </p>
           <Alert variant="warning">
