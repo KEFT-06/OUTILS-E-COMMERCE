@@ -21,7 +21,7 @@ import {
   visualProvider,
   VIDEO_PROVIDER,
 } from '@server/services/creatives';
-import { createLocalVisual, localVisualExists, sendLocalVisual } from '@server/services/creatives/local';
+import { createLocalVisual, listLocalVisuals, localVisualExists, sendLocalVisual } from '@server/services/creatives/local';
 import type { CreativeProvider } from '@server/services/creatives';
 import { falRequestIdSchema } from '@server/services/fal';
 import { veoConfigured, veoRequestIdSchema } from '@server/services/veo';
@@ -196,6 +196,16 @@ creativesRouter.get(
     const status = await getCreativeStatus(requestId, provider);
     await settleGeneration(generation, generationStateOf(status.status), fileFormatOf(status));
     res.json({ ...status, retentionDays: PROVIDER_RETENTION_DAYS[provider] });
+  }),
+);
+
+/** « Mes visuels » : les visuels enregistrés de l'auteur, sans leurs octets. */
+creativesRouter.get(
+  '/visuals',
+  requireAuth,
+  asyncRoute(async (req, res) => {
+    const page = Math.min(Math.max(Number.parseInt(String(req.query.page ?? '1'), 10) || 1, 1), 1_000);
+    res.json(await listLocalVisuals(req.auth!, page));
   }),
 );
 

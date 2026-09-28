@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import type { Response as ExpressResponse } from 'express';
-import { and, eq } from 'drizzle-orm';
+import { and, desc, eq } from 'drizzle-orm';
 import { getDb } from '@server/db/client';
 import { creativeImages } from '@server/db/schema';
 import { AppError } from '@server/middleware';
@@ -82,7 +82,32 @@ export async function localVisualExists(auth: RequestAuth, requestId: string): P
   return Boolean(row);
 }
 
-const EXTENSIONS: Record<string, string> = { 'image/png': 'png', 'image/jpeg': 'jpg', 'image/webp': 'webp' };
+/** Visuels affichés par page dans « Mes visuels ». */
+export const VISUALS_PAGE_SIZE = 24;
+
+/**
+ * Les visuels de l'auteur, du plus récent au plus ancien, SANS leurs octets : l'écran les
+ * affiche par l'adresse du fichier, une image à la fois.
+ *
+ * Ils sont gardés sans limite de durée, mais ne se téléchargeaient qu'au moment de leur
+ * création : un visuel payé et perdu de vue restait en base, inaccessible à son auteur.
+ */
+export async function listLocalVisuals(auth: RequestAuth, page = 1) {
+  const rows = await getDb()
+    .select({ requestId: creativeImages.requestId, prompt: creativeImages.prompt, format: creativeImages.format, createdAt: creativeImages.createdAt })
+    .from(creativeImages)
+    .where(eq(creativeImages.userId, auth.account.user.id))
+    .orderBy(desc(creativeImages.createdAt))
+    .limit(VISUALS_PAGE_SIZE + 1)
+    .offset((page - 1) * VISUALS_PAGE_SIZE);
+  return {
+    page,
+    hasMore: rows.length > VISUALS_PAGE_SIZE,
+    visuals: rows.slice(0, VISUALS_PAGE_SIZE).map((row) => ({ ...row, createdAt: row.createdAt.toISOString() })),
+  };
+}
+
+const EXTENSIONS: Record<string, string> ={ 'image/png': 'png', 'image/jpeg': 'jpg', 'image/webp': 'webp' };
 
 /**
  * Sert le visuel depuis notre propre origine.

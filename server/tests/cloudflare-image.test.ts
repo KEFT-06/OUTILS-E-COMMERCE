@@ -327,6 +327,26 @@ describe('Visuels publicitaires produits chez nous', () => {
   });
 
   /*
+    Un visuel payé ne se téléchargeait qu'au moment de sa création : quitter l'écran suffisait
+    à le perdre de vue, alors qu'il reste en base. « Mes visuels » les liste — sans leurs octets,
+    et à leur seul auteur.
+  */
+  it('liste les visuels de l’auteur, et à lui seul, sans leurs octets', async () => {
+    cloudflareMode = 'ok';
+    const auteure = await author('visuel-galerie@exemple.com');
+    const lance = await auteure.post('/api/creatives/visuals').send(BRIEF).expect(202);
+
+    const liste = await auteure.get('/api/creatives/visuals').expect(200);
+    assert.equal(liste.body.visuals[0].requestId, lance.body.requestId);
+    assert.equal(liste.body.hasMore, false);
+    assert.equal('data' in liste.body.visuals[0], false, 'les octets de l’image restent hors de la liste');
+
+    const autre = await author('visuel-galerie-intruse@exemple.com');
+    const vide = await autre.get('/api/creatives/visuals').expect(200);
+    assert.equal(vide.body.visuals.length, 0, 'un autre compte ne voit rien');
+  });
+
+  /*
     Le repli vaut pour les visuels comme pour les couvertures : un client qui vient de payer
     ses points repart avec son image, même si Cloudflare l'a refusée. C'est aussi ce qui
     justifie que la ligne dise « interne » et non « cloudflare » — ici, c'est Gemini qui a

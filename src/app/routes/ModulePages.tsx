@@ -1,4 +1,4 @@
-import { lazy, Suspense, type ReactNode } from 'react';
+import { lazy, Suspense, useState, type ReactNode } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { Compass, PenSquare, Sparkles } from 'lucide-react';
 import { ACCOUNT_PATH, pathOf, type ModuleId } from '@/app/navigation';
@@ -45,6 +45,9 @@ const DigitalProductsView = lazy(() =>
 );
 const CreativeGeneratorPanel = lazy(() =>
   import('@/modules/creatifs/CreativeGeneratorPanel').then((module) => ({ default: module.CreativeGeneratorPanel })),
+);
+const MyVisualsPanel = lazy(() =>
+  import('@/modules/creatifs/MyVisualsPanel').then((module) => ({ default: module.MyVisualsPanel })),
 );
 const MetaVideoStudioView = lazy(() =>
   import('@/modules/creatifs/MetaVideoStudioView').then((module) => ({ default: module.MetaVideoStudioView })),
@@ -273,6 +276,7 @@ export function StudioPage() {
 
 export function CreatifsPage() {
   const { currentReport } = useWorkspace();
+  const [visualsVersion, setVisualsVersion] = useState(0);
   return (
     <div className="space-y-8">
       <PageHeader
@@ -280,7 +284,8 @@ export function CreatifsPage() {
         title="Créatifs publicitaires"
         description="Générez une vidéo ou un visuel publicitaire structuré par une méthode (AIDA, PAS…), puis travaillez les scripts vidéo de la niche analysée."
       />
-      <CreativeGeneratorPanel />
+      <CreativeGeneratorPanel onVisualCreated={() => setVisualsVersion((version) => version + 1)} />
+      <MyVisualsPanel version={visualsVersion} />
       <MetaVideoStudioView
         campaigns={currentReport?.adCampaigns ?? []}
         provenance={currentReport?.dataProvenance?.adCampaigns}

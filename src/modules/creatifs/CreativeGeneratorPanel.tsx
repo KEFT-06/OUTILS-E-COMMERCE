@@ -60,7 +60,8 @@ const PROGRESS_LABELS: Partial<Record<CreativeStatus['status'], string>> = {
 
 const wait = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
 
-export function CreativeGeneratorPanel() {
+/** `onVisualCreated` : un visuel vient d'être enregistré — « Mes visuels » se recharge. */
+export function CreativeGeneratorPanel({ onVisualCreated }: { onVisualCreated?: () => void } = {}) {
   const { runWithCredits } = useCreditGate();
 
   // Lu une seule fois, au montage : relire le stockage à chaque rendu coûterait pour rien.
@@ -222,6 +223,7 @@ export function CreativeGeneratorPanel() {
             throw new ApiError("La génération s'est terminée sans produire de fichier.");
           }
           setResult({ requestId: status.requestId, mediaType: status.mediaType, retentionDays: status.retentionDays });
+          if (status.mediaType === 'image' && status.retentionDays === null) onVisualCreated?.();
         } finally {
           if (!unmountedRef.current) {
             setIsGenerating(false);
