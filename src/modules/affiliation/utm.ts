@@ -89,17 +89,36 @@ export function buildUtmUrl(baseUrl: string, fields: UtmFields): UtmResult {
   return { ok: true, url: url.toString() };
 }
 
-/** Un lien par code d'affilié : `utm_source` = code, `utm_medium` = affiliate. */
+/**
+ * Un lien par code d'affilié : `utm_source` = code, `utm_medium` = affiliate.
+ *
+ * Le code est normalisé comme toute valeur UTM (minuscules, sans accents) : « Aïcha » et
+ * « aicha », ou « AMA01 » et « ama01 », donnaient donc le MÊME lien, et les ventes de l'un
+ * étaient comptées à l'autre sans que rien ne le signale. Le second code qui retombe sur un
+ * lien déjà produit est refusé, avec le nom du code qu'il recouvre.
+ */
 export function buildAffiliateLinks(
   baseUrl: string,
   fields: Omit<UtmFields, 'source' | 'medium'>,
   codes: string[],
 ): { code: string; result: UtmResult }[] {
+  const dejaVus = new Map<string, string>();
   return codes
     .map((code) => code.trim())
     .filter(Boolean)
-    .map((code) => ({
-      code,
-      result: buildUtmUrl(baseUrl, { ...fields, source: code, medium: 'affiliate' }),
-    }));
+    .map((code) => {
+      const source = normalizeUtmValue(code);
+      const premier = source ? dejaVus.get(source) : undefined;
+      if (premier !== undefined) {
+        return {
+          code,
+          result: {
+            ok: false as const,
+            errors: [`Même lien que le code « ${premier} » (utm_source=${source}) : choisissez un code distinct, sinon leurs ventes se confondent.`],
+          },
+        };
+      }
+      if (source) dejaVus.set(source, code);
+      return { code, result: buildUtmUrl(baseUrl, { ...fields, source: code, medium: 'affiliate' }) };
+    });
 }

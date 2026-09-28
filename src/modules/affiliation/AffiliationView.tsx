@@ -261,8 +261,8 @@ export function AffiliationView() {
 
               {affiliateLinks.length > 0 && (
                 <ul className="space-y-2">
-                  {affiliateLinks.map(({ code, result }) => (
-                    <li key={code} className="flex flex-col gap-2 rounded-lg border p-3 sm:flex-row sm:items-center">
+                  {affiliateLinks.map(({ code, result }, index) => (
+                    <li key={`${index}-${code}`}className="flex flex-col gap-2 rounded-lg border p-3 sm:flex-row sm:items-center">
                       <span className="w-28 shrink-0 truncate text-sm font-semibold">{code}</span>
                       {result.ok ? (
                         <>
