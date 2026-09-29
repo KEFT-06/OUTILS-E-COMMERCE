@@ -139,6 +139,7 @@ export function LongformEbookPanel({ product, market, onWritten }: LongformEbook
           market,
           targetPages,
         }),
+        targetPages,
       );
       if (!response) return;
       collected.current = null;

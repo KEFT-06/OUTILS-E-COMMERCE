@@ -5,6 +5,9 @@ export interface CreditAction {
   label: string;
   cost: number;
   description: string;
+  /** Action facturée par tranche : `cost` points par tranche de `perUnit` unités entamée. */
+  perUnit?: number;
+  unitLabel?: string;
 }
 
 export interface CreditCostTable {

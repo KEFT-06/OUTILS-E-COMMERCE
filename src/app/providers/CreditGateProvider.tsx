@@ -26,7 +26,8 @@ interface CreditGateContextType {
    * @returns le résultat de l'action, ou `null` si l'utilisateur a refusé,
    *          si le solde était insuffisant ou si la grille était indisponible.
    */
-  runWithCredits: <T>(actionId: string, action: () => Promise<T>) => Promise<T | null>;
+  /** `units` : volume d'une action facturée par tranche (pages d'un ebook, d'un rapport). */
+  runWithCredits: <T>(actionId: string, action: () => Promise<T>, units?: number) => Promise<T | null>;
   /** Grille tarifaire chargée, pour les affichages qui ont besoin du prix du point. */
   costTable: CreditCostTable | null;
 }
@@ -93,7 +94,7 @@ export const CreditGateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
   }, []);
 
   const runWithCredits = useCallback(
-    async <T,>(actionId: string, action: () => Promise<T>): Promise<T | null> => {
+    async <T,>(actionId: string, action: () => Promise<T>, units = 1): Promise<T | null> => {
       let approved = false;
       let cost = 0;
 
@@ -108,7 +109,9 @@ export const CreditGateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
           );
         }
 
-        cost = definition.cost;
+        // Même calcul que le serveur : toute tranche entamée est due. La fenêtre annonçait le prix
+        // d'une seule tranche (2 points pour un ebook de 40 pages, qui en coûte 8).
+        cost = definition.perUnit ? definition.cost * Math.max(1, Math.ceil(units / definition.perUnit)) : definition.cost;
         const unlimited = account?.credits.unlimited ?? false;
         const balanceBefore = account?.credits.total ?? 0;
 
