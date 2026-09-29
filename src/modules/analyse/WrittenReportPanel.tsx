@@ -1,5 +1,4 @@
-import { Fragment, useEffect, useMemo, useState } from 'react';
-import { AnimatePresence, motion } from 'motion/react';
+import { Fragment, Suspense, lazy, useEffect, useMemo, useState } from 'react';
 import { BookOpenText, ChevronDown, Download, ExternalLink, FileText, Loader2, RefreshCw, ShieldCheck } from 'lucide-react';
 import { toast } from 'sonner';
 import { useCreditGate } from '@/app/providers/CreditGateProvider';
@@ -15,11 +14,13 @@ import { Alert, AlertDescription, AlertTitle } from '@/shared/ui/alert';
 import { Badge } from '@/shared/ui/badge';
 import { Button } from '@/shared/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/shared/ui/card';
-import { BorderBeam } from '@/shared/ui/magicui/border-beam';
 import { Label } from '@/shared/ui/label';
 import { Progress } from '@/shared/ui/progress';
 import { Slider } from '@/shared/ui/slider';
 import { cn } from '@/shared/lib/utils';
+
+// Liseré animé pendant la rédaction seulement : sa bibliothèque ne se charge qu'à ce moment-là.
+const BorderBeam = lazy(() => import('@/shared/ui/magicui/border-beam').then((module) => ({ default: module.BorderBeam })));
 
 /**
  * Rapport rédigé, à la demande, après l'analyse.
@@ -171,7 +172,11 @@ export function WrittenReportPanel({ reportId, nicheName }: WrittenReportPanelPr
 
   return (
     <Card id="rediger" className="relative scroll-mt-24 overflow-hidden">
-      {writing && <BorderBeam size={120} duration={6} />}
+      {writing && (
+        <Suspense fallback={null}>
+          <BorderBeam size={120} duration={6} />
+        </Suspense>
+      )}
       <CardHeader>
         <CardTitle className="flex items-center gap-2 text-base">
           <BookOpenText className="size-4 text-primary" aria-hidden />
@@ -184,82 +189,79 @@ export function WrittenReportPanel({ reportId, nicheName }: WrittenReportPanelPr
       </CardHeader>
 
       <CardContent>
-        <AnimatePresence mode="wait" initial={false}>
-          {!loaded ? (
-            <motion.div key="chargement" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="space-y-2" aria-busy>
-              <div className="h-4 w-2/3 animate-pulse rounded bg-muted" />
-              <div className="h-4 w-1/2 animate-pulse rounded bg-muted" />
-            </motion.div>
-          ) : writing ? (
-            <motion.div key="redaction" initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -6 }} className="space-y-3" role="status">
-              <div className="flex items-center gap-3">
-                <Loader2 className="size-4 shrink-0 animate-spin text-primary" aria-hidden />
-                <AnimatePresence mode="wait">
-                  <motion.p key={step} initial={{ opacity: 0, x: 8 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -8 }} className="text-sm font-medium">
-                    {step}
-                  </motion.p>
-                </AnimatePresence>
-              </div>
-              <Progress value={progress} aria-label="Avancement de la rédaction" />
-              <p className="text-xs text-muted-foreground">
-                {serverProgress ? `${serverProgress.done} partie${serverProgress.done > 1 ? 's' : ''} sur ${serverProgress.total} rédigée${serverProgress.done > 1 ? 's' : ''}. ` : ''}
-                Rapport de {document?.targetPages ?? pages} pages : comptez environ {Math.max(1, Math.round(typical / 60_000))} minute{typical >= 90_000 ? 's' : ''}. Vous pouvez quitter cette page : la rédaction continue et le rapport vous attendra ici.
+        {/* Apparitions en CSS : la bibliothèque d'animation pesait 43 Ko pour quatre fondus. */}
+        {!loaded ? (
+          <div key="chargement" className="space-y-2" aria-busy>
+            <div className="h-4 w-2/3 animate-pulse rounded bg-muted" />
+            <div className="h-4 w-1/2 animate-pulse rounded bg-muted" />
+          </div>
+        ) : writing ? (
+          <div key="redaction" className="animate-in space-y-3 duration-300 fade-in-0 slide-in-from-bottom-1" role="status">
+            <div className="flex items-center gap-3">
+              <Loader2 className="size-4 shrink-0 animate-spin text-primary" aria-hidden />
+              <p key={step} className="animate-in text-sm font-medium duration-300 fade-in-0 slide-in-from-right-2">
+                {step}
               </p>
-            </motion.div>
-          ) : document?.status === 'ready' && document.markdown ? (
-            <motion.div key="pret" initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }} className="space-y-5">
-              <ReadyToolbar document={document} isExporting={isExporting} isStarting={isStarting} onExport={() => void exportPdf()} onRewrite={() => setRewriting((open) => !open)} />
+            </div>
+            <Progress value={progress} aria-label="Avancement de la rédaction" />
+            <p className="text-xs text-muted-foreground">
+              {serverProgress ? `${serverProgress.done} partie${serverProgress.done > 1 ? 's' : ''} sur ${serverProgress.total} rédigée${serverProgress.done > 1 ? 's' : ''}. ` : ''}
+              Rapport de {document?.targetPages ?? pages} pages : comptez environ {Math.max(1, Math.round(typical / 60_000))} minute{typical >= 90_000 ? 's' : ''}. Vous pouvez quitter cette page : la rédaction continue et le rapport vous attendra ici.
+            </p>
+          </div>
+        ) : document?.status === 'ready' && document.markdown ? (
+          <div key="pret" className="animate-in space-y-5 duration-300 fade-in-0 slide-in-from-bottom-2">
+            <ReadyToolbar document={document} isExporting={isExporting} isStarting={isStarting} onExport={() => void exportPdf()} onRewrite={() => setRewriting((open) => !open)} />
 
-              {rewriting && (
-                <div className="space-y-3 rounded-xl border bg-muted/30 p-4">
-                  {selector}
-                  <Button onClick={() => void start()} disabled={isStarting}>
-                    {isStarting ? <Loader2 className="animate-spin" aria-hidden /> : <RefreshCw aria-hidden />}
-                    Réécrire en {Math.min(pages, maxPages)} page{Math.min(pages, maxPages) > 1 ? 's' : ''}
+            {rewriting && (
+              <div className="space-y-3 rounded-xl border bg-muted/30 p-4">
+                {selector}
+                <Button onClick={() => void start()} disabled={isStarting}>
+                  {isStarting ? <Loader2 className="animate-spin" aria-hidden /> : <RefreshCw aria-hidden />}
+                  Réécrire en {Math.min(pages, maxPages)} page{Math.min(pages, maxPages) > 1 ? 's' : ''}
+                </Button>
+              </div>
+            )}
+
+            {blocked && <BlockedNotice verdict={blocked} />}
+
+            <div className="relative">
+              <article
+                className={cn('space-y-4 text-[0.95rem] leading-relaxed text-foreground/90', !expanded && 'max-h-[34rem] overflow-hidden')}
+                aria-label={document.title ?? 'Rapport rédigé'}
+                // Un renvoi [n] mène à l'annexe : replié, le rapport la cacherait.
+                onClickCapture={(event) => {
+                  if (!expanded && (event.target as HTMLElement).closest('a[href^="#source-"]')) setExpanded(true);
+                }}
+              >
+                <MarkdownView markdown={document.markdown} />
+                <Bibliography document={document} />
+              </article>
+              {!expanded && (
+                <div className="absolute inset-x-0 bottom-0 flex h-40 items-end justify-center bg-gradient-to-t from-card via-card/90 to-transparent pb-2">
+                  <Button variant="outline" onClick={() => setExpanded(true)}>
+                    <ChevronDown />
+                    Lire tout le rapport
                   </Button>
                 </div>
               )}
-
-              {blocked && <BlockedNotice verdict={blocked} />}
-
-              <div className="relative">
-                <article
-                  className={cn('space-y-4 text-[0.95rem] leading-relaxed text-foreground/90', !expanded && 'max-h-[34rem] overflow-hidden')}
-                  aria-label={document.title ?? 'Rapport rédigé'}
-                  // Un renvoi [n] mène à l'annexe : replié, le rapport la cacherait.
-                  onClickCapture={(event) => {
-                    if (!expanded && (event.target as HTMLElement).closest('a[href^="#source-"]')) setExpanded(true);
-                  }}
-                >
-                  <MarkdownView markdown={document.markdown} />
-                  <Bibliography document={document} />
-                </article>
-                {!expanded && (
-                  <div className="absolute inset-x-0 bottom-0 flex h-40 items-end justify-center bg-gradient-to-t from-card via-card/90 to-transparent pb-2">
-                    <Button variant="outline" onClick={() => setExpanded(true)}>
-                      <ChevronDown />
-                      Lire tout le rapport
-                    </Button>
-                  </div>
-                )}
-              </div>
-            </motion.div>
-          ) : (
-            <motion.div key="a-rediger" initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -6 }} className="space-y-3">
-              {document?.status === 'failed' && (
-                <Alert variant="danger">
-                  <AlertTitle>La rédaction précédente n’a pas abouti</AlertTitle>
-                  <AlertDescription>{document.error?.message ?? 'Réessayez dans un moment : vos points ont été rendus.'}</AlertDescription>
-                </Alert>
-              )}
-              {selector}
-              <Button size="lg" onClick={() => void start()} disabled={isStarting}>
-                {isStarting ? <Loader2 className="animate-spin" aria-hidden /> : <FileText aria-hidden />}
-                {document?.status === 'failed' ? 'Relancer la rédaction' : `Rédiger le rapport de ${Math.min(pages, maxPages)} page${Math.min(pages, maxPages) > 1 ? 's' : ''}`}
-              </Button>
-            </motion.div>
-          )}
-        </AnimatePresence>
+            </div>
+          </div>
+        ) : (
+          <div key="a-rediger" className="animate-in space-y-3 duration-300 fade-in-0 slide-in-from-bottom-1">
+            {document?.status === 'failed' && (
+              <Alert variant="danger">
+                <AlertTitle>La rédaction précédente n’a pas abouti</AlertTitle>
+                <AlertDescription>{document.error?.message ?? 'Vos points ont été rendus. Relancez la rédaction ci-dessous.'}</AlertDescription>
+              </Alert>
+            )}
+            {selector}
+            <Button size="lg" onClick={() => void start()} disabled={isStarting}>
+              {isStarting ? <Loader2 className="animate-spin" aria-hidden /> : <FileText aria-hidden />}
+              {document?.status === 'failed' ? 'Relancer la rédaction' : `Rédiger le rapport de ${Math.min(pages, maxPages)} page${Math.min(pages, maxPages) > 1 ? 's' : ''}`}
+            </Button>
+          </div>
+        )}
       </CardContent>
     </Card>
   );
