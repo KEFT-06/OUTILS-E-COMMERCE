@@ -29,7 +29,7 @@ interface Depot {
 
 const depots: Depot[] = [];
 /** Pilote le faux Google : « quota » le fait répondre comme une réserve épuisée. */
-let mode: 'encours' | 'termine' | 'quota' = 'encours';
+let mode: 'encours' | 'termine' | 'quota' | 'europe' | 'refus' = 'encours';
 let compteur = 0;
 /** Clés reçues sur le téléchargement du fichier : c'est là que se vérifie l'authentification. */
 const telechargements: (string | undefined)[] = [];
@@ -64,6 +64,16 @@ const fauxGoogle = createServer((req, res) => {
       });
       if (mode === 'quota') {
         envoyer(429, { error: { message: 'Quota exceeded for veo requests' } });
+        return;
+      }
+      // Région européenne : sans « allow_adult » explicite, la demande est refusée.
+      const reglage = (depots.at(-1)!.corps as { parameters?: { personGeneration?: string } }).parameters?.personGeneration;
+      if (mode === 'refus') {
+        envoyer(400, { error: { code: 400, message: 'The prompt could not be submitted to veo: it violates the usage guidelines.', status: 'INVALID_ARGUMENT' } });
+        return;
+      }
+      if (mode === 'europe' && reglage !== 'allow_adult') {
+        envoyer(400, { error: { code: 400, message: 'allow_all for personGeneration is currently not supported in this region.', status: 'INVALID_ARGUMENT' } });
         return;
       }
       compteur += 1;
@@ -204,6 +214,33 @@ describe('Rendu vidéo par Veo', () => {
 
     const apres = (await agent.get('/api/auth/me').expect(200)).body.account.credits.total as number;
     assert.equal(apres, avant, 'une vidéo qui n’existe pas n’est pas facturée');
+    mode = 'encours';
+  });
+
+  it('en Europe, repart une fois avec le réglage des personnes admis, sans rien dire au client du refus', async () => {
+    mode = 'europe';
+    const { agent } = await signInWithPlan(app, 'veo-europe@exemple.test', 'pro');
+    const avant = depots.length;
+
+    const lance = await agent.post('/api/creatives/videos').send(BRIEF).expect(202);
+    assert.equal(lance.body.status, 'queued');
+    const essais = depots.slice(avant);
+    assert.equal(essais.length, 2, 'un refus, puis un seul nouvel essai');
+    assert.equal((essais[0]!.corps as { parameters: Record<string, unknown> }).parameters.personGeneration, undefined);
+    assert.equal((essais[1]!.corps as { parameters: Record<string, unknown> }).parameters.personGeneration, 'allow_adult');
+    mode = 'encours';
+  });
+
+  it('une description refusée pour un autre motif n’est pas renvoyée, et le détail du fournisseur ne sort pas', async () => {
+    mode = 'refus';
+    const { agent } = await signInWithPlan(app, 'veo-refus@exemple.test', 'pro');
+    const credits = (await agent.get('/api/auth/me').expect(200)).body.account.credits.total as number;
+    const avant = depots.length;
+
+    const refus = await agent.post('/api/creatives/videos').send(BRIEF).expect(502);
+    assert.equal(depots.length - avant, 1, 'aucun nouvel essai : le réglage des personnes n’y est pour rien');
+    assert.doesNotMatch(JSON.stringify(refus.body), /veo|google|usage guidelines/i, 'marque blanche');
+    assert.equal((await agent.get('/api/auth/me').expect(200)).body.account.credits.total, credits, 'points rendus');
     mode = 'encours';
   });
 });

@@ -166,8 +166,9 @@ async function maintainCycle(user: UserRow, now: Date): Promise<UserRow> {
 
 /**
  * Compte complet d'un utilisateur. `knownUser` : la ligne déjà lue avec la session, pour ne pas
- * la relire. Chaque lecture traverse l'Atlantique (fonction à Washington, base en Irlande) :
- * elles se faisaient l'une après l'autre, quatre allers-retours à CHAQUE requête connectée.
+ * la relire. Quand la fonction tournait à Washington (base en Irlande), chaque lecture
+ * traversait l'Atlantique, et elles se faisaient l'une après l'autre : quatre allers-retours à
+ * CHAQUE requête connectée. La fonction est à Dublin depuis le 29/09/2026, à côté de la base.
  * Désormais une seule lecture pour les droits et accès, menées ensemble.
  */
 export async function loadAccount(userId: string, now = new Date(), knownUser?: typeof users.$inferSelect): Promise<AccountSnapshot | null> {

@@ -20,8 +20,8 @@ import { findCountry } from '@server/shared/countries';
 
 /**
  * Réponse identique pour tous les visiteurs, gardée par le réseau de l'hébergeur au plus près
- * d'eux. La fonction tourne à Washington et les visiteurs arrivent par Cape Town : chaque appel
- * évité fait gagner une demi-seconde. Réservé aux tables de configuration, jamais à ce qui
+ * d'eux. La fonction tourne à Dublin et les visiteurs arrivent par Cape Town : chaque appel
+ * évité fait gagner plusieurs centaines de millisecondes. Réservé aux tables de configuration, jamais à ce qui
  * dépend du compte.
  */
 const publicCacheControl = (seconds: number) => `public, max-age=${Math.min(seconds, 60)}, s-maxage=${seconds}, stale-while-revalidate=86400`;

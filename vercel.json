@@ -3,6 +3,7 @@
   "buildCommand": "npm run vercel-build",
   "outputDirectory": "dist/client",
   "framework": null,
+  "regions": ["dub1"],
   "functions": {
     "api/index.js": {
       "maxDuration": 300,

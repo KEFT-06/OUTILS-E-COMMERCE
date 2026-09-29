@@ -37,7 +37,7 @@ describe('Audit de sécurité', () => {
   });
 
   it('ne laisse en cache public que des tables identiques pour tous', async () => {
-    // Gagner une demi-seconde par écran (fonction à Washington, visiteurs par Cape Town), sans
+    // Gagner plusieurs centaines de millisecondes par écran (fonction à Dublin, visiteurs par Cape Town), sans
     // jamais exposer une donnée de compte : seules ces réponses-là sont publiques.
     for (const chemin of ['/api/health', '/api/credits/costs', '/api/plans?country=CM', '/api/plans?currency=EUR']) {
       const reponse = await request(app).get(chemin).expect(200);

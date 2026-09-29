@@ -62,6 +62,9 @@ export function veoConfigured(): boolean {
   return Boolean(env.GEMINI_API_KEY);
 }
 
+/** Refus de Google motivés par le réglage des personnes (voir submitWithFallback). */
+const personRefusals = new WeakSet<AppError>();
+
 function veoFailure(status: number, detail: string, payload: unknown = null): AppError {
   console.error('[veo] le fournisseur a répondu', status, detail.slice(0, 200));
   if (status === 401 || status === 403) {
@@ -81,7 +84,10 @@ function veoFailure(status: number, detail: string, payload: unknown = null): Ap
     );
   }
   if (status === 400) {
-    return new AppError(502, 'La description de la vidéo a été refusée. Reformulez-la : vos points ont été rendus.', 'VEO_BAD_INPUT');
+    const refused = new AppError(502, 'La description de la vidéo a été refusée. Reformulez-la : vos points ont été rendus.', 'VEO_BAD_INPUT');
+    // Le détail de Google reste côté serveur (il nommerait le fournisseur) : on ne garde que le motif.
+    if (/person/i.test(detail)) personRefusals.add(refused);
+    return refused;
   }
   // Opération inconnue ou expirée chez Google : elle ne produira jamais rien. Code distinct,
   // pour que le balayeur des générations abandonnées puisse la solder et rendre les points.
@@ -148,6 +154,20 @@ function decodeRequestId(requestId: string): { model: string; id: string } {
 }
 
 /**
+ * Réglage des personnes autorisé en Europe. Les fonctions tournent à Dublin depuis le
+ * 29/09/2026 ; Google n'y admet que « allow_adult » pour les personnes. Le site n'envoie aucun
+ * réglage (Google applique celui de la région) ; si Google refusait quand même la demande pour
+ * ce motif, elle repart une fois avec le réglage européen explicite.
+ */
+const EU_PERSON_GENERATION = 'allow_adult';
+const personRefusal = (error: unknown) => error instanceof AppError && personRefusals.has(error);
+
+function withPersonGeneration(body: unknown): unknown {
+  const request = body as { parameters?: Record<string, unknown> };
+  return { ...request, parameters: { ...(request.parameters ?? {}), personGeneration: EU_PERSON_GENERATION } };
+}
+
+/**
  * Lance un rendu, en passant au modèle Veo suivant quand le quota du précédent est atteint.
  * Un refus de facturation, une description refusée ou une panne ne changent pas de modèle.
  */
@@ -156,7 +176,14 @@ async function submitWithFallback(body: unknown): Promise<VeoGeneration> {
   let last: unknown = null;
   for (const [index, model] of models.entries()) {
     try {
-      const payload = await veoFetch(`models/${model}:predictLongRunning`, { method: 'POST', body: JSON.stringify(body) });
+      let payload: unknown;
+      try {
+        payload = await veoFetch(`models/${model}:predictLongRunning`, { method: 'POST', body: JSON.stringify(body) });
+      } catch (error) {
+        if (!personRefusal(error)) throw error;
+        console.warn('[veo] réglage des personnes refusé dans cette région : nouvel essai avec « allow_adult »');
+        payload = await veoFetch(`models/${model}:predictLongRunning`, { method: 'POST', body: JSON.stringify(withPersonGeneration(body)) });
+      }
       const parsed = operationSchema.safeParse(payload);
       if (!parsed.success) throw new AppError(502, 'Réponse inattendue du service de rendu vidéo.', 'VEO_BAD_RESPONSE');
       return { requestId: encodeRequestId(index, operationId(parsed.data.name)), status: 'queued' };
