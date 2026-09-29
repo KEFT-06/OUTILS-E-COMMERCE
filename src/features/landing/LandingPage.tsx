@@ -1,4 +1,4 @@
-import { Suspense, lazy, useEffect, useRef, useState, type ReactNode } from 'react';
+import { Suspense, lazy, startTransition, useEffect, useRef, useState, type ReactNode } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useTrackVisit } from '@/shared/hooks/useTrackVisit';
 import { usePublicPageMeta } from '@/shared/hooks/usePublicPageMeta';
@@ -125,6 +125,30 @@ const FAQ = [
 /** Quelques pays montrés en bandeau : l'outil couvre tous les pays du monde. */
 const SHOWCASE_COUNTRIES = ['CM', 'CI', 'SN', 'CD', 'NG', 'GH', 'KE', 'MA', 'BJ', 'GA', 'FR', 'BE', 'CA', 'US', 'GB', 'BR', 'IN', 'AE', 'ZA', 'HT'];
 
+/**
+ * Rendu en deux temps. React dessinait toute la page d'un bloc avant le premier affichage :
+ * 1,4 s de calcul sur un téléphone d'entrée de gamme (mesuré en production). Le haut de page
+ * s'affiche seul ; le reste est dessiné juste après, par morceaux interruptibles.
+ */
+function useAfterFirstPaint(): boolean {
+  const [ready, setReady] = useState(false);
+  useEffect(() => {
+    const frame = requestAnimationFrame(() => startTransition(() => setReady(true)));
+    return () => cancelAnimationFrame(frame);
+  }, []);
+  useEffect(() => {
+    // Arrivée sur une ancre (#paliers…) : la section n'existait pas encore au chargement.
+    if (ready && window.location.hash) document.getElementById(decodeURIComponent(window.location.hash.slice(1)))?.scrollIntoView();
+  }, [ready]);
+  return ready;
+}
+
+/** Grand écran à souris : l'animation de bordure du visuel (41 Ko, calcul continu) n'y coûte rien. */
+function useWideScreen(): boolean {
+  const [wide] = useState(() => typeof window !== 'undefined' && window.matchMedia('(min-width: 1024px) and (pointer: fine)').matches);
+  return wide;
+}
+
 /** Préférence système « réduire les animations », sans charger la bibliothèque motion. */
 function usePrefersReducedMotion(): boolean {
   const query = '(prefers-reduced-motion: reduce)';
@@ -218,6 +242,8 @@ export function LandingPage() {
   const { theme, toggleTheme } = usePreferences();
   const navigate = useNavigate();
   const reduceMotion = usePrefersReducedMotion();
+  const rest = useAfterFirstPaint();
+  const wide = useWideScreen();
   const { catalog } = usePlans(priceCountry);
 
   const openWorkspace = () => {
@@ -344,7 +370,7 @@ export function LandingPage() {
                   decoding="async"
                   className="block w-full"
                 />
-                {!reduceMotion && (
+                {rest && wide && !reduceMotion && (
                   <Suspense fallback={null}>
                     <BorderBeam size={140} duration={12} colorFrom="#00c853" colorTo="#f59e0b" borderWidth={2} />
                   </Suspense>
@@ -357,247 +383,253 @@ export function LandingPage() {
           </div>
         </section>
 
-        <section aria-labelledby="marches-titre" className="border-b py-10">
-          <p id="marches-titre" className="px-4 text-center text-sm font-medium text-muted-foreground">
-            Disponible dans {COUNTRIES.length} pays, avec les prix dans la devise locale
-          </p>
-          <div className="relative mt-5" aria-hidden="true">
-            {reduceMotion ? (
-              /*
-                Animations réduites : le bandeau reste une file horizontale, que le lecteur
-                fait défiler lui-même. Replié sur plusieurs lignes, il perdait la lecture
-                « un pays après l'autre » qui fait tout l'effet de la bande.
-              */
-              <div className="flex snap-x snap-mandatory gap-2 overflow-x-auto px-4 pb-2 [scrollbar-width:thin]">
-                {SHOWCASE_COUNTRIES.map((code) => (
-                  <span
-                    key={code}
-                    className="inline-flex shrink-0 snap-start items-center gap-2 rounded-full border bg-card px-4 py-1.5 text-sm font-medium whitespace-nowrap"
-                  >
-                    <CountryFlag code={code} />
-                    {countryName(code)}
-                  </span>
-                ))}
-              </div>
-            ) : (
-              <>
-                <Marquee pauseOnHover className="[--duration:50s]">
+        {rest && (
+          <>
+          <section aria-labelledby="marches-titre" className="border-b py-10">
+            <p id="marches-titre" className="px-4 text-center text-sm font-medium text-muted-foreground">
+              Disponible dans {COUNTRIES.length} pays, avec les prix dans la devise locale
+            </p>
+            <div className="relative mt-5" aria-hidden="true">
+              {reduceMotion ? (
+                /*
+                  Animations réduites : le bandeau reste une file horizontale, que le lecteur
+                  fait défiler lui-même. Replié sur plusieurs lignes, il perdait la lecture
+                  « un pays après l'autre » qui fait tout l'effet de la bande.
+                */
+                <div className="flex snap-x snap-mandatory gap-2 overflow-x-auto px-4 pb-2 [scrollbar-width:thin]">
                   {SHOWCASE_COUNTRIES.map((code) => (
-                    <span key={code} className="inline-flex items-center gap-2 rounded-full border bg-card px-4 py-1.5 text-sm font-medium whitespace-nowrap">
+                    <span
+                      key={code}
+                      className="inline-flex shrink-0 snap-start items-center gap-2 rounded-full border bg-card px-4 py-1.5 text-sm font-medium whitespace-nowrap"
+                    >
                       <CountryFlag code={code} />
                       {countryName(code)}
                     </span>
                   ))}
-                </Marquee>
-                <div className="pointer-events-none absolute inset-y-0 left-0 w-16 bg-gradient-to-r from-background sm:w-32" />
-                <div className="pointer-events-none absolute inset-y-0 right-0 w-16 bg-gradient-to-l from-background sm:w-32" />
-              </>
-            )}
-          </div>
-        </section>
-
-        <section id="parcours" className="mx-auto max-w-6xl scroll-mt-20 px-4 py-20 sm:px-6">
-          <SectionHeading
-            eyebrow="Le parcours"
-            title="Voir, créer, vendre : un seul outil"
-            description="La niche analysée alimente le studio ; le produit du studio alimente les créatifs, le kit de lancement et la page de vente."
-          />
-          <div className="mt-10 grid gap-4 lg:grid-cols-3">
-            {MODULE_GROUPS.map((group) => (
-              <Card key={group.id} className="gap-5">
-                <CardHeader>
-                  <p className="font-display text-3xl font-black tracking-tight uppercase">{group.label.fr}</p>
-                  <CardDescription className="text-base">{GROUP_PITCH[group.id]}</CardDescription>
-                </CardHeader>
-                <CardContent>
-                  <ul className="space-y-4">
-                    {MODULES.filter((entry) => entry.group === group.id).map((entry) => {
-                      const Icon = entry.icon;
-                      return (
-                        <li key={entry.id} className="flex items-start gap-3">
-                          <span className="flex size-9 shrink-0 items-center justify-center rounded-lg bg-accent text-accent-foreground">
-                            <Icon className="size-4" aria-hidden="true" />
-                          </span>
-                          <span className="min-w-0">
-                            <span className="flex flex-wrap items-center gap-2 font-semibold">
-                              {entry.label.fr}
-                              {!entry.ready && <Badge variant="outline">bientôt</Badge>}
-                            </span>
-                            <span className="block text-sm text-muted-foreground">{entry.description.fr}</span>
-                          </span>
-                        </li>
-                      );
-                    })}
-                  </ul>
-                </CardContent>
-              </Card>
-            ))}
-          </div>
-        </section>
-
-        <section id="engagements" className="scroll-mt-20 border-y bg-muted/30">
-          <div className="mx-auto max-w-6xl px-4 py-20 sm:px-6">
-            <SectionHeading
-              eyebrow="Engagements"
-              title="Ce que l’outil accepte de montrer"
-              description="Un outil d’analyse ne vaut que par ce qu’il révèle de sa propre méthode."
-            />
-            <div className="mt-10 grid gap-4 md:grid-cols-3">
-              {COMMITMENTS.map((commitment) => {
-                const Icon = commitment.icon;
-                return (
-                  <Card key={commitment.title}>
-                    <CardHeader>
-                      <span className="flex size-10 items-center justify-center rounded-lg bg-accent text-accent-foreground">
-                        <Icon className="size-5" aria-hidden="true" />
+                </div>
+              ) : (
+                <>
+                  <Marquee pauseOnHover className="[--duration:50s]">
+                    {SHOWCASE_COUNTRIES.map((code) => (
+                      <span key={code} className="inline-flex items-center gap-2 rounded-full border bg-card px-4 py-1.5 text-sm font-medium whitespace-nowrap">
+                        <CountryFlag code={code} />
+                        {countryName(code)}
                       </span>
-                      <h3 className="mt-2 text-lg font-semibold">{commitment.title}</h3>
-                    </CardHeader>
-                    <CardContent>
-                      <p className="leading-relaxed text-muted-foreground">{commitment.body}</p>
-                    </CardContent>
-                  </Card>
-                );
-              })}
-            </div>
-
-            <figure className="mt-12 grid gap-6 rounded-xl border bg-card p-8 sm:grid-cols-[auto_minmax(0,1fr)] sm:items-center">
-              <p className="font-display text-6xl font-black tracking-tighter text-brand-orange-text tabular-nums">25,7 %</p>
-              <figcaption className="space-y-2">
-                <p className="text-lg font-semibold">
-                  des comptes de mobile money enregistrés dans le monde étaient actifs sur 30 jours en 2025.
-                </p>
-                <p className="text-muted-foreground">
-                  L’écart entre comptes ouverts et acheteurs réels change la façon de dimensionner vos campagnes.
-                </p>
-                <a
-                  href="https://www.gsma.com/sotir/"
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="inline-flex items-center gap-1 text-sm font-medium text-brand-green-text underline-offset-4 hover:underline"
-                >
-                  Source : GSMA, State of the Industry Report on Mobile Money 2026
-                  <ExternalLink className="size-3.5" aria-hidden="true" />
-                </a>
-              </figcaption>
-            </figure>
-          </div>
-        </section>
-
-        <section id="paliers" className="mx-auto max-w-6xl scroll-mt-20 px-4 py-20 sm:px-6">
-          <SectionHeading
-            eyebrow="Paliers"
-            title="Un forfait pour chaque étape"
-            description="Chaque carte détaille ce que comprend le forfait : points de recherche, niches enregistrées, méthodes publicitaires et fonctions. Prix dans la devise de votre pays."
-          />
-          <div className="mt-8 flex flex-col gap-2 sm:flex-row sm:items-center">
-            <label htmlFor="landing-price-country" className="text-sm font-medium">
-              Prix affichés pour
-            </label>
-            <Suspense fallback={<CountryButton code={priceCountry} />}>
-              <CountryCombobox id="landing-price-country" value={priceCountry} onChange={setPriceCountry} showCurrency className="sm:w-72" />
-            </Suspense>
-          </div>
-          <PlanCards
-            className="mt-6"
-            catalog={catalog}
-            renderAction={(plan) => (
-              <Button
-                className="w-full"
-                variant={plan.highlight ? 'default' : 'outline'}
-                onClick={plan.price && plan.price.monthly > 0 ? choosePaidPlan : openWorkspace}
-              >
-                {plan.price?.monthly === 0 ? 'Commencer gratuitement' : `Choisir ${plan.label}`}
-              </Button>
-            )}
-          />
-        </section>
-
-        <section id="questions" className="scroll-mt-20 border-t bg-muted/30">
-          <div className="mx-auto grid max-w-6xl gap-10 px-4 py-20 sm:px-6 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.4fr)]">
-            <SectionHeading eyebrow="Questions" title="Ce qu’il faut savoir avant de commencer" />
-            {/*
-              Questions en <details> natifs : l'accordéon précédent mesurait chaque réponse au
-              chargement (1,6 s de calcul de mise en page sur un téléphone d'entrée de gamme).
-              Le navigateur ouvre et ferme seul, sans script ; le même nom n'en garde qu'une ouverte.
-            */}
-            <div className="rounded-xl border bg-card px-5">
-              {FAQ.map((item) => (
-                <details key={item.question} name="faq" className="group border-b last:border-b-0">
-                  <summary className="flex min-h-11 cursor-pointer list-none items-start justify-between gap-4 rounded-md py-4 text-left text-base font-medium outline-none hover:underline focus-visible:ring-[3px] focus-visible:ring-ring/50 [&::-webkit-details-marker]:hidden">
-                    {item.question}
-                    <ChevronDown aria-hidden="true" className="pointer-events-none size-4 shrink-0 translate-y-1 text-muted-foreground transition-transform duration-200 group-open:rotate-180" />
-                  </summary>
-                  <div className="space-y-2 pb-4 text-base leading-relaxed text-muted-foreground">
-                    <p>{item.answer}</p>
-                    {item.link && (
-                      <Link to={item.link.to} className="font-medium text-brand-green-text underline-offset-4 hover:underline">
-                        {item.link.label}
-                      </Link>
-                    )}
-                  </div>
-                </details>
-              ))}
-            </div>
-          </div>
-        </section>
-
-        <section className="mx-auto max-w-6xl px-4 py-20 sm:px-6">
-          <div className="flex flex-col items-start gap-6 rounded-2xl bg-foreground p-8 text-background sm:p-12 lg:flex-row lg:items-center lg:justify-between">
-            <div className="space-y-3">
-              <h2 className="font-display text-3xl font-extrabold tracking-tight sm:text-4xl">Arrêtez de deviner votre marché.</h2>
-              <p className="max-w-xl text-lg opacity-80">
-                Analysez une niche, construisez le produit qui y répond et préparez son lancement, sans changer d’outil.
-              </p>
-            </div>
-            <div className="flex flex-col items-start gap-3">
-              <Button size="lg" onClick={openWorkspace}>
-                {primaryLabel}
-                <ArrowRight />
-              </Button>
-              {!isAuthenticated && (
-                <p className="text-sm">
-                  Déjà inscrit ?{' '}
-                  <Link to="/connexion" className="font-medium underline underline-offset-4">
-                    Se connecter
-                  </Link>
-                </p>
+                    ))}
+                  </Marquee>
+                  <div className="pointer-events-none absolute inset-y-0 left-0 w-16 bg-gradient-to-r from-background sm:w-32" />
+                  <div className="pointer-events-none absolute inset-y-0 right-0 w-16 bg-gradient-to-l from-background sm:w-32" />
+                </>
               )}
             </div>
-          </div>
-        </section>
+          </section>
+
+          <section id="parcours" className="mx-auto max-w-6xl scroll-mt-20 px-4 py-20 sm:px-6">
+            <SectionHeading
+              eyebrow="Le parcours"
+              title="Voir, créer, vendre : un seul outil"
+              description="La niche analysée alimente le studio ; le produit du studio alimente les créatifs, le kit de lancement et la page de vente."
+            />
+            <div className="mt-10 grid gap-4 lg:grid-cols-3">
+              {MODULE_GROUPS.map((group) => (
+                <Card key={group.id} className="gap-5">
+                  <CardHeader>
+                    <p className="font-display text-3xl font-black tracking-tight uppercase">{group.label.fr}</p>
+                    <CardDescription className="text-base">{GROUP_PITCH[group.id]}</CardDescription>
+                  </CardHeader>
+                  <CardContent>
+                    <ul className="space-y-4">
+                      {MODULES.filter((entry) => entry.group === group.id).map((entry) => {
+                        const Icon = entry.icon;
+                        return (
+                          <li key={entry.id} className="flex items-start gap-3">
+                            <span className="flex size-9 shrink-0 items-center justify-center rounded-lg bg-accent text-accent-foreground">
+                              <Icon className="size-4" aria-hidden="true" />
+                            </span>
+                            <span className="min-w-0">
+                              <span className="flex flex-wrap items-center gap-2 font-semibold">
+                                {entry.label.fr}
+                                {!entry.ready && <Badge variant="outline">bientôt</Badge>}
+                              </span>
+                              <span className="block text-sm text-muted-foreground">{entry.description.fr}</span>
+                            </span>
+                          </li>
+                        );
+                      })}
+                    </ul>
+                  </CardContent>
+                </Card>
+              ))}
+            </div>
+          </section>
+
+          <section id="engagements" className="scroll-mt-20 border-y bg-muted/30">
+            <div className="mx-auto max-w-6xl px-4 py-20 sm:px-6">
+              <SectionHeading
+                eyebrow="Engagements"
+                title="Ce que l’outil accepte de montrer"
+                description="Un outil d’analyse ne vaut que par ce qu’il révèle de sa propre méthode."
+              />
+              <div className="mt-10 grid gap-4 md:grid-cols-3">
+                {COMMITMENTS.map((commitment) => {
+                  const Icon = commitment.icon;
+                  return (
+                    <Card key={commitment.title}>
+                      <CardHeader>
+                        <span className="flex size-10 items-center justify-center rounded-lg bg-accent text-accent-foreground">
+                          <Icon className="size-5" aria-hidden="true" />
+                        </span>
+                        <h3 className="mt-2 text-lg font-semibold">{commitment.title}</h3>
+                      </CardHeader>
+                      <CardContent>
+                        <p className="leading-relaxed text-muted-foreground">{commitment.body}</p>
+                      </CardContent>
+                    </Card>
+                  );
+                })}
+              </div>
+
+              <figure className="mt-12 grid gap-6 rounded-xl border bg-card p-8 sm:grid-cols-[auto_minmax(0,1fr)] sm:items-center">
+                <p className="font-display text-6xl font-black tracking-tighter text-brand-orange-text tabular-nums">25,7 %</p>
+                <figcaption className="space-y-2">
+                  <p className="text-lg font-semibold">
+                    des comptes de mobile money enregistrés dans le monde étaient actifs sur 30 jours en 2025.
+                  </p>
+                  <p className="text-muted-foreground">
+                    L’écart entre comptes ouverts et acheteurs réels change la façon de dimensionner vos campagnes.
+                  </p>
+                  <a
+                    href="https://www.gsma.com/sotir/"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="inline-flex items-center gap-1 text-sm font-medium text-brand-green-text underline-offset-4 hover:underline"
+                  >
+                    Source : GSMA, State of the Industry Report on Mobile Money 2026
+                    <ExternalLink className="size-3.5" aria-hidden="true" />
+                  </a>
+                </figcaption>
+              </figure>
+            </div>
+          </section>
+
+          <section id="paliers" className="mx-auto max-w-6xl scroll-mt-20 px-4 py-20 sm:px-6">
+            <SectionHeading
+              eyebrow="Paliers"
+              title="Un forfait pour chaque étape"
+              description="Chaque carte détaille ce que comprend le forfait : points de recherche, niches enregistrées, méthodes publicitaires et fonctions. Prix dans la devise de votre pays."
+            />
+            <div className="mt-8 flex flex-col gap-2 sm:flex-row sm:items-center">
+              <label htmlFor="landing-price-country" className="text-sm font-medium">
+                Prix affichés pour
+              </label>
+              <Suspense fallback={<CountryButton code={priceCountry} />}>
+                <CountryCombobox id="landing-price-country" value={priceCountry} onChange={setPriceCountry} showCurrency className="sm:w-72" />
+              </Suspense>
+            </div>
+            <PlanCards
+              className="mt-6"
+              catalog={catalog}
+              renderAction={(plan) => (
+                <Button
+                  className="w-full"
+                  variant={plan.highlight ? 'default' : 'outline'}
+                  onClick={plan.price && plan.price.monthly > 0 ? choosePaidPlan : openWorkspace}
+                >
+                  {plan.price?.monthly === 0 ? 'Commencer gratuitement' : `Choisir ${plan.label}`}
+                </Button>
+              )}
+            />
+          </section>
+
+          <section id="questions" className="scroll-mt-20 border-t bg-muted/30">
+            <div className="mx-auto grid max-w-6xl gap-10 px-4 py-20 sm:px-6 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.4fr)]">
+              <SectionHeading eyebrow="Questions" title="Ce qu’il faut savoir avant de commencer" />
+              {/*
+                Questions en <details> natifs : l'accordéon précédent mesurait chaque réponse au
+                chargement (1,6 s de calcul de mise en page sur un téléphone d'entrée de gamme).
+                Le navigateur ouvre et ferme seul, sans script ; le même nom n'en garde qu'une ouverte.
+              */}
+              <div className="rounded-xl border bg-card px-5">
+                {FAQ.map((item) => (
+                  <details key={item.question} name="faq" className="group border-b last:border-b-0">
+                    <summary className="flex min-h-11 cursor-pointer list-none items-start justify-between gap-4 rounded-md py-4 text-left text-base font-medium outline-none hover:underline focus-visible:ring-[3px] focus-visible:ring-ring/50 [&::-webkit-details-marker]:hidden">
+                      {item.question}
+                      <ChevronDown aria-hidden="true" className="pointer-events-none size-4 shrink-0 translate-y-1 text-muted-foreground transition-transform duration-200 group-open:rotate-180" />
+                    </summary>
+                    <div className="space-y-2 pb-4 text-base leading-relaxed text-muted-foreground">
+                      <p>{item.answer}</p>
+                      {item.link && (
+                        <Link to={item.link.to} className="font-medium text-brand-green-text underline-offset-4 hover:underline">
+                          {item.link.label}
+                        </Link>
+                      )}
+                    </div>
+                  </details>
+                ))}
+              </div>
+            </div>
+          </section>
+
+          <section className="mx-auto max-w-6xl px-4 py-20 sm:px-6">
+            <div className="flex flex-col items-start gap-6 rounded-2xl bg-foreground p-8 text-background sm:p-12 lg:flex-row lg:items-center lg:justify-between">
+              <div className="space-y-3">
+                <h2 className="font-display text-3xl font-extrabold tracking-tight sm:text-4xl">Arrêtez de deviner votre marché.</h2>
+                <p className="max-w-xl text-lg opacity-80">
+                  Analysez une niche, construisez le produit qui y répond et préparez son lancement, sans changer d’outil.
+                </p>
+              </div>
+              <div className="flex flex-col items-start gap-3">
+                <Button size="lg" onClick={openWorkspace}>
+                  {primaryLabel}
+                  <ArrowRight />
+                </Button>
+                {!isAuthenticated && (
+                  <p className="text-sm">
+                    Déjà inscrit ?{' '}
+                    <Link to="/connexion" className="font-medium underline underline-offset-4">
+                      Se connecter
+                    </Link>
+                  </p>
+                )}
+              </div>
+            </div>
+          </section>
+          </>
+        )}
       </main>
 
-      <footer className="border-t">
-        <div className="mx-auto flex max-w-6xl flex-col gap-6 px-4 py-10 sm:px-6 md:flex-row md:items-start md:justify-between">
-          <div className="space-y-3">
-            <BrandLogo size="sm" showTagline />
-            <p className="max-w-md text-sm text-muted-foreground">
-              Smart Creator fournit des analyses fondées sur des données publiques. Aucun résultat financier n’est garanti.
-            </p>
+      {rest && (
+        <footer className="border-t">
+          <div className="mx-auto flex max-w-6xl flex-col gap-6 px-4 py-10 sm:px-6 md:flex-row md:items-start md:justify-between">
+            <div className="space-y-3">
+              <BrandLogo size="sm" showTagline />
+              <p className="max-w-md text-sm text-muted-foreground">
+                Smart Creator fournit des analyses fondées sur des données publiques. Aucun résultat financier n’est garanti.
+              </p>
+            </div>
+            {/*
+              Chaque lien occupe au moins 24 px de haut : empilés au ras du texte, ils
+              mesuraient 20 px et se touchaient presque, ce qui fait viser le mauvais lien
+              sur un téléphone.
+            */}
+            <nav aria-label="Informations légales" className="flex flex-col gap-1 text-sm text-muted-foreground">
+              {[
+                { to: '/mentions-legales', label: 'Mentions légales' },
+                { to: '/confidentialite', label: 'Confidentialité' },
+                { to: '/conditions', label: 'Conditions d’utilisation' },
+                { to: '/contact', label: 'Contact' },
+              ].map((entry) => (
+                <Link key={entry.to} to={entry.to} className="inline-flex min-h-6 w-fit items-center hover:text-foreground pointer-coarse:min-h-10">
+                  {entry.label}
+                </Link>
+              ))}
+            </nav>
           </div>
-          {/*
-            Chaque lien occupe au moins 24 px de haut : empilés au ras du texte, ils
-            mesuraient 20 px et se touchaient presque, ce qui fait viser le mauvais lien
-            sur un téléphone.
-          */}
-          <nav aria-label="Informations légales" className="flex flex-col gap-1 text-sm text-muted-foreground">
-            {[
-              { to: '/mentions-legales', label: 'Mentions légales' },
-              { to: '/confidentialite', label: 'Confidentialité' },
-              { to: '/conditions', label: 'Conditions d’utilisation' },
-              { to: '/contact', label: 'Contact' },
-            ].map((entry) => (
-              <Link key={entry.to} to={entry.to} className="inline-flex min-h-6 w-fit items-center hover:text-foreground">
-                {entry.label}
-              </Link>
-            ))}
-          </nav>
-        </div>
-        <p className="border-t px-4 py-4 text-center text-xs text-muted-foreground">
-          © {new Date().getFullYear()} Smart Creator — Veille stratégique, production et création d’e-commerce
-        </p>
-      </footer>
+          <p className="border-t px-4 py-4 text-center text-xs text-muted-foreground">
+            © {new Date().getFullYear()} Smart Creator — Veille stratégique, production et création d’e-commerce
+          </p>
+        </footer>
+      )}
     </div>
   );
 }

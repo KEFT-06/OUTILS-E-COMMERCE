@@ -18,6 +18,26 @@ export default defineConfig(({ mode }) => {
         apply: 'serve',
         transformIndexHtml: (html) => html.replaceAll('__APP_URL__', (env.APP_URL ?? 'http://localhost:5173').replace(/\/+$/, '')),
       },
+      /*
+        Les deux polices (alphabet latin, ~60 Ko en tout) n'étaient découvertes qu'après la
+        feuille de style : le texte s'affichait dans la police de secours, puis sautait. Elles
+        partent désormais avec la page. Noms à empreinte : lus dans le paquet produit.
+      */
+      {
+        name: 'precharger-polices',
+        apply: 'build',
+        transformIndexHtml: {
+          order: 'post',
+          handler: (_html, ctx) =>
+            Object.keys(ctx.bundle ?? {})
+              .filter((file) => /(^|\/)(outfit|plus-jakarta-sans)-latin-wght-normal-[\w-]+\.woff2$/.test(file))
+              .map((file) => ({
+                tag: 'link',
+                attrs: { rel: 'preload', as: 'font', type: 'font/woff2', href: `/${file}`, crossorigin: '' },
+                injectTo: 'head' as const,
+              })),
+        },
+      },
     ],
 
     resolve: {
