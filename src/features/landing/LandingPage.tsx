@@ -1,23 +1,21 @@
-import { Suspense, lazy, useEffect, useState, type ReactNode } from 'react';
+import { Suspense, lazy, useEffect, useRef, useState, type ReactNode } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useTrackVisit } from '@/shared/hooks/useTrackVisit';
 import { usePublicPageMeta } from '@/shared/hooks/usePublicPageMeta';
-import { ArrowRight, ExternalLink, Menu, Moon, Scale, ShieldCheck, Sun, Wallet } from 'lucide-react';
+import { ArrowRight, ChevronDown, ExternalLink, Menu, Moon, Scale, ShieldCheck, Sun, Wallet } from 'lucide-react';
 import { MODULES, MODULE_GROUPS, type ModuleGroup } from '@/app/navigation';
 import { usePreferences } from '@/app/providers/PreferencesContext';
 import { useAuth } from '@/features/auth/AuthContext';
 import { COUNTRIES, countryName } from '@server/shared/countries';
-import { CountryCombobox } from '@/shared/components/CountryCombobox';
 import { CountryFlag } from '@/shared/components/CountryFlag';
 import { PlanCards } from '@/shared/components/PlanCards';
 import { guessCountryCode } from '@/shared/lib/geo';
 import { usePlans } from '@/shared/lib/plans';
-import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from '@/shared/ui/accordion';
+import { cn } from '@/shared/lib/utils';
 import { Badge } from '@/shared/ui/badge';
 import { BrandLogo } from '@/shared/components/BrandLogo';
-import { Button } from '@/shared/ui/button';
+import { Button, buttonVariants } from '@/shared/ui/button';
 import { Card, CardContent, CardDescription, CardHeader } from '@/shared/ui/card';
-import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/shared/ui/dropdown-menu';
 import { Marquee } from '@/shared/ui/magicui/marquee';
 
 /** Sections de l'accueil, servies à la fois par la barre large et par le menu compact. */
@@ -29,6 +27,32 @@ const SECTIONS = [
 ] as const;
 
 // Effet décoratif : chargé après la page, il ne retarde pas le premier affichage.
+/*
+  Le choix du pays des prix est tout en bas de l'accueil : sa liste de recherche (fenêtre
+  flottante, moteur de filtre) se charge à part, après le premier affichage, au lieu de
+  retarder l'ouverture de la page pour tous les visiteurs.
+*/
+type CountryComboboxProps = Parameters<typeof import('@/shared/components/CountryCombobox').CountryCombobox>[0];
+const loadCountryCombobox = () => import('@/shared/components/CountryCombobox');
+const CountryCombobox = lazy(() =>
+  loadCountryCombobox()
+    .catch(() => loadCountryCombobox())
+    .then((module) => ({ default: module.CountryCombobox }))
+    // Liste introuvable (réseau coupé) : le pays deviné reste affiché, la page ne tombe pas.
+    .catch(() => ({ default: ({ value }: CountryComboboxProps) => <CountryButton code={value} /> })),
+);
+
+/** Même bouton que la liste, le temps qu'elle arrive : rien ne bouge quand elle se charge. */
+function CountryButton({ code }: { code: string | null | undefined }) {
+  return (
+    <Button id="landing-price-country" type="button" variant="outline" className="w-full justify-between px-3 font-normal sm:w-72">
+      <span className="flex min-w-0 items-center gap-2">
+        <CountryFlag code={code} />
+        <span className="truncate">{countryName(code)}</span>
+      </span>
+    </Button>
+  );
+}
 const BorderBeam = lazy(() => import('@/shared/ui/magicui/border-beam').then((module) => ({ default: module.BorderBeam })));
 
 /**
@@ -116,6 +140,66 @@ function usePrefersReducedMotion(): boolean {
   return reduced;
 }
 
+/**
+ * Menu des sections sur petit écran, en <details> natif. Le menu déroulant de la
+ * bibliothèque d'interface embarquait ~150 Ko de code (positionnement, focus, collections)
+ * dans le premier chargement de l'accueil, pour quatre liens.
+ */
+function SectionsMenu({ showLogin }: { showLogin: boolean }) {
+  const menu = useRef<HTMLDetailsElement>(null);
+
+  useEffect(() => {
+    const close = () => {
+      if (menu.current) menu.current.open = false;
+    };
+    const outside = (event: PointerEvent) => {
+      if (menu.current?.open && !menu.current.contains(event.target as Node)) close();
+    };
+    const escape = (event: KeyboardEvent) => {
+      if (event.key !== 'Escape' || !menu.current?.open) return;
+      close();
+      menu.current.querySelector('summary')?.focus();
+    };
+    document.addEventListener('pointerdown', outside);
+    document.addEventListener('keydown', escape);
+    return () => {
+      document.removeEventListener('pointerdown', outside);
+      document.removeEventListener('keydown', escape);
+    };
+  }, []);
+
+  const item = 'flex min-h-11 items-center rounded-sm px-3 text-sm outline-none hover:bg-accent hover:text-accent-foreground focus-visible:bg-accent';
+  return (
+    // Le panneau se cale sur l'en-tête (positionné), pas sur le bouton : aligné sur la marge
+    // droite de la page, il ne peut pas déborder de l'écran à gauche.
+    <details ref={menu} className="lg:hidden">
+      <summary
+        aria-label="Ouvrir le menu des sections"
+        className={cn(buttonVariants({ variant: 'ghost', size: 'icon' }), 'cursor-pointer list-none [&::-webkit-details-marker]:hidden')}
+      >
+        <Menu />
+      </summary>
+      <div
+        className="absolute top-full right-4 z-50 mt-1 w-56 max-w-[calc(100vw-2rem)] rounded-md border bg-popover p-1 text-popover-foreground shadow-md sm:right-6"
+        onClick={() => {
+          if (menu.current) menu.current.open = false;
+        }}
+      >
+        {SECTIONS.map((section) => (
+          <a key={section.href} href={section.href} className={item}>
+            {section.label}
+          </a>
+        ))}
+        {showLogin && (
+          <Link to="/connexion" className={cn(item, 'sm:hidden')}>
+            Connexion
+          </Link>
+        )}
+      </div>
+    </details>
+  );
+}
+
 function SectionHeading({ eyebrow, title, description }: { eyebrow: string; title: string; description?: ReactNode }) {
   return (
     <div className="max-w-2xl space-y-3">
@@ -178,25 +262,7 @@ export function LandingPage() {
 
           <div className="flex items-center gap-2">
             {/* Même parcours sur petit écran : sans ce menu, les sections n'étaient atteignables qu'en faisant défiler toute la page. */}
-            <DropdownMenu>
-              <DropdownMenuTrigger asChild>
-                <Button variant="ghost" size="icon" className="lg:hidden" aria-label="Ouvrir le menu des sections">
-                  <Menu />
-                </Button>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent align="end" className="w-52">
-                {SECTIONS.map((section) => (
-                  <DropdownMenuItem key={section.href} asChild>
-                    <a href={section.href}>{section.label}</a>
-                  </DropdownMenuItem>
-                ))}
-                {!isAuthenticated && (
-                  <DropdownMenuItem asChild className="sm:hidden">
-                    <Link to="/connexion">Connexion</Link>
-                  </DropdownMenuItem>
-                )}
-              </DropdownMenuContent>
-            </DropdownMenu>
+            <SectionsMenu showLogin={!isAuthenticated} />
             <Button
               variant="ghost"
               size="icon"
@@ -428,7 +494,9 @@ export function LandingPage() {
             <label htmlFor="landing-price-country" className="text-sm font-medium">
               Prix affichés pour
             </label>
-            <CountryCombobox id="landing-price-country" value={priceCountry} onChange={setPriceCountry} showCurrency className="sm:w-72" />
+            <Suspense fallback={<CountryButton code={priceCountry} />}>
+              <CountryCombobox id="landing-price-country" value={priceCountry} onChange={setPriceCountry} showCurrency className="sm:w-72" />
+            </Suspense>
           </div>
           <PlanCards
             className="mt-6"
@@ -448,21 +516,29 @@ export function LandingPage() {
         <section id="questions" className="scroll-mt-20 border-t bg-muted/30">
           <div className="mx-auto grid max-w-6xl gap-10 px-4 py-20 sm:px-6 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.4fr)]">
             <SectionHeading eyebrow="Questions" title="Ce qu’il faut savoir avant de commencer" />
-            <Accordion type="single" collapsible className="rounded-xl border bg-card px-5">
+            {/*
+              Questions en <details> natifs : l'accordéon précédent mesurait chaque réponse au
+              chargement (1,6 s de calcul de mise en page sur un téléphone d'entrée de gamme).
+              Le navigateur ouvre et ferme seul, sans script ; le même nom n'en garde qu'une ouverte.
+            */}
+            <div className="rounded-xl border bg-card px-5">
               {FAQ.map((item) => (
-                <AccordionItem key={item.question} value={item.question}>
-                  <AccordionTrigger className="text-base">{item.question}</AccordionTrigger>
-                  <AccordionContent className="space-y-2 text-base leading-relaxed text-muted-foreground">
+                <details key={item.question} name="faq" className="group border-b last:border-b-0">
+                  <summary className="flex min-h-11 cursor-pointer list-none items-start justify-between gap-4 rounded-md py-4 text-left text-base font-medium outline-none hover:underline focus-visible:ring-[3px] focus-visible:ring-ring/50 [&::-webkit-details-marker]:hidden">
+                    {item.question}
+                    <ChevronDown aria-hidden="true" className="pointer-events-none size-4 shrink-0 translate-y-1 text-muted-foreground transition-transform duration-200 group-open:rotate-180" />
+                  </summary>
+                  <div className="space-y-2 pb-4 text-base leading-relaxed text-muted-foreground">
                     <p>{item.answer}</p>
                     {item.link && (
                       <Link to={item.link.to} className="font-medium text-brand-green-text underline-offset-4 hover:underline">
                         {item.link.label}
                       </Link>
                     )}
-                  </AccordionContent>
-                </AccordionItem>
+                  </div>
+                </details>
               ))}
-            </Accordion>
+            </div>
           </div>
         </section>
 

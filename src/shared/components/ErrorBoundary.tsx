@@ -1,5 +1,6 @@
 import { Component, type ErrorInfo, type ReactNode } from 'react';
 import { RefreshCw, TriangleAlert } from 'lucide-react';
+import { reloadOnceForNewVersion } from '@/shared/lib/reloadForNewVersion';
 import { Button } from '@/shared/ui/button';
 import { Empty, EmptyContent, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from '@/shared/ui/empty';
 
@@ -40,6 +41,7 @@ export class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundarySt
   override componentDidCatch(error: Error, info: ErrorInfo) {
     // Journal du navigateur seulement : aucune donnée ne part vers un service tiers.
     console.error('[écran de secours]', error, info.componentStack);
+    if (isStaleBundle(error)) reloadOnceForNewVersion();
   }
 
   override componentDidUpdate(previous: ErrorBoundaryProps) {

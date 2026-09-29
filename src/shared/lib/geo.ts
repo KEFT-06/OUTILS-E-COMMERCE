@@ -30,7 +30,15 @@ const TIMEZONE_COUNTRY: Record<string, string> = {
   'Asia/Beirut': 'LB', 'Pacific/Noumea': 'NC', 'Pacific/Tahiti': 'PF',
 };
 
+/** Le fuseau et les langues ne changent pas pendant la visite : la réponse est calculée une fois. */
+let guessed: string | null | undefined;
+
 export function guessCountryCode(): string | null {
+  if (guessed === undefined) guessed = computeGuess();
+  return guessed;
+}
+
+function computeGuess(): string | null {
   try {
     const zone = Intl.DateTimeFormat().resolvedOptions().timeZone;
     const fromZone = zone ? TIMEZONE_COUNTRY[zone] : undefined;

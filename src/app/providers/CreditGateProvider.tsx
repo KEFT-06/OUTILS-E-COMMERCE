@@ -1,7 +1,36 @@
-import React, { createContext, useCallback, useContext, useEffect, useRef, useState } from 'react';
+import React, { Suspense, createContext, lazy, useCallback, useContext, useEffect, useRef, useState } from 'react';
 import { useAuth } from '@/features/auth/AuthContext';
+import { toast } from 'sonner';
+import { reloadOnceForNewVersion } from '@/shared/lib/reloadForNewVersion';
 import { CreditCostTable, CreditQuote } from '@/shared/types/credits';
-import { CreditSimulatorDialog } from '@/shared/components/CreditSimulatorDialog';
+
+/*
+  La fenêtre des points ne s'ouvre qu'avant une action payante : elle se charge à part, et
+  n'alourdit pas le premier affichage de l'accueil. Montée à la première ouverture, elle le
+  reste ensuite (animation de fermeture, réouvertures instantanées).
+*/
+type SimulatorProps = Parameters<typeof import('@/shared/components/CreditSimulatorDialog').CreditSimulatorDialog>[0];
+const loadSimulator = () => import('@/shared/components/CreditSimulatorDialog');
+const CreditSimulatorDialog = lazy<React.ComponentType<SimulatorProps>>(() =>
+  loadSimulator()
+    // Un second essai couvre une coupure passagère du réseau.
+    .catch(() => loadSimulator())
+    .then((module) => ({ default: module.CreditSimulatorDialog }))
+    .catch(() => ({ default: SimulatorUnavailable })),
+);
+
+/**
+ * Fichier de la fenêtre introuvable : l'action est annulée proprement (rien n'est débité) au
+ * lieu de rester suspendue, et la page se recharge si le site a changé de version entre-temps.
+ */
+function SimulatorUnavailable({ open, onCancel }: SimulatorProps) {
+  useEffect(() => {
+    if (!open) return;
+    onCancel();
+    if (!reloadOnceForNewVersion()) toast.error('La confirmation n’a pas pu s’afficher : rechargez la page pour continuer.');
+  }, [open, onCancel]);
+  return null;
+}
 
 /**
  * Porte de crédits — module 8 du cahier des charges.
@@ -61,10 +90,18 @@ export const CreditGateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
   const [quote, setQuote] = useState<CreditQuote | null>(null);
   const [unavailableReason, setUnavailableReason] = useState<string | null>(null);
   const [isOpen, setIsOpen] = useState(false);
+  const [simulatorUsed, setSimulatorUsed] = useState(false);
   const [costTable, setCostTable] = useState<CreditCostTable | null>(costTableCache);
 
   /** Résout la promesse ouverte par `runWithCredits`, au clic de l'utilisateur. */
   const decisionRef = useRef<((approved: boolean) => void) | null>(null);
+
+  // Connecté, on récupère la fenêtre des points en arrière-plan : la première action payante
+  // l'ouvre sans attendre le réseau. Un visiteur de l'accueil ne la télécharge pas.
+  const connected = Boolean(account);
+  useEffect(() => {
+    if (connected) void loadSimulator().catch(() => undefined);
+  }, [connected]);
 
   // Préchargement : les écrans qui affichent un solde ont besoin du prix du
   // point sans attendre qu'une action soit déclenchée. Un échec ici est muet —
@@ -92,6 +129,8 @@ export const CreditGateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
     decisionRef.current = null;
     decide?.(approved);
   }, []);
+  const confirm = useCallback(() => closeWith(true), [closeWith]);
+  const cancel = useCallback(() => closeWith(false), [closeWith]);
 
   const runWithCredits = useCallback(
     async <T,>(actionId: string, action: () => Promise<T>, units = 1): Promise<T | null> => {
@@ -136,6 +175,7 @@ export const CreditGateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
         );
       }
 
+      setSimulatorUsed(true);
       setIsOpen(true);
       approved = await new Promise<boolean>((resolve) => {
         decisionRef.current = resolve;
@@ -156,13 +196,17 @@ export const CreditGateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
   return (
     <CreditGateContext.Provider value={{ runWithCredits, costTable }}>
       {children}
-      <CreditSimulatorDialog
-        quote={quote}
-        unavailableReason={unavailableReason}
-        open={isOpen}
-        onConfirm={() => closeWith(true)}
-        onCancel={() => closeWith(false)}
-      />
+      {simulatorUsed && (
+        <Suspense fallback={null}>
+          <CreditSimulatorDialog
+            quote={quote}
+            unavailableReason={unavailableReason}
+            open={isOpen}
+            onConfirm={confirm}
+            onCancel={cancel}
+          />
+        </Suspense>
+      )}
     </CreditGateContext.Provider>
   );
 };

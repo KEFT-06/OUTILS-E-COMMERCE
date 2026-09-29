@@ -27,7 +27,6 @@ import { FloatingContact } from '@/shared/components/FloatingContact';
 import { ScrollAids } from '@/shared/components/ScrollAids';
 import { Toaster } from '@/shared/ui/sonner';
 import { Spinner } from '@/shared/ui/spinner';
-import { TooltipProvider } from '@/shared/ui/tooltip';
 
 /*
  * Seul l'accueil part avec le premier téléchargement. Les autres pages publiques, le cadre de
@@ -87,86 +86,89 @@ export default function App() {
         {/* Voir AppChrome, plus bas dans ce fichier. */}
         <AuthProvider>
           <CreditGateProvider>
-            <TooltipProvider delayDuration={200}>
-              <ErrorBoundary>
-              <Suspense fallback={loadingScreen}>
-              <Routes>
-                <Route path="/" element={<LandingPage />} />
-                <Route path="/connexion" element={<LoginPage />} />
-                <Route path="/mot-de-passe" element={<PasswordTokenPage />} />
-                <Route path="/mot-de-passe-oublie" element={<ForgotPasswordPage />} />
-                <Route path="/verifier-email" element={<VerifyEmailPage />} />
-                <Route path="/mentions-legales" element={<LegalPage kind="mentions-legales" />} />
-                <Route path="/confidentialite" element={<LegalPage kind="confidentialite" />} />
-                <Route path="/conditions" element={<LegalPage kind="conditions" />} />
-                <Route path="/contact" element={<ContactPage />} />
+            {/*
+              Pas de fournisseur d'infobulles ici : seules les barres de l'espace connecté en
+              ont, et SidebarProvider fournit le sien. Celui-ci chargeait tout le moteur de
+              positionnement dans le premier fichier de l'accueil, pour aucune infobulle.
+            */}
+            <ErrorBoundary>
+            <Suspense fallback={loadingScreen}>
+            <Routes>
+              <Route path="/" element={<LandingPage />} />
+              <Route path="/connexion" element={<LoginPage />} />
+              <Route path="/mot-de-passe" element={<PasswordTokenPage />} />
+              <Route path="/mot-de-passe-oublie" element={<ForgotPasswordPage />} />
+              <Route path="/verifier-email" element={<VerifyEmailPage />} />
+              <Route path="/mentions-legales" element={<LegalPage kind="mentions-legales" />} />
+              <Route path="/confidentialite" element={<LegalPage kind="confidentialite" />} />
+              <Route path="/conditions" element={<LegalPage kind="conditions" />} />
+              <Route path="/contact" element={<ContactPage />} />
 
-                <Route path="/app" element={<RequireAuth />}>
-                  <Route element={<AppLayout />}>
-                    <Route index element={<Navigate to="cockpit" replace />} />
-                    <Route path="cockpit" element={<CockpitPage />} />
-                    <Route path="niches" element={<NichesPage />} />
-                    <Route path="radar" element={<RadarPage />} />
-                    <Route path="espionnage" element={<EspionnagePage />} />
-                    <Route path="analyse" element={<AnalysePage />} />
-                    <Route path="dossier-pdf" element={<DossierPdfPage />} />
-                    <Route path="studio" element={<StudioPage />} />
-                    <Route path="creatifs" element={<CreatifsPage />} />
-                    <Route path="storybook" element={<StorybookPage />} />
-                    <Route path="pages-produits" element={<PagesProduitsPage />} />
-                    <Route path="multilingue" element={<MultilinguePage />} />
-                    <Route path="multilingue/relectures/:translationId" element={<GuideReviewPage />} />
-                    <Route path="multilingue/:guideId" element={<GuidePage />} />
-                    <Route path="multilingue/:guideId/:language" element={<GuideTranslationPage />} />
-                    <Route path="kit-lancement" element={<KitLancementPage />} />
-                    <Route path="campagnes" element={<CampagnesPage />} />
-                    <Route path="distribution" element={<DistributionPage />} />
-                    <Route path="affiliation" element={<AffiliationPage />} />
-                    <Route path="compte" element={<AccountPage />} />
-                    <Route path="admin" element={<AdminLayout />}>
-                      <Route index element={<AdminOverviewPage />} />
-                      <Route path="utilisateurs" element={<AdminUsersPage />} />
-                      <Route path="utilisateurs/:userId" element={<AdminUserDetailPage />} />
-                      <Route path="connexions" element={<AdminConnectionsPage />} />
-                      <Route path="messages" element={<AdminMessagesPage />} />
-                      <Route path="audience" element={<AdminAudiencePage />} />
-                      <Route path="revenus" element={<AdminRevenuePage />} />
-                      <Route path="tarifs" element={<AdminPricingPage />} />
-                      <Route path="contenus" element={<AdminContentPage />} />
-                      <Route path="services" element={<AdminServicesPage />} />
-                      <Route path="securite" element={<AdminSecurityPage />} />
-                    </Route>
-                    <Route path="*" element={<Navigate to="cockpit" replace />} />
+              <Route path="/app" element={<RequireAuth />}>
+                <Route element={<AppLayout />}>
+                  <Route index element={<Navigate to="cockpit" replace />} />
+                  <Route path="cockpit" element={<CockpitPage />} />
+                  <Route path="niches" element={<NichesPage />} />
+                  <Route path="radar" element={<RadarPage />} />
+                  <Route path="espionnage" element={<EspionnagePage />} />
+                  <Route path="analyse" element={<AnalysePage />} />
+                  <Route path="dossier-pdf" element={<DossierPdfPage />} />
+                  <Route path="studio" element={<StudioPage />} />
+                  <Route path="creatifs" element={<CreatifsPage />} />
+                  <Route path="storybook" element={<StorybookPage />} />
+                  <Route path="pages-produits" element={<PagesProduitsPage />} />
+                  <Route path="multilingue" element={<MultilinguePage />} />
+                  <Route path="multilingue/relectures/:translationId" element={<GuideReviewPage />} />
+                  <Route path="multilingue/:guideId" element={<GuidePage />} />
+                  <Route path="multilingue/:guideId/:language" element={<GuideTranslationPage />} />
+                  <Route path="kit-lancement" element={<KitLancementPage />} />
+                  <Route path="campagnes" element={<CampagnesPage />} />
+                  <Route path="distribution" element={<DistributionPage />} />
+                  <Route path="affiliation" element={<AffiliationPage />} />
+                  <Route path="compte" element={<AccountPage />} />
+                  <Route path="admin" element={<AdminLayout />}>
+                    <Route index element={<AdminOverviewPage />} />
+                    <Route path="utilisateurs" element={<AdminUsersPage />} />
+                    <Route path="utilisateurs/:userId" element={<AdminUserDetailPage />} />
+                    <Route path="connexions" element={<AdminConnectionsPage />} />
+                    <Route path="messages" element={<AdminMessagesPage />} />
+                    <Route path="audience" element={<AdminAudiencePage />} />
+                    <Route path="revenus" element={<AdminRevenuePage />} />
+                    <Route path="tarifs" element={<AdminPricingPage />} />
+                    <Route path="contenus" element={<AdminContentPage />} />
+                    <Route path="services" element={<AdminServicesPage />} />
+                    <Route path="securite" element={<AdminSecurityPage />} />
                   </Route>
+                  <Route path="*" element={<Navigate to="cockpit" replace />} />
                 </Route>
+              </Route>
 
-                <Route path="/imprimer" element={<RequireAuth />}>
-                  <Route
-                    path="guide/:guideId/:language"
-                    element={
-                      <Suspense fallback={null}>
-                        <GuidePrintPage />
-                      </Suspense>
-                    }
-                  />
-                </Route>
+              <Route path="/imprimer" element={<RequireAuth />}>
+                <Route
+                  path="guide/:guideId/:language"
+                  element={
+                    <Suspense fallback={null}>
+                      <GuidePrintPage />
+                    </Suspense>
+                  }
+                />
+              </Route>
 
-                <Route path="*" element={<NotFoundPage />} />
-              </Routes>
-              </Suspense>
-              </ErrorBoundary>
-              {/*
-                Hors des <Routes> : ces trois-là suivent le visiteur d'une page à l'autre, et
-                les remonter à chaque changement d'écran ferait repartir le bandeau cookies
-                et perdre la position de défilement mesurée.
+              <Route path="*" element={<NotFoundPage />} />
+            </Routes>
+            </Suspense>
+            </ErrorBoundary>
+            {/*
+              Hors des <Routes> : ces trois-là suivent le visiteur d'une page à l'autre, et
+              les remonter à chaque changement d'écran ferait repartir le bandeau cookies
+              et perdre la position de défilement mesurée.
 
-                La page d'impression est la seule exclue — voir `ScrollAids` et l'exclusion
-                de `/imprimer` ci-dessous : une barre de progression et un bouton flottant
-                sortiraient sur le papier.
-              */}
-              <AppChrome />
-              <Toaster position="bottom-right" mobileOffset={{ bottom: 88 }} closeButton />
-            </TooltipProvider>
+              La page d'impression est la seule exclue — voir `ScrollAids` et l'exclusion
+              de `/imprimer` ci-dessous : une barre de progression et un bouton flottant
+              sortiraient sur le papier.
+            */}
+            <AppChrome />
+            <Toaster position="bottom-right" mobileOffset={{ bottom: 88 }} closeButton />
           </CreditGateProvider>
         </AuthProvider>
       </PreferencesProvider>
