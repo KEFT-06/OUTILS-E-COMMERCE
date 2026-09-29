@@ -12,21 +12,41 @@ export const SESSION_EXPIRED_EVENT = 'smartcreator:session-expiree';
 
 type Method = 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE';
 
+declare global {
+  interface Window {
+    /** Réponses demandées dès le HTML par public/boot.js, avant le chargement de l'application. */
+    __smartCreatorEarly?: Record<string, Promise<Response> | undefined>;
+  }
+}
+
+/** Réponse anticipée par public/boot.js : servie une seule fois, au premier appel. */
+function takeEarlyResponse(path: string): Promise<Response> | null {
+  if (typeof window === 'undefined') return null;
+  const early = window.__smartCreatorEarly?.[path];
+  if (!early) return null;
+  delete window.__smartCreatorEarly![path];
+  return early;
+}
+
 export async function apiRequest<T>(
   path: string,
   options: { method?: Method; body?: unknown; signal?: AbortSignal } = {},
 ): Promise<T> {
   const hasBody = options.body !== undefined;
-
-  let response: Response;
-  try {
-    response = await fetch(path, {
+  const send = () =>
+    fetch(path, {
       method: options.method ?? 'GET',
       credentials: 'same-origin',
       headers: hasBody ? { 'Content-Type': 'application/json' } : undefined,
       body: hasBody ? JSON.stringify(options.body) : undefined,
       signal: options.signal,
     });
+
+  let response: Response;
+  try {
+    const early = !options.method && !hasBody && !options.signal ? takeEarlyResponse(path) : null;
+    // Une demande anticipée qui a échoué (réseau) est simplement refaite.
+    response = early ? await early.catch(send) : await send();
   } catch (error) {
     if (error instanceof DOMException && error.name === 'AbortError') throw error;
     throw new ApiError('Le serveur est injoignable. Vérifiez votre connexion, puis réessayez.', 'NETWORK_ERROR');

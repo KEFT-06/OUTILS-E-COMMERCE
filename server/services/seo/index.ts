@@ -147,6 +147,14 @@ export function mountClient(
     if (!template || req.path.startsWith('/api') || /\.[a-z0-9]+$/i.test(req.path)) return next();
     const { status, html, indexable } = renderIndexHtml(template, appUrl, req.path);
     res.status(status).setHeader('Cache-Control', 'no-cache');
+    /*
+      Le navigateur revalide toujours (no-cache), mais le réseau de l'hébergeur garde la page :
+      elle est identique pour tous les visiteurs (aucune donnée de compte, aucun cookie) et ne
+      change qu'avec un déploiement, qui vide ce cache. Sans cela, chaque ouverture de page
+      faisait l'aller-retour jusqu'à la fonction de Washington : 0,6 à 1,1 s avant le premier
+      octet, mesuré depuis l'Afrique centrale.
+    */
+    res.setHeader('Vercel-CDN-Cache-Control', 'max-age=3600, stale-while-revalidate=86400');
     if (!indexable) res.setHeader('X-Robots-Tag', 'noindex, nofollow');
     res.type('html').send(html);
   });

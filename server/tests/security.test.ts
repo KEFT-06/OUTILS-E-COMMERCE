@@ -32,14 +32,14 @@ describe('Audit de sécurité', () => {
   it('interdit la mise en cache des réponses de l’API liées à un compte', async () => {
     const moi = await request(app).get('/api/auth/me').expect(200);
     assert.equal(moi.headers['cache-control'], 'no-store');
-    const plans = await request(app).get('/api/plans?country=CM').expect(200);
-    assert.equal(plans.headers['cache-control'], 'no-store', 'le prix peut dépendre du compte connecté');
+    const plans = await request(app).get('/api/plans').expect(200);
+    assert.equal(plans.headers['cache-control'], 'no-store', 'sans pays ni devise, le prix dépend du compte connecté');
   });
 
   it('ne laisse en cache public que des tables identiques pour tous', async () => {
     // Gagner une demi-seconde par écran (fonction à Washington, visiteurs par Cape Town), sans
     // jamais exposer une donnée de compte : seules ces réponses-là sont publiques.
-    for (const chemin of ['/api/health', '/api/credits/costs']) {
+    for (const chemin of ['/api/health', '/api/credits/costs', '/api/plans?country=CM', '/api/plans?currency=EUR']) {
       const reponse = await request(app).get(chemin).expect(200);
       assert.match(String(reponse.headers['cache-control']), /^public, /, chemin);
       assert.equal(reponse.headers['set-cookie'], undefined, `${chemin} : aucun cookie dans une réponse publique`);

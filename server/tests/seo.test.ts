@@ -76,6 +76,10 @@ describe('Référencement', () => {
       const home = await request(site).get('/').expect(200);
       assert.match(home.text, /Veille stratégique/);
       assert.equal(home.headers['x-robots-tag'], undefined);
+      // Le navigateur revalide ; le réseau de l'hébergeur garde la page, identique pour tous.
+      assert.equal(home.headers['cache-control'], 'no-cache');
+      assert.match(String(home.headers['vercel-cdn-cache-control']), /^max-age=\d+/);
+      assert.equal(home.headers['set-cookie'], undefined, 'aucun cookie dans une page gardée en cache');
 
       const workspace = await request(site).get('/app/cockpit').expect(200);
       assert.equal(workspace.headers['x-robots-tag'], 'noindex, nofollow');

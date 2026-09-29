@@ -24,10 +24,11 @@ import { findCountry } from '@server/shared/countries';
  * évité fait gagner une demi-seconde. Réservé aux tables de configuration, jamais à ce qui
  * dépend du compte.
  */
+const publicCacheControl = (seconds: number) => `public, max-age=${Math.min(seconds, 60)}, s-maxage=${seconds}, stale-while-revalidate=86400`;
 const cachePublic =
   (seconds: number): RequestHandler =>
   (_req, res, next) => {
-    res.setHeader('Cache-Control', `public, max-age=${Math.min(seconds, 60)}, s-maxage=${seconds}, stale-while-revalidate=86400`);
+    res.setHeader('Cache-Control', publicCacheControl(seconds));
     next();
   };
 
@@ -127,12 +128,17 @@ catalogRouter.get(
       const config = await getPlanConfig();
       const rates = await getRates();
       const query = plansQuery.parse(req.query);
-      const currency =
+      const fromQuery =
         query.currency && isSupportedCurrency(query.currency, rates)
           ? query.currency
           : query.country && findCountry(query.country)
             ? currencyForCountry(query.country, rates)
-            : currencyForCountry(req.auth?.account.user.country, rates);
+            : null;
+      const currency = fromQuery ?? currencyForCountry(req.auth?.account.user.country, rates);
+      // Devise fixée par l'adresse : la réponse est la même pour tous, le réseau de l'hébergeur
+      // peut la garder (1,9 s mesurée depuis l'Afrique centrale sur la page d'accueil). Sans
+      // devise ni pays, elle dépend du compte connecté et reste hors cache.
+      if (fromQuery) res.setHeader('Cache-Control', publicCacheControl(300));
 
       res.json({
         version: config.version,
