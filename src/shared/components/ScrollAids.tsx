@@ -48,7 +48,9 @@ export function ScrollAids() {
       demande = window.requestAnimationFrame(mesurer);
     };
 
-    mesurer();
+    // Première mesure à l'image suivante : lire la hauteur de la page juste après le montage
+    // forcerait le navigateur à calculer la mise en page en plein premier affichage.
+    auDefilement();
     window.addEventListener('scroll', auDefilement, { passive: true });
     window.addEventListener('resize', auDefilement, { passive: true });
     return () => {

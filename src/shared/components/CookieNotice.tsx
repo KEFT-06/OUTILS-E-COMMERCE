@@ -62,6 +62,7 @@ export function CookieNotice() {
     <div
       role="region"
       aria-label="Information sur les cookies"
+      data-cookie-notice
       className="fixed inset-x-0 bottom-0 z-50 border-t bg-background/95 p-3 shadow-lg backdrop-blur supports-[backdrop-filter]:bg-background/80"
     >
       <div className="mx-auto flex w-full max-w-4xl flex-col items-start gap-3 sm:flex-row sm:items-center">

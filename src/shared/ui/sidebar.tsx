@@ -489,8 +489,9 @@ const sidebarMenuButtonVariants = cva(
           "bg-background shadow-[0_0_0_1px_var(--sidebar-border)] hover:bg-sidebar-accent hover:text-sidebar-accent-foreground hover:shadow-[0_0_0_1px_var(--sidebar-accent)]",
       },
       size: {
-        default: "h-8 text-sm",
-        sm: "h-7 text-xs",
+        // Au doigt (téléphone, tablette), 40 px au lieu de 32 : les entrées du menu se touchaient.
+        default: "h-8 text-sm pointer-coarse:h-10",
+        sm: "h-7 text-xs pointer-coarse:h-9",
         lg: "h-12 text-sm group-data-[collapsible=icon]:p-0!",
       },
     },

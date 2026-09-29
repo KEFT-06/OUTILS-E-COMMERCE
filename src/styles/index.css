@@ -328,6 +328,16 @@
   }
 }
 
+/*
+  Sur téléphone, dans l'espace connecté, le bandeau cookies se pose au-dessus de la barre de
+  raccourcis (hauteur 3,5 rem + sa bordure + la zone de sécurité) au lieu de la masquer.
+*/
+@media (width < 48rem) {
+  body:has([data-mobile-nav]) [data-cookie-notice] {
+    bottom: calc(3.5rem + 1px + env(safe-area-inset-bottom));
+  }
+}
+
 @media print {
   header,
   footer,

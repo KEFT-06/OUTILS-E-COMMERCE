@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useDeferredValue, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { toast } from 'sonner';
 import { Bookmark, BookmarkCheck, ChevronDown, Plus, Search, Sparkles, X } from 'lucide-react';
@@ -43,7 +43,13 @@ export function NichesView() {
   const full = limit !== null && saved.length >= limit;
   const savedKeys = useMemo(() => new Set(saved.map(searchKey)), [saved]);
 
-  const key = searchKey(query);
+  /*
+    La saisie reste prioritaire : une recherche d'une lettre fait remonter des centaines de
+    niches, et les redessiner à chaque touche faisait ramer le champ sur téléphone. La liste
+    suit, un instant après, sans bloquer la frappe.
+  */
+  const deferredQuery = useDeferredValue(query);
+  const key = searchKey(deferredQuery);
   const results = useMemo(
     () =>
       NICHE_SECTORS.filter((sector) => sectorId === 'all' || sector.id === sectorId)
@@ -225,7 +231,7 @@ export function NichesView() {
 
         <p className="text-sm text-muted-foreground" aria-live="polite">
           {matchCount} niche{matchCount > 1 ? 's' : ''}
-          {key ? ` pour « ${query.trim()} »` : ''}
+          {key ? ` pour « ${deferredQuery.trim()} »` : ''}
         </p>
 
         {matchCount === 0 ? (
@@ -242,7 +248,9 @@ export function NichesView() {
               const showAll = Boolean(key) || expanded[sector.id];
               const visible = showAll ? niches : niches.slice(0, PREVIEW_COUNT);
               return (
-                <Card key={sector.id} className="gap-4">
+                // Hors de l'écran, une carte n'est ni mise en page ni peinte (content-visibility) :
+                // le catalogue entier compte plusieurs milliers d'éléments.
+                <Card key={sector.id} className="gap-4 [contain-intrinsic-size:auto_26rem] [content-visibility:auto]">
                   <CardHeader>
                     <CardTitle>
                       <h3 className="flex items-center gap-2">

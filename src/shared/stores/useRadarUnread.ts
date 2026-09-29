@@ -13,12 +13,15 @@ import { apiRequest } from '@/shared/lib/api';
  *   · la réponse du serveur est un seul entier ;
  *   · la relecture suit la navigation, jamais un minuteur — une pastille qui interroge le serveur
  *     toutes les dix secondes coûterait plus cher que le balayage lui-même ;
+ *   · une réponse sert trois minutes : le radar relève une fois par nuit, et relire à chaque
+ *     changement d'écran ajoutait un aller-retour au serveur pour une valeur qui ne bouge pas.
+ *     L'ouverture du radar remet la pastille à zéro sans attendre (resetRadarUnread) ;
  *   · l'appel est mutualisé entre les deux barres. Sans cela, chaque navigation en déclencherait
  *     deux, pour la même réponse.
  */
 
-/** Durée pendant laquelle deux appels rapprochés partagent la même réponse. */
-const PARTAGE_MS = 5_000;
+/** Durée pendant laquelle une réponse sert à toutes les navigations. */
+const PARTAGE_MS = 3 * 60_000;
 
 let cache: { at: number; value: number } | null = null;
 let enCours: Promise<number> | null = null;
@@ -39,6 +42,12 @@ async function lireCompteur(): Promise<number> {
       enCours = null;
     });
   return enCours;
+}
+
+/** Les événements viennent d'être marqués lus : la pastille s'éteint tout de suite. */
+export function resetRadarUnread(): void {
+  cache = { at: Date.now(), value: 0 };
+  for (const notifier of abonnes) notifier(0);
 }
 
 export function useRadarUnread(): number {

@@ -7,6 +7,7 @@ import { toApiError, type ApiError } from '@/shared/lib/apiError';
 import { formatRelativeFr } from '@/shared/lib/formatDate';
 import { safeHttpUrl } from '@/shared/lib/safeUrl';
 import { cn } from '@/shared/lib/utils';
+import { resetRadarUnread } from '@/shared/stores/useRadarUnread';
 import type { RadarDashboard, WatchEventKind, WatchEventView, WatchSummary } from '@/shared/types/radar';
 import { Alert, AlertDescription, AlertTitle } from '@/shared/ui/alert';
 import { Badge } from '@/shared/ui/badge';
@@ -208,7 +209,9 @@ export function RadarView() {
   // depuis la dernière visite, pas ce que l'utilisateur n'a pas encore fait défiler.
   useEffect(() => {
     if (!data || data.events.every((event) => event.read)) return;
-    void apiRequest('/api/radar/events/read', { method: 'POST' }).catch(() => undefined);
+    void apiRequest('/api/radar/events/read', { method: 'POST' })
+      .then(resetRadarUnread)
+      .catch(() => undefined);
   }, [data]);
 
   /** Met une cible sous surveillance, qu'elle vienne du champ ou de la liste des repérées. */
