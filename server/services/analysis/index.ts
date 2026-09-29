@@ -350,6 +350,18 @@ export function assembleReport(input: {
       ...(response.actionPlan.length > 0 ? { strategicActionPlan: proposed(`Plan proposé par ${writer}${sources.length > 0 ? ' d’après l’étude' : ''}`) } : {}),
     },
     decisions: decisions.slice(0, 8),
+    keyFindings: response.keyFindings
+      .filter((finding) => finding.title && finding.detail)
+      .slice(0, 6)
+      .map((finding) => ({ ...finding, sourceIds: cite(finding.sourceIds) })),
+    audience: response.audience.profile ? { ...response.audience, sourceIds: cite(response.audience.sourceIds) } : null,
+    pricing:
+      response.pricing.observed || response.pricing.recommendation ? { ...response.pricing, sourceIds: cite(response.pricing.sourceIds) } : null,
+    channels: response.channels.filter((channel) => channel.channel && channel.why).slice(0, 5),
+    risks: response.risks
+      .filter((risk) => risk.risk && risk.mitigation)
+      .slice(0, 5)
+      .map((risk) => ({ ...risk, sourceIds: cite(risk.sourceIds) })),
     generator: {
       provider: 'Smart Creator',
       model: ANALYSIS_PROMPT_VERSION,

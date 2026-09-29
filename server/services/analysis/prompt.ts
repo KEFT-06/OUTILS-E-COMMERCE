@@ -88,6 +88,11 @@ export function buildAnalysisPrompt(input: {
     '- products : de 3 à 8 idées de produits digitaux adaptées au marché visé. LE NOMBRE SUIT LE POTENTIEL que tu viens d’attribuer : une niche saturée ou à demande faible n’en mérite que 3, une niche à demande élevée et faible saturation en mérite 6 à 8. Varie les TYPES entre eux (ebook, modèle, masterclass, offre groupée, micro-outil) plutôt que de décliner la même idée. Chaque idée : titre, sous-titre, type, public, promesse de transformation réaliste, pricingNote (prix constatés chez les concurrents avec leurs numéros de source, ou « Aucun prix constaté dans les sources »), 5 à 8 modules (titre et contenu), un aimant à prospects gratuit (titre, format, accroche).',
     '- adScripts : 2 scripts vidéo pour Meta Ads avec deux méthodes différentes parmi AIDA, PAS et BAB : accroche des 3 premières secondes, texte principal, titre, bouton d’appel à l’action, format 9:16 ou 1:1, durée de 15 ou 30 secondes, une scène par étape de la méthode (phase = nom exact de l’étape : AIDA → Attention, Intérêt, Désir, Action ; PAS → Problème, Agitation, Solution ; BAB → Avant, Après, Pont) avec sa durée en secondes, le visuel, le texte à l’écran, la voix off et l’ambiance sonore ; centres d’intérêt, public et placements suggérés.',
     '- actionPlan : 3 étapes (valider la demande, produire, lancer), chacune avec 3 à 5 actions concrètes.',
+    '- keyFindings : 4 à 6 constats clés tirés de l’étude : title (quelques mots), detail (2 ou 3 phrases), sourceIds. Des réponses, jamais des questions ouvertes ni des « points à vérifier ».',
+    '- audience : profile (qui achète, en 1 ou 2 phrases), pains (3 à 5 difficultés concrètes), motivations (2 à 4 raisons d’acheter), objections (2 à 4 freins, chacun suivi de la réponse à y apporter), sourceIds.',
+    '- pricing : observed (les prix constatés dans les sources pour des produits comparables), recommendation (prix d’entrée et paliers conseillés, argumentés), paymentMethods (moyens de paiement à proposer sur ce marché), sourceIds.',
+    '- channels : 3 à 5 canaux de vente ou d’acquisition, chacun avec channel (le canal) et why (pourquoi il convient à cette niche, en une phrase).',
+    '- risks : 3 à 5 risques réels (partage non autorisé, sensibilités culturelles ou religieuses, contraintes de connexion, concurrence gratuite…), chacun avec risk (le risque, en une phrase), mitigation (la parade concrète à appliquer) et sourceIds. Chaque risque a sa parade : ne laisse rien « à évaluer » par l’auteur.',
     '- decisions : au plus 4 points que les sources n’ont pas permis d’établir. Pour CHACUN, ne rends pas la question à l’auteur : PRENDS la décision à sa place. gap = ce qui manque, en une phrase ; proposal = la décision que tu proposes, formulée à l’impératif et chiffrée quand c’est possible ; basis = ce sur quoi elle s’appuie, en toutes lettres et SANS renvoi entre crochets (un concurrent comparable, un constat des sources, ou une règle de prudence explicite) ; sourceIds = les numéros des sources qui la fondent. N’invente jamais un chiffre de marché : si rien ne fonde une valeur, propose une méthode pour l’obtenir en moins d’une semaine.',
   );
 
@@ -223,6 +228,28 @@ export const ANALYSIS_RESPONSE_SCHEMA = {
         required: ['gap', 'proposal', 'basis'],
       },
     },
+    keyFindings: {
+      type: 'ARRAY',
+      items: { type: 'OBJECT', properties: { title: STRING, detail: STRING, sourceIds: SOURCE_IDS }, required: ['title', 'detail', 'sourceIds'] },
+    },
+    audience: {
+      type: 'OBJECT',
+      properties: { profile: STRING, pains: STRINGS, motivations: STRINGS, objections: STRINGS, sourceIds: SOURCE_IDS },
+      required: ['profile', 'pains', 'motivations', 'objections', 'sourceIds'],
+    },
+    pricing: {
+      type: 'OBJECT',
+      properties: { observed: STRING, recommendation: STRING, paymentMethods: STRINGS, sourceIds: SOURCE_IDS },
+      required: ['observed', 'recommendation', 'paymentMethods', 'sourceIds'],
+    },
+    channels: {
+      type: 'ARRAY',
+      items: { type: 'OBJECT', properties: { channel: STRING, why: STRING }, required: ['channel', 'why'] },
+    },
+    risks: {
+      type: 'ARRAY',
+      items: { type: 'OBJECT', properties: { risk: STRING, mitigation: STRING, sourceIds: SOURCE_IDS }, required: ['risk', 'mitigation', 'sourceIds'] },
+    },
   },
   required: [
     'nicheName',
@@ -241,6 +268,11 @@ export const ANALYSIS_RESPONSE_SCHEMA = {
     'adScripts',
     'actionPlan',
     'decisions',
+    'keyFindings',
+    'audience',
+    'pricing',
+    'channels',
+    'risks',
   ],
 };
 
@@ -398,6 +430,15 @@ const analysisResponseSchema = z.object({
   decisions: z
     .array(z.object({ gap: text(300), proposal: text(400), basis: text(300), sourceIds }).catch({ gap: '', proposal: '', basis: '', sourceIds: [] }))
     .catch([]),
+  keyFindings: z.array(z.object({ title: text(120), detail: text(700), sourceIds }).catch({ title: '', detail: '', sourceIds: [] })).catch([]),
+  audience: z
+    .object({ profile: text(500), pains: texts(6, 240), motivations: texts(5, 240), objections: texts(5, 320), sourceIds })
+    .catch({ profile: '', pains: [], motivations: [], objections: [], sourceIds: [] }),
+  pricing: z
+    .object({ observed: text(600), recommendation: text(600), paymentMethods: texts(6, 80), sourceIds })
+    .catch({ observed: '', recommendation: '', paymentMethods: [], sourceIds: [] }),
+  channels: z.array(z.object({ channel: text(80), why: text(300) }).catch({ channel: '', why: '' })).catch([]),
+  risks: z.array(z.object({ risk: text(300), mitigation: text(500), sourceIds }).catch({ risk: '', mitigation: '', sourceIds: [] })).catch([]),
 });
 
 export type AnalysisResponse = z.infer<typeof analysisResponseSchema>;
