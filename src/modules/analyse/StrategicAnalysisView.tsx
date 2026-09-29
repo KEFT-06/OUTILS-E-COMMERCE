@@ -187,6 +187,15 @@ const measuredColumns: ColumnDef<KeywordRow>[] = [
   intentColumn,
 ];
 
+/*
+  Colonnes et état du tableau déclarés une fois pour toutes : le tableau se réinitialise dès
+  que leur référence change. Recréés à chaque rendu (`[keywordColumn, intentColumn]`, `[]`),
+  ils relançaient un rendu à chaque rendu — l'écran d'analyse se figeait au premier clic
+  venu, par exemple en dépliant le rapport rédigé.
+*/
+const unmeasuredColumns: ColumnDef<KeywordRow>[] = [keywordColumn, intentColumn];
+const NO_SORTING: SortingState = [];
+
 const toileConfig = { score: { label: 'Score', color: 'var(--chart-1)' } } satisfies ChartConfig;
 const volumeConfig = { volume: { label: 'Recherches / mois', color: 'var(--chart-2)' } } satisfies ChartConfig;
 
@@ -289,10 +298,11 @@ export function StrategicAnalysisView({ report, onNavigateToProducts, onNavigate
     [keywordRows],
   );
 
+  const tableState = useMemo(() => ({ sorting: hasVolumes ? sorting : NO_SORTING }), [hasVolumes, sorting]);
   const table = useReactTable({
     data: keywordRows,
-    columns: hasVolumes ? measuredColumns : [keywordColumn, intentColumn],
-    state: { sorting: hasVolumes ? sorting : [] },
+    columns: hasVolumes ? measuredColumns : unmeasuredColumns,
+    state: tableState,
     onSortingChange: setSorting,
     getCoreRowModel: getCoreRowModel(),
     getSortedRowModel: getSortedRowModel(),
