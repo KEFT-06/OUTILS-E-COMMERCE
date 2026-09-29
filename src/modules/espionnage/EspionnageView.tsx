@@ -1,12 +1,11 @@
 import { useCallback, useEffect, useState } from "react";
-import { Search, Store } from "lucide-react";
+import { Store } from "lucide-react";
 import { toast } from "sonner";
 import { AdCard, AdDetailsDialog } from "@/modules/espionnage/AdCard";
 import { MetaSearchPanel } from "@/modules/espionnage/MetaSearchPanel";
 import { PageHeader } from "@/shared/components/PageHeader";
 import { apiRequest } from "@/shared/lib/api";
 import { toApiError } from "@/shared/lib/apiError";
-import { formatRelativeFr } from "@/shared/lib/formatDate";
 import type {
   EspionnageView as EspionnageData,
   LibraryAd,
@@ -19,7 +18,6 @@ import {
   EmptyHeader,
   EmptyTitle,
 } from "@/shared/ui/empty";
-import { Input } from "@/shared/ui/input";
 import {
   Select,
   SelectContent,
@@ -28,7 +26,6 @@ import {
   SelectValue,
 } from "@/shared/ui/select";
 import { Skeleton } from "@/shared/ui/skeleton";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/shared/ui/tabs";
 
 /**
  * Mur d'espionnage : les publicités qui tournent en ce moment et qui mènent à une boutique de la
@@ -80,8 +77,6 @@ export function EspionnageView() {
   */
   const [etat, setEtat] = useState<"toutes" | "active" | "arretee">("active");
   const [tri, setTri] = useState<"oldest" | "newest" | "variants">("oldest");
-  const [recherche, setRecherche] = useState("");
-  const [recherchee, setRecherchee] = useState("");
   const [busy, setBusy] = useState<string | null>(null);
   const [details, setDetails] = useState<LibraryAd | null>(null);
   /** « Toutes les annonces de cet annonceur », comme sur la page d'un annonceur chez Meta. */
@@ -98,7 +93,6 @@ export function EspionnageView() {
     if (anciennete !== "0") params.set("minDays", anciennete);
     if (format !== "tous") params.set("mediaKind", format);
     if (etat !== "toutes") params.set("etat", etat);
-    if (recherchee) params.set("search", recherchee);
     if (annonceur?.pageId) params.set("pageId", annonceur.pageId);
     else if (annonceur?.storeHost) params.set("storeHost", annonceur.storeHost);
     try {
@@ -114,7 +108,7 @@ export function EspionnageView() {
           .message,
       );
     }
-  }, [anciennete, format, etat, tri, recherchee, annonceur]);
+  }, [anciennete, format, etat, tri, annonceur]);
 
   useEffect(() => {
     void load();
@@ -165,38 +159,21 @@ export function EspionnageView() {
       <PageHeader
         eyebrow="Voir"
         title="Espionnage"
-        description="Les publicités qui tournent en ce moment : cherchez un mot-clé comme dans la bibliothèque de Meta, ou parcourez le mur des boutiques Chariow. Ce que vendent ceux qui paient pour être vus, et depuis combien de temps."
+        description="Les publicités qui tournent en ce moment : ce que vendent ceux qui paient pour être vus, et depuis combien de temps."
       />
 
-      <Tabs defaultValue="recherche" className="gap-6">
-        <TabsList className="w-full sm:w-auto">
-          <TabsTrigger value="recherche" className="flex-1 sm:flex-none">
-            Rechercher comme sur Meta
-          </TabsTrigger>
-          <TabsTrigger value="mur" className="flex-1 sm:flex-none">
-            Mur Chariow
-          </TabsTrigger>
-        </TabsList>
+      {/* Une seule page, sans onglets (demande du 29/09/2026) : la recherche façon Meta en haut,
+          les dernières publicités repérées dessous. */}
+      <MetaSearchPanel />
 
-        <TabsContent value="recherche">
-          <MetaSearchPanel />
-        </TabsContent>
-
-        <TabsContent value="mur" className="space-y-6">
+      <section className="space-y-6" aria-labelledby="dernieres-publicites">
+        <h2 id="dernieres-publicites" className="font-display text-xl font-bold tracking-tight">
+          Dernières publicités repérées
+        </h2>
           {erreur && (
             <Alert variant="destructive">
               <AlertTitle>Mur indisponible</AlertTitle>
               <AlertDescription>{erreur}</AlertDescription>
-            </Alert>
-          )}
-
-          {collecting && (
-            <Alert variant="info" role="status">
-              <AlertTitle>Collecte en cours</AlertTitle>
-              <AlertDescription>
-                De nouvelles annonces arrivent dans quelques minutes : le mur se
-                met à jour tout seul.
-              </AlertDescription>
             </Alert>
           )}
 
@@ -224,30 +201,6 @@ export function EspionnageView() {
         Un outil qui montre la même chose autrement oblige à réapprendre ce qu'on sait déjà.
       */}
           <div className="space-y-4">
-            <form
-              className="flex flex-col gap-2 sm:flex-row"
-              onSubmit={(submit) => {
-                submit.preventDefault();
-                setRecherchee(recherche.trim());
-              }}
-            >
-              <Input
-                value={recherche}
-                onChange={(change) => setRecherche(change.target.value)}
-                placeholder="Chercher un mot dans les annonces…"
-                aria-label="Chercher dans les annonces"
-                className="h-11 text-base"
-              />
-              <Button
-                type="submit"
-                variant="secondary"
-                className="h-11 shrink-0"
-              >
-                <Search />
-                Chercher
-              </Button>
-            </form>
-
             <div className="flex flex-col gap-3 md:flex-row md:items-end md:justify-between">
               <div>
                 <p className="font-display text-2xl font-extrabold tracking-tight tabular-nums">
@@ -257,12 +210,8 @@ export function EspionnageView() {
                 </p>
                 <p className="text-sm text-muted-foreground">
                   {data
-                    ? `Sur ${data.total} conservées chez ${data.stores} boutique${data.stores > 1 ? "s" : ""}${
-                        data.lastCollectedAt
-                          ? ` · dernière collecte ${formatRelativeFr(data.lastCollectedAt)}`
-                          : ""
-                      }`
-                    : "Chargement…"}
+                    ? `chez ${data.stores} boutique${data.stores > 1 ? "s" : ""}`
+                    : ""}
                   {hint ? ` · ${hint}` : ""}
                 </p>
               </div>
@@ -429,8 +378,7 @@ export function EspionnageView() {
             visuels restent hébergés chez Meta ; leur aperçu est conservé ici
             trente jours après la dernière fois qu’une annonce a été vue.
           </p>
-        </TabsContent>
-      </Tabs>
+      </section>
     </div>
   );
 }
