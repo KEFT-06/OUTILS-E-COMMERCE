@@ -1,17 +1,17 @@
 {
-  "version": "2026.09.2",
-  "updatedAt": "2026-09-13",
+  "version": "2026.09.3",
+  "updatedAt": "2026-09-29",
   "note": "Table de configuration éditable sans déploiement de code (CdC §6.4.1, point non négociable : les politiques Meta et TikTok évoluent plusieurs fois par an). À migrer en base de données lors du Lot 2.",
   "rules": [
     {
       "id": "earnings-claim",
       "category": "Promesses de gains chiffrées",
       "severity": "block",
-      "description": "Montant de gain annoncé, avec ou sans période.",
+      "description": "Montant de gain annoncé, avec ou sans période. Un prix, un abonnement ou des frais par période (« scolarité de 150 000 FCFA par an ») ne sont pas un gain.",
       "patterns": [
-        "(?:gagn|gagne[rz]?|encaiss|empoch|touch)[\\w\\u00C0-\\u024F]*\\s+(?:jusqu'?à\\s+)?\\d[\\d\\s.,]*\\s*(?:fcfa|xof|xaf|€|eur|euros?|\\$|usd|k)",
-        "\\d[\\d\\s.,]*\\s*(?:fcfa|xof|xaf|€|eur|euros?|\\$|usd)\\s*(?:/|par\\s+)(?:jour|semaine|mois|an)",
-        "(?:revenus?|salaire|chiffre d'affaires)\\s+(?:de|à)\\s+\\d[\\d\\s.,]*"
+        "(?:gagn|gagne[rz]?|encaiss|empoch|touch)[\\w\\u00C0-\\u024F]*\\s+(?:jusqu['’]?\\s*à\\s+)?\\d[\\d\\s.,]*\\s*(?:fcfa|xof|xaf|€|eur|euros?|\\$|usd|k)",
+        "(?<!(?:prix|tarif|co[uû]t|frais|scolarit|abonnement|cotisation|loyer|factur|budget|mensualit)[^.!?,;\\n]{0,40})\\d[\\d\\s.,]*\\s*(?:fcfa|xof|xaf|€|eur|euros?|\\$|usd)\\s*(?:/|par\\s+)(?:jour|semaine|mois|an)",
+        "(?:revenus?|salaire|chiffre d['’]affaires)\\s+(?:de|à)\\s+\\d[\\d\\s.,]*"
       ],
       "action": "Blocage de l'export. Reformulation proposée sans montant chiffré.",
       "rewriteHint": "Décrire la méthode et le gain de temps, jamais un montant. Exemple : « la méthode complète pour structurer votre offre » au lieu de « gagnez 500 000 FCFA/mois »."
@@ -24,7 +24,7 @@
       "patterns": [
         "\\bavant\\s*(?:/|\\||et|→|->)\\s*après\\b",
         "\\bbefore\\s*(?:/|\\||and|→|->)\\s*after\\b",
-        "(?:j'étais|j'ai commencé).{0,60}(?:maintenant|aujourd'hui).{0,60}(?:je gagne|je fais|j'ai)"
+        "(?:j['’]étais|j['’]ai commencé).{0,60}(?:maintenant|aujourd['’]hui).{0,60}(?:je gagne|je fais|j['’]ai)"
       ],
       "action": "Alerte. Reformulation en storytelling neutre proposée.",
       "rewriteHint": "Raconter la démarche et les étapes, pas la transformation chiffrée mise en contraste."
@@ -35,7 +35,7 @@
       "severity": "warn",
       "description": "Témoignage à la première personne portant un résultat financier.",
       "patterns": [
-        "(?:j'ai|j'ai pu)\\s+(?:gagné|généré|encaissé|fait)\\s+\\d",
+        "(?:j['’]ai|j['’]ai pu)\\s+(?:gagné|généré|encaissé|fait)\\s+\\d",
         "grâce à (?:cette méthode|ce guide|cette formation).{0,50}\\d[\\d\\s.,]*\\s*(?:fcfa|€|\\$)"
       ],
       "action": "Alerte. Anonymisation ou généralisation suggérée. Jamais de blocage sans reformulation proposée.",
