@@ -170,4 +170,47 @@ describe('Administration — grille tarifaire et droits', () => {
     const { agent } = await signInWithPlan(app, 'curieux-tarifs@exemple.test', 'pro');
     await agent.get('/api/admin/pricing').expect(403);
   });
+
+  it('ne donne l’administration à aucun palier, pas même l’Élite : elle tient au rôle, pas à l’abonnement', async () => {
+    const id = '00000000-0000-4000-8000-000000000000';
+    const routes: [string, string][] = [
+      ...['/meta', '/overview', '/online', '/content', '/creatives', `/creatives/${id}/file`, '/revenue', '/revenue/totals', '/payments', '/users', `/users/${id}`, '/connections', '/security/events', '/security/locks', '/audit', '/messages', '/audience', '/pricing', '/services'].map((path): [string, string] => ['get', path]),
+      ['post', '/users'],
+      ['patch', `/users/${id}/plan`],
+      ['post', `/users/${id}/status`],
+      ['post', `/users/${id}/credits`],
+      ['post', `/users/${id}/credits/refill`],
+      ['put', `/users/${id}/features`],
+      ['put', `/users/${id}/permissions`],
+      ['patch', `/users/${id}/role`],
+      ['delete', `/users/${id}`],
+      ['post', `/users/${id}/sessions/revoke`],
+      ['post', `/users/${id}/password-link`],
+      ['post', `/users/${id}/two-factor/reset`],
+      ['post', '/payments'],
+      ['post', `/payments/${id}/refund`],
+      ['post', '/security/unlock'],
+      ['post', `/messages/${id}/status`],
+    ];
+
+    for (const plan of ['free', 'plus', 'pro', 'max', 'elite'] as const) {
+      const { agent } = await signInWithPlan(app, `abonne-${plan}-admin@exemple.test`, plan);
+      const moi = await agent.get('/api/auth/me').expect(200);
+      assert.equal(moi.body.account.isStaff, false, `${plan} : aucun accès à l’administration`);
+      assert.deepEqual(moi.body.account.permissions, [], `${plan} : aucune permission`);
+      for (const [method, path] of routes) {
+        const response = await (agent as unknown as Record<string, (url: string) => { send: (body: unknown) => Promise<{ status: number }> }>)[method]!(`/api/admin${path}`).send({});
+        assert.equal(response.status, 403, `${plan} : ${method.toUpperCase()} /api/admin${path} doit être refusé`);
+      }
+    }
+  });
+
+  it('ferme le rapport rédigé à qui n’a pas droit à l’analyse de niche', async () => {
+    const { getDb } = await import('@server/db/client');
+    const { featureOverrides } = await import('@server/db/schema');
+    const { agent, userId } = await signInWithPlan(app, 'sans-analyse@exemple.test', 'pro');
+    await getDb().insert(featureOverrides).values({ userId, feature: 'niche_analysis', access: 'revoked' });
+    const refus = await agent.post('/api/reports/00000000-0000-4000-8000-000000000000/document').send({}).expect(403);
+    assert.equal(refus.body.error.code, 'FEATURE_LOCKED');
+  });
 });

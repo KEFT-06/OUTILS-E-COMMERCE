@@ -1,6 +1,6 @@
 import { Router } from 'express';
 import { asyncRoute } from '@server/middleware';
-import { requireAuth } from '@server/middleware/auth';
+import { requireAuth, requireFeature } from '@server/middleware/auth';
 import { deleteReport, getReport, listReports, todayLabel } from '@server/services/analysis';
 import { getReportDocument, startReportDocument } from '@server/services/analysis/document';
 
@@ -38,6 +38,8 @@ reportsRouter.get(
 /** Lance la rédaction (points débités, rendus si elle échoue) ; le navigateur suit ensuite l'avancement. */
 reportsRouter.post(
   '/:reportId/document',
+  // Même droit que l'analyse qu'il développe : un palier ou un compte privé d'analyse n'y a pas accès.
+  requireFeature('niche_analysis'),
   asyncRoute(async (req, res) => {
     const { document, created } = await startReportDocument(req.auth!, req.params.reportId, todayLabel(new Date()));
     res.status(created ? 202 : 200).json({ document });
