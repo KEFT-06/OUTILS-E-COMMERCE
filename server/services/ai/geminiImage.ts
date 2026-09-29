@@ -11,7 +11,13 @@ import type { ImageAspectRatio, ImageResult } from '@server/services/ai/imageTyp
  */
 
 
-const TIMEOUT_MS = 120_000;
+/** Une image, un modèle : au-delà, on passe au suivant plutôt que d'attendre. */
+const TIMEOUT_MS = 90_000;
+/** Budget de toute la chaîne de modèles, sous les 300 s accordés à une fonction. */
+const CHAIN_BUDGET_MS = 200_000;
+/** En deçà, un modèle suivant n'aurait pas le temps de rendre son image. */
+const MIN_ATTEMPT_MS = 20_000;
+const RETRYABLE = new Set([500, 502, 503, 504]);
 const MAX_IMAGE_BYTES = 12 * 1024 * 1024;
 const ACCEPTED = /^image\/(png|jpeg|webp)$/;
 
@@ -34,12 +40,15 @@ export function geminiImagesConfigured(): boolean {
   return Boolean(env.GEMINI_API_KEY);
 }
 
+/** Réponse de Google, ou null si le délai a expiré ou la connexion a été coupée. */
 async function callOnce(
+  model: string,
   prompt: string,
   aspectRatio: ImageAspectRatio,
   imageSize: '1K' | '2K',
-): Promise<{ status: number; payload: ImagePayload | null }> {
-  const url = `${env.GEMINI_API_URL.replace(/\/+$/, '')}/v1beta/models/${env.GEMINI_IMAGE_MODEL}:generateContent`;
+  timeoutMs: number,
+): Promise<{ status: number; payload: ImagePayload | null } | null> {
+  const url = `${env.GEMINI_API_URL.replace(/\/+$/, '')}/v1beta/models/${encodeURIComponent(model)}:generateContent`;
   let response: Response;
   try {
     response = await fetch(url, {
@@ -49,12 +58,17 @@ async function callOnce(
         contents: [{ role: 'user', parts: [{ text: prompt }] }],
         generationConfig: { responseModalities: ['IMAGE'], imageConfig: { aspectRatio, imageSize } },
       }),
-      signal: AbortSignal.timeout(TIMEOUT_MS),
+      signal: AbortSignal.timeout(timeoutMs),
     });
   } catch {
-    throw new AppError(504, 'L’image n’a pas été produite à temps. Réessayez : vos points ont été rendus.', 'GEMINI_IMAGE_TIMEOUT');
+    return null;
   }
   return { status: response.status, payload: (await response.json().catch(() => null)) as ImagePayload | null };
+}
+
+/** Modèles Nano Banana dans l'ordre d'essai, sans doublon. */
+function imageModels(): string[] {
+  return [...new Set([env.GEMINI_IMAGE_MODEL, ...env.GEMINI_IMAGE_FALLBACK_MODELS])];
 }
 
 export async function generateGeminiImage(input: {
@@ -79,41 +93,65 @@ async function produceImage(input: {
 }): Promise<ImageResult> {
   if (!env.GEMINI_API_KEY) throw providerUnavailable('génération d’images');
   const imageSize = input.imageSize ?? '1K';
+  const deadline = Date.now() + CHAIN_BUDGET_MS;
 
-  let { status, payload } = await callOnce(input.prompt, input.aspectRatio, imageSize);
-  // Saturation passagère chez Google : une seconde tentative ne coûte rien de plus.
-  if (status === 503) {
-    await sleep(3_000);
-    ({ status, payload } = await callOnce(input.prompt, input.aspectRatio, imageSize));
-  }
+  /*
+    Chaque modèle Nano Banana a ses propres limites chez Google. Un seul modèle, abandonné au
+    premier « trop de demandes », faisait voir « service d'images très demandé » à l'auteur
+    d'une couverture (29/09/2026) alors que les modèles voisins étaient libres. Désormais : un
+    refus de débit fait passer au modèle suivant ; une surcharge est réessayée une fois avant.
+  */
+  let lastStatus: number | null = null;
+  let freeTierOnly = true;
+  for (const model of imageModels()) {
+    for (const waitMs of [0, 2_500]) {
+      if (deadline - Date.now() - waitMs < MIN_ATTEMPT_MS) break;
+      await sleep(waitMs);
+      const answer = await callOnce(model, input.prompt, input.aspectRatio, imageSize, Math.min(TIMEOUT_MS, deadline - Date.now()));
+      if (!answer) {
+        lastStatus = 504;
+        freeTierOnly = false;
+        console.warn(`[image gemini] ${model} n’a pas répondu à temps`);
+        break;
+      }
+      const { status, payload } = answer;
+      if (status === 200) return readImage(payload, model);
 
-  if (status !== 200) {
-    const detail = [payload?.error?.status, payload?.error?.message].filter(Boolean).join(' — ').slice(0, 300);
-    console.error('[image gemini] le fournisseur a répondu', status, detail);
-    if (status === 429 && /free_tier|limit: 0/i.test(detail)) {
-      throw new AppError(
-        503,
-        'La génération d’images n’est pas encore activée pour le site : l’administrateur doit terminer sa configuration. Vos points ont été rendus.',
-        'GEMINI_IMAGE_BILLING_REQUIRED',
-      );
+      const detail = [payload?.error?.status, payload?.error?.message].filter(Boolean).join(' — ').slice(0, 300);
+      console.warn(`[image gemini] ${model} a répondu ${status} :`, detail);
+      if (status === 401 || status === 403) {
+        throw new AppError(503, 'Le service d’images refuse l’accès du serveur : l’administrateur doit vérifier sa configuration.', 'GEMINI_IMAGE_ACCESS_DENIED');
+      }
+      if (status === 400) {
+        throw new AppError(502, 'L’image n’a pas pu être produite. Réessayez : vos points ont été rendus.', 'GEMINI_IMAGE_FAILED');
+      }
+      if (!(status === 429 && /free_tier|limit: 0/i.test(detail))) freeTierOnly = false;
+      lastStatus = status;
+      // Débit dépassé ou modèle retiré : attendre ne changera rien, le modèle suivant a sa chance.
+      if (!RETRYABLE.has(status)) break;
     }
-    if (status === 429)
-      throw new AppError(
-        429,
-        'Le service d’images est très demandé. Réessayez dans une minute : vos points ont été rendus.',
-        'GEMINI_IMAGE_RATE_LIMITED',
-      );
-    if (status === 401 || status === 403)
-      throw new AppError(503, 'Le service d’images refuse l’accès du serveur : l’administrateur doit vérifier sa configuration.', 'GEMINI_IMAGE_ACCESS_DENIED');
-    if (status === 503)
-      throw new AppError(
-        503,
-        'Le service d’images est surchargé. Réessayez dans un instant : vos points ont été rendus.',
-        'GEMINI_IMAGE_OVERLOADED',
-      );
-    throw new AppError(502, 'L’image n’a pas pu être produite. Réessayez : vos points ont été rendus.', 'GEMINI_IMAGE_FAILED');
   }
 
+  if (lastStatus === 429 && freeTierOnly) {
+    throw new AppError(
+      503,
+      'La génération d’images n’est pas encore activée pour le site : l’administrateur doit terminer sa configuration. Vos points ont été rendus.',
+      'GEMINI_IMAGE_BILLING_REQUIRED',
+    );
+  }
+  if (lastStatus === 429) {
+    throw new AppError(429, 'Le service d’images n’a pas pu produire l’image pour l’instant. Réessayez dans une minute : vos points ont été rendus.', 'GEMINI_IMAGE_RATE_LIMITED');
+  }
+  if (lastStatus === 503) {
+    throw new AppError(503, 'Le service d’images n’a pas pu produire l’image pour l’instant. Réessayez dans un instant : vos points ont été rendus.', 'GEMINI_IMAGE_OVERLOADED');
+  }
+  if (lastStatus === 504) {
+    throw new AppError(504, 'L’image n’a pas été produite à temps. Réessayez : vos points ont été rendus.', 'GEMINI_IMAGE_TIMEOUT');
+  }
+  throw new AppError(502, 'L’image n’a pas pu être produite. Réessayez : vos points ont été rendus.', 'GEMINI_IMAGE_FAILED');
+}
+
+function readImage(payload: ImagePayload | null, model: string): ImageResult {
   const candidate = payload?.candidates?.[0];
   const image = candidate?.content?.parts?.find((part) => part.inlineData?.data)?.inlineData;
   if (!image?.data) {
@@ -133,5 +171,5 @@ async function produceImage(input: {
   if (!ACCEPTED.test(mimeType)) throw new AppError(502, 'Format d’image inattendu.', 'GEMINI_IMAGE_FORMAT');
   if (bytes.length === 0 || bytes.length > MAX_IMAGE_BYTES)
     throw new AppError(502, 'L’image générée est vide ou trop lourde.', 'GEMINI_IMAGE_SIZE');
-  return { mimeType, bytes, model: env.GEMINI_IMAGE_MODEL };
+  return { mimeType, bytes, model };
 }

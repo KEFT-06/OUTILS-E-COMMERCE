@@ -256,8 +256,8 @@ describe('Rédaction d’un ebook long', () => {
     const { agent } = await signInWithPlan(app, 'autrice-patiente@exemple.com', 'pro');
     const start = await balance(agent);
     prompts.length = 0;
-    // Quatre refus : toutes les tentatives d'un même appel (deux par modèle) échouent.
-    saturation = 4;
+    // Six refus : toutes les tentatives d'un même appel (deux par modèle, trois modèles) échouent.
+    saturation = 6;
 
     const launch = await agent.post('/api/writing/ebook').send(REQUEST).expect(202);
     const jobId = (launch.body as { job: { id: string } }).job.id;
@@ -274,6 +274,7 @@ describe('Rédaction d’un ebook long', () => {
     assert.equal(paused.status, 'writing');
     assert.equal(paused.notice?.code, 'WRITING_OVERLOADED');
     assert.match(paused.notice?.message ?? '', /reprend d’elle-même/);
+    assert.doesNotMatch(paused.notice?.message ?? '', /saturé/, 'ton neutre : l’auteur n’a rien à faire');
     assert.equal(paused.error, null, 'une pause n’est pas une erreur');
     assert.equal(paused.sectionsDone, 3, 'les sections du premier lot sont gardées');
 

@@ -202,7 +202,8 @@ describe('Rédaction par l’IA', () => {
     const overloaded = await agent.post('/api/writing/product').send({ product: { ...PRODUCT, title: 'Saturé partout' } }).expect(503);
     assert.equal(overloaded.body.error.code, 'WRITING_OVERLOADED');
     assert.match(overloaded.body.error.message, /surchargé/);
-    assert.equal(models.length, 4, 'deux tentatives par modèle, pas davantage');
+    // Trois modèles : le principal, le secours, puis le dernier recours d'une génération stable.
+    assert.deepEqual(models, ['gemini-3.6-flash', 'gemini-3.6-flash', 'gemini-3.5-flash', 'gemini-3.5-flash', 'gemini-2.5-flash', 'gemini-2.5-flash'], 'deux tentatives par modèle, pas davantage');
     assert.equal(await balance(agent), before, 'points rendus');
   });
 });

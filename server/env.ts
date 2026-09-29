@@ -110,6 +110,16 @@ const schema = z.object({
     .default('gemini-3.5-flash')
     .transform((model) => (model === 'off' ? null : model)),
   /**
+   * Dernier recours quand le principal et le secours refusent encore : une génération stable,
+   * servie par une autre flotte, aux limites par minute bien plus larges que les versions
+   * récentes. Présent dans la liste des modèles de la clé au 29/09/2026. « off » : aucun.
+   */
+  GEMINI_LAST_RESORT_MODEL: z
+    .string()
+    .regex(/^[\w.-]+$/)
+    .default('gemini-2.5-flash')
+    .transform((model) => (model === 'off' ? null : model)),
+  /**
    * Étude de marché des analyses de niche : Perplexity cherche et lit le web (Agent API, repli
    * sur l'API Search), Gemini rédige ensuite le rapport sans rien avancer hors des sources citées.
    * La recherche Google intégrée à Gemini n'est pas utilisée : ses conditions interdisent de
@@ -152,6 +162,17 @@ const schema = z.object({
    * lui interdit pas : les deux lignes de garde de `buildPrompt` ne sont pas décoratives.
    */
   GEMINI_IMAGE_MODEL: z.string().regex(/^[\w.-]+$/).default('gemini-3-pro-image'),
+  /**
+   * Autres modèles Nano Banana, essayés dans l'ordre quand le principal refuse (débit par minute
+   * dépassé, surcharge). Chaque modèle a ses propres limites chez Google : un refus « quota
+   * dépassé » sur l'un laisse passer l'autre. Présents dans la liste des modèles de la clé au
+   * 29/09/2026. Séparés par des virgules ; « off » : aucun.
+   */
+  GEMINI_IMAGE_FALLBACK_MODELS: z
+    .string()
+    .regex(/^(off|[\w.-]+(,[\w.-]+)*)$/)
+    .default('gemini-3.1-flash-image,gemini-2.5-flash-image')
+    .transform((list) => (list === 'off' ? [] : list.split(','))),
   /**
    * Modèle d'image que Gamma utilise pour illustrer les storybooks.
    *

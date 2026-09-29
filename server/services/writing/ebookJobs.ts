@@ -325,7 +325,8 @@ async function runSlice(jobId: string): Promise<void> {
         .set({
           leaseUntil: pausedUntil,
           errorCode: error.code,
-          errorMessage: 'Le service de rédaction est saturé en ce moment : la rédaction reprend d’elle-même dans une minute. Rien de ce qui est écrit n’est perdu.',
+          // Ton neutre : l'auteur n'a rien à faire, et « saturé » lui faisait croire à une panne (29/09/2026).
+          errorMessage: 'Courte pause entre deux sections : la rédaction reprend d’elle-même dans un instant. Rien de ce qui est écrit n’est perdu.',
           updatedAt: new Date(),
         })
         .where(and(eq(ebookJobs.id, jobId), inArray(ebookJobs.status, ACTIVE)))

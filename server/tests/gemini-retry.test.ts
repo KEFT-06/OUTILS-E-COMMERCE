@@ -16,11 +16,14 @@ import { closeTestApp, createTestApp } from './support/helpers';
 /** Réponses à servir dans l'ordre ; au-delà, une réponse valide. */
 let script: { status: number; body: unknown; headers?: Record<string, string> }[] = [];
 let calls = 0;
+/** Modèle appelé à chaque tentative, lu dans l'adresse. */
+let models: string[] = [];
 
 const VALID = { candidates: [{ content: { parts: [{ text: JSON.stringify({ ok: 'oui' }) }] } }] };
 const TRUNCATED = { candidates: [{ content: { parts: [{ text: '{"ok": "o' }] } }] };
 
 const fakeGoogle = createServer((req, res) => {
+  models.push(decodeURIComponent(/models\/([^:]+):/.exec(req.url ?? '')?.[1] ?? ''));
   req.resume();
   req.on('end', () => {
     const next = script[calls] ?? { status: 200, body: VALID };
@@ -43,6 +46,7 @@ after(async () => {
 beforeEach(() => {
   script = [];
   calls = 0;
+  models = [];
 });
 
 async function ask(): Promise<{ ok: string }> {
@@ -104,8 +108,15 @@ describe('Gemini — nouvelles tentatives', () => {
   });
 
   it('annonce la saturation quand toutes les tentatives sont refusées', async () => {
-    script = Array.from({ length: 4 }, () => ({ status: 429, body: { error: { status: 'RESOURCE_EXHAUSTED' } } }));
+    script = Array.from({ length: 6 }, () => ({ status: 429, body: { error: { status: 'RESOURCE_EXHAUSTED' } } }));
     await assert.rejects(ask(), (error: { code?: string; message?: string }) => error.code === 'TEST_RATE_LIMITED');
-    assert.equal(calls, 4, 'deux tentatives par modèle, pas davantage');
+    assert.equal(calls, 6, 'deux tentatives par modèle, pas davantage');
+  });
+
+  it('passe au modèle de dernier recours quand le principal et le secours refusent', async () => {
+    // Le cas vu en production : un ebook de seize sections épuisait les limites des deux versions récentes.
+    script = Array.from({ length: 4 }, () => ({ status: 429, body: { error: { status: 'RESOURCE_EXHAUSTED' } } }));
+    assert.deepEqual(await ask(), { ok: 'oui' });
+    assert.deepEqual(models, ['gemini-3.6-flash', 'gemini-3.6-flash', 'gemini-3.5-flash', 'gemini-3.5-flash', 'gemini-2.5-flash']);
   });
 });

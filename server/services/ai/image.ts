@@ -18,7 +18,13 @@ import type { ImageAspectRatio, ImageResult } from '@server/services/ai/imageTyp
 
 export type { ImageAspectRatio, ImageResult } from '@server/services/ai/imageTypes';
 
-/** Pannes du fournisseur, par opposition à un refus de la description. Seules elles justifient le secours. */
+/**
+ * Pannes du fournisseur, par opposition à un refus de la description. Seules elles justifient le secours.
+ *
+ * Les codes de Gemini manquaient : le secours des visuels premium (couvertures, publicités) ne
+ * pouvait jamais se déclencher, et un « trop de demandes » chez Google finissait en erreur
+ * devant l'auteur alors que l'autre moteur était libre (29/09/2026).
+ */
 const INFRASTRUCTURE_FAILURES = new Set([
   'CF_IMAGE_QUOTA_EXHAUSTED',
   'CF_IMAGE_UNAVAILABLE',
@@ -26,6 +32,13 @@ const INFRASTRUCTURE_FAILURES = new Set([
   'CF_IMAGE_FAILED',
   'CF_IMAGE_MISSING',
   'CF_IMAGE_ACCESS_DENIED',
+  'GEMINI_IMAGE_RATE_LIMITED',
+  'GEMINI_IMAGE_OVERLOADED',
+  'GEMINI_IMAGE_TIMEOUT',
+  'GEMINI_IMAGE_FAILED',
+  'GEMINI_IMAGE_MISSING',
+  'GEMINI_IMAGE_ACCESS_DENIED',
+  'GEMINI_IMAGE_BILLING_REQUIRED',
 ]);
 
 export interface GenerateImageInput {

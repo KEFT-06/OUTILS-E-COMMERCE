@@ -35,13 +35,21 @@ interface GeminiPayload {
  * ouvrage long enchaîne des dizaines d'appels, trois à la fois : un seul 429 (débit par
  * minute dépassé), un seul 500 interne ou une connexion coupée faisait échouer toute la
  * rédaction, alors que la même demande passait quelques secondes plus tard.
+ *
+ * Puis le modèle de dernier recours, deux fois : le principal et le secours sont des versions
+ * récentes aux limites par minute serrées, et un ebook de seize sections les dépassait tous les
+ * deux — l'utilisateur voyait « service saturé » (29/09/2026). Le dernier recours est d'une
+ * génération stable, servie par une autre flotte et aux limites bien plus larges.
  */
-const RETRY_PLAN = [
-  { fallback: false, waitMs: 0 },
-  { fallback: false, waitMs: 2_000 },
-  { fallback: true, waitMs: 0 },
-  { fallback: true, waitMs: 4_000 },
-] as const;
+type ModelTier = 'primary' | 'fallback' | 'lastResort';
+const RETRY_PLAN: readonly { tier: ModelTier; waitMs: number }[] = [
+  { tier: 'primary', waitMs: 0 },
+  { tier: 'primary', waitMs: 2_000 },
+  { tier: 'fallback', waitMs: 0 },
+  { tier: 'fallback', waitMs: 4_000 },
+  { tier: 'lastResort', waitMs: 0 },
+  { tier: 'lastResort', waitMs: 3_000 },
+];
 
 /** Refus passagers : débit dépassé, panne interne, surcharge, passerelle expirée. */
 const RETRYABLE_STATUS = new Set([429, 500, 502, 503, 504]);
@@ -97,7 +105,12 @@ export async function generateJson<T>(input: {
     generationConfig: { responseMimeType: 'application/json', responseSchema: input.responseSchema },
   });
   const fallbackModel = env.GEMINI_FALLBACK_MODEL && env.GEMINI_FALLBACK_MODEL !== env.GEMINI_MODEL ? env.GEMINI_FALLBACK_MODEL : null;
-  const attempts = RETRY_PLAN.filter((attempt) => !attempt.fallback || fallbackModel);
+  const lastResortModel =
+    env.GEMINI_LAST_RESORT_MODEL && env.GEMINI_LAST_RESORT_MODEL !== env.GEMINI_MODEL && env.GEMINI_LAST_RESORT_MODEL !== fallbackModel
+      ? env.GEMINI_LAST_RESORT_MODEL
+      : null;
+  const modelFor: Record<ModelTier, string | null> = { primary: env.GEMINI_MODEL, fallback: fallbackModel, lastResort: lastResortModel };
+  const attempts = RETRY_PLAN.filter((attempt) => modelFor[attempt.tier]);
   const deadline = Date.now() + input.timeoutMs;
 
   /** Dernier refus passager, pour le message final si toutes les tentatives échouent. */
@@ -118,7 +131,7 @@ export async function generateJson<T>(input: {
     if (index > 0 && deadline - Date.now() - waitMs < MIN_ATTEMPT_MS) break;
     await sleep(waitMs);
     providerWaitMs = 0;
-    model = attempt.fallback && fallbackModel ? fallbackModel : env.GEMINI_MODEL;
+    model = modelFor[attempt.tier] ?? env.GEMINI_MODEL;
     const url = `${env.GEMINI_API_URL.replace(/\/+$/, '')}/v1beta/models/${encodeURIComponent(model)}:generateContent`;
 
     let response: Response;
@@ -177,7 +190,7 @@ export async function generateJson<T>(input: {
     throw new AppError(502, `Réponse illisible du ${service.name}. Réessayez : vos points ont été rendus.`, `${service.code}_UNREADABLE`);
   }
   if (lastStatus === 429) {
-    throw new AppError(429, `Le ${service.name} est saturé. Réessayez dans une minute : vos points ont été rendus.`, `${service.code}_RATE_LIMITED`);
+    throw new AppError(429, `Le ${service.name} n’a pas pu terminer pour l’instant. Réessayez dans une minute : vos points ont été rendus.`, `${service.code}_RATE_LIMITED`);
   }
   if (lastStatus === 503) {
     throw new AppError(
