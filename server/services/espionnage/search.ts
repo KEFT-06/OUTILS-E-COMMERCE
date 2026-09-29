@@ -38,6 +38,8 @@ import {
  */
 
 const SEARCH_STALE_MS = 15 * 60_000;
+/** Une récolte dure quelques secondes ; au-delà de ce délai depuis le lancement, elle a été coupée. */
+const HARVEST_STALE_MS = 4 * 60_000;
 
 export const adSearchRequestSchema = z.object({
   query: z.string().trim().min(2, 'Tapez au moins deux caractères.').max(80),
@@ -275,6 +277,19 @@ export async function startAdSearch(auth: RequestAuth, request: AdSearchRequest,
 
 /** Relève le passage d'une recherche en cours et verse son résultat quand il est terminé. */
 async function advance(row: SearchRow, now: Date): Promise<SearchRow> {
+  /*
+    Récolte interrompue — instance coupée entre « harvesting » et « done » : la recherche restait
+    « en cours » pour toujours, et resservie telle quelle à quiconque cherchait le même mot
+    pendant 24 h. Elle repart ; la récolte remplace ses résultats, un doublon est donc sans effet.
+  */
+  if (row.status === 'harvesting' && now.getTime() - row.createdAt.getTime() > HARVEST_STALE_MS) {
+    const [reset] = await getDb()
+      .update(adSearches)
+      .set({ status: 'running' })
+      .where(and(eq(adSearches.id, row.id), eq(adSearches.status, 'harvesting')))
+      .returning();
+    if (reset) row = reset;
+  }
   if (row.status !== 'running' || !row.providerRunId || !row.datasetId) return row;
   const state = runStatusSchema.safeParse(
     await (await apifyFetch(apifyUrl(`/actor-runs/${encodeURIComponent(row.providerRunId)}`))).json().catch(() => null),
@@ -297,6 +312,7 @@ async function advance(row: SearchRow, now: Date): Promise<SearchRow> {
       const ads = items.data
         .map((item) => readAnyMetaAd(item, now))
         .filter((ad): ad is NonNullable<typeof ad> => ad !== null && !seen.has(ad.externalId) && Boolean(seen.add(ad.externalId)));
+      await getDb().delete(adSearchResults).where(eq(adSearchResults.searchId, row.id));
       if (ads.length > 0) {
         await getDb()
           .insert(adSearchResults)

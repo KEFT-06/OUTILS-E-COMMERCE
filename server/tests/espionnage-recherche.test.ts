@@ -170,4 +170,32 @@ describe('Espionnage — recherche comme sur Meta', () => {
     assert.equal(plafond.body.error.code, 'SPY_SEARCH_BUDGET');
     assert.equal(lancements.length, avant + 1);
   });
+
+  it('reprend une récolte coupée en route au lieu de tourner sans fin', async () => {
+    const { getDb } = await import('@server/db/client');
+    const { adSearches } = await import('@server/db/schema');
+    const { agent, userId } = await signInWithPlan(app, 'chercheur-bloque@exemple.test', 'pro');
+    // Instance coupée entre « harvesting » et « done », il y a dix minutes.
+    const [bloquee] = await getDb()
+      .insert(adSearches)
+      .values({
+        query: 'coaching',
+        queryKey: 'coaching',
+        country: 'ALL',
+        requestedBy: userId,
+        resultsLimit: 50,
+        status: 'harvesting',
+        providerRunId: 'recherche-99',
+        datasetId: 'lot-99',
+        createdAt: new Date(Date.now() - 10 * 60_000),
+      })
+      .returning();
+
+    const fin = await attendre(agent, bloquee!.id);
+    assert.equal(fin.status, 'done', 'la recherche aboutit');
+    assert.equal(fin.ads.length, 3);
+    // Relue une seconde fois : les résultats ne sont pas doublés.
+    const relue = (await agent.get(`/api/espionnage/searches/${bloquee!.id}`).expect(200)).body.search as Search;
+    assert.equal(relue.ads.length, 3);
+  });
 });

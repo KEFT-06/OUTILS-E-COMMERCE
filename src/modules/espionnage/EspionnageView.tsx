@@ -1,7 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 import { Search, Store } from "lucide-react";
 import { toast } from "sonner";
-import { useAuth } from "@/features/auth/AuthContext";
 import { AdCard, AdDetailsDialog } from "@/modules/espionnage/AdCard";
 import { MetaSearchPanel } from "@/modules/espionnage/MetaSearchPanel";
 import { PageHeader } from "@/shared/components/PageHeader";
@@ -67,10 +66,8 @@ const ANCIENNETE = [
 ] as const;
 
 export function EspionnageView() {
-  // Le conseil de configuration ne s’adresse qu’à qui peut l’appliquer : les autres n’ont pas
-  // la main sur les variables du serveur, et lire une consigne qu’on ne peut pas suivre inquiète.
-  const { account } = useAuth();
-  const estAdmin = account?.role === "admin";
+  // Aucune consigne d'administration sur cet écran, pas même pour un administrateur : la
+  // collecte tourne seule, et l'écran d'un abonné ne doit rien montrer de la cuisine (29/09/2026).
   const [data, setData] = useState<EspionnageData | null>(null);
   const [erreur, setErreur] = useState<string | null>(null);
   const [anciennete, setAnciennete] = useState("0");
@@ -93,7 +90,6 @@ export function EspionnageView() {
     storeHost: string | null;
     nom: string;
   } | null>(null);
-  const [collecteEnCours, setCollecteEnCours] = useState(false);
 
   const load = useCallback(async () => {
     // Aucune limite demandée : le serveur sert ce que le palier autorise. En fixer une ici
@@ -141,30 +137,6 @@ export function EspionnageView() {
     });
     window.scrollTo({ top: 0, behavior: "smooth" });
   };
-
-  /** Réservé à l'administration : chaque passage est facturé par le fournisseur. */
-  async function lancerCollecte() {
-    setCollecteEnCours(true);
-    try {
-      const { outcome } = await apiRequest<{
-        outcome: { adsKept: number; adsExamined: number; pending?: number };
-      }>("/api/radar/discover/refresh", {
-        method: "POST",
-      });
-      toast.success(
-        (outcome.pending ?? 0) > 0
-          ? `Collecte lancée : ${outcome.adsKept} annonces déjà versées, la suite arrive dans quelques minutes.`
-          : `Collecte terminée : ${outcome.adsKept} annonces retenues sur ${outcome.adsExamined} examinées.`,
-      );
-      await load();
-    } catch (caught) {
-      toast.error(
-        toApiError(caught, "La collecte n’a pas pu être lancée.").message,
-      );
-    } finally {
-      setCollecteEnCours(false);
-    }
-  }
 
   async function surveiller(host: string) {
     setBusy(host);
@@ -226,25 +198,6 @@ export function EspionnageView() {
                 met à jour tout seul.
               </AlertDescription>
             </Alert>
-          )}
-
-          {estAdmin && data?.configured && (
-            <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-dashed p-3 text-sm">
-              <p className="text-muted-foreground">
-                Administration : la collecte tourne chaque semaine d’elle-même.
-                Chaque passage est facturé par Apify.
-              </p>
-              <Button
-                size="sm"
-                variant="outline"
-                disabled={collecteEnCours || collecting}
-                onClick={() => void lancerCollecte()}
-              >
-                {collecteEnCours
-                  ? "Collecte…"
-                  : "Lancer une collecte maintenant"}
-              </Button>
-            </div>
           )}
 
           {annonceur && (
@@ -462,10 +415,8 @@ export function EspionnageView() {
                       ? "Aucune annonce en cours ne correspond. Affichez tous les états, élargissez l’ancienneté ou retirez la recherche."
                       : "Élargissez l’ancienneté, changez l’état ou retirez la recherche."
                     : data.configured
-                      ? "La collecte tourne d’elle-même, au rythme réglé par l’administrateur. Le premier passage remplira ce mur. Un administrateur peut aussi la lancer tout de suite depuis l’écran Radar."
-                      : estAdmin
-                        ? "Aucun jeton de collecte sur ce serveur. Posez APIFY_TOKEN dans les variables d’environnement de l’hébergement, puis relancez le déploiement — sans lui, aucune annonce ne peut être récupérée."
-                        : "La collecte publicitaire n’est pas encore activée sur ce serveur. L’administrateur doit la configurer."}
+                      ? "Les premières annonces arrivent : le mur se remplit de lui-même. En attendant, cherchez un mot-clé dans l’onglet « Rechercher comme sur Meta »."
+                      : "Le mur des annonces n’est pas encore disponible. Cherchez un mot-clé dans l’onglet « Rechercher comme sur Meta »."}
                 </EmptyDescription>
               </EmptyHeader>
             </Empty>

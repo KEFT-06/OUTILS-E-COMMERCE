@@ -81,6 +81,22 @@ export function MetaSearchPanel() {
   const [busy, setBusy] = useState<string | null>(null);
   const [secondes, setSecondes] = useState(0);
   const suivi = useRef(0);
+  const zoneResultat = useRef<HTMLDivElement>(null);
+
+  /*
+    Sur téléphone, le suivi puis les résultats s'affichent sous le formulaire et les recherches
+    récentes, hors de l'écran : on tapait « Rechercher » et rien ne semblait se passer
+    (signalé le 29/09/2026). L'écran descend donc jusqu'à eux, au lancement puis à l'arrivée.
+  */
+  const etatRecherche = recherche ? `${recherche.id}:${recherche.status}` : null;
+  useEffect(() => {
+    const zone = zoneResultat.current;
+    if (!etatRecherche || !zone) return;
+    const { top } = zone.getBoundingClientRect();
+    if (top < 0 || top > window.innerHeight * 0.6) {
+      zone.scrollIntoView({ behavior: "smooth", block: "start" });
+    }
+  }, [etatRecherche]);
 
   const chargerApercu = useCallback(async () => {
     try {
@@ -335,6 +351,8 @@ export function MetaSearchPanel() {
           </AlertDescription>
         </Alert>
       )}
+
+      <div ref={zoneResultat} className="scroll-mt-20" aria-hidden="true" />
 
       {erreur && (
         <Alert variant="destructive">
