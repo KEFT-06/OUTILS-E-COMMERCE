@@ -238,6 +238,16 @@ const schema = z.object({
    * durées 4, 6 ou 8 secondes, et rien d'autre.
    */
   VEO_VIDEO_MODEL: z.string().regex(/^[\w.-]+$/).default('veo-3.1-fast-generate-preview'),
+  /**
+   * Modèles Veo de secours quand le quota du principal est atteint : chacun a le sien chez Google.
+   * « lite » plutôt que le modèle standard, deux fois et demie plus cher à la seconde. Présent
+   * dans la liste des modèles de la clé au 29/09/2026. Séparés par des virgules ; « off » : aucun.
+   */
+  VEO_FALLBACK_MODELS: z
+    .string()
+    .regex(/^(off|[\w.-]+(,[\w.-]+)*)$/)
+    .default('veo-3.1-lite-generate-preview')
+    .transform((list) => (list === 'off' ? [] : list.split(','))),
   /** 720p, 1080p ou 4k — mesuré ; « 2160p » est refusé bien qu'il désigne la même chose. */
   VEO_RESOLUTION: z.enum(['720p', '1080p', '4k']).default('1080p'),
   GAMMA_API_KEY: z.string().min(1).optional(),

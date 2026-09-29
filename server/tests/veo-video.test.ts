@@ -55,7 +55,8 @@ const fauxGoogle = createServer((req, res) => {
     }
 
     // Dépôt : POST /v1beta/models/{modèle}:predictLongRunning
-    if (req.method === 'POST' && url.pathname === `/v1beta/models/${MODELE}:predictLongRunning`) {
+    // Tout modèle Veo : en « quota », le modèle de secours refuse aussi, sinon il prendrait le relais.
+    if (req.method === 'POST' && (url.pathname === `/v1beta/models/${MODELE}:predictLongRunning` || (mode === 'quota' && /^\/v1beta\/models\/veo-[\w.-]+:predictLongRunning$/.test(url.pathname)))) {
       depots.push({
         chemin: url.pathname,
         cle: req.headers['x-goog-api-key'] as string | undefined,

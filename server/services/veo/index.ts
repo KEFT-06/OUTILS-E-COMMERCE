@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import { env, isProd } from '@server/env';
 import { AppError } from '@server/middleware';
+import { classifyGoogle429, recordGoogleRefusal } from '@server/services/ai/googleRefusal';
 
 /**
  * Rendu vidéo par Veo 3.1, chez Google.
@@ -61,12 +62,18 @@ export function veoConfigured(): boolean {
   return Boolean(env.GEMINI_API_KEY);
 }
 
-function veoFailure(status: number, detail: string): AppError {
+function veoFailure(status: number, detail: string, payload: unknown = null): AppError {
   console.error('[veo] le fournisseur a répondu', status, detail.slice(0, 200));
   if (status === 401 || status === 403) {
     return new AppError(503, 'Le service vidéo refuse l’accès du serveur : l’administrateur doit vérifier sa configuration.', 'VEO_ACCESS_DENIED');
   }
   if (status === 429) {
+    const kind = classifyGoogle429(payload);
+    recordGoogleRefusal(kind, 'veo', detail);
+    // Projet de la clé sans crédit : les autres modèles Veo refuseraient de même.
+    if (kind === 'billing') {
+      return new AppError(503, 'Le rendu vidéo est momentanément indisponible : l’administrateur en a été informé. Vos points ont été rendus.', 'VEO_BILLING_REQUIRED');
+    }
     return new AppError(
       429,
       'La réserve de rendus vidéo est épuisée pour le moment. Réessayez plus tard : vos points ont été rendus.',
@@ -102,7 +109,7 @@ async function veoFetch(path: string, init: { method?: string; body?: string } =
   }
 
   const payload = (await response.json().catch(() => null)) as { error?: { message?: string } } | null;
-  if (!response.ok) throw veoFailure(response.status, payload?.error?.message ?? '');
+  if (!response.ok) throw veoFailure(response.status, payload?.error?.message ?? '', payload);
   return payload;
 }
 
@@ -121,6 +128,46 @@ const operationSchema = z.object({
 
 /** Ne garde que l'identifiant de l'opération : le chemin complet ne sort pas du serveur. */
 const operationId = (name: string): string => name.split('/').pop() ?? name;
+
+/** Modèles Veo dans l'ordre d'essai : chacun a son propre quota chez Google. */
+function veoModels(): string[] {
+  return [...new Set([env.VEO_VIDEO_MODEL, ...env.VEO_FALLBACK_MODELS])];
+}
+
+/*
+  Le suivi d'un rendu passe par l'adresse de SON modèle. Un rendu lancé sur un modèle de secours
+  garde donc son rang dans l'identifiant (« m1-… ») ; celui du modèle principal reste nu, comme
+  les rendus déjà enregistrés avant cette bascule.
+*/
+const encodeRequestId = (index: number, id: string) => (index === 0 ? id : `m${index}-${id}`);
+function decodeRequestId(requestId: string): { model: string; id: string } {
+  const match = /^m(\d)-(.+)$/.exec(requestId);
+  const models = veoModels();
+  if (match && models[Number(match[1])]) return { model: models[Number(match[1])]!, id: match[2]! };
+  return { model: env.VEO_VIDEO_MODEL, id: requestId };
+}
+
+/**
+ * Lance un rendu, en passant au modèle Veo suivant quand le quota du précédent est atteint.
+ * Un refus de facturation, une description refusée ou une panne ne changent pas de modèle.
+ */
+async function submitWithFallback(body: unknown): Promise<VeoGeneration> {
+  const models = veoModels();
+  let last: unknown = null;
+  for (const [index, model] of models.entries()) {
+    try {
+      const payload = await veoFetch(`models/${model}:predictLongRunning`, { method: 'POST', body: JSON.stringify(body) });
+      const parsed = operationSchema.safeParse(payload);
+      if (!parsed.success) throw new AppError(502, 'Réponse inattendue du service de rendu vidéo.', 'VEO_BAD_RESPONSE');
+      return { requestId: encodeRequestId(index, operationId(parsed.data.name)), status: 'queued' };
+    } catch (error) {
+      if (!(error instanceof AppError) || error.code !== 'VEO_QUOTA_EXHAUSTED') throw error;
+      console.warn(`[veo] quota atteint sur ${model}${index + 1 < models.length ? ', modèle suivant' : ''}`);
+      last = error;
+    }
+  }
+  throw last;
+}
 
 export interface VeoInput {
   prompt: string;
@@ -167,13 +214,7 @@ export function buildVeoRequest(input: VeoInput) {
 }
 
 export async function submitVeoGeneration(input: VeoInput): Promise<VeoGeneration> {
-  const payload = await veoFetch(`models/${env.VEO_VIDEO_MODEL}:predictLongRunning`, {
-    method: 'POST',
-    body: JSON.stringify(buildVeoRequest(input)),
-  });
-  const parsed = operationSchema.safeParse(payload);
-  if (!parsed.success) throw new AppError(502, 'Réponse inattendue du service de rendu vidéo.', 'VEO_BAD_RESPONSE');
-  return { requestId: operationId(parsed.data.name), status: 'queued' };
+  return submitWithFallback(buildVeoRequest(input));
 }
 
 /**
@@ -190,17 +231,12 @@ export function buildVeoExtensionRequest(input: { prompt: string; video: Buffer 
 }
 
 export async function submitVeoExtension(input: { prompt: string; video: Buffer }): Promise<VeoGeneration> {
-  const payload = await veoFetch(`models/${env.VEO_VIDEO_MODEL}:predictLongRunning`, {
-    method: 'POST',
-    body: JSON.stringify(buildVeoExtensionRequest(input)),
-  });
-  const parsed = operationSchema.safeParse(payload);
-  if (!parsed.success) throw new AppError(502, 'Réponse inattendue du service de rendu vidéo.', 'VEO_BAD_RESPONSE');
-  return { requestId: operationId(parsed.data.name), status: 'queued' };
+  return submitWithFallback(buildVeoExtensionRequest(input));
 }
 
 export async function getVeoGeneration(requestId: string): Promise<VeoGeneration> {
-  const payload = await veoFetch(`models/${env.VEO_VIDEO_MODEL}/operations/${encodeURIComponent(requestId)}`);
+  const { model, id } = decodeRequestId(requestId);
+  const payload = await veoFetch(`models/${model}/operations/${encodeURIComponent(id)}`);
   const parsed = operationSchema.safeParse(payload);
   if (!parsed.success) throw new AppError(502, 'Réponse inattendue du service de rendu vidéo.', 'VEO_BAD_RESPONSE');
 

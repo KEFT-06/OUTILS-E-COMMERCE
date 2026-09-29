@@ -1,5 +1,6 @@
 import { env } from '@server/env';
 import { AppError, providerUnavailable } from '@server/middleware';
+import { type GoogleRefusal, classifyGoogle429, recordGoogleRefusal } from '@server/services/ai/googleRefusal';
 
 /**
  * Appel à Gemini (API REST generateContent) avec une réponse JSON structurée,
@@ -67,6 +68,8 @@ interface ProviderError {
   message: string;
   /** Délai avant nouvel essai indiqué par Google, en millisecondes. */
   retryDelayMs: number | null;
+  /** Nature d'un refus 429 : débit, quota du jour, ou projet sans crédit. */
+  refusal: GoogleRefusal | null;
 }
 
 /** Erreur du fournisseur : message et délai de nouvel essai (en-tête Retry-After ou RetryInfo). */
@@ -80,6 +83,7 @@ async function readProviderError(response: Response): Promise<ProviderError> {
   return {
     message: [payload?.error?.status, payload?.error?.message].filter(Boolean).join(' — ').slice(0, 300),
     retryDelayMs: Number.isFinite(seconds) && seconds > 0 ? Math.round(seconds * 1000) : null,
+    refusal: response.status === 429 ? classifyGoogle429(payload) : null,
   };
 }
 
@@ -179,6 +183,16 @@ export async function generateJson<T>(input: {
         throw new AppError(503, `L’accès au ${service.name} est refusé : clé API invalide sur le serveur.`, `${service.code}_ACCESS_DENIED`);
       }
       throw new AppError(502, `Le ${service.name} a refusé la demande. Réessayez : vos points ont été rendus.`, `${service.code}_FAILED`);
+    }
+    if (failure.refusal) recordGoogleRefusal(failure.refusal, model, failure.message);
+    if (failure.refusal === 'billing') {
+      /*
+        Projet de la clé sans crédit ni facturation : tous les modèles partagent ce projet.
+        Insister faisait « patienter » un ebook vingt minutes pour rien, avec un message de
+        saturation. On s'arrête, points rendus, et l'administration voit la vraie cause.
+      */
+      console.error(`[${service.log}] projet Google sans crédit ni facturation :`, failure.message);
+      throw new AppError(503, `Le ${service.name} est momentanément indisponible : l’administrateur en a été informé. Vos points ont été rendus.`, `${service.code}_INSUFFICIENT_CREDITS`);
     }
     lastStatus = response.status;
     networkFailure = false;

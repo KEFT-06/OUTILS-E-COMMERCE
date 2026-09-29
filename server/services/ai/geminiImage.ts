@@ -1,5 +1,6 @@
 import { env } from '@server/env';
 import { AppError, providerUnavailable } from '@server/middleware';
+import { classifyGoogle429, recordGoogleRefusal } from '@server/services/ai/googleRefusal';
 import type { ImageAspectRatio, ImageResult } from '@server/services/ai/imageTypes';
 
 /**
@@ -124,6 +125,20 @@ async function produceImage(input: {
       }
       if (status === 400) {
         throw new AppError(502, 'L’image n’a pas pu être produite. Réessayez : vos points ont été rendus.', 'GEMINI_IMAGE_FAILED');
+      }
+      if (status === 429) {
+        const kind = classifyGoogle429(payload);
+        recordGoogleRefusal(kind, model, detail);
+        // Projet de la clé bloqué (crédits épuisés, facturation absente) : les autres modèles
+        // partagent ce projet et refuseraient de même. On sort tout de suite vers le secours.
+        if (kind === 'billing') {
+          console.error('[image gemini] projet Google sans crédit ni facturation : les images passent par le secours.');
+          throw new AppError(
+            503,
+            'La génération d’images n’est pas encore activée pour le site : l’administrateur doit terminer sa configuration. Vos points ont été rendus.',
+            'GEMINI_IMAGE_BILLING_REQUIRED',
+          );
+        }
       }
       if (!(status === 429 && /free_tier|limit: 0/i.test(detail))) freeTierOnly = false;
       lastStatus = status;

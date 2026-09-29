@@ -2,6 +2,7 @@ import { and, desc, eq, sql } from 'drizzle-orm';
 import { databaseKind, getDb } from '@server/db/client';
 import { generations, storybooks, watches } from '@server/db/schema';
 import { env, isProd, providers } from '@server/env';
+import { lastGoogleRefusal } from '@server/services/ai/googleRefusal';
 import { lastImageOutcome } from '@server/services/ai/image';
 import { videoArchiveConfigured } from '@server/services/creatives/archive';
 
@@ -103,10 +104,34 @@ async function checkGemini(): Promise<ServiceCheck> {
   });
   if (!result) return unreachable(base);
   if (result.status === 200) {
+    /*
+      « Clé acceptée » ne dit pas que Google génère : lire la fiche d'un modèle est gratuit, et
+      une clé dont le projet n'a plus de crédit passe ce contrôle. Le dernier refus réel des
+      générations (texte, images, vidéo) dit ce que le contrôle ne peut pas voir.
+    */
+    const refus = lastGoogleRefusal();
+    const recent = refus && Date.now() - new Date(refus.at).getTime() < 6 * 3_600_000;
+    const quand = refus ? new Date(refus.at).toLocaleString('fr-FR', { timeZone: env.REPORTING_TIMEZONE }) : '';
+    if (recent && refus.kind === 'billing') {
+      return {
+        ...base,
+        state: 'error',
+        detail: `Clé acceptée, mais Google refuse les générations : crédits prépayés épuisés ou facturation absente sur le projet de la clé (dernier refus le ${quand}, modèle ${refus.model}). Textes, images et vidéos Google sont touchés.`,
+        action: 'Recharger les crédits ou activer la facturation du projet de la clé : aistudio.google.com → Billing.',
+      };
+    }
+    if (recent && refus.kind === 'per_day') {
+      return {
+        ...base,
+        state: 'warning',
+        detail: `Quota du jour atteint sur ${refus.model} (le ${quand}) : les modèles de secours prennent le relais.`,
+        action: 'Relever le quota du projet dans Google Cloud si cela se répète chaque jour.',
+      };
+    }
     return {
       ...base,
       state: 'ok',
-      detail: `Clé acceptée · modèle ${env.GEMINI_MODEL}${env.GEMINI_FALLBACK_MODEL ? `, secours ${env.GEMINI_FALLBACK_MODEL}` : ''}.`,
+      detail: `Clé acceptée · modèle ${env.GEMINI_MODEL}${env.GEMINI_FALLBACK_MODEL ? `, secours ${env.GEMINI_FALLBACK_MODEL}` : ''}${env.GEMINI_LAST_RESORT_MODEL ? `, dernier recours ${env.GEMINI_LAST_RESORT_MODEL}` : ''}.`,
       action: null,
     };
   }

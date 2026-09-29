@@ -96,6 +96,15 @@ describe('Images — modèles de secours', () => {
     assert.ok(image.bytes.length > 0);
   });
 
+  it('passe tout de suite à l’autre moteur quand le projet Google n’a plus de crédit', async () => {
+    const CREDITS = { error: { code: 429, status: 'RESOURCE_EXHAUSTED', message: 'Your prepayment credits are depleted. Please go to AI Studio to manage your project and billing.' } };
+    geminiAnswers = Object.fromEntries(['gemini-3-pro-image', 'gemini-3.1-flash-image', 'gemini-2.5-flash-image'].map((model) => [model, { status: 429, body: CREDITS }]));
+    const image = await premium();
+    assert.deepEqual(geminiCalls, ['gemini-3-pro-image'], 'les autres Nano Banana partagent le projet : inutile de les essayer');
+    assert.equal(cloudflareCalls, 1);
+    assert.ok(image.bytes.length > 0);
+  });
+
   it('ne se replie pas sur une description refusée : l’autre moteur la refuserait de même', async () => {
     geminiAnswers = { 'gemini-3-pro-image': { status: 200, body: { promptFeedback: { blockReason: 'SAFETY' } } } };
     await assert.rejects(premium(), (error: { code?: string }) => error.code === 'GEMINI_IMAGE_BLOCKED');
