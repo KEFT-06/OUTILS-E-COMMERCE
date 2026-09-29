@@ -1,5 +1,5 @@
 {
-  "version": "2026.09.11",
+  "version": "2026.09.12",
   "updatedAt": "2026-09-29",
   "note": "Grille tarifaire des research points (CdC §8). Table de configuration éditable sans déploiement, au même titre que la table de conformité. À migrer en base lors du Lot 2, avec un historique de versions : un coût qui change doit rester traçable pour les factures déjà émises.",
   "currency": "FCFA",
@@ -16,7 +16,9 @@
       "id": "market_report_write",
       "label": "Rapport rédigé d’une analyse",
       "cost": 3,
-      "description": "Le rapport complet d’une analyse déjà faite, rédigé sur le plan qui convient le mieux à la niche, sans les taux de la fiche, avec la bibliographie des sites consultés et le contrôle de conformité. Téléchargeable en PDF. Points rendus si la rédaction échoue."
+      "perUnit": 10,
+      "unitLabel": "pages",
+      "description": "Le rapport complet d’une analyse déjà faite, à la longueur choisie, rédigé sur le plan qui convient le mieux à la niche, sans les taux de la fiche, avec la bibliographie des sites consultés et le contrôle de conformité. Téléchargeable en PDF. Compté par tranche de 10 pages entamée. Points rendus si la rédaction échoue."
     },
     {
       "id": "storybook_story",

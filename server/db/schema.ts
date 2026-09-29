@@ -400,6 +400,8 @@ export const reportDocuments = pgTable(
     errorCode: text('error_code'),
     errorMessage: text('error_message'),
     model: text('model'),
+    /** Longueur demandée par l'utilisateur, en pages A4. */
+    targetPages: integer('target_pages'),
     creditsCharged: integer('credits_charged').notNull().default(0),
     debitTransactionId: uuid('debit_transaction_id'),
     refunded: boolean('refunded').notNull().default(false),

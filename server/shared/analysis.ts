@@ -314,4 +314,6 @@ export interface ReportDocument {
   error: { code: string; message: string } | null;
   startedAt: string;
   completedAt: string | null;
+  /** Longueur demandée, en pages A4 ; null sur les rapports rédigés avant ce réglage. */
+  targetPages: number | null;
 }

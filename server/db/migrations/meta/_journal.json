@@ -211,6 +211,13 @@
       "when": 1790638533199,
       "tag": "0029_rapport_redige",
       "breakpoints": true
+    },
+    {
+      "idx": 30,
+      "version": "7",
+      "when": 1790673250060,
+      "tag": "0030_rapport_pages",
+      "breakpoints": true
     }
   ]
 }

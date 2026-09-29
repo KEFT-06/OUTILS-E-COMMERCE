@@ -75,10 +75,10 @@ describe('Rapport rédigé après l’analyse', () => {
     assert.equal(none.body.document, null);
 
     const before = await balance(agent);
-    const launched = await agent.post(`/api/reports/${report.id}/document`).send({}).expect(202);
+    const launched = await agent.post(`/api/reports/${report.id}/document`).send({ pages: 5 }).expect(202);
     assert.equal(launched.body.document.status, 'writing');
     // Un second clic pendant la rédaction ne relance rien et ne repaie pas.
-    await agent.post(`/api/reports/${report.id}/document`).send({}).expect(200);
+    await agent.post(`/api/reports/${report.id}/document`).send({ pages: 5 }).expect(200);
 
     const document = await waitForDocument(agent, report.id);
     assert.equal(document.status, 'ready', JSON.stringify(document.error));
@@ -115,9 +115,31 @@ describe('Rapport rédigé après l’analyse', () => {
     assert.ok(document.compliance?.rulesVersion);
 
     // Réécrire : nouveau texte, nouveau débit.
-    await agent.post(`/api/reports/${report.id}/document`).send({}).expect(202);
+    await agent.post(`/api/reports/${report.id}/document`).send({ pages: 5 }).expect(202);
     assert.equal((await waitForDocument(agent, report.id)).status, 'ready');
     assert.equal(before.credits.total - (await balance(agent)).credits.total, 6);
+  });
+
+  it('rédige un rapport long partie par partie, à la longueur demandée et facturée à la tranche', async () => {
+    const { agent } = await signInWithPlan(app, 'redaction-longue@exemple.com', 'pro');
+    const report = await analyzedReport(agent, 'élevage de poulets');
+    const before = await balance(agent);
+    const writerBefore = providers.writerCalls.length;
+
+    await agent.post(`/api/reports/${report.id}/document`).send({ pages: 40 }).expect(400);
+    const launched = await agent.post(`/api/reports/${report.id}/document`).send({ pages: 12 }).expect(202);
+    assert.equal(launched.body.document.targetPages, 12);
+    const document = await waitForDocument(agent, report.id);
+    assert.equal(document.status, 'ready', JSON.stringify(document.error));
+
+    const calls = providers.writerCalls.slice(writerBefore);
+    assert.equal(calls.filter((call) => call.prompt.includes('PLAN DU RAPPORT')).length, 1, 'un plan');
+    assert.equal(calls.filter((call) => call.prompt.includes('RÉDIGE LA PARTIE')).length, 4, 'puis une rédaction par partie');
+    assert.ok(calls.every((call) => call.prompt.includes('Devise : tout montant s’écrit en')), 'la devise de l’utilisateur est imposée partout');
+
+    assert.equal(document.title, `Rapport long : ${report.nicheName}`);
+    assert.deepEqual([...document.markdown!.matchAll(/^## (.+)$/gm)].map((m) => m[1]), ['Le marché', 'La concurrence', 'Les acheteurs', 'Recommandations']);
+    assert.equal(before.credits.total - (await balance(agent)).credits.total, 6, 'douze pages : deux tranches de dix, trois points chacune');
   });
 
   it('rend les points une seule fois quand la rédaction échoue', async () => {
@@ -125,7 +147,7 @@ describe('Rapport rédigé après l’analyse', () => {
     const report = await analyzedReport(agent, 'rapport refusé');
     const before = await balance(agent);
 
-    await agent.post(`/api/reports/${report.id}/document`).send({}).expect(202);
+    await agent.post(`/api/reports/${report.id}/document`).send({ pages: 5 }).expect(202);
     const document = await waitForDocument(agent, report.id);
     assert.equal(document.status, 'failed');
     assert.equal(document.error?.code, 'REPORT_FAILED');

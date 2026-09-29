@@ -15,7 +15,9 @@ import { Badge } from '@/shared/ui/badge';
 import { Button } from '@/shared/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/shared/ui/card';
 import { BorderBeam } from '@/shared/ui/magicui/border-beam';
+import { Label } from '@/shared/ui/label';
 import { Progress } from '@/shared/ui/progress';
+import { Slider } from '@/shared/ui/slider';
 import { cn } from '@/shared/lib/utils';
 
 /**
@@ -28,7 +30,10 @@ import { cn } from '@/shared/lib/utils';
 
 const POLL_MS = 3_000;
 /** Durée typique d'une rédaction, pour une barre d'attente qui avance sans mentir. */
-const TYPICAL_MS = 90_000;
+/** Durée typique selon la longueur : un appel jusqu'à 6 pages, puis un plan et des parties en parallèle. */
+const typicalMs = (pages: number) => (pages <= 6 ? 60_000 : 60_000 + pages * 6_000);
+/** Bornes du serveur (server/services/analysis/document.ts, REPORT_PAGES). */
+const PAGES = { min: 3, max: 30, default: 10 } as const;
 
 const STEPS = ['Relecture de l’étude du marché…', 'Choix du plan le mieux adapté à la niche…', 'Rédaction des parties…', 'Vérification des renvois vers les sources…', 'Contrôle de conformité…'];
 
@@ -40,7 +45,9 @@ interface WrittenReportPanelProps {
 }
 
 export function WrittenReportPanel({ reportId, nicheName }: WrittenReportPanelProps) {
-  const { runWithCredits } = useCreditGate();
+  const { runWithCredits, costTable } = useCreditGate();
+  const [pages, setPages] = useState<number>(PAGES.default);
+  const [rewriting, setRewriting] = useState(false);
   const [document, setDocument] = useState<ReportDocument | null>(null);
   const [loaded, setLoaded] = useState(false);
   const [isStarting, setIsStarting] = useState(false);
@@ -97,12 +104,15 @@ export function WrittenReportPanel({ reportId, nicheName }: WrittenReportPanelPr
   const start = async () => {
     setIsStarting(true);
     try {
-      const response = await runWithCredits('market_report_write', () =>
-        apiRequest<{ document: ReportDocument }>(documentPath(reportId), { method: 'POST', body: {} }),
+      const response = await runWithCredits(
+        'market_report_write',
+        () => apiRequest<{ document: ReportDocument }>(documentPath(reportId), { method: 'POST', body: { pages } }),
+        pages,
       );
       if (!response) return;
       setBlocked(null);
       setExpanded(false);
+      setRewriting(false);
       setNow(Date.now());
       setDocument(response.document);
     } catch (error) {
@@ -135,20 +145,26 @@ export function WrittenReportPanel({ reportId, nicheName }: WrittenReportPanelPr
   };
 
   const elapsed = document ? Math.max(0, now - new Date(document.startedAt).getTime()) : 0;
-  const step = STEPS[Math.min(STEPS.length - 1, Math.floor((elapsed / TYPICAL_MS) * STEPS.length))]!;
-  const progress = Math.min(95, Math.round((elapsed / TYPICAL_MS) * 100));
+  const typical = typicalMs(document?.targetPages ?? pages);
+  const step = STEPS[Math.min(STEPS.length - 1, Math.floor((elapsed / typical) * STEPS.length))]!;
+  const progress = Math.min(95, Math.round((elapsed / typical) * 100));
+  const action = costTable?.actions.find((candidate) => candidate.id === 'market_report_write');
+  const cost = action ? (action.perUnit ? action.cost * Math.max(1, Math.ceil(pages / action.perUnit)) : action.cost) : null;
+  const selector = (
+    <PageSelector pages={pages} onChange={setPages} cost={cost} minutes={Math.max(1, Math.round(typicalMs(pages) / 60_000))} />
+  );
 
   return (
-    <Card className="relative overflow-hidden">
+    <Card id="rediger" className="relative scroll-mt-24 overflow-hidden">
       {writing && <BorderBeam size={120} duration={6} />}
       <CardHeader>
         <CardTitle className="flex items-center gap-2 text-base">
           <BookOpenText className="size-4 text-primary" aria-hidden />
-          Rapport rédigé
+          Rédiger le rapport
         </CardTitle>
         <CardDescription>
-          La fiche ci-dessus résume l’analyse. Le rapport la développe en un document complet, structuré selon ce que la niche
-          demande, sans les taux de la fiche, avec en annexe la bibliographie des sites consultés.
+          Le rapport complet de cette analyse, à la longueur de votre choix : un plan adapté à la niche, sans les taux de la
+          fiche, et en annexe la bibliographie des sites consultés.
         </CardDescription>
       </CardHeader>
 
@@ -171,12 +187,22 @@ export function WrittenReportPanel({ reportId, nicheName }: WrittenReportPanelPr
               </div>
               <Progress value={progress} aria-label="Avancement de la rédaction" />
               <p className="text-xs text-muted-foreground">
-                Comptez une à deux minutes. Vous pouvez quitter cette page : la rédaction continue et le rapport vous attendra ici.
+                Rapport de {document?.targetPages ?? pages} pages : comptez environ {Math.max(1, Math.round(typical / 60_000))} minute{typical >= 90_000 ? 's' : ''}. Vous pouvez quitter cette page : la rédaction continue et le rapport vous attendra ici.
               </p>
             </motion.div>
           ) : document?.status === 'ready' && document.markdown ? (
             <motion.div key="pret" initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }} className="space-y-5">
-              <ReadyToolbar document={document} isExporting={isExporting} isStarting={isStarting} onExport={() => void exportPdf()} onRewrite={() => void start()} />
+              <ReadyToolbar document={document} isExporting={isExporting} isStarting={isStarting} onExport={() => void exportPdf()} onRewrite={() => setRewriting((open) => !open)} />
+
+              {rewriting && (
+                <div className="space-y-3 rounded-xl border bg-muted/30 p-4">
+                  {selector}
+                  <Button onClick={() => void start()} disabled={isStarting}>
+                    {isStarting ? <Loader2 className="animate-spin" aria-hidden /> : <RefreshCw aria-hidden />}
+                    Réécrire en {pages} pages
+                  </Button>
+                </div>
+              )}
 
               {blocked && <BlockedNotice verdict={blocked} />}
 
@@ -210,9 +236,10 @@ export function WrittenReportPanel({ reportId, nicheName }: WrittenReportPanelPr
                   <AlertDescription>{document.error?.message ?? 'Réessayez dans un moment : vos points ont été rendus.'}</AlertDescription>
                 </Alert>
               )}
-              <Button onClick={() => void start()} disabled={isStarting}>
+              {selector}
+              <Button size="lg" onClick={() => void start()} disabled={isStarting}>
                 {isStarting ? <Loader2 className="animate-spin" aria-hidden /> : <FileText aria-hidden />}
-                {document?.status === 'failed' ? 'Relancer la rédaction' : 'Rédiger le rapport'}
+                {document?.status === 'failed' ? 'Relancer la rédaction' : `Rédiger le rapport de ${pages} pages`}
               </Button>
             </motion.div>
           )}
@@ -404,5 +431,27 @@ function Bibliography({ document }: { document: ReportDocument }) {
         })}
       </ol>
     </section>
+  );
+}
+
+/** Longueur du rapport : curseur en pages, avec le coût et la durée annoncés avant de lancer. */
+function PageSelector({ pages, onChange, cost, minutes }: { pages: number; onChange: (pages: number) => void; cost: number | null; minutes: number }) {
+  return (
+    <div className="space-y-3">
+      <div className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1">
+        <Label htmlFor="rapport-pages" className="text-sm font-semibold">
+          Taille du rapport
+        </Label>
+        <span className="text-sm tabular-nums text-muted-foreground">
+          <strong className="font-display text-lg text-foreground">{pages}</strong> pages
+          {cost !== null ? ` · ${cost} point${cost > 1 ? 's' : ''}` : ''} · environ {minutes} min
+        </span>
+      </div>
+      <Slider id="rapport-pages" min={PAGES.min} max={PAGES.max} step={1} value={[pages]} onValueChange={([value]) => onChange(value ?? pages)} />
+      <div className="flex justify-between text-xs text-muted-foreground">
+        <span>{PAGES.min} pages · l’essentiel</span>
+        <span>{PAGES.max} pages · l’étude complète</span>
+      </div>
+    </div>
   );
 }

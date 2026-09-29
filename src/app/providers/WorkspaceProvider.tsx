@@ -7,6 +7,7 @@ import { useAuth } from '@/features/auth/AuthContext';
 import { apiRequest } from '@/shared/lib/api';
 import { toApiError } from '@/shared/lib/apiError';
 import { ComplianceBlockedError, exportReportPDF } from '@/shared/lib/complianceGate';
+import { useMoney } from '@/shared/lib/money';
 import type { AnalysisJob, MarketAnalysisReport, ReportSummary } from '@/shared/types/analysis';
 import type { ReportComplianceVerdict } from '@/shared/types/compliance';
 import { ComplianceBlockDialog } from '@/shared/components/ComplianceBlockDialog';
@@ -130,6 +131,7 @@ export const WorkspaceProvider: React.FC<{ children: React.ReactNode }> = ({ chi
   const { runWithCredits } = useCreditGate();
   const { account, refresh } = useAuth();
   const accountId = account?.id;
+  const money = useMoney();
 
   const [reports, setReports] = useState<ReportSummary[]>([]);
   const [currentReport, setCurrentReport] = useState<MarketAnalysisReport | null>(null);
@@ -338,7 +340,7 @@ export const WorkspaceProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     }
     setIsExportingPdf(true);
     try {
-      const verdict = await exportReportPDF(currentReport);
+      const verdict = await exportReportPDF(currentReport, (amount, currency) => money.format(amount, currency, { round: true }));
       if (verdict.findings.length > 0) {
         toast.info('Dossier PDF téléchargé', {
           description: `${verdict.findings.length} point(s) de vigilance signalé(s).`,
@@ -355,7 +357,7 @@ export const WorkspaceProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     } finally {
       setIsExportingPdf(false);
     }
-  }, [currentReport]);
+  }, [currentReport, money]);
 
   const value = useMemo<WorkspaceContextType>(
     () => ({

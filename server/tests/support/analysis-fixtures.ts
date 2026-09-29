@@ -246,6 +246,22 @@ export async function startFakeProviders(): Promise<FakeProviders> {
             }
             if (input.includes('« panne')) return send(500, { error: { message: 'erreur interne' } });
             if (input.includes('« illisible')) return send(200, completed('{}'));
+            // Rapport long : un plan, puis une réponse par partie.
+            if ((body as { response_format?: unknown }).response_format && input.includes('PLAN DU RAPPORT')) {
+              const niche = /« ([^»]+) »/.exec(input)?.[1] ?? 'la niche';
+              return send(200, completed(JSON.stringify({
+                title: `Rapport long : ${niche}`,
+                sections: ['Le marché', 'La concurrence', 'Les acheteurs', 'Recommandations'].map((heading, index) => ({ heading, focus: `Couvrir ${heading.toLowerCase()}`, pages: index === 3 ? 2 : 3 })),
+              })));
+            }
+            const partie = /RÉDIGE LA PARTIE \d+ : « ([^»]+) »/.exec(input);
+            if (partie) {
+              return send(200, completed([
+                `## ${partie[1]}`,
+                `Cette partie développe ${partie[1]!.toLowerCase()} à partir des sources : la demande urbaine progresse [1], et les éleveurs cherchent un accompagnement concret [2]. ` +
+                  'Une offre courte et pratique, suivie d’un accompagnement, répond mieux à cette attente qu’un long guide théorique. '.repeat(14),
+              ].join('\n\n')));
+            }
             if ((body as { response_format?: unknown }).response_format) return send(200, completed(JSON.stringify(fakeAnalysis(input))));
             // L'analyse aboutit, seul le rapport rédigé ensuite échoue.
             if (input.includes('rapport refusé')) return send(400, { error: { message: 'requête refusée' } });

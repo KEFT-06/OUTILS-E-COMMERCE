@@ -6,6 +6,7 @@ import {
   ArrowUpDown,
   CheckCircle2,
   ExternalLink,
+  FileText,
   Globe,
   Info,
   Lightbulb,
@@ -48,7 +49,7 @@ import {
   DialogTrigger,
 } from '@/shared/ui/dialog';
 import { LegalNotice } from '@/modules/analyse/LegalNotice';
-import { WrittenReportPanel } from '@/modules/analyse/WrittenReportPanel';
+import { Link } from 'react-router-dom';
 import { NoDataState } from '@/shared/components/NoDataState';
 import { Progress } from '@/shared/ui/progress';
 import { RateBadge } from '@/shared/components/RateBadge';
@@ -811,7 +812,19 @@ export function StrategicAnalysisView({ report, onNavigateToProducts, onNavigate
         )}
       </Tabs>
 
-      <WrittenReportPanel reportId={report.id} nicheName={report.nicheName} />
+      {/* Les rapports se rédigent dans le Dossier PDF, à la taille choisie (décision du 29/09/2026). */}
+      <div className="flex flex-col gap-4 rounded-3xl border bg-gradient-to-br from-brand-green/10 via-card to-card p-6 sm:flex-row sm:items-center sm:justify-between">
+        <div className="space-y-1">
+          <p className="font-display text-lg font-bold">Le rapport complet de cette niche</p>
+          <p className="text-sm text-muted-foreground">Choisissez sa taille dans le Dossier PDF : plan adapté à la niche, sources en annexe, téléchargeable.</p>
+        </div>
+        <Button asChild size="lg" className="shrink-0">
+          <Link to="/app/dossier-pdf#rediger">
+            <FileText aria-hidden />
+            Rédiger un rapport
+          </Link>
+        </Button>
+      </div>
 
       <LegalNotice variant="block" />
 

@@ -172,6 +172,7 @@ export async function checkSectionsCompliance(
  */
 export async function exportReportPDF(
   report: MarketAnalysisReport,
+  formatPrice?: (amount: number, currency: string) => string,
 ): Promise<ReportComplianceVerdict> {
   const verdict = await checkReportCompliance(report);
 
@@ -192,7 +193,7 @@ export async function exportReportPDF(
     checkedAt: verdict.checkedAt,
     warningCount: verdict.findings.filter((f) => f.severity === 'warn').length,
     disclaimer: verdict.requiredDisclaimer || FALLBACK_DISCLAIMER,
-  });
+  }, formatPrice);
 
   recordExport('report_pdf', 'pdf');
   return verdict;

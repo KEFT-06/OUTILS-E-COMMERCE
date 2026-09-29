@@ -1,8 +1,13 @@
 import { Router } from 'express';
-import { asyncRoute } from '@server/middleware';
+import { z } from 'zod';
+import { asyncRoute, validateBody } from '@server/middleware';
 import { requireAuth, requireFeature } from '@server/middleware/auth';
 import { deleteReport, getReport, listReports, todayLabel } from '@server/services/analysis';
-import { getReportDocument, startReportDocument } from '@server/services/analysis/document';
+import { REPORT_PAGES, getReportDocument, startReportDocument } from '@server/services/analysis/document';
+
+const documentRequestSchema = z.object({
+  pages: z.coerce.number().int().min(REPORT_PAGES.min).max(REPORT_PAGES.max).default(REPORT_PAGES.default),
+});
 
 /** Rapports d'analyse du compte connecté : liste, lecture, suppression, et rapport rédigé à la demande. */
 
@@ -40,8 +45,10 @@ reportsRouter.post(
   '/:reportId/document',
   // Même droit que l'analyse qu'il développe : un palier ou un compte privé d'analyse n'y a pas accès.
   requireFeature('niche_analysis'),
+  validateBody(documentRequestSchema),
   asyncRoute(async (req, res) => {
-    const { document, created } = await startReportDocument(req.auth!, req.params.reportId, todayLabel(new Date()));
+    const { pages } = req.body as z.infer<typeof documentRequestSchema>;
+    const { document, created } = await startReportDocument(req.auth!, req.params.reportId, todayLabel(new Date()), pages);
     res.status(created ? 202 : 200).json({ document });
   }),
 );

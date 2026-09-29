@@ -30,7 +30,14 @@ function rateLine(rate: MarketRate): string {
 }
 
 
-export async function generateAnalysisPDF(report: MarketAnalysisReport, stamp: PDFComplianceStamp): Promise<void> {
+/** Prix dans la devise de l'utilisateur ; par défaut, celle où le produit a été chiffré. */
+export type PriceFormatter = (amount: number, currency: string) => string;
+
+export async function generateAnalysisPDF(
+  report: MarketAnalysisReport,
+  stamp: PDFComplianceStamp,
+  formatPrice: PriceFormatter = (amount, currency) => `${amount} ${currency}`,
+): Promise<void> {
   const doc = new jsPDF({
     orientation: 'portrait',
     unit: 'mm',
@@ -273,7 +280,7 @@ export async function generateAnalysisPDF(report: MarketAnalysisReport, stamp: P
     const priceLine =
       product.recommendedPrice !== null
         ? [
-            `Prix conseillé : ${product.recommendedPrice} ${product.currency}`,
+            `Prix conseillé : ${toPdfSafe(formatPrice(product.recommendedPrice, product.currency))}`,
             product.estimatedMarginPercent !== null ? `Marge brute : ${product.estimatedMarginPercent} %` : null,
             product.estimatedProductionDays !== null ? `Délai de création : ${product.estimatedProductionDays} j` : null,
           ]
