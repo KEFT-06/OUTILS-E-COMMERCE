@@ -15,7 +15,6 @@ import {
   Trash2,
   TrendingDown,
   TrendingUp,
-  TriangleAlert,
   Users,
 } from 'lucide-react';
 import {
@@ -32,7 +31,6 @@ import { countryName } from '@server/shared/countries';
 import { researchLine, writerLine } from '@/shared/lib/reportProvenance';
 import { safeHttpUrl } from '@/shared/lib/safeUrl';
 import type { MarketAnalysisReport, MarketRate, OverallVerdict, SearchTrendKeyword, TauxLevel } from '@/shared/types/analysis';
-import { Alert, AlertDescription, AlertTitle } from '@/shared/ui/alert';
 import { Badge } from '@/shared/ui/badge';
 import { Button } from '@/shared/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/shared/ui/card';
@@ -259,9 +257,6 @@ export function StrategicAnalysisView({ report, onNavigateToProducts, onNavigate
   const isExampleReport = report.dataProvenance?.rates?.isDemonstration ?? false;
   const sources = report.groundingSources ?? [];
   const sourceUsage = useMemo(() => usageBySource(report), [report]);
-  const decisions = report.decisions ?? [];
-  // Rapports antérieurs à septembre 2026 : ils portent encore l'ancienne liste.
-  const limitations = report.limitations ?? [];
 
   const rates: MarketRate[] = [
     report.rates.demand,
@@ -348,62 +343,7 @@ export function StrategicAnalysisView({ report, onNavigateToProducts, onNavigate
             <p className="leading-relaxed">{report.executiveSummary}</p>
           </div>
 
-          {generatedBy && (
-            <Alert variant="info">
-              <Info />
-              <AlertTitle>Provenance du rapport</AlertTitle>
-              <AlertDescription>
-                <p>
-                  {researchLine(report)} {writerLine(report)}
-                </p>
-                <p>
-                  Les faits de marché (concurrents, prix constatés, niveaux des taux) renvoient chacun à leurs sources, numérotées.
-                  Les idées de produits, les scripts et le plan d’action sont des recommandations fondées sur l’étude, à relire
-                  avant usage.
-                </p>
-              </AlertDescription>
-            </Alert>
-          )}
-
-          {/*
-            Des décisions, pas une liste de devoirs. L'ancien bloc « Points à vérifier » rendait
-            la question à l'auteur : il lisait quatre choses à faire avant de pouvoir avancer.
-            Le rapport tranche désormais, et dit sur quoi il s'appuie — l'auteur garde la main,
-            mais il part d'une position, pas d'une page blanche.
-          */}
-          {decisions.length > 0 && (
-            <Alert variant="info">
-              <Lightbulb />
-              <AlertTitle>Ce que les sources ne disent pas, et ce que je propose</AlertTitle>
-              <AlertDescription>
-                <ul className="space-y-3">
-                  {decisions.map((decision) => (
-                    <li key={decision.gap} className="space-y-0.5">
-                      <p className="text-muted-foreground">{decision.gap}</p>
-                      <p className="font-medium text-foreground">{decision.proposal}</p>
-                      <p className="text-xs text-muted-foreground">Sur quoi je m’appuie : {decision.basis}</p>
-                    </li>
-                  ))}
-                </ul>
-              </AlertDescription>
-            </Alert>
-          )}
-
-          {/* Rapports produits avant septembre 2026 : l'ancienne liste, affichée telle quelle. */}
-          {decisions.length === 0 && limitations.length > 0 && (
-            <Alert variant="warning">
-              <TriangleAlert />
-              <AlertTitle>Points à vérifier avant de lancer</AlertTitle>
-              <AlertDescription>
-                <ul className="list-disc space-y-1 pl-4">
-                  {limitations.map((limitation) => (
-                    <li key={limitation}>{limitation}</li>
-                  ))}
-                </ul>
-              </AlertDescription>
-            </Alert>
-          )}
-
+          {/* Plus d'encarts de provenance ni de précautions : le propriétaire les juge inutiles (29/09/2026). */}
           <div className="flex flex-wrap gap-2 border-t pt-4">
             <Button variant="outline" onClick={onNavigateToProducts}>
               Idées de produits ({report.digitalProducts.length})

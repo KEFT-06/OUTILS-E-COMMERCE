@@ -272,7 +272,7 @@ export function EspionnageView() {
                   onValueChange={(value) => setTri(value as typeof tri)}
                 >
                   <SelectTrigger
-                    className="w-full sm:w-56"
+                    className="w-full sm:w-64"
                     aria-label="Trier par"
                   >
                     <SelectValue />

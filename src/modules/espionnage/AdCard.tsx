@@ -17,6 +17,7 @@ import {
   Store,
 } from 'lucide-react';
 import { safeHttpUrl } from '@/shared/lib/safeUrl';
+import { cn } from '@/shared/lib/utils';
 import type { LibraryAd } from '@/shared/types/radar';
 import { Button } from '@/shared/ui/button';
 import { Card } from '@/shared/ui/card';
@@ -113,14 +114,16 @@ function AdMedia({ ad }: { ad: LibraryAd }) {
   const [cassee, setCassee] = useState(false);
   const source = ad.thumbnailUrl ?? ad.mediaUrl;
   return (
-    <div className="relative flex min-h-56 items-center justify-center overflow-hidden bg-muted">
+    // Cadre de hauteur fixe : un visuel très haut repoussait ou masquait le texte de l'annonce
+    // (signalé le 29/09/2026). L'image reste entière (object-contain), centrée sur fond gris.
+    <div className="relative flex h-56 items-center justify-center overflow-hidden bg-muted sm:h-64">
       {source && !cassee ? (
         <img
           src={source}
           alt={ad.title ?? 'Visuel de l’annonce'}
           loading="lazy"
           referrerPolicy="no-referrer"
-          className="max-h-[440px] w-full object-contain"
+          className="h-full w-full object-contain"
           onError={() => setCassee(true)}
         />
       ) : (
@@ -135,6 +138,25 @@ function AdMedia({ ad }: { ad: LibraryAd }) {
             <Play className="size-7 translate-x-0.5 fill-current" aria-hidden="true" />
           </span>
         </span>
+      )}
+    </div>
+  );
+}
+
+/** Texte de l'annonce : quelques lignes, puis « Voir plus » pour le lire en entier sans quitter la carte. */
+function AdText({ text: brut }: { text: string }) {
+  const [entier, setEntier] = useState(false);
+  // Annonces catalogue de Meta : leurs gabarits non remplis (« {{product.brand}} ») ne veulent rien dire.
+  const text = brut.replace(/\{\{[^}]*\}\}/g, '').replace(/[ \t]{2,}/g, ' ').trim();
+  if (!text) return null;
+  const long = text.length > 220 || text.split('\n').length > 4;
+  return (
+    <div className="px-5 pb-3">
+      <p className={cn('text-[15px] leading-relaxed whitespace-pre-line', !entier && long && 'line-clamp-4')}>{text}</p>
+      {long && (
+        <button type="button" className="mt-1 text-sm font-semibold text-primary hover:underline" onClick={() => setEntier((ouvert) => !ouvert)}>
+          {entier ? 'Voir moins' : 'Voir plus'}
+        </button>
       )}
     </div>
   );
@@ -330,7 +352,7 @@ export function AdCard({
             <p className="text-sm text-muted-foreground">Sponsorisé</p>
           </div>
         </div>
-        {ad.bodyText && <p className="line-clamp-5 px-5 pb-3 text-[15px] leading-relaxed whitespace-pre-line">{ad.bodyText}</p>}
+        {ad.bodyText && <AdText text={ad.bodyText} />}
         <div className="mt-auto">
           <AdMedia ad={ad} />
           <LinkBar ad={ad} />

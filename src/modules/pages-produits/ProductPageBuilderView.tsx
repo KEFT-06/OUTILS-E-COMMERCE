@@ -1,5 +1,5 @@
 import { useState, type ReactNode } from 'react';
-import { AlertTriangle, Download, ImageIcon, Info, LayoutTemplate, Plus, Trash2 } from 'lucide-react';
+import { AlertTriangle, Download, ImageIcon, LayoutTemplate, Plus, Trash2 } from 'lucide-react';
 import { PageHeader } from '@/shared/components/PageHeader';
 import { awarenessLabel } from '@/shared/lib/awareness';
 import { ComplianceBlockedError } from '@/shared/lib/complianceGate';
@@ -58,6 +58,7 @@ export function ProductPageBuilderView({ products }: { products: DigitalProductI
   const [previewVariant, setPreviewVariant] = useState<PageVariant>('A');
   const [exporting, setExporting] = useState<PageVariant | null>(null);
   const [exportError, setExportError] = useState<string | null>(null);
+  const [showMissing, setShowMissing] = useState(false);
   const [blockedVerdict, setBlockedVerdict] = useState<ReportComplianceVerdict | null>(null);
 
   const baseProduct = products.find((candidate) => candidate.id === productId) ?? products[0];
@@ -89,9 +90,21 @@ export function ProductPageBuilderView({ products }: { products: DigitalProductI
   const model = buildPageModel(product, draft, previewVariant);
   const missing = missingForExport(draft);
   const variantB = hasVariantB(draft);
-  const checkoutInvalid = Boolean(draft.checkoutUrl) && !safeHttpsUrl(draft.checkoutUrl);
+  // Champs requis signalés sur le champ lui-même, au moment de l'export, plutôt qu'une liste
+  // d'avertissements affichée en permanence (demande du 29/09/2026).
+  const needsCheckout = !safeHttpsUrl(draft.checkoutUrl);
+  const needsProblem = !draft.problem.trim();
+  const checkoutInvalid = (Boolean(draft.checkoutUrl) || showMissing) && needsCheckout;
+  const problemInvalid = showMissing && needsProblem;
 
   const handleExport = async (variant: PageVariant) => {
+    if (missing.length > 0) {
+      setShowMissing(true);
+      const first = document.getElementById(needsCheckout ? 'page-checkout' : 'page-problem');
+      first?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      first?.focus({ preventScroll: true });
+      return;
+    }
     setExporting(variant);
     setExportError(null);
     try {
@@ -153,14 +166,15 @@ export function ProductPageBuilderView({ products }: { products: DigitalProductI
             placeholder="https://… la page de votre produit sur Chariow"
             aria-invalid={checkoutInvalid}
           />
-          {checkoutInvalid && <FieldError>Lien invalide : seul un lien https est accepté.</FieldError>}
+          {checkoutInvalid && <FieldError>{draft.checkoutUrl ? 'Lien invalide : seul un lien https est accepté.' : 'Indiquez le lien de paiement de votre produit.'}</FieldError>}
         </Field>
       </div>
     ),
     problem: (
-      <Field>
+      <Field data-invalid={problemInvalid}>
         <FieldLabel htmlFor="page-problem">Le problème vécu par votre lecteur (obligatoire)</FieldLabel>
-        <Textarea id="page-problem" value={draft.problem} onChange={(event) => update({ problem: event.target.value })} rows={4} maxLength={2000} />
+        <Textarea id="page-problem" value={draft.problem} onChange={(event) => update({ problem: event.target.value })} rows={4} maxLength={2000} aria-invalid={problemInvalid} />
+        {problemInvalid && <FieldError>Décrivez en quelques lignes la difficulté de votre lecteur.</FieldError>}
       </Field>
     ),
     solution: (
@@ -280,14 +294,6 @@ export function ProductPageBuilderView({ products }: { products: DigitalProductI
         }
       />
 
-      <Alert variant="info">
-        <Info />
-        <AlertDescription>
-          Aucun témoignage n’est proposé : une page ne doit en montrer que s’ils sont réels et vérifiables. Pour le test
-          A/B, les deux fichiers ne diffèrent que par l’accroche et le bouton ; la répartition du trafic et la mesure se
-          font sur l’outil qui héberge la page.
-        </AlertDescription>
-      </Alert>
 
       {pageDrafts.writeFailed && (
         <Alert variant="warning">
@@ -417,22 +423,11 @@ export function ProductPageBuilderView({ products }: { products: DigitalProductI
 
           <Card className="py-5">
             <CardContent className="space-y-3">
-              {missing.length > 0 && (
-                <ul className="space-y-1">
-                  {missing.map((item) => (
-                    <li key={item} className="flex items-start gap-1.5 text-sm text-warning">
-                      <AlertTriangle className="mt-0.5 size-3.5 shrink-0" aria-hidden="true" />
-                      {item}
-                    </li>
-                  ))}
-                </ul>
-              )}
-
               <div className="flex flex-wrap gap-2">
                 {(['A', 'B'] as const)
                   .filter((variant) => variant === 'A' || variantB)
                   .map((variant) => (
-                    <Button key={variant} onClick={() => handleExport(variant)} disabled={missing.length > 0 || exporting !== null}>
+                    <Button key={variant} onClick={() => handleExport(variant)} disabled={exporting !== null}>
                       {exporting === variant ? <Spinner /> : <Download />}
                       Télécharger la variante {variant} (HTML)
                     </Button>

@@ -1,6 +1,5 @@
 import { jsPDF } from 'jspdf';
 import { toPdfSafe } from '@/shared/lib/pdfText';
-import { blockProvenance, researchLine, writerLine } from '@/shared/lib/reportProvenance';
 import { safeHttpUrl } from '@/shared/lib/safeUrl';
 import { usageBySource } from '@/shared/lib/sourceUsage';
 import type { MarketAnalysisReport, MarketRate } from '@/shared/types/analysis';
@@ -355,23 +354,7 @@ export async function generateAnalysisPDF(
   // === 7. SOURCES ET LIMITES ===
   const sources = report.groundingSources ?? [];
   const sourceUsage = usageBySource(report);
-  const decisions = report.decisions ?? [];
-  // Ancienne forme, sur les rapports antérieurs à septembre 2026.
-  const limitations = report.limitations ?? [];
 
-  // Provenance : qui a cherché, qui a rédigé, d'où vient chaque bloc.
-  checkPageBreak(30);
-  sectionHeading('7. Provenance du rapport');
-  doc.setFont('helvetica', 'normal');
-  doc.setFontSize(8.5);
-  doc.setTextColor(30, 41, 59);
-  for (const line of [researchLine(report), writerLine(report), ...blockProvenance(report).map((entry) => `${entry.label} : ${entry.source}`)]) {
-    if (!line) continue;
-    const lines = doc.splitTextToSize(toPdfSafe(line), contentWidth);
-    checkPageBreak(lines.length * 4 + 2);
-    doc.text(lines, margin, currentY);
-    currentY += lines.length * 4 + 1.5;
-  }
   currentY += 4;
 
   if (sources.length > 0) {
@@ -407,49 +390,6 @@ export async function generateAnalysisPDF(
     currentY += 2;
   }
 
-  if (decisions.length > 0 || limitations.length > 0) {
-    checkPageBreak(24);
-    const numero = sources.length > 0 ? '9' : '8';
-    sectionHeading(
-      decisions.length > 0
-        ? `${numero}. Ce que les sources ne disent pas, et ce qui est proposé`
-        : `${numero}. Points à vérifier avant de lancer`,
-    );
-    doc.setFontSize(8.5);
-
-    // Une décision se lit en trois temps : le manque, la proposition en gras, puis son appui.
-    // Le dossier téléchargé doit dire exactement ce que dit l'écran.
-    decisions.forEach((decision) => {
-      doc.setFont('helvetica', 'italic');
-      doc.setTextColor(100, 116, 139);
-      const manque = doc.splitTextToSize(toPdfSafe(decision.gap), contentWidth);
-      checkPageBreak(manque.length * 4 + 14);
-      doc.text(manque, margin, currentY);
-      currentY += manque.length * 4 + 1;
-
-      doc.setFont('helvetica', 'bold');
-      doc.setTextColor(15, 23, 42);
-      const proposition = doc.splitTextToSize(toPdfSafe(decision.proposal), contentWidth);
-      doc.text(proposition, margin, currentY);
-      currentY += proposition.length * 4 + 1;
-
-      doc.setFont('helvetica', 'normal');
-      doc.setTextColor(100, 116, 139);
-      const appui = doc.splitTextToSize(toPdfSafe(`Sur quoi : ${decision.basis}`), contentWidth);
-      doc.text(appui, margin, currentY);
-      currentY += appui.length * 4 + 3;
-    });
-
-    doc.setFont('helvetica', 'normal');
-    doc.setTextColor(71, 85, 105);
-    limitations.forEach((limitation) => {
-      const lines = doc.splitTextToSize(toPdfSafe(`• ${limitation}`), contentWidth);
-      checkPageBreak(lines.length * 4 + 2);
-      doc.text(lines, margin, currentY);
-      currentY += lines.length * 4 + 1.5;
-    });
-    currentY += 4;
-  }
 
   // === CONTRÔLE DE CONFORMITÉ (CdC §6.4.1 et §9.4) ===
   checkPageBreak(34);
