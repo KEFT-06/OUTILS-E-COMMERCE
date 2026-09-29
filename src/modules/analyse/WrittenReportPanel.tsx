@@ -1,4 +1,4 @@
-import { Fragment, useCallback, useEffect, useMemo, useState } from 'react';
+import { Fragment, useEffect, useMemo, useState } from 'react';
 import { AnimatePresence, motion } from 'motion/react';
 import { BookOpenText, ChevronDown, Download, ExternalLink, FileText, Loader2, RefreshCw, ShieldCheck } from 'lucide-react';
 import { toast } from 'sonner';
@@ -184,6 +184,10 @@ export function WrittenReportPanel({ reportId, nicheName }: WrittenReportPanelPr
                 <article
                   className={cn('space-y-4 text-[0.95rem] leading-relaxed text-foreground/90', !expanded && 'max-h-[34rem] overflow-hidden')}
                   aria-label={document.title ?? 'Rapport rédigé'}
+                  // Un renvoi [n] mène à l'annexe : replié, le rapport la cacherait.
+                  onClickCapture={(event) => {
+                    if (!expanded && (event.target as HTMLElement).closest('a[href^="#source-"]')) setExpanded(true);
+                  }}
                 >
                   <MarkdownView markdown={document.markdown} />
                   <Bibliography document={document} />
