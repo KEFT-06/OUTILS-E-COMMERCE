@@ -2,7 +2,9 @@ import { useEffect, useState } from 'react';
 import { AlertTriangle, TrendingUp } from 'lucide-react';
 import { ConnectChariowLink } from '@/shared/components/ConnectChariowLink';
 import { type ApiError, readApiError, toApiError } from '@/shared/lib/apiError';
+import { fractionDigits } from '@server/shared/currency';
 import { formatDateFr } from '@/shared/lib/formatDate';
+import { useMoney } from '@/shared/lib/money';
 import type { SalesSummaryResponse } from '@/shared/types/marketplaces';
 import { Alert, AlertDescription } from '@/shared/ui/alert';
 import { ChartProvenance } from '@/shared/components/ChartProvenance';
@@ -21,6 +23,7 @@ const PERIOD_DAYS = 30;
 
 export function SalesSummaryCard() {
   const [data, setData] = useState<SalesSummaryResponse | null>(null);
+  const money = useMoney();
   const [error, setError] = useState<ApiError | null>(null);
   const [isLoading, setIsLoading] = useState(true);
 
@@ -100,15 +103,21 @@ export function SalesSummaryCard() {
                   <p className="text-sm text-muted-foreground">Aucune vente encaissée sur la période.</p>
                 </div>
               ) : (
-                summary.totalsByCurrency.map((total) => (
-                  <div key={total.currency} className="rounded-lg border bg-muted/40 p-4">
-                    <p className="text-sm text-muted-foreground">Chiffre d’affaires ({total.currency})</p>
-                    <p className="mt-1 font-display text-2xl font-extrabold tabular-nums">{total.formatted}</p>
-                    <p className="text-xs text-muted-foreground tabular-nums">
-                      {total.salesCount.toLocaleString('fr-FR')} vente(s)
-                    </p>
-                  </div>
-                ))
+                /*
+                  Un seul chiffre d'affaires, dans la devise de l'utilisateur : les ventes encaissées
+                  dans d'autres devises y sont converties, au lieu d'une carte par devise.
+                */
+                <div className="rounded-lg border bg-muted/40 p-4">
+                  <p className="text-sm text-muted-foreground">Chiffre d’affaires</p>
+                  <p className="mt-1 font-display text-2xl font-extrabold tabular-nums">
+                    {money.format(
+                      summary.totalsByCurrency.reduce((sum, total) => sum + (money.convert(total.amountMinor / 10 ** fractionDigits(total.currency), total.currency) ?? 0), 0),
+                    )}
+                  </p>
+                  <p className="text-xs text-muted-foreground tabular-nums">
+                    {summary.totalsByCurrency.reduce((sum, total) => sum + total.salesCount, 0).toLocaleString('fr-FR')} vente(s)
+                  </p>
+                </div>
               )}
             </div>
 

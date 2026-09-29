@@ -4,6 +4,7 @@ import { Radar } from 'lucide-react';
 import { pathOf } from '@/app/navigation';
 import { apiRequest } from '@/shared/lib/api';
 import { formatRelativeFr } from '@/shared/lib/formatDate';
+import { useMoney } from '@/shared/lib/money';
 import type { RadarMeasurements } from '@/shared/types/radar';
 import { Badge } from '@/shared/ui/badge';
 import { Button } from '@/shared/ui/button';
@@ -25,6 +26,7 @@ import { Card, CardAction, CardContent, CardDescription, CardHeader, CardTitle }
 
 export function RadarMeasuredPanel() {
   const [data, setData] = useState<RadarMeasurements | null>(null);
+  const money = useMoney();
 
   useEffect(() => {
     let cancelled = false;
@@ -86,7 +88,7 @@ export function RadarMeasuredPanel() {
           <div>
             <dt className="text-xs text-muted-foreground">Prix médian</dt>
             <dd className="font-display text-2xl font-bold">
-              {prix ? `${prix.price.toLocaleString('fr-FR')} ${prix.currency}` : '—'}
+              {prix ? money.format(prix.price, prix.currency, { round: true }) : '—'}
             </dd>
             <p className="text-xs text-muted-foreground">sur ce qui est en vente</p>
           </div>
@@ -96,7 +98,7 @@ export function RadarMeasuredPanel() {
           <p className="text-sm text-muted-foreground">
             Chiffre d’affaires visible sur la période :{' '}
             <strong className="text-foreground">
-              {ventes.revenue.toLocaleString('fr-FR')} {ventes.currency}
+              {money.format(ventes.revenue, ventes.currency)}
             </strong>{' '}
             — prix affiché × ventes constatées pendant la surveillance.
           </p>

@@ -15,6 +15,7 @@ import { SalesSummaryCard } from '@/shared/components/SalesSummaryCard';
 import { Skeleton } from '@/shared/ui/skeleton';
 import { Spinner } from '@/shared/ui/spinner';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/shared/ui/table';
+import { useMoney } from '@/shared/lib/money';
 
 /**
  * Distribution marketplace.
@@ -153,6 +154,8 @@ export function DistributionView() {
 
 /** Catalogue d'une boutique reliée, importé à la demande. */
 function CatalogCard({ marketplace }: { marketplace: MarketplaceInfo }) {
+  // Prix de la boutique convertis dans la devise de l'utilisateur.
+  const money = useMoney();
   const [catalog, setCatalog] = useState<{ products: MarketplaceProduct[]; truncated: boolean } | null>(null);
   const [isLoadingCatalog, setIsLoadingCatalog] = useState(false);
   const [catalogError, setCatalogError] = useState<ApiError | null>(null);
@@ -226,7 +229,7 @@ function CatalogCard({ marketplace }: { marketplace: MarketplaceInfo }) {
                   <TableCell className="font-medium whitespace-normal">{product.name}</TableCell>
                   <TableCell className="text-muted-foreground">{product.type}</TableCell>
                   <TableCell className="text-right tabular-nums">
-                    {product.isFree ? 'Gratuit' : (product.price?.formatted ?? 'Prix non renseigné')}
+                    {product.isFree ? 'Gratuit' : product.price?.amount != null ? money.format(product.price.amount, product.price.currency) : 'Prix non renseigné'}
                   </TableCell>
                 </TableRow>
               ))}

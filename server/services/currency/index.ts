@@ -115,3 +115,22 @@ export function fromMinorUnits(minor: number, currency: string): number {
 export function resetRates(): void {
   snapshot = null;
 }
+
+/** Devises le plus souvent rencontrées dans les sources d'une étude de marché. */
+const SOURCE_CURRENCIES = ['EUR', 'USD', 'XOF', 'XAF', 'NGN', 'GHS', 'KES', 'MAD', 'GBP', 'CAD', 'CDF', 'GNF'];
+
+/**
+ * Taux de conversion lisibles par un rédacteur : « 1 EUR = 655,96 XAF ; 1 USD = 604 XAF … ».
+ * Sert à ce que chaque texte rédigé n'emploie que la devise de l'utilisateur.
+ */
+export function conversionHints(target: string, rates: RatesSnapshot): string {
+  return SOURCE_CURRENCIES.filter((code) => code !== target)
+    .map((code) => {
+      const value = convertAmount(1, code, target, rates);
+      if (!value) return null;
+      const digits = value >= 100 ? 0 : value >= 1 ? 2 : 4;
+      return `1 ${code} = ${value.toLocaleString('fr-FR', { maximumFractionDigits: digits })} ${target}`;
+    })
+    .filter(Boolean)
+    .join(' ; ');
+}

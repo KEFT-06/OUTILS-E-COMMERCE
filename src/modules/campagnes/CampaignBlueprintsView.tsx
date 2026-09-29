@@ -4,6 +4,7 @@ import { AlertTriangle, ExternalLink, Eye, Scissors, TrendingUp } from 'lucide-r
 import { PageHeader } from '@/shared/components/PageHeader';
 import { type ApiError, readApiError, toApiError } from '@/shared/lib/apiError';
 import { formatDateFr } from '@/shared/lib/formatDate';
+import { useUserCurrency } from '@/shared/lib/money';
 import { safeHttpUrl } from '@/shared/lib/safeUrl';
 import { cn } from '@/shared/lib/utils';
 import type { BlueprintRule, CampaignBlueprintConfig } from '@/shared/types/blueprints';
@@ -13,7 +14,6 @@ import { Button } from '@/shared/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/shared/ui/card';
 import { Field, FieldDescription, FieldLabel } from '@/shared/ui/field';
 import { Input } from '@/shared/ui/input';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/shared/ui/select';
 import { Skeleton } from '@/shared/ui/skeleton';
 
 /**
@@ -25,8 +25,6 @@ import { Skeleton } from '@/shared/ui/skeleton';
  * affiché. Les noms d'objectifs sont ceux des gestionnaires de publicités, avec
  * leur source et la date de vérification.
  */
-
-const CURRENCIES = ['XOF', 'XAF', 'EUR', 'USD', 'MAD', 'TND', 'DZD', 'CDF', 'GNF', 'MGA'];
 
 const RULE_ICONS: Record<BlueprintRule['kind'], ComponentType<{ className?: string }>> = {
   cut: Scissors,
@@ -55,7 +53,8 @@ export function CampaignBlueprintsView() {
   const [platformId, setPlatformId] = useState('meta');
   const [budgetInput, setBudgetInput] = useState('');
   const [targetCpaInput, setTargetCpaInput] = useState('');
-  const [currency, setCurrency] = useState('XOF');
+  // Budget dans la devise du pays de l'utilisateur, sans choix d'une autre : chacun ne voit que la sienne.
+  const currency = useUserCurrency();
 
   useEffect(() => {
     let cancelled = false;
@@ -163,21 +162,6 @@ export function CampaignBlueprintsView() {
                 />
               </Field>
 
-              <Field>
-                <FieldLabel htmlFor="blueprint-currency">Devise</FieldLabel>
-                <Select value={currency} onValueChange={setCurrency}>
-                  <SelectTrigger id="blueprint-currency" className="w-full">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {CURRENCIES.map((code) => (
-                      <SelectItem key={code} value={code}>
-                        {code}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </Field>
             </CardContent>
           </Card>
 

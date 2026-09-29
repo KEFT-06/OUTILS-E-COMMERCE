@@ -1,4 +1,5 @@
 import { AlertTriangle, ArrowRight, Info, Wallet, Zap } from 'lucide-react';
+import { useMoney } from '@/shared/lib/money';
 import { cn } from '@/shared/lib/utils';
 import type { CreditQuote } from '@/shared/types/credits';
 import { Alert, AlertDescription, AlertTitle } from '@/shared/ui/alert';
@@ -30,6 +31,8 @@ interface CreditSimulatorDialogProps {
 }
 
 export function CreditSimulatorDialog({ quote, unavailableReason, open, onConfirm, onCancel }: CreditSimulatorDialogProps) {
+  // Valeur du point convertie dans la devise du pays de l'utilisateur : elle s'affichait en FCFA pour tous.
+  const money = useMoney();
   // Fermer la fenêtre équivaut à refuser : l'action ne part que sur « Confirmer ».
   const handleOpenChange = (isOpen: boolean) => {
     if (!isOpen) onCancel();
@@ -83,7 +86,7 @@ export function CreditSimulatorDialog({ quote, unavailableReason, open, onConfir
               <div className="flex items-baseline justify-between gap-4 py-3">
                 <dt className="text-sm text-muted-foreground">Équivalent</dt>
                 <dd className="text-sm font-semibold tabular-nums">
-                  ≈ {quote.monetaryEquivalent.toLocaleString('fr-FR')} {quote.currency}
+                  {money.format(quote.monetaryEquivalent, quote.currency, { round: true, approx: true })}
                 </dd>
               </div>
               <div className="flex items-center justify-between gap-4 py-3">

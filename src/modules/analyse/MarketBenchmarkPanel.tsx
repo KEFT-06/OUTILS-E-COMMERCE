@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { Globe2 } from 'lucide-react';
 import { apiRequest } from '@/shared/lib/api';
 import { formatDateFr } from '@/shared/lib/formatDate';
+import { useMoney } from '@/shared/lib/money';
 import { Badge } from '@/shared/ui/badge';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/shared/ui/card';
 
@@ -38,6 +39,7 @@ interface Result {
 
 export function MarketBenchmarkPanel({ niche }: { niche: string }) {
   const [data, setData] = useState<Result | null>(null);
+  const money = useMoney();
 
   useEffect(() => {
     if (!niche.trim()) return;
@@ -95,7 +97,7 @@ export function MarketBenchmarkPanel({ niche }: { niche: string }) {
           <div>
             <dt className="text-xs text-muted-foreground">Prix médian international</dt>
             <dd className="font-display text-2xl font-bold">
-              {mesure.medianPrice === null ? '—' : `${mesure.medianPrice.toLocaleString('fr-FR')} ${mesure.currency ?? ''}`}
+              {money.format(mesure.medianPrice, mesure.currency, { round: true, approx: true })}
             </dd>
             <p className="text-xs text-muted-foreground">pas un prix pour votre marché</p>
           </div>
@@ -113,7 +115,7 @@ export function MarketBenchmarkPanel({ niche }: { niche: string }) {
           <div className="flex flex-wrap items-center gap-2">
             <Badge variant="outline">Compté, pas estimé</Badge>
             <span className="text-xs text-muted-foreground">
-              Marché international en {mesure.currency ?? 'devise étrangère'}. Sert à savoir si un concept se vend et
+              Marché international, montant converti dans votre devise. Sert à savoir si un concept se vend et
               combien d’offres existent déjà.
             </span>
           </div>

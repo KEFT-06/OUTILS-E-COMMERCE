@@ -17,12 +17,13 @@ import {
   Video,
 } from 'lucide-react';
 import { Area, AreaChart, CartesianGrid, XAxis, YAxis } from 'recharts';
-import { useAuth } from '@/features/auth/AuthContext';
 import { ProductStudioPanel } from '@/modules/studio/ProductStudioPanel';
 import { VideoToProductDialog } from '@/modules/studio/VideoToProductDialog';
 import { PageHeader } from '@/shared/components/PageHeader';
 import { WritingFindings } from '@/shared/components/WritingFindings';
 import { usePricing } from '@/modules/studio/usePricing';
+import { roundPrice } from '@server/shared/currency';
+import { useMoney } from '@/shared/lib/money';
 import { safeHttpUrl } from '@/shared/lib/safeUrl';
 import { blankProduct, useCustomProducts } from '@/shared/stores/useCustomProducts';
 import { useProductDrafts } from '@/shared/stores/useProductDrafts';
@@ -74,10 +75,10 @@ function originLabel(product: DigitalProductIdea): string | null {
 
 export function DigitalProductsView({ report, onSelectProductForAd, onAnalyzeNiche }: DigitalProductsViewProps) {
   const { pricing, isLoading: isPricingLoading, error: pricingError } = usePricing();
+  const money = useMoney();
   const drafts = useProductDrafts();
   const custom = useCustomProducts();
   const providers = useProviders();
-  const { account } = useAuth();
 
   const products = useMemo(() => [...(report?.digitalProducts ?? []), ...custom.products], [report, custom.products]);
   const [selectedId, setSelectedId] = useState<string | null>(null);
@@ -88,7 +89,15 @@ export function DigitalProductsView({ report, onSelectProductForAd, onAnalyzeNic
 
   const [salesGoal, setSalesGoal] = useState(50);
   // `null` tant que les bornes ne sont pas connues : aucun prix de départ inventé.
-  const [customPrice, setCustomPrice] = useState<number | null>(products[0]?.recommendedPrice ?? null);
+  // Prix du produit converti dans la devise de l'utilisateur, celle des bornes du simulateur.
+  const priceInUserCurrency = (product: DigitalProductIdea | undefined) =>
+    product?.recommendedPrice !== null && product?.recommendedPrice !== undefined
+      ? (() => {
+          const value = money.convert(product.recommendedPrice, product.currency);
+          return value === null ? null : roundPrice(value, money.currency);
+        })()
+      : null;
+  const [customPrice, setCustomPrice] = useState<number | null>(() => priceInUserCurrency(products[0]));
   const [adCost, setAdCost] = useState<number | null>(null);
   const [videoOpen, setVideoOpen] = useState(false);
   const [deleteOpen, setDeleteOpen] = useState(false);
@@ -103,11 +112,11 @@ export function DigitalProductsView({ report, onSelectProductForAd, onAnalyzeNic
   const selectProduct = (product: DigitalProductIdea) => {
     setSelectedId(product.id);
     // Sans prix avancé, le curseur repart de la valeur par défaut de la table des prix.
-    setCustomPrice(product.recommendedPrice ?? pricing?.sellingPrice.default ?? null);
+    setCustomPrice(priceInUserCurrency(product) ?? pricing?.sellingPrice.default ?? null);
   };
 
   const createBlank = () => {
-    const product = blankProduct(account?.currency ?? 'USD');
+    const product = blankProduct(money.currency);
     custom.add(product);
     setSelectedId(product.id);
     setJustCreatedId(product.id);
@@ -256,7 +265,7 @@ export function DigitalProductsView({ report, onSelectProductForAd, onAnalyzeNic
                     {product.typeName}
                   </Badge>
                   <span className="text-sm font-semibold tabular-nums">
-                    {product.recommendedPrice !== null ? `${product.recommendedPrice} ${product.currency}` : 'Prix à fixer'}
+                    {product.recommendedPrice !== null ? money.format(product.recommendedPrice, product.currency, { round: true }) : 'Prix à fixer'}
                   </span>
                 </span>
                 <span className="line-clamp-2 block font-semibold leading-snug">{product.title}</span>

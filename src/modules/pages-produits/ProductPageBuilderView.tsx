@@ -15,6 +15,8 @@ import { PageIncompleteError, exportProductPage } from '@/modules/pages-produits
 import { safeHttpsUrl } from '@/shared/lib/safeUrl';
 import { useProductDrafts } from '@/shared/stores/useProductDrafts';
 import { useProductPageDrafts } from '@/modules/pages-produits/useProductPageDrafts';
+import { formatMoney, roundPrice } from '@server/shared/currency';
+import { useMoney } from '@/shared/lib/money';
 import type { DigitalProductIdea } from '@/shared/types/analysis';
 import type { ReportComplianceVerdict } from '@/shared/types/compliance';
 import type { ProductPageDraft, SectionRole } from '@/shared/types/productPage';
@@ -50,6 +52,7 @@ const sectionAnchor = (role: SectionRole) => `page-section-${role}`;
 export function ProductPageBuilderView({ products }: { products: DigitalProductIdea[] }) {
   const productDrafts = useProductDrafts();
   const pageDrafts = useProductPageDrafts();
+  const money = useMoney();
 
   const [productId, setProductId] = useState(products[0]?.id ?? '');
   const [previewVariant, setPreviewVariant] = useState<PageVariant>('A');
@@ -72,7 +75,13 @@ export function ProductPageBuilderView({ products }: { products: DigitalProductI
     );
   }
 
-  const product = productDrafts.effective(baseProduct);
+  // Prix repris dans la devise de l'utilisateur : la page ne montre que celle de son pays.
+  const effective = productDrafts.effective(baseProduct);
+  const converted = effective.recommendedPrice !== null ? money.convert(effective.recommendedPrice, effective.currency) : null;
+  const product =
+    converted !== null && effective.currency !== money.currency
+      ? { ...effective, recommendedPrice: roundPrice(converted, money.currency), currency: money.currency }
+      : effective;
   const draft = pageDrafts.get(product.id) ?? emptyPageDraft(product);
   const update = (changes: Partial<ProductPageDraft>) => pageDrafts.save({ ...draft, ...changes });
   const updateImage = (role: SectionRole, url: string) => update({ images: { ...draft.images, [role]: url } });
@@ -182,7 +191,7 @@ export function ProductPageBuilderView({ products }: { products: DigitalProductI
             value={draft.price ?? ''}
             onChange={(event) => update({ price: event.target.value })}
             maxLength={60}
-            placeholder={product.recommendedPrice !== null ? model.price : 'ex. 5 000 FCFA'}
+            placeholder={product.recommendedPrice !== null ? model.price : `ex. ${formatMoney(roundPrice(money.convert(15, 'EUR') ?? 15, money.currency), money.currency)}`}
           />
           <p className="text-xs text-muted-foreground">
             {product.recommendedPrice !== null

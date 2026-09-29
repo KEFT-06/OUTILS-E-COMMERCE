@@ -20,7 +20,7 @@ export interface MarketplaceProduct {
   name: string;
   type: string;
   isFree: boolean;
-  price: { formatted: string; currency: string } | null;
+  price: { formatted: string; currency: string; amount: number | null } | null;
 }
 
 export interface CurrencyTotal {

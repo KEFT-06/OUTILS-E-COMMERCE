@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { useUserCurrency } from '@/shared/lib/money';
 import { PricingConfig } from '@/shared/types/pricing';
 
 /**
@@ -20,16 +21,19 @@ interface PricingState {
 }
 
 export function usePricing(): PricingState {
-  const [pricing, setPricing] = useState<PricingConfig | null>(pricingCache);
-  const [isLoading, setIsLoading] = useState<boolean>(!pricingCache);
+  // Fourchettes dans la devise du pays de l'utilisateur : la table est écrite en euros.
+  const currency = useUserCurrency();
+  const cached = pricingCache?.currency === currency ? pricingCache : null;
+  const [pricing, setPricing] = useState<PricingConfig | null>(cached);
+  const [isLoading, setIsLoading] = useState<boolean>(!cached);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    if (pricingCache) return;
+    if (pricingCache?.currency === currency) return;
 
     let cancelled = false;
 
-    fetch('/api/pricing/ranges')
+    fetch(`/api/pricing/ranges?currency=${encodeURIComponent(currency)}`)
       .then(async (response) => {
         if (!response.ok) {
           const payload = (await response.json().catch(() => null)) as
@@ -56,7 +60,7 @@ export function usePricing(): PricingState {
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [currency]);
 
   return { pricing, isLoading, error };
 }

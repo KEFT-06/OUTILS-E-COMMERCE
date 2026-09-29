@@ -94,7 +94,7 @@ const FAQ = [
   {
     question: 'Smart Creator est-il disponible dans mon pays ?',
     answer:
-      'Oui : l’outil est international. Choisissez votre pays à l’inscription et les prix s’affichent dans votre devise : franc CFA, naira, euro, dollar…',
+      'Oui : l’outil est international. Choisissez votre pays à l’inscription : tous les montants s’affichent ensuite dans la devise de votre pays, et dans aucune autre.',
   },
 ];
 

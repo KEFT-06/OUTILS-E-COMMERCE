@@ -3,6 +3,7 @@ import { ArrowLeft } from 'lucide-react';
 import { apiRequest } from '@/shared/lib/api';
 import { toApiError } from '@/shared/lib/apiError';
 import { formatDateFr } from '@/shared/lib/formatDate';
+import { useMoney } from '@/shared/lib/money';
 import type { WatchItemView, WatchSummary } from '@/shared/types/radar';
 import { Alert, AlertDescription, AlertTitle } from '@/shared/ui/alert';
 import { Badge } from '@/shared/ui/badge';
@@ -36,10 +37,10 @@ const SEUILS: { value: string; label: string; hint: string }[] = [
   { value: '60', label: 'Suivi 60 jours et plus', hint: 'offre installée' },
 ];
 
-const money = (value: number | null, currency: string | null) =>
-  value === null ? '—' : `${value.toLocaleString('fr-FR')} ${currency ?? ''}`.trim();
 
 export function WatchItemsPanel({ watch, onBack }: { watch: WatchSummary; onBack: () => void }) {
+  // Prix des boutiques surveillées, convertis dans la devise de l'utilisateur.
+  const money = useMoney();
   const [items, setItems] = useState<WatchItemView[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [etat, setEtat] = useState<Etat>('tous');
@@ -169,7 +170,7 @@ export function WatchItemsPanel({ watch, onBack }: { watch: WatchSummary; onBack
                     </p>
                     {item.kind && <p className="text-xs text-muted-foreground">{item.kind}</p>}
                   </TableCell>
-                  <TableCell className="text-right whitespace-nowrap">{money(item.price, item.currency)}</TableCell>
+                  <TableCell className="text-right whitespace-nowrap">{money.format(item.price, item.currency, { round: true })}</TableCell>
                   <TableCell className="text-right">{item.sales === null ? '—' : item.sales.toLocaleString('fr-FR')}</TableCell>
                   <TableCell className="text-right whitespace-nowrap">
                     {item.trackedDays} j

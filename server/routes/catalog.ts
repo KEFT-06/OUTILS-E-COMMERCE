@@ -11,10 +11,10 @@ import { asComplianceRouteError } from '@server/services/compliance/guard';
 import { imagesConfigured } from '@server/services/creatives';
 import { CreditConfigUnavailableError, getCostTable } from '@server/services/credits';
 import { veoConfigured } from '@server/services/veo';
-import { currencyForCountry, getRates, isSupportedCurrency } from '@server/services/currency';
+import { convertAmount, currencyForCountry, getRates, isSupportedCurrency } from '@server/services/currency';
 import { LaunchKitUnavailableError, getLaunchKitConfig } from '@server/services/launchKit';
 import { FEATURES, PlansUnavailableError, getPlanConfig, planPrice } from '@server/services/plans';
-import { PricingUnavailableError, getPricing } from '@server/services/pricing';
+import { PricingUnavailableError, getPricing, pricingIn } from '@server/services/pricing';
 import { AD_FRAMEWORKS } from '@server/shared/adFrameworks';
 import { findCountry } from '@server/shared/countries';
 
@@ -41,10 +41,10 @@ const cachePublic =
 export const catalogRouter = Router();
 
 /** Tables de configuration illisibles : 503 explicite plutôt qu'une erreur interne. */
-function configRoute<T>(read: () => Promise<T>, unavailable: { error: new (...args: never[]) => Error & { configPath: string }; log: string; code: string }) {
-  return asyncRoute(async (_req, res) => {
+function configRoute<T>(read: (req: Parameters<RequestHandler>[0]) => Promise<T>, unavailable: { error: new (...args: never[]) => Error & { configPath: string }; log: string; code: string }) {
+  return asyncRoute(async (req, res) => {
     try {
-      res.json(await read());
+      res.json(await read(req));
     } catch (error) {
       if (error instanceof unavailable.error) {
         console.error(`[${unavailable.log}] table illisible :`, error.configPath, error.cause);
@@ -189,8 +189,37 @@ catalogRouter.get(
 /** Crédits — différenciateur n°3 : le coût est annoncé avant l'action. */
 catalogRouter.get('/credits/costs', cachePublic(300), configRoute(getCostTable, { error: CreditConfigUnavailableError, log: 'crédits', code: 'CREDIT_CONFIG_UNAVAILABLE' }));
 
-/** Fourchettes de prix — CdC §2 : jamais figées dans le code. */
-catalogRouter.get('/pricing/ranges', cachePublic(300), configRoute(getPricing, { error: PricingUnavailableError, log: 'prix', code: 'PRICING_UNAVAILABLE' }));
+const currencyQuery = z.object({ currency: z.string().trim().toUpperCase().regex(/^[A-Z]{3}$/).optional().catch(undefined) });
+
+/**
+ * Fourchettes de prix — CdC §2 : jamais figées dans le code. « ?currency=XAF » les rend dans la
+ * devise de l'utilisateur : chacun ne voit que celle de son pays.
+ */
+catalogRouter.get(
+  '/pricing/ranges',
+  cachePublic(300),
+  configRoute(
+    async (req) => {
+      const config = await getPricing();
+      const currency = currencyQuery.parse(req.query).currency;
+      if (!currency) return config;
+      const rates = await getRates();
+      if (!isSupportedCurrency(currency, rates)) return config;
+      return pricingIn(config, currency, (amount) => convertAmount(amount, config.currency, currency, rates));
+    },
+    { error: PricingUnavailableError, log: 'prix', code: 'PRICING_UNAVAILABLE' },
+  ),
+);
+
+/** Taux de change, identiques pour tous : le navigateur convertit chaque montant dans la devise de l'utilisateur. */
+catalogRouter.get(
+  '/currency/rates',
+  cachePublic(3600),
+  asyncRoute(async (_req, res) => {
+    const rates = await getRates();
+    res.json({ base: rates.base, rates: rates.rates, updatedAt: rates.updatedAt });
+  }),
+);
 
 /** Structures de campagnes Meta et TikTok (feuille de route 5.4). */
 catalogRouter.get(

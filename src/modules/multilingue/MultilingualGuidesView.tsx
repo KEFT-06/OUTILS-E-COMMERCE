@@ -151,7 +151,7 @@ function CreateGuideDialog({ onCreated }: { onCreated: (guide: Guide) => void })
                 onChange={(event) => setText(event.target.value)}
                 rows={12}
                 maxLength={120_000}
-                placeholder={'# Budget\nPrévoir 150 000 FCFA pour 50 poussins…\n\n# Alimentation\nDeux repas par jour…'}
+                placeholder={'# Budget\nPrévoir le budget de 50 poussins…\n\n# Alimentation\nDeux repas par jour…'}
               />
               <p className="text-xs text-muted-foreground">
                 Chaque ligne qui commence par # ouvre une section.

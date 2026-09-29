@@ -108,7 +108,7 @@ export const wooCommerceAdapter: MarketplaceAdapter = {
           isFree: amount === 0,
           price:
             Number.isFinite(amount) && amount > 0
-              ? { formatted: currency ? formatMajor(amount, currency) : String(item.price), currency: currency ?? '' }
+              ? { formatted: currency ? formatMajor(amount, currency) : String(item.price), currency: currency ?? '', amount: currency ? amount : null }
               : null,
         },
       ];

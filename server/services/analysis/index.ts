@@ -19,7 +19,7 @@ import {
 } from '@server/services/analysis/prompt';
 import type { ResearchEngine, ResearchOutcome } from '@server/services/analysis/research';
 import type { WebSource } from '@server/services/analysis/webSearch';
-import { currencyForCountry, getRates } from '@server/services/currency';
+import { conversionHints, currencyForCountry, getRates } from '@server/services/currency';
 import type { DataProvenance } from '@server/shared/provenance';
 import type {
   CompetitorInsight,
@@ -377,6 +377,9 @@ export async function writeReport(input: {
   const marketName = market ? countryName(market) : null;
 
   let model = env.PERPLEXITY_WRITER;
+  // Devise du pays de l'UTILISATEUR, et non du marché étudié : chacun ne lit que la sienne.
+  const rates = await getRates();
+  const currency = currencyForCountry(input.userCountry ?? market, rates);
   const response = await generateJsonWithPerplexity({
     service: SERVICE,
     prompt: buildAnalysisPrompt({
@@ -386,6 +389,7 @@ export async function writeReport(input: {
       sources: research.sources,
       webSearchConfigured: true,
       memo: research.memo,
+      currency: { code: currency, conversions: conversionHints(currency, rates) },
     }),
     responseSchema: ANALYSIS_RESPONSE_SCHEMA,
     parse: parseAnalysisResponse,
@@ -406,7 +410,7 @@ export async function writeReport(input: {
     research: research.engine,
     response,
     model,
-    currency: currencyForCountry(market ?? input.userCountry, await getRates()),
+    currency,
   });
 
   const db = getDb();

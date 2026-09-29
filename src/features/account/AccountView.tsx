@@ -1766,7 +1766,7 @@ export function AccountView({ onSelectSavedNiche }: AccountViewProps) {
         <Alert variant="warning">
           <TriangleAlert />
           <AlertTitle>Choisissez votre pays</AlertTitle>
-          <AlertDescription>Il fixe la devise de vos prix : sans pays, ils s’affichent en dollars.</AlertDescription>
+          <AlertDescription>Il fixe la devise de tous vos montants. En attendant, ils suivent le pays deviné d’après votre fuseau horaire.</AlertDescription>
         </Alert>
       )}
       <ProfileCard account={account} />

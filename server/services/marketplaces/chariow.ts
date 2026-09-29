@@ -252,6 +252,7 @@ export const chariowAdapter: MarketplaceAdapter = {
             ? {
                 formatted: price.formatted ?? `${price.value.toLocaleString('fr-FR')} ${price.currency}`,
                 currency: price.currency,
+                amount: Number.isFinite(price.value) ? price.value : null,
               }
             : null,
         },

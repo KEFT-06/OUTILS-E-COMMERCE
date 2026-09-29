@@ -21,7 +21,8 @@ export interface MarketplaceProduct {
   type: string;
   isFree: boolean;
   /** Prix tel que publié par la marketplace ; null pour un produit gratuit ou sans prix. */
-  price: { formatted: string; currency: string } | null;
+  /** `amount` en unités principales : le navigateur le convertit dans la devise de l’utilisateur. */
+  price: { formatted: string; currency: string; amount: number | null } | null;
   thumbnailUrl?: string;
 }
 

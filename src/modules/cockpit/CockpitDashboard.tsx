@@ -5,6 +5,7 @@ import { pathOf, type ModuleId } from '@/app/navigation';
 import { useCreditGate } from '@/app/providers/CreditGateProvider';
 import { useAuth } from '@/features/auth/AuthContext';
 import { PageHeader } from '@/shared/components/PageHeader';
+import { useMoney } from '@/shared/lib/money';
 import { cn } from '@/shared/lib/utils';
 import type { MarketAnalysisReport } from '@/shared/types/analysis';
 import { Button } from '@/shared/ui/button';
@@ -78,6 +79,7 @@ export function CockpitDashboard({ report, onNavigateToModule, onOpenBilling }: 
   const { account } = useAuth();
   const { costTable } = useCreditGate();
   const { providers, failed } = useProviderStatus();
+  const money = useMoney();
 
   // Le solde vient du serveur, source unique partagée avec la page Compte.
   const credits = account?.credits;
@@ -148,7 +150,7 @@ export function CockpitDashboard({ report, onNavigateToModule, onOpenBilling }: 
                 <span className="font-semibold">Illimité</span>
               ) : costTable ? (
                 <span className="font-semibold tabular-nums">
-                  ≈ {(creditsRemaining * costTable.pointValue).toLocaleString('fr-FR')} {costTable.currency}
+                  {money.format(creditsRemaining * costTable.pointValue, costTable.currency, { round: true, approx: true })}
                 </span>
               ) : (
                 <span className="text-muted-foreground">grille indisponible</span>

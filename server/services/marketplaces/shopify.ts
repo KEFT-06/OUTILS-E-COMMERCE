@@ -162,7 +162,7 @@ export const shopifyAdapter: MarketplaceAdapter = {
         name: node.title,
         type: node.productType || 'produit',
         isFree: amount === 0,
-        price: price && Number.isFinite(amount) && amount > 0 ? { formatted: formatMajor(amount, price.currencyCode), currency: price.currencyCode } : null,
+        price: price && Number.isFinite(amount) && amount > 0 ? { formatted: formatMajor(amount, price.currencyCode), currency: price.currencyCode, amount } : null,
       };
     });
     return { products, truncated };
