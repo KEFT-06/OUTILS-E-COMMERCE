@@ -258,6 +258,22 @@ async function failDocument(reportId: string, error: unknown): Promise<void> {
   });
 }
 
+/** Rédaction proprement dite, puis contrôle du texte rendu : sans base de données. */
+export async function composeDocument(input: { report: MarketAnalysisReport; memo: string | null; today: string }): Promise<{ title: string; markdown: string; model: string | null }> {
+  const { report } = input;
+  const sourceIds = new Set((report.groundingSources ?? []).flatMap((source) => (typeof source.id === 'number' ? [source.id] : [])));
+  const { text, model } = await generateTextWithPerplexity({
+    service: SERVICE,
+    instructions: INSTRUCTIONS,
+    prompt: buildDocumentPrompt(input),
+    maxOutputTokens: 9_000,
+    minChars: MIN_CHARS,
+    timeoutMs: WRITE_TIMEOUT_MS,
+  });
+  const { title, markdown } = finalizeDocument(text, sourceIds, `Rapport d’étude de marché : ${report.nicheName}`);
+  return { title, markdown, model };
+}
+
 async function writeDocument(reportId: string, startedAt: Date, today: string): Promise<void> {
   const db = getDb();
   try {
@@ -268,18 +284,7 @@ async function writeDocument(reportId: string, startedAt: Date, today: string): 
       .limit(1);
     if (!row) return;
     const report = row.report as unknown as MarketAnalysisReport;
-    const sourceIds = new Set((report.groundingSources ?? []).flatMap((source) => (typeof source.id === 'number' ? [source.id] : [])));
-
-    const { text, model } = await generateTextWithPerplexity({
-      service: SERVICE,
-      instructions: INSTRUCTIONS,
-      prompt: buildDocumentPrompt({ report, memo: row.memo, today }),
-      maxOutputTokens: 9_000,
-      minChars: MIN_CHARS,
-      timeoutMs: WRITE_TIMEOUT_MS,
-    });
-
-    const { title, markdown } = finalizeDocument(text, sourceIds, `Rapport d’étude de marché : ${report.nicheName}`);
+    const { title, markdown, model } = await composeDocument({ report, memo: row.memo, today });
     const verdict = await checkText(markdown);
 
     await db
