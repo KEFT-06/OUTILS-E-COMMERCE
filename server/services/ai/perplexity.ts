@@ -178,6 +178,8 @@ export async function generateJsonWithPerplexity<T>(input: {
   responseSchema: Record<string, unknown>;
   parse: (value: unknown) => T;
   timeoutMs: number;
+  /** Longueur maximale de la réponse (plan d'un long rapport). */
+  maxOutputTokens?: number;
   onModel?: (model: string) => void;
 }): Promise<T> {
   let value: T | undefined;

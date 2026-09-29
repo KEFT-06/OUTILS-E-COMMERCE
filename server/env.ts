@@ -114,6 +114,8 @@ const schema = z.object({
    * servie par une autre flotte, aux limites par minute bien plus larges que les versions
    * récentes. Présent dans la liste des modèles de la clé au 29/09/2026. « off » : aucun.
    */
+  /** Vagues de parties au plus par passage d'un rapport long ; 0 : seul le temps compte. Sert aux tests. */
+  REPORT_SLICE_WAVES: z.coerce.number().int().min(0).default(0),
   GEMINI_LAST_RESORT_MODEL: z
     .string()
     .regex(/^[\w.-]+$/)

@@ -20,6 +20,8 @@ before(async () => {
     PERPLEXITY_API_KEY: 'cle-perplexity-de-test',
     PERPLEXITY_API_URL: `${providers.base}/perplexity`,
     PERPLEXITY_RESEARCH_PRESET: 'medium',
+    // Une vague de parties par passage : les rapports longs se finissent en plusieurs passages.
+    REPORT_SLICE_WAVES: '1',
   });
 });
 
@@ -126,7 +128,11 @@ describe('Rapport rédigé après l’analyse', () => {
     const before = await balance(agent);
     const writerBefore = providers.writerCalls.length;
 
-    await agent.post(`/api/reports/${report.id}/document`).send({ pages: 40 }).expect(400);
+    await agent.post(`/api/reports/${report.id}/document`).send({ pages: 0 }).expect(400);
+    await agent.post(`/api/reports/${report.id}/document`).send({ pages: 251 }).expect(400);
+    const plafond = await agent.post(`/api/reports/${report.id}/document`).send({ pages: 150 }).expect(403);
+    assert.equal(plafond.body.error.code, 'REPORT_PAGES_PLAN', 'le palier Pro plafonne à 100 pages, sans débit');
+    assert.equal((await balance(agent)).credits.total, before.credits.total);
     const launched = await agent.post(`/api/reports/${report.id}/document`).send({ pages: 12 }).expect(202);
     assert.equal(launched.body.document.targetPages, 12);
     const document = await waitForDocument(agent, report.id);
@@ -134,12 +140,40 @@ describe('Rapport rédigé après l’analyse', () => {
 
     const calls = providers.writerCalls.slice(writerBefore);
     assert.equal(calls.filter((call) => call.prompt.includes('PLAN DU RAPPORT')).length, 1, 'un plan');
-    assert.equal(calls.filter((call) => call.prompt.includes('RÉDIGE LA PARTIE')).length, 4, 'puis une rédaction par partie');
+    assert.equal(calls.filter((call) => call.prompt.includes('RÉDIGE LA PARTIE')).length, 5, 'puis une rédaction par partie (12 pages : 5 parties)');
     assert.ok(calls.every((call) => call.prompt.includes('Devise : tout montant s’écrit en')), 'la devise de l’utilisateur est imposée partout');
 
     assert.equal(document.title, `Rapport long : ${report.nicheName}`);
-    assert.deepEqual([...document.markdown!.matchAll(/^## (.+)$/gm)].map((m) => m[1]), ['Le marché', 'La concurrence', 'Les acheteurs', 'Recommandations']);
+    assert.deepEqual([...document.markdown!.matchAll(/^## (.+)$/gm)].map((m) => m[1]), ['Partie 1', 'Partie 2', 'Partie 3', 'Partie 4', 'Partie 5']);
     assert.equal(before.credits.total - (await balance(agent)).credits.total, 6, 'douze pages : deux tranches de dix, trois points chacune');
+  });
+
+  it('écrit un très long rapport en plusieurs passages, par chapitres, sans rien perdre entre deux', async () => {
+    const { agent } = await signInWithPlan(app, 'redaction-tres-longue@exemple.com', 'elite');
+    const report = await analyzedReport(agent, 'élevage de poulets');
+    const writerBefore = providers.writerCalls.length;
+
+    await agent.post(`/api/reports/${report.id}/document`).send({ pages: 45 }).expect(202);
+    // Le suivi de l'écran relance chaque passage ; on relève l'avancement au fil de l'eau.
+    const avancements = new Set<string>();
+    let document: Document | null = null;
+    for (let attempt = 0; attempt < 400; attempt += 1) {
+      const { body } = await agent.get(`/api/reports/${report.id}/document`).expect(200);
+      if (body.document.progress) avancements.add(`${body.document.progress.done}/${body.document.progress.total}`);
+      if (body.document.status !== 'writing') {
+        document = body.document as Document;
+        break;
+      }
+      await sleep(40);
+    }
+    assert.equal(document?.status, 'ready', JSON.stringify(document?.error));
+    assert.ok(avancements.size >= 3, `plusieurs passages observés : ${[...avancements].join(', ')}`);
+
+    const parties = providers.writerCalls.slice(writerBefore).filter((call) => call.prompt.includes('RÉDIGE LA PARTIE'));
+    assert.equal(parties.length, 18, '45 pages : 18 parties, chacune rédigée une seule fois');
+    const markdown = document!.markdown!;
+    assert.deepEqual([...markdown.matchAll(/^## (.+)$/gm)].map((m) => m[1]), ['Chapitre 1', 'Chapitre 2', 'Chapitre 3'], 'des chapitres au-delà de 40 pages');
+    assert.equal([...markdown.matchAll(/^### Partie \d+$/gm)].length, 18, 'les parties sous leurs chapitres');
   });
 
   it('reprend seule après un refus passager, sans message ni nouveau débit', async () => {

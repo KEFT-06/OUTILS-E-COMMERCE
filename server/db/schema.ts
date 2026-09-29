@@ -408,6 +408,13 @@ export const reportDocuments = pgTable(
      */
     retryCount: integer('retry_count').notNull().default(0),
     retryAfter: moment('retry_after'),
+    /**
+     * Rapport long, écrit sur plusieurs passages du serveur : le plan, les parties déjà rédigées
+     * (null tant qu'une partie attend), et la réservation du passage en cours.
+     */
+    outline: jsonb('outline').$type<Record<string, unknown>>(),
+    sections: jsonb('sections').$type<(string | null)[]>(),
+    leaseUntil: moment('lease_until'),
     creditsCharged: integer('credits_charged').notNull().default(0),
     debitTransactionId: uuid('debit_transaction_id'),
     refunded: boolean('refunded').notNull().default(false),

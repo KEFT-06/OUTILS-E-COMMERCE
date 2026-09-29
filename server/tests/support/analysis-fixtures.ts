@@ -257,9 +257,17 @@ export async function startFakeProviders(): Promise<FakeProviders> {
             // Rapport long : un plan, puis une réponse par partie.
             if ((body as { response_format?: unknown }).response_format && input.includes('PLAN DU RAPPORT')) {
               const niche = /« ([^»]+) »/.exec(input)?.[1] ?? 'la niche';
+              // Autant de parties (et de chapitres) que le plan en demande.
+              const parts = Number(/(\d+) parties/.exec(input)?.[1] ?? 4);
+              const chapters = Number(/(\d+) chapitres/.exec(input)?.[1] ?? 0);
               return send(200, completed(JSON.stringify({
                 title: `Rapport long : ${niche}`,
-                sections: ['Le marché', 'La concurrence', 'Les acheteurs', 'Recommandations'].map((heading, index) => ({ heading, focus: `Couvrir ${heading.toLowerCase()}`, pages: index === 3 ? 2 : 3 })),
+                sections: Array.from({ length: parts }, (_, index) => ({
+                  ...(chapters ? { chapter: `Chapitre ${Math.floor((index * chapters) / parts) + 1}` } : {}),
+                  heading: `Partie ${index + 1}`,
+                  focus: `Couvrir le point ${index + 1}`,
+                  pages: 2,
+                })),
               })));
             }
             const partie = /RÉDIGE LA PARTIE \d+ : « ([^»]+) »/.exec(input);

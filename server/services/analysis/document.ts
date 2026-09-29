@@ -1,11 +1,11 @@
-import { and, eq, lt, ne, or } from 'drizzle-orm';
+import { and, eq, isNull, ne } from 'drizzle-orm';
 import { z } from 'zod';
 import { getDb } from '@server/db/client';
 import { reportDocuments, reports, users } from '@server/db/schema';
-import { providers } from '@server/env';
+import { env, providers } from '@server/env';
 import { AppError } from '@server/middleware';
 import type { RequestAuth } from '@server/middleware/auth';
-import { debitCredits, refundDebit } from '@server/services/accounts';
+import { debitCredits, effectiveLimits, refundDebit } from '@server/services/accounts';
 import { generateJsonWithPerplexity, generateTextWithPerplexity } from '@server/services/ai/perplexity';
 import { checkText } from '@server/services/compliance';
 import { getActionCost } from '@server/services/credits';
@@ -41,10 +41,6 @@ import { todayLabel } from '@server/services/analysis';
 
 const SERVICE = { name: 'service de rédaction', code: 'REPORT', log: 'rapport rédigé' };
 export const REPORT_DOCUMENT_ACTION = 'market_report_write';
-/** Sous les 300 s accordés à une fonction : la rédaction doit finir dans la même instance. */
-const WRITE_TIMEOUT_MS = 240_000;
-/** Au-delà, une rédaction restée « en cours » est abandonnée (instance coupée) et remboursée. */
-const DOCUMENT_DEADLINE_MS = 6 * 60_000;
 const MIN_CHARS = 1_200;
 const MAX_MEMO_CHARS = 30_000;
 
@@ -57,19 +53,21 @@ const reportNotFound = () => new AppError(404, 'Rapport introuvable sur votre co
 /*  Consigne et matière transmises au rédacteur                                */
 /* -------------------------------------------------------------------------- */
 
-/** Longueurs proposées à l'utilisateur, en pages A4. */
-export const REPORT_PAGES = { min: 3, max: 30, default: 10 } as const;
+/** Longueurs proposées à l'utilisateur, en pages A4 (plafonnées par le palier). */
+export const REPORT_PAGES = { min: 1, max: 250, default: 10 } as const;
 /** Page A4 d'un rapport à la mise en page du PDF : titres, paragraphes, quelques listes. */
 const WORDS_PER_PAGE = 380;
 /** Jusque-là, un seul appel suffit ; au-delà, le rapport s'écrit partie par partie. */
 const SINGLE_CALL_MAX_PAGES = 6;
-/** Parties rédigées en même temps : de quoi tenir un rapport de 30 pages dans le délai. */
-const SECTION_CONCURRENCY = 4;
+/** Au-delà, les parties se regroupent en chapitres. */
+const CHAPTER_THRESHOLD_PAGES = 40;
+/** Parties rédigées en même temps. */
+const SECTION_CONCURRENCY = 5;
 
 const COMMON_RULES = [
   '2. Aucun taux : pas de score, de note sur 100, de pourcentage ni de niveau (faible, moyen, élevé…) attribué à la demande, la saturation, la rentabilité, l’opportunité ou la viralité.',
   '3. Chaque fait (chiffre, prix, concurrent, tendance, citation) vient des sources fournies et porte son renvoi entre crochets, au numéro de la source : [2], ou [1][4]. N’invente ni chiffre, ni concurrent, ni source.',
-  '4. Ce que les sources n’établissent pas est présenté comme une recommandation ou une hypothèse, en le disant clairement, avec la façon de le vérifier.',
+  '4. Quand les sources ne tranchent pas, prends position : une recommandation argumentée (comparables, raisonnement, prudence assumée), présentée comme telle. Ne renvoie jamais le lecteur à des « points à vérifier » ou à valider lui-même.',
   '5. N’écris pas de bibliographie, de liste de sources ni d’annexe de références : elle est ajoutée automatiquement à la fin.',
   '6. Ne nomme aucun outil d’analyse, moteur de recherche ni intelligence artificielle, et ne parle pas de toi.',
 ];
@@ -94,21 +92,29 @@ function wholeReportInstructions(words: number): string {
 }
 
 /** Consigne d'une partie d'un rapport long, écrite à côté des autres. */
-function sectionInstructions(words: number): string {
+function sectionInstructions(words: number, level: '##' | '###'): string {
   return [
     ...ROLE,
     'Le rapport est long : il est rédigé partie par partie. Tu rédiges UNE partie, dont le titre et le contenu attendu te sont donnés, en tenant compte du plan complet pour ne rien répéter des autres parties.',
     '',
     'Règles impératives :',
-    '1. Format Markdown : commence par le titre de ta partie (## …), puis des sous-parties si utile (### …). Pas de titre principal (#). Des paragraphes rédigés ; des listes quand elles aident ; un tableau seulement pour comparer des offres.',
+    `1. Format Markdown : commence par le titre de ta partie (${level} …), puis des sous-parties si utile (${level}# …). Pas de titre de niveau supérieur. Des paragraphes rédigés ; des listes quand elles aident ; un tableau seulement pour comparer des offres.`,
     ...COMMON_RULES,
     `7. Environ ${words} mots pour cette partie.`,
   ].join('\n');
 }
 
+interface OutlineSection {
+  /** Chapitre de rattachement, pour les rapports de plus de 40 pages. */
+  chapter?: string;
+  heading: string;
+  focus: string;
+  pages: number;
+}
+
 interface ReportOutline {
   title: string;
-  sections: { heading: string; focus: string; pages: number }[];
+  sections: OutlineSection[];
 }
 
 const OUTLINE_SCHEMA = {
@@ -119,7 +125,7 @@ const OUTLINE_SCHEMA = {
       type: 'array',
       items: {
         type: 'object',
-        properties: { heading: { type: 'string' }, focus: { type: 'string' }, pages: { type: 'number' } },
+        properties: { chapter: { type: 'string' }, heading: { type: 'string' }, focus: { type: 'string' }, pages: { type: 'number' } },
         required: ['heading', 'focus', 'pages'],
       },
     },
@@ -130,10 +136,25 @@ const OUTLINE_SCHEMA = {
 const outlineSchema = z.object({
   title: z.string().trim().min(3).max(200),
   sections: z
-    .array(z.object({ heading: z.string().trim().min(2).max(160), focus: z.string().trim().min(2).max(600), pages: z.number().positive() }))
+    .array(
+      z.object({
+        chapter: z.string().trim().max(160).optional(),
+        heading: z.string().trim().min(2).max(160),
+        focus: z.string().trim().min(2).max(600),
+        pages: z.number().positive(),
+      }),
+    )
     .min(2)
-    .max(16),
+    .max(110),
 });
+
+/** Nombre de parties (et de chapitres) d'un rapport de `pages` pages. */
+function outlineShape(pages: number): { parts: number; chapters: number | null } {
+  return {
+    parts: Math.min(100, Math.max(3, Math.round(pages / 2.5))),
+    chapters: pages > CHAPTER_THRESHOLD_PAGES ? Math.min(16, Math.max(3, Math.round(pages / 15))) : null,
+  };
+}
 
 const line = (value: string | null | undefined) => (value ?? '').replace(/\s+/g, ' ').trim();
 const refs = (ids: number[] | undefined) => (ids && ids.length > 0 ? ` ${ids.map((id) => `[${id}]`).join('')}` : '');
@@ -205,6 +226,26 @@ export function buildDocumentPrompt(input: {
   if (report.strategicActionPlan.length > 0) {
     out.push('', 'Plan d’action proposé :');
     for (const phase of report.strategicActionPlan) out.push(`- ${line(phase.phase)} — ${line(phase.title)} : ${phase.steps.map(line).join(' ; ')}`);
+  }
+
+  if (report.keyFindings?.length) {
+    out.push('', 'Constats clés :');
+    for (const finding of report.keyFindings) out.push(`- ${line(finding.title)} : ${line(finding.detail)}${refs(finding.sourceIds)}`);
+  }
+  if (report.audience) {
+    const a = report.audience;
+    out.push('', `Acheteur : ${line(a.profile)}${refs(a.sourceIds)}`, `Difficultés : ${a.pains.map(line).join(' ; ')}`, `Motivations : ${a.motivations.map(line).join(' ; ')}`, `Freins et réponses : ${a.objections.map(line).join(' ; ')}`);
+  }
+  if (report.pricing) {
+    out.push('', `Prix constatés : ${line(report.pricing.observed)}${refs(report.pricing.sourceIds)}`, `Prix conseillés : ${line(report.pricing.recommendation)}`, `Paiement : ${report.pricing.paymentMethods.map(line).join(', ')}`);
+  }
+  if (report.channels?.length) {
+    out.push('', 'Canaux :');
+    for (const channel of report.channels) out.push(`- ${line(channel.channel)} : ${line(channel.why)}`);
+  }
+  if (report.risks?.length) {
+    out.push('', 'Risques et parades :');
+    for (const risk of report.risks) out.push(`- ${line(risk.risk)} → ${line(risk.mitigation)}${refs(risk.sourceIds)}`);
   }
 
   return out.join('\n');
@@ -305,6 +346,10 @@ function viewOf(row: DocumentRow, report: MarketAnalysisReport): ReportDocument 
     startedAt: row.startedAt.toISOString(),
     completedAt: row.completedAt?.toISOString() ?? null,
     targetPages: row.targetPages ?? null,
+    progress:
+      row.status === 'writing' && Array.isArray(row.sections)
+        ? { done: row.sections.filter(Boolean).length, total: row.sections.length }
+        : null,
   };
 }
 
@@ -327,42 +372,72 @@ async function failDocument(reportId: string, error: unknown): Promise<void> {
   });
 }
 
-/** Exécute des tâches avec au plus `limit` en même temps, dans l'ordre de leurs résultats. */
-async function inBatches<T>(tasks: (() => Promise<T>)[], limit: number): Promise<T[]> {
-  const results: T[] = new Array(tasks.length);
-  let next = 0;
-  const worker = async () => {
-    while (next < tasks.length) {
-      const index = next++;
-      results[index] = await tasks[index]!();
-    }
-  };
-  await Promise.all(Array.from({ length: Math.min(limit, tasks.length) }, worker));
-  return results;
-}
-
-/** Plan d'un rapport long : titre et parties, pages réparties pour atteindre la longueur demandée. */
-async function outlineOf(material: string, pages: number, deadline: number): Promise<ReportOutline> {
-  const parts = Math.min(14, Math.max(3, Math.round(pages / 2.5)));
+/** Plan d'un rapport long : titre, parties (et chapitres), pages réparties pour atteindre la longueur. */
+async function outlineOf(material: string, pages: number, timeoutMs: number): Promise<ReportOutline> {
+  const { parts, chapters } = outlineShape(pages);
+  const structure = chapters
+    ? `${chapters} chapitres (champ « chapter », le même pour toutes les parties d’un chapitre, parties d’un même chapitre à la suite) regroupant ${parts} parties au total`
+    : `${parts} parties (entre 3 et 14), sans champ « chapter »`;
   const outline = await generateJsonWithPerplexity({
     service: SERVICE,
     instructions: [...ROLE, 'Tu prépares le PLAN du rapport ; les parties seront rédigées ensuite, chacune à part.'].join('\n'),
-    prompt: `${material}\n\nPLAN DU RAPPORT : propose un titre parlant et ${parts} parties (entre 3 et 14) pour un rapport d’environ ${pages} pages. Pour chaque partie : un titre parlant (« heading »), ce qu’elle doit couvrir sans empiéter sur les autres (« focus »), et son nombre de pages (« pages »). La somme des pages fait ${pages}. Aucune partie « sources », « bibliographie » ni « annexe » : elle est ajoutée automatiquement. Termine par une partie de recommandations concrètes et datées.`,
+    prompt: `${material}\n\nPLAN DU RAPPORT : propose un titre parlant et ${structure}, pour un rapport d’environ ${pages} pages. Pour chaque partie : un titre parlant (« heading »), ce qu’elle doit couvrir sans empiéter sur les autres (« focus »), et son nombre de pages (« pages »). La somme des pages fait ${pages}. Aucune partie « sources », « bibliographie » ni « annexe » : elle est ajoutée automatiquement. Termine par des recommandations concrètes et datées.`,
     responseSchema: OUTLINE_SCHEMA as unknown as Record<string, unknown>,
     parse: (value) => outlineSchema.parse(value),
-    timeoutMs: Math.min(90_000, deadline - Date.now()),
+    maxOutputTokens: Math.min(16_000, 800 + parts * 120),
+    timeoutMs,
   });
   // Pages rééquilibrées : la somme proposée ne tombe pas toujours juste.
   const total = outline.sections.reduce((sum, section) => sum + section.pages, 0) || 1;
-  return { title: outline.title, sections: outline.sections.map((section) => ({ ...section, pages: (section.pages / total) * pages })) };
+  return {
+    title: outline.title,
+    sections: outline.sections.map((section) => ({
+      ...(chapters && section.chapter ? { chapter: section.chapter } : {}),
+      heading: section.heading,
+      focus: section.focus,
+      pages: (section.pages / total) * pages,
+    })),
+  };
+}
+
+/** Rédige une partie d'un rapport long, avec le plan complet sous les yeux. */
+async function writeSection(material: string, outline: ReportOutline, index: number, timeoutMs: number): Promise<string> {
+  const section = outline.sections[index]!;
+  const level = section.chapter ? '###' : '##';
+  const words = Math.max(250, Math.round(section.pages * WORDS_PER_PAGE));
+  const plan = outline.sections
+    .map((entry, position) => `${position + 1}. ${entry.chapter ? `[${entry.chapter}] ` : ''}${entry.heading} — ${entry.focus}`)
+    .join('\n');
+  const written = await generateTextWithPerplexity({
+    service: SERVICE,
+    instructions: sectionInstructions(words, level),
+    prompt: `${material}\n\n## Plan complet du rapport « ${outline.title} »\n${plan}\n\nRÉDIGE LA PARTIE ${index + 1} : « ${section.heading} » — ${section.focus}. Environ ${words} mots. Commence par « ${level} ${section.heading} ».`,
+    maxOutputTokens: Math.min(8_000, Math.round(words * 2.2)),
+    minChars: Math.min(MIN_CHARS, words * 3),
+    timeoutMs,
+  });
+  // Une partie ne porte pas de titre de niveau supérieur : un « # » égaré redevient une partie.
+  const body = written.text.trim().replace(/^#{1,2}\s+/gm, `${level} `);
+  return body.startsWith(`${level} `) ? body : `${level} ${section.heading}\n\n${body}`;
+}
+
+/** Assemble le rapport : titre, chapitres (rapports longs), parties dans l'ordre du plan. */
+function assemble(outline: ReportOutline, sections: string[]): string {
+  const out = [`# ${outline.title}`];
+  let chapter: string | undefined;
+  outline.sections.forEach((section, index) => {
+    if (section.chapter && section.chapter !== chapter) {
+      chapter = section.chapter;
+      out.push(`## ${chapter}`);
+    }
+    out.push(sections[index] ?? '');
+  });
+  return out.join('\n\n');
 }
 
 /**
- * Rédaction proprement dite, puis contrôle du texte rendu : sans base de données.
- *
- * Jusqu'à six pages, un seul appel tient la longueur. Au-delà, un rédacteur qui écrit tout d'un
- * trait s'arrête bien avant : le rapport est donc planifié, puis chaque partie est rédigée à
- * part — quatre à la fois, pour tenir trente pages dans le temps d'une fonction.
+ * Rédaction d'un rapport court, d'un seul appel, contrôle compris : sans base de données.
+ * Sert aussi aux essais réels du rédacteur.
  */
 export async function composeDocument(input: {
   report: MarketAnalysisReport;
@@ -372,104 +447,159 @@ export async function composeDocument(input: {
   currency?: { code: string; conversions: string };
 }): Promise<{ title: string; markdown: string; model: string | null }> {
   const { report } = input;
-  const pages = Math.min(REPORT_PAGES.max, Math.max(REPORT_PAGES.min, Math.round(input.pages ?? REPORT_PAGES.default)));
-  const sourceIds = new Set((report.groundingSources ?? []).flatMap((source) => (typeof source.id === 'number' ? [source.id] : [])));
-  const fallbackTitle = `Rapport d’étude de marché : ${report.nicheName}`;
-  const material = buildDocumentPrompt(input);
-  const deadline = Date.now() + WRITE_TIMEOUT_MS;
-
-  if (pages <= SINGLE_CALL_MAX_PAGES) {
-    const words = pages * WORDS_PER_PAGE;
-    const { text, model } = await generateTextWithPerplexity({
-      service: SERVICE,
-      instructions: wholeReportInstructions(words),
-      prompt: `${material}\n\nRédige maintenant le rapport complet, selon les règles.`,
-      maxOutputTokens: Math.min(12_000, Math.round(words * 2.2)),
-      minChars: Math.min(MIN_CHARS, words * 3),
-      timeoutMs: WRITE_TIMEOUT_MS,
-    });
-    const { title, markdown } = finalizeDocument(text, sourceIds, fallbackTitle);
-    return { title, markdown, model };
-  }
-
-  const outline = await outlineOf(material, pages, deadline);
-  const plan = outline.sections.map((section, index) => `${index + 1}. ${section.heading} — ${section.focus}`).join('\n');
-  let model: string | null = null;
-  const sections = await inBatches(
-    outline.sections.map((section, index) => async () => {
-      const words = Math.max(250, Math.round(section.pages * WORDS_PER_PAGE));
-      const written = await generateTextWithPerplexity({
-        service: SERVICE,
-        instructions: sectionInstructions(words),
-        prompt: `${material}\n\n## Plan complet du rapport « ${outline.title} »\n${plan}\n\nRÉDIGE LA PARTIE ${index + 1} : « ${section.heading} » — ${section.focus}. Environ ${words} mots. Commence par « ## ${section.heading} ».`,
-        maxOutputTokens: Math.min(8_000, Math.round(words * 2.2)),
-        minChars: Math.min(MIN_CHARS, words * 3),
-        timeoutMs: Math.max(20_000, deadline - Date.now()),
-      });
-      model ??= written.model;
-      // Une partie ne porte pas le titre du rapport : un « # » égaré redevient une partie.
-      const body = written.text.trim().replace(/^#\s+/gm, '## ');
-      return /^##\s/.test(body) ? body : `## ${section.heading}\n\n${body}`;
-    }),
-    SECTION_CONCURRENCY,
-  );
-  const { title, markdown } = finalizeDocument(`# ${outline.title}\n\n${sections.join('\n\n')}`, sourceIds, fallbackTitle);
+  const pages = Math.min(SINGLE_CALL_MAX_PAGES, Math.max(REPORT_PAGES.min, Math.round(input.pages ?? SINGLE_CALL_MAX_PAGES)));
+  const words = pages * WORDS_PER_PAGE;
+  const { text, model } = await generateTextWithPerplexity({
+    service: SERVICE,
+    instructions: wholeReportInstructions(words),
+    prompt: `${buildDocumentPrompt(input)}\n\nRédige maintenant le rapport complet, selon les règles.`,
+    maxOutputTokens: Math.min(12_000, Math.max(1_500, Math.round(words * 2.2))),
+    minChars: Math.min(MIN_CHARS, words * 3),
+    timeoutMs: SLICE_BUDGET_MS,
+  });
+  const { title, markdown } = finalizeDocument(text, sourceIdsOf(report), fallbackTitleOf(report));
   return { title, markdown, model };
 }
 
-async function writeDocument(reportId: string, startedAt: Date, today: string): Promise<void> {
-  const db = getDb();
-  try {
-    const [row] = await db
-      .select({ report: reports.report, memo: reports.researchMemo, country: users.country, pages: reportDocuments.targetPages })
-      .from(reports)
-      .innerJoin(users, eq(users.id, reports.userId))
-      .leftJoin(reportDocuments, eq(reportDocuments.reportId, reports.id))
-      .where(eq(reports.id, reportId))
-      .limit(1);
-    if (!row) return;
-    const report = row.report as unknown as MarketAnalysisReport;
-    // Devise du pays de l'utilisateur : chacun ne lit que la sienne.
-    const rates = await getRates();
-    const code = currencyForCountry(row.country, rates);
-    const { title, markdown, model } = await composeDocument({
-      report,
-      memo: row.memo,
-      today,
-      pages: row.pages ?? REPORT_PAGES.default,
-      currency: { code, conversions: conversionHints(code, rates) },
-    });
-    const verdict = await checkText(markdown);
+const sourceIdsOf = (report: MarketAnalysisReport) =>
+  new Set((report.groundingSources ?? []).flatMap((source) => (typeof source.id === 'number' ? [source.id] : [])));
+const fallbackTitleOf = (report: MarketAnalysisReport) => `Rapport d’étude de marché : ${report.nicheName}`;
 
-    await db
-      .update(reportDocuments)
-      .set({
-        status: 'ready',
-        title,
-        markdown,
-        compliance: verdict as unknown as Record<string, unknown>,
-        model,
-        errorCode: null,
-        errorMessage: null,
-        updatedAt: new Date(),
-        completedAt: new Date(),
-      })
-      // Une réécriture lancée entre-temps garde la main : ce texte-là est périmé.
-      .where(and(eq(reportDocuments.reportId, reportId), eq(reportDocuments.status, 'writing'), eq(reportDocuments.startedAt, startedAt)));
-  } catch (error) {
-    // Refus passager : la rédaction garde sa place et reprendra seule, sans rien demander.
-    if (error instanceof AppError && TRANSIENT.test(error.code)) {
-      const scheduled = await scheduleRetry(reportId, startedAt, error.code).catch(() => false);
-      if (scheduled) return;
-    }
-    await failDocument(reportId, error).catch((failure: unknown) => console.error(`[${SERVICE.log}] échec non enregistré`, failure));
-  }
-}
+/*
+  Rapport long, écrit sur plusieurs passages du serveur.
+
+  Une fonction dispose de 300 s. Un rapport de 250 pages, c'est une centaine de parties : bien
+  plus qu'un passage. Le plan puis chaque partie sont donc enregistrés au fur et à mesure ; un
+  passage s'arrête avant d'être coupé, libère sa réservation, et le suivi de l'écran lance le
+  passage suivant, qui reprend là où le précédent s'est arrêté. Rien d'écrit n'est perdu.
+*/
+
+/** Temps de travail d'un passage, sous les 300 s accordés à une fonction. */
+const SLICE_BUDGET_MS = 200_000;
+/** Réservation d'un passage : au-delà, un passage coupé en route est considéré perdu et relancé. */
+const LEASE_MS = 280_000;
+/** Sans aucune partie écrite depuis ce délai, la rédaction est abandonnée et remboursée. */
+const STALL_MS = 15 * 60_000;
+/** Passages en cours dans cette instance : un même rapport n'est pas écrit deux fois en parallèle. */
+const running = new Set<string>();
 
 /** Refus passagers : le fournisseur est saturé, trop lent ou momentanément absent. */
 const TRANSIENT = /_(OVERLOADED|RATE_LIMITED|TIMEOUT|UNAVAILABLE)$/;
 /** Attentes avant chaque nouvel essai ; au-delà, la rédaction échoue et rend les points. */
 const RETRY_WAITS_MS = [15_000, 45_000, 2 * 60_000, 5 * 60_000];
+
+/** Mise à jour valable seulement pour CETTE rédaction : une réécriture lancée entre-temps garde la main. */
+const sameWriting = (reportId: string, startedAt: Date) =>
+  and(eq(reportDocuments.reportId, reportId), eq(reportDocuments.status, 'writing'), eq(reportDocuments.startedAt, startedAt));
+
+async function runSlice(reportId: string, startedAt: Date, today: string): Promise<void> {
+  if (running.has(reportId)) return;
+  running.add(reportId);
+  const db = getDb();
+  try {
+    const [row] = await db
+      .select({
+        report: reports.report,
+        memo: reports.researchMemo,
+        country: users.country,
+        pages: reportDocuments.targetPages,
+        outline: reportDocuments.outline,
+        sections: reportDocuments.sections,
+      })
+      .from(reports)
+      .innerJoin(users, eq(users.id, reports.userId))
+      .innerJoin(reportDocuments, eq(reportDocuments.reportId, reports.id))
+      .where(eq(reports.id, reportId))
+      .limit(1);
+    if (!row) return;
+    const report = row.report as unknown as MarketAnalysisReport;
+    const pages = row.pages ?? REPORT_PAGES.default;
+    // Devise du pays de l'utilisateur : chacun ne lit que la sienne.
+    const rates = await getRates();
+    const code = currencyForCountry(row.country, rates);
+    const currency = { code, conversions: conversionHints(code, rates) };
+    const budgetEnd = Date.now() + SLICE_BUDGET_MS;
+
+    if (pages <= SINGLE_CALL_MAX_PAGES) {
+      const { title, markdown, model } = await composeDocument({ report, memo: row.memo, today, pages, currency });
+      await complete(reportId, startedAt, title, markdown, model);
+      return;
+    }
+
+    const material = buildDocumentPrompt({ report, memo: row.memo, today, currency });
+    let outline = row.outline as unknown as ReportOutline | null;
+    let sections = row.sections ?? [];
+    if (!outline) {
+      outline = await outlineOf(material, pages, Math.min(120_000, budgetEnd - Date.now()));
+      sections = new Array<string | null>(outline.sections.length).fill(null);
+      const [saved] = await db
+        .update(reportDocuments)
+        .set({ outline: outline as unknown as Record<string, unknown>, sections, updatedAt: new Date() })
+        .where(sameWriting(reportId, startedAt))
+        .returning({ reportId: reportDocuments.reportId });
+      if (!saved) return;
+    }
+
+    const waveLimit = env.REPORT_SLICE_WAVES;
+    let waves = 0;
+    for (;;) {
+      const pending = sections.flatMap((text, index) => (text ? [] : [index]));
+      if (pending.length === 0) break;
+      // Plus assez de temps pour une vague entière : on passe la main au passage suivant.
+      if (budgetEnd - Date.now() < 60_000 || (waveLimit > 0 && waves >= waveLimit)) {
+        await db.update(reportDocuments).set({ leaseUntil: null }).where(sameWriting(reportId, startedAt));
+        return;
+      }
+      const wave = pending.slice(0, SECTION_CONCURRENCY);
+      const timeoutMs = Math.max(30_000, Math.min(150_000, budgetEnd + 60_000 - Date.now()));
+      const written = await Promise.all(wave.map((index) => writeSection(material, outline!, index, timeoutMs)));
+      wave.forEach((index, position) => {
+        sections[index] = written[position]!;
+      });
+      waves += 1;
+      const [saved] = await db
+        .update(reportDocuments)
+        .set({ sections, updatedAt: new Date() })
+        .where(sameWriting(reportId, startedAt))
+        .returning({ reportId: reportDocuments.reportId });
+      if (!saved) return;
+    }
+
+    const { title, markdown } = finalizeDocument(assemble(outline, sections as string[]), sourceIdsOf(report), fallbackTitleOf(report));
+    await complete(reportId, startedAt, title, markdown, env.PERPLEXITY_WRITER);
+  } catch (error) {
+    // Refus passager : la rédaction garde sa place et ses parties, et reprendra seule.
+    if (error instanceof AppError && TRANSIENT.test(error.code)) {
+      const scheduled = await scheduleRetry(reportId, startedAt, error.code).catch(() => false);
+      if (scheduled) return;
+    }
+    await failDocument(reportId, error).catch((failure: unknown) => console.error(`[${SERVICE.log}] échec non enregistré`, failure));
+  } finally {
+    running.delete(reportId);
+  }
+}
+
+/** Fin de la rédaction : contrôle de conformité, puis rapport proposé à la lecture. */
+async function complete(reportId: string, startedAt: Date, title: string, markdown: string, model: string | null): Promise<void> {
+  const verdict = await checkText(markdown);
+  await getDb()
+    .update(reportDocuments)
+    .set({
+      status: 'ready',
+      title,
+      markdown,
+      compliance: verdict as unknown as Record<string, unknown>,
+      model,
+      errorCode: null,
+      errorMessage: null,
+      outline: null,
+      sections: null,
+      leaseUntil: null,
+      updatedAt: new Date(),
+      completedAt: new Date(),
+    })
+    .where(sameWriting(reportId, startedAt));
+}
 
 /** Programme le prochain essai ; false quand les essais sont épuisés. */
 async function scheduleRetry(reportId: string, startedAt: Date, code: string): Promise<boolean> {
@@ -478,11 +608,38 @@ async function scheduleRetry(reportId: string, startedAt: Date, code: string): P
   if (!row || row.retryCount >= RETRY_WAITS_MS.length) return false;
   const [updated] = await db
     .update(reportDocuments)
-    .set({ retryCount: row.retryCount + 1, retryAfter: new Date(Date.now() + RETRY_WAITS_MS[row.retryCount]!), errorCode: code, updatedAt: new Date() })
-    .where(and(eq(reportDocuments.reportId, reportId), eq(reportDocuments.status, 'writing'), eq(reportDocuments.startedAt, startedAt)))
+    .set({ retryCount: row.retryCount + 1, retryAfter: new Date(Date.now() + RETRY_WAITS_MS[row.retryCount]!), leaseUntil: null, errorCode: code })
+    .where(sameWriting(reportId, startedAt))
     .returning({ reportId: reportDocuments.reportId });
   if (updated) console.warn(`[${SERVICE.log}] ${reportId} : refus passager (${code}), essai ${row.retryCount + 2} programmé`);
   return Boolean(updated);
+}
+
+/**
+ * Passage suivant, réclamé par le suivi de l'écran : nouvel essai arrivé à échéance, passage
+ * précédent terminé (réservation libérée) ou perdu (réservation expirée). Un seul suivi l'obtient.
+ */
+async function claimNextSlice(row: DocumentRow): Promise<DocumentRow> {
+  if (row.status !== 'writing') return row;
+  const now = new Date();
+  const due = row.retryAfter ? row.retryAfter.getTime() <= now.getTime() : !row.leaseUntil || row.leaseUntil.getTime() < now.getTime();
+  if (!due) return row;
+  const [claimed] = await getDb()
+    .update(reportDocuments)
+    .set({ retryAfter: null, leaseUntil: new Date(now.getTime() + LEASE_MS) })
+    .where(
+      and(
+        eq(reportDocuments.reportId, row.reportId),
+        eq(reportDocuments.status, 'writing'),
+        eq(reportDocuments.startedAt, row.startedAt),
+        row.retryAfter ? eq(reportDocuments.retryAfter, row.retryAfter) : isNull(reportDocuments.retryAfter),
+        row.leaseUntil && !row.retryAfter ? eq(reportDocuments.leaseUntil, row.leaseUntil) : row.retryAfter ? undefined : isNull(reportDocuments.leaseUntil),
+      ),
+    )
+    .returning();
+  if (!claimed) return row;
+  runInBackground(() => runSlice(claimed.reportId, claimed.startedAt, todayLabel(new Date())), `rapport rédigé ${claimed.reportId}`);
+  return claimed;
 }
 
 /** Rapport rédigé d'une analyse, ou null s'il n'a jamais été demandé. */
@@ -492,30 +649,13 @@ export async function getReportDocument(auth: RequestAuth, reportId: string | un
   let [row] = await db.select().from(reportDocuments).where(eq(reportDocuments.reportId, owned.id)).limit(1);
   if (!row) return null;
 
-  /*
-    Nouvel essai arrivé à échéance : le suivi du navigateur le relance (aucun minuteur ne
-    survit entre deux requêtes sur un hébergement sans serveur). Un seul suivi le réclame.
-  */
-  if (row.status === 'writing' && row.retryAfter && row.retryAfter.getTime() <= Date.now()) {
-    const [claimed] = await db
-      .update(reportDocuments)
-      .set({ retryAfter: null, updatedAt: new Date() })
-      .where(and(eq(reportDocuments.reportId, owned.id), eq(reportDocuments.status, 'writing'), eq(reportDocuments.retryAfter, row.retryAfter)))
-      .returning();
-    if (claimed) {
-      runInBackground(() => writeDocument(owned.id, claimed.startedAt, todayLabel(new Date())), `reprise du rapport rédigé ${owned.id}`);
-      row = claimed;
-    }
-  }
-
-  // Instance coupée en pleine rédaction (aucun essai programmé) : l'abandon est constaté, points rendus.
-  if (row.status === 'writing' && !row.retryAfter && Date.now() - row.updatedAt.getTime() > DOCUMENT_DEADLINE_MS) {
-    await failDocument(
-      owned.id,
-      new AppError(504, 'La rédaction du rapport a pris trop de temps. Relancez-la : vos points ont été rendus.', 'REPORT_TIMEOUT'),
-    );
+  // Aucune partie écrite depuis longtemps : l'abandon est constaté, points rendus.
+  if (row.status === 'writing' && !row.retryAfter && Date.now() - row.updatedAt.getTime() > STALL_MS) {
+    await failDocument(owned.id, new AppError(504, 'La rédaction du rapport n’a pas pu aboutir. Vos points ont été rendus.', 'REPORT_TIMEOUT'));
     [row] = await db.select().from(reportDocuments).where(eq(reportDocuments.reportId, owned.id)).limit(1);
     if (!row) return null;
+  } else {
+    row = await claimNextSlice(row);
   }
   return viewOf(row, owned.report);
 }
@@ -537,6 +677,11 @@ export async function startReportDocument(
   }
   if ((owned.report.groundingSources ?? []).length === 0) {
     throw new AppError(409, 'Cette analyse ne s’appuie sur aucune source : il n’y a pas matière à un rapport. Relancez l’analyse de la niche.', 'REPORT_NO_SOURCES');
+  }
+  // Même plafond que les ebooks : la longueur suit le palier.
+  const ceiling = Math.min(REPORT_PAGES.max, effectiveLimits(auth.account).ebookPages);
+  if (pages > ceiling) {
+    throw new AppError(403, `Votre palier permet des rapports de ${ceiling} pages au plus.`, 'REPORT_PAGES_PLAN', { ceiling });
   }
   ensureReady(['webSearch', 'database']);
 
@@ -565,6 +710,9 @@ export async function startReportDocument(
     targetPages: pages,
     retryCount: 0,
     retryAfter: null,
+    outline: null,
+    sections: null,
+    leaseUntil: new Date(startedAt.getTime() + LEASE_MS),
     creditsCharged: debit.charged,
     debitTransactionId: debit.transactionId,
     refunded: false,
@@ -572,7 +720,6 @@ export async function startReportDocument(
     completedAt: null,
     updatedAt: startedAt,
   };
-  const stale = new Date(startedAt.getTime() - DOCUMENT_DEADLINE_MS);
   const [row] = await db
     .insert(reportDocuments)
     .values({ reportId: owned.id, ...fresh })
@@ -580,7 +727,7 @@ export async function startReportDocument(
       target: reportDocuments.reportId,
       set: fresh,
       // Deux clics simultanés : un seul lance la rédaction, l'autre rend ses points.
-      setWhere: or(ne(reportDocuments.status, 'writing'), lt(reportDocuments.startedAt, stale)),
+      setWhere: ne(reportDocuments.status, 'writing'),
     })
     .returning();
 
@@ -591,6 +738,6 @@ export async function startReportDocument(
     throw new AppError(409, 'Le rapport est déjà en cours de rédaction.', 'REPORT_BUSY');
   }
 
-  runInBackground(() => writeDocument(owned.id, startedAt, today), `rapport rédigé ${owned.id}`);
+  runInBackground(() => runSlice(owned.id, startedAt, today), `rapport rédigé ${owned.id}`);
   return { document: viewOf(row, owned.report), created: true };
 }

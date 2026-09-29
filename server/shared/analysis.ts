@@ -220,6 +220,16 @@ export interface MarketAnalysisReport {
    * inventer un chiffre de marché — dans ce cas il propose une méthode pour l'obtenir.
    */
   decisions?: PendingDecision[];
+  /** Constats clés de l'étude, sourcés (fiches produites à partir du 29/09/2026). */
+  keyFindings?: { title: string; detail: string; sourceIds: number[] }[];
+  /** Portrait de l'acheteur : difficultés, motivations, freins et réponse à chacun. */
+  audience?: { profile: string; pains: string[]; motivations: string[]; objections: string[]; sourceIds: number[] } | null;
+  /** Prix constatés, prix conseillés et moyens de paiement à proposer. */
+  pricing?: { observed: string; recommendation: string; paymentMethods: string[]; sourceIds: number[] } | null;
+  /** Canaux de vente et d'acquisition adaptés à la niche. */
+  channels?: { channel: string; why: string }[];
+  /** Risques réels, chacun avec sa parade : plus de « points à vérifier » laissés à l'auteur. */
+  risks?: { risk: string; mitigation: string; sourceIds: number[] }[];
   /** Ancienne forme, conservée telle quelle sur les rapports produits avant septembre 2026. */
   limitations?: string[];
   generator?: ReportGenerator;
@@ -316,4 +326,6 @@ export interface ReportDocument {
   completedAt: string | null;
   /** Longueur demandée, en pages A4 ; null sur les rapports rédigés avant ce réglage. */
   targetPages: number | null;
+  /** Rapport long en cours : parties rédigées sur le total prévu par le plan. */
+  progress: { done: number; total: number } | null;
 }
