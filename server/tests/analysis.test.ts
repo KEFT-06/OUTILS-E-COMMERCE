@@ -125,8 +125,8 @@ describe('Analyse de niche', () => {
 
     // Étude : Agent API en arrière-plan, préréglage de recherche approfondie, pays du marché, clé en en-tête.
     const calls = providers.agentCalls.slice(agentCallsBefore);
-    const creation = calls.find((call) => call.method === 'POST' && call.body?.background)!;
-    assert.equal(calls.filter((call) => call.method === 'POST' && call.body?.background).length, 1, 'une seule étude pour deux clics');
+    const creation = calls.find((call) => call.method === 'POST' && String(call.body?.input ?? '').startsWith('Étude de marché pour un créateur'))!;
+    assert.equal(calls.filter((call) => call.method === 'POST' && String(call.body?.input ?? '').startsWith('Étude de marché pour un créateur')).length, 1, 'une seule étude pour deux clics');
     assert.equal(creation.body?.preset, 'medium');
     assert.equal(creation.body?.background, true);
     assert.equal(creation.body?.tools?.[0]?.user_location?.country, 'CM');
@@ -279,7 +279,7 @@ describe('Analyse de niche', () => {
       })
       .returning();
 
-    const postsBefore = providers.agentCalls.filter((call) => call.method === 'POST' && call.body?.background).length;
+    const postsBefore = providers.agentCalls.filter((call) => call.method === 'POST' && String(call.body?.input ?? '').startsWith('Étude de marché pour un créateur')).length;
     assert.equal(await resumeAnalysisJobs(), 1);
 
     let row = interrupted!;
@@ -289,7 +289,7 @@ describe('Analyse de niche', () => {
     }
     assert.equal(row.status, 'completed');
     assert.ok(row.reportId);
-    assert.equal(providers.agentCalls.filter((call) => call.method === 'POST' && call.body?.background).length, postsBefore, 'aucune nouvelle étude payée');
+    assert.equal(providers.agentCalls.filter((call) => call.method === 'POST' && String(call.body?.input ?? '').startsWith('Étude de marché pour un créateur')).length, postsBefore, 'aucune nouvelle étude payée');
     assert.ok(providers.agentCalls.some((call) => call.method === 'GET' && call.path.endsWith('/resp_reprise')));
 
     const [stale] = await getDb().select().from(analysisJobs).where(eq(analysisJobs.id, abandoned!.id));

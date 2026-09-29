@@ -26,6 +26,9 @@ export interface PerplexityService {
 
 const RETRY_WAITS_MS = [0, 1_000, 2_000, 3_000];
 const RETRYABLE = new Set([429, 500, 502, 503, 504]);
+/** États terminaux d'une tâche de l'Agent API ; les autres (« queued », « in_progress ») se suivent. */
+const FINISHED = new Set(['completed', 'failed', 'cancelled', 'incomplete']);
+const POLL_MS = 2_000;
 const MIN_ATTEMPT_MS = 8_000;
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
@@ -83,6 +86,7 @@ async function callAgent(input: {
   const { service } = input;
   const body = JSON.stringify({
     ...writerChoice(),
+    background: true,
     input: input.prompt,
     ...(input.instructions ? { instructions: input.instructions } : {}),
     ...(input.maxOutputTokens ? { max_output_tokens: input.maxOutputTokens } : {}),
@@ -116,7 +120,31 @@ async function callAgent(input: {
       continue;
     }
 
-    const payload = (await response.json().catch(() => null)) as AgentPayload | null;
+    let payload = (await response.json().catch(() => null)) as (AgentPayload & { id?: string }) | null;
+    /*
+      Tâche de fond : une fiche d'analyse enrichie demande une à deux minutes de génération, et
+      une requête gardée ouverte aussi longtemps se faisait couper (essai réel du 29/09/2026 :
+      trois coupures, puis échec). On lance la tâche, puis on vient chercher son résultat ; une
+      coupure pendant le suivi est sans conséquence, on relit simplement l'état.
+    */
+    while (response.ok && payload?.id && payload.status && !FINISHED.has(payload.status)) {
+      if (deadline - Date.now() < 2_000) {
+        throw new AppError(504, `Le ${service.name} n’a pas répondu à temps. Vos points ont été rendus.`, `${service.code}_TIMEOUT`);
+      }
+      await sleep(POLL_MS);
+      try {
+        const followed = await fetch(`${env.PERPLEXITY_API_URL.replace(/\/+$/, '')}/v1/agent/${encodeURIComponent(payload.id)}`, {
+          headers: { Authorization: `Bearer ${env.PERPLEXITY_API_KEY}`, Accept: 'application/json' },
+          signal: AbortSignal.timeout(Math.max(1, Math.min(30_000, deadline - Date.now()))),
+        });
+        if (followed.ok) {
+          const next = (await followed.json().catch(() => null)) as (AgentPayload & { id?: string }) | null;
+          if (next?.status) payload = { ...next, id: next.id ?? payload.id };
+        }
+      } catch {
+        // Coupure passagère pendant le suivi : la tâche continue chez le fournisseur.
+      }
+    }
     if (response.ok && payload?.status === 'completed') {
       const text = messageText(payload);
       try {

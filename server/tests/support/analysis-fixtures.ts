@@ -240,7 +240,8 @@ export async function startFakeProviders(): Promise<FakeProviders> {
             ou sans recherche lancée en arrière-plan. Elle reprend les pannes que simulait le faux
             Gemini, puisque c'est désormais Perplexity qui rédige l'analyse.
           */
-          if (!body?.background) {
+          // Étude reconnue à sa consigne ; tout le reste est une rédaction (elle aussi en tâche de fond).
+          if (!input.startsWith('Étude de marché pour un créateur')) {
             writerCalls.push({ key: token, prompt: input });
             const completed = (text: string) => ({ id: `resp_${agentCalls.length}`, status: 'completed', model: 'openai/gpt-6-luna', output: [{ type: 'message', content: [{ type: 'output_text', text }] }] });
             if (input.includes('« saturé') && overloadRemaining > 0) {
