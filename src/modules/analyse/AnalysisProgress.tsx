@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { CheckCircle2, Circle, ExternalLink, X } from 'lucide-react';
-import { analysisWaitingReason, useWorkspace } from '@/app/providers/WorkspaceProvider';
+import { useWorkspace } from '@/app/providers/WorkspaceProvider';
 import { countryName } from '@server/shared/countries';
 import type { AnalysisJob } from '@/shared/types/analysis';
 import { Badge } from '@/shared/ui/badge';
@@ -54,7 +54,6 @@ export function AnalysisProgress() {
   if (!analysisJob) return null;
   const current = activeStep(analysisJob);
   const sources = analysisJob.sources ?? [];
-  const enAttente = analysisJob.status === 'waiting';
 
   return (
     <Card role="status" aria-live="polite" className="border-primary/30">
@@ -75,18 +74,6 @@ export function AnalysisProgress() {
           rien dire. Elle nomme la cause, annonce l'heure du prochain essai, et rassure sur les
           points — c'est la question que l'auteur se pose en premier.
         */}
-        {enAttente && (
-          <p className="mb-4 rounded-lg border border-amber-500/40 bg-amber-500/10 p-3 text-sm text-amber-700 dark:text-amber-400">
-            {analysisWaitingReason(analysisJob.error?.code)} L’analyse reprendra d’elle-même
-            {analysisJob.retryAfter
-              ? `, vers ${new Date(analysisJob.retryAfter).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })}`
-              : ''}
-            .{' '}
-            {sources.length > 0
-              ? 'L’étude du web est déjà faite et vos points restent réservés : rien n’est perdu.'
-              : 'Vos points restent réservés : rien n’est perdu.'}
-          </p>
-        )}
         <ol className="grid gap-3 sm:grid-cols-3">
           {STEPS.map((step, index) => {
             const done = index < current;

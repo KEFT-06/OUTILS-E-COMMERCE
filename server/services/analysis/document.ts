@@ -21,6 +21,7 @@ import type {
 import { runInBackground } from '@server/shared/backgroundWork';
 import { countryName } from '@server/shared/countries';
 import { neutralizeMessage } from '@server/shared/whiteLabel';
+import { todayLabel } from '@server/services/analysis';
 
 /**
  * Rapport rédigé à la demande, après l'analyse (décision du propriétaire du 29/09/2026).
@@ -456,8 +457,32 @@ async function writeDocument(reportId: string, startedAt: Date, today: string): 
       // Une réécriture lancée entre-temps garde la main : ce texte-là est périmé.
       .where(and(eq(reportDocuments.reportId, reportId), eq(reportDocuments.status, 'writing'), eq(reportDocuments.startedAt, startedAt)));
   } catch (error) {
+    // Refus passager : la rédaction garde sa place et reprendra seule, sans rien demander.
+    if (error instanceof AppError && TRANSIENT.test(error.code)) {
+      const scheduled = await scheduleRetry(reportId, startedAt, error.code).catch(() => false);
+      if (scheduled) return;
+    }
     await failDocument(reportId, error).catch((failure: unknown) => console.error(`[${SERVICE.log}] échec non enregistré`, failure));
   }
+}
+
+/** Refus passagers : le fournisseur est saturé, trop lent ou momentanément absent. */
+const TRANSIENT = /_(OVERLOADED|RATE_LIMITED|TIMEOUT|UNAVAILABLE)$/;
+/** Attentes avant chaque nouvel essai ; au-delà, la rédaction échoue et rend les points. */
+const RETRY_WAITS_MS = [15_000, 45_000, 2 * 60_000, 5 * 60_000];
+
+/** Programme le prochain essai ; false quand les essais sont épuisés. */
+async function scheduleRetry(reportId: string, startedAt: Date, code: string): Promise<boolean> {
+  const db = getDb();
+  const [row] = await db.select({ retryCount: reportDocuments.retryCount }).from(reportDocuments).where(eq(reportDocuments.reportId, reportId)).limit(1);
+  if (!row || row.retryCount >= RETRY_WAITS_MS.length) return false;
+  const [updated] = await db
+    .update(reportDocuments)
+    .set({ retryCount: row.retryCount + 1, retryAfter: new Date(Date.now() + RETRY_WAITS_MS[row.retryCount]!), errorCode: code, updatedAt: new Date() })
+    .where(and(eq(reportDocuments.reportId, reportId), eq(reportDocuments.status, 'writing'), eq(reportDocuments.startedAt, startedAt)))
+    .returning({ reportId: reportDocuments.reportId });
+  if (updated) console.warn(`[${SERVICE.log}] ${reportId} : refus passager (${code}), essai ${row.retryCount + 2} programmé`);
+  return Boolean(updated);
 }
 
 /** Rapport rédigé d'une analyse, ou null s'il n'a jamais été demandé. */
@@ -467,8 +492,24 @@ export async function getReportDocument(auth: RequestAuth, reportId: string | un
   let [row] = await db.select().from(reportDocuments).where(eq(reportDocuments.reportId, owned.id)).limit(1);
   if (!row) return null;
 
-  // Instance coupée en pleine rédaction : le suivi constate l'abandon et rend les points.
-  if (row.status === 'writing' && Date.now() - row.startedAt.getTime() > DOCUMENT_DEADLINE_MS) {
+  /*
+    Nouvel essai arrivé à échéance : le suivi du navigateur le relance (aucun minuteur ne
+    survit entre deux requêtes sur un hébergement sans serveur). Un seul suivi le réclame.
+  */
+  if (row.status === 'writing' && row.retryAfter && row.retryAfter.getTime() <= Date.now()) {
+    const [claimed] = await db
+      .update(reportDocuments)
+      .set({ retryAfter: null, updatedAt: new Date() })
+      .where(and(eq(reportDocuments.reportId, owned.id), eq(reportDocuments.status, 'writing'), eq(reportDocuments.retryAfter, row.retryAfter)))
+      .returning();
+    if (claimed) {
+      runInBackground(() => writeDocument(owned.id, claimed.startedAt, todayLabel(new Date())), `reprise du rapport rédigé ${owned.id}`);
+      row = claimed;
+    }
+  }
+
+  // Instance coupée en pleine rédaction (aucun essai programmé) : l'abandon est constaté, points rendus.
+  if (row.status === 'writing' && !row.retryAfter && Date.now() - row.updatedAt.getTime() > DOCUMENT_DEADLINE_MS) {
     await failDocument(
       owned.id,
       new AppError(504, 'La rédaction du rapport a pris trop de temps. Relancez-la : vos points ont été rendus.', 'REPORT_TIMEOUT'),
@@ -522,6 +563,8 @@ export async function startReportDocument(
     errorMessage: null,
     model: null,
     targetPages: pages,
+    retryCount: 0,
+    retryAfter: null,
     creditsCharged: debit.charged,
     debitTransactionId: debit.transactionId,
     refunded: false,

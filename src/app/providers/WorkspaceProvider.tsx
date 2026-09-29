@@ -83,7 +83,7 @@ const JOB_STEPS: Record<AnalysisJob['status'], string> = {
   queued: 'Préparation de l’analyse…',
   research: 'Étude de marché sur le web en cours : comptez 1 à 3 minutes.',
   writing: 'Rédaction du rapport à partir des sources trouvées…',
-  waiting: 'Le service d’analyse est très demandé. L’analyse reprendra d’elle-même : vos points restent réservés.',
+  waiting: 'Rédaction du rapport à partir des sources trouvées…',
   completed: 'Rapport prêt.',
   failed: 'L’analyse n’a pas abouti.',
 };
@@ -91,39 +91,12 @@ const JOB_STEPS: Record<AnalysisJob['status'], string> = {
 export const analysisStepLabel = (status: AnalysisJob['status']) => JOB_STEPS[status];
 
 /**
- * Cause réelle d'une attente, lue sur le code d'erreur conservé par le serveur.
- *
- * L'écran disait « le service d'IA est saturé » pour toute attente, y compris quand c'était la
- * recherche web qui tardait ou le quota du fournisseur qui était atteint. Nommer la vraie cause
- * dit à l'utilisateur quoi attendre, et à l'administrateur où regarder.
+ * Étape du suivi. Une analyse qui attend un nouvel essai se présente comme une rédaction en
+ * cours : la reprise est automatique, l'utilisateur n'a rien à faire ni à attendre de précis
+ * (décision du 29/09/2026 : plus de « service très demandé, réessai à… » à l'écran).
  */
-export function analysisWaitingReason(code: string | null | undefined): string {
-  const search = code?.startsWith('WEB_SEARCH_');
-  if (code?.endsWith('_RATE_LIMITED')) {
-    return search
-      ? 'Le moteur de recherche web limite le nombre de demandes en ce moment.'
-      : 'Le service d’analyse a atteint sa limite de demandes pour le moment.';
-  }
-  if (code?.endsWith('_TIMEOUT')) {
-    return search ? 'La recherche web n’a pas répondu à temps.' : 'Le service d’analyse n’a pas répondu à temps.';
-  }
-  if (code?.endsWith('_UNAVAILABLE')) return 'Le service d’analyse rencontre une panne passagère.';
-  return 'Le service d’analyse est très demandé en ce moment.';
-}
-
-/**
- * Étape du suivi, avec l'heure du prochain essai quand il y en a un. Dire « ça reprendra » sans
- * dire quand laisse penser à un blocage : l'attente doit avoir une fin visible.
- */
-function stepDescription(status: AnalysisJob['status'], retryAfter?: string | null, code?: string | null): string {
-  const base =
-    status === 'waiting'
-      ? `${analysisWaitingReason(code)} L’analyse reprendra d’elle-même : vos points restent réservés.`
-      : JOB_STEPS[status];
-  if (status !== 'waiting' || !retryAfter) return base;
-  const heure = new Date(retryAfter);
-  if (Number.isNaN(heure.getTime())) return base;
-  return `${base} Prochain essai à ${heure.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })}.`;
+function stepDescription(status: AnalysisJob['status']): string {
+  return JOB_STEPS[status === 'waiting' ? 'writing' : status];
 }
 
 export const WorkspaceProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
@@ -280,7 +253,7 @@ export const WorkspaceProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     const toastId = `analyse-${analysisJobId}`;
     toast.loading('Analyse en cours', {
       id: toastId,
-      description: stepDescription(analysisJobStatus ?? 'queued', analysisJobRetryAfter, analysisJobErrorCode),
+      description: stepDescription(analysisJobStatus ?? 'queued'),
       duration: Infinity,
     });
 

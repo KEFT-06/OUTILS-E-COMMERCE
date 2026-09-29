@@ -68,7 +68,7 @@ export async function createVideoUpload(
     return { uploadId, uploadUrl: await createSignedUpload(target, bucket(), `${FOLDER}/${uploadId}`) };
   } catch (error) {
     console.error('[dépôt vidéo] lien refusé :', error instanceof Error ? error.message : error);
-    throw new AppError(502, 'Le dépôt du fichier n’a pas pu être préparé. Réessayez dans un instant.', 'VIDEO_UPLOAD_FAILED');
+    throw new AppError(502, 'Le dépôt du fichier n’a pas pu être préparé.', 'VIDEO_UPLOAD_FAILED');
   }
 }
 

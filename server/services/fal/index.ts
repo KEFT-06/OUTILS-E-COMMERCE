@@ -79,7 +79,7 @@ function falFailure(status: number, detail: string): AppError {
     );
   }
   if (status === 429) {
-    return new AppError(429, 'Le service vidéo est très demandé. Réessayez dans une minute : vos points ont été rendus.', 'FAL_RATE_LIMITED');
+    return new AppError(429, 'Le rendu vidéo n’a pas pu être lancé. Vos points ont été rendus.', 'FAL_RATE_LIMITED');
   }
   if (status === 404) {
     return new AppError(404, 'Cette génération est introuvable : elle a peut-être expiré.', 'FAL_NOT_FOUND');
@@ -88,7 +88,7 @@ function falFailure(status: number, detail: string): AppError {
     return new AppError(502, 'La demande a été refusée. Reformulez le brief : vos points ont été rendus.', 'FAL_BAD_INPUT');
   }
   if (status >= 500) {
-    return new AppError(503, 'Le service vidéo est momentanément indisponible. Réessayez : vos points ont été rendus.', 'FAL_UNAVAILABLE');
+    return new AppError(503, 'Le rendu vidéo n’a pas pu aboutir. Vos points ont été rendus.', 'FAL_UNAVAILABLE');
   }
   return new AppError(502, 'La demande n’a pas pu être traitée. Réessayez : vos points ont été rendus.', 'FAL_FAILED');
 }

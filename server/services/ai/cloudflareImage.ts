@@ -90,7 +90,7 @@ function cloudflareFailure(status: number, detail: string): AppError {
   if (status === 429) {
     return new AppError(
       429,
-      'La réserve d’images du jour est épuisée. Réessayez un peu plus tard : vos points ont été rendus.',
+      'L’image n’a pas pu être produite. Vos points ont été rendus.',
       'CF_IMAGE_QUOTA_EXHAUSTED',
     );
   }
@@ -98,7 +98,7 @@ function cloudflareFailure(status: number, detail: string): AppError {
     return new AppError(502, 'La description de l’image a été refusée. Reformulez-la : vos points ont été rendus.', 'CF_IMAGE_BAD_INPUT');
   }
   if (status >= 500) {
-    return new AppError(503, 'Le service d’images est momentanément indisponible. Réessayez : vos points ont été rendus.', 'CF_IMAGE_UNAVAILABLE');
+    return new AppError(503, 'L’image n’a pas pu être produite. Vos points ont été rendus.', 'CF_IMAGE_UNAVAILABLE');
   }
   return new AppError(502, 'L’image n’a pas pu être produite. Réessayez : vos points ont été rendus.', 'CF_IMAGE_FAILED');
 }

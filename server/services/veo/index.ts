@@ -76,7 +76,7 @@ function veoFailure(status: number, detail: string, payload: unknown = null): Ap
     }
     return new AppError(
       429,
-      'La réserve de rendus vidéo est épuisée pour le moment. Réessayez plus tard : vos points ont été rendus.',
+      'Le rendu vidéo n’a pas pu être lancé. Vos points ont été rendus.',
       'VEO_QUOTA_EXHAUSTED',
     );
   }
@@ -89,7 +89,7 @@ function veoFailure(status: number, detail: string, payload: unknown = null): Ap
     return new AppError(404, 'Ce rendu vidéo n’existe plus.', 'VEO_NOT_FOUND');
   }
   if (status >= 500) {
-    return new AppError(503, 'Le rendu vidéo est momentanément indisponible. Réessayez : vos points ont été rendus.', 'VEO_UNAVAILABLE');
+    return new AppError(503, 'Le rendu vidéo n’a pas pu aboutir. Vos points ont été rendus.', 'VEO_UNAVAILABLE');
   }
   return new AppError(502, 'Le rendu vidéo n’a pas abouti. Réessayez : vos points ont été rendus.', 'VEO_FAILED');
 }

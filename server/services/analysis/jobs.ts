@@ -51,7 +51,8 @@ const TRANSIENT = /_(OVERLOADED|RATE_LIMITED|TIMEOUT|UNAVAILABLE)$/;
  * Google dure typiquement quelques minutes : deux minutes suffisent souvent, vingt couvrent
  * les mauvais jours. Au-delà, insister n'apporte rien et il vaut mieux rendre les points.
  */
-const BACKOFF_MS = [2 * 60_000, 8 * 60_000, 20 * 60_000];
+// Premier essai vite : la plupart des refus passagers durent quelques secondes (29/09/2026).
+const BACKOFF_MS = [30_000, 2 * 60_000, 6 * 60_000, 15 * 60_000];
 
 /** Budget total d'une analyse qui a dû attendre, depuis son lancement. */
 const WAITING_BUDGET_MS = 90 * 60_000;

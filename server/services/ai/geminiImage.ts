@@ -155,10 +155,10 @@ async function produceImage(input: {
     );
   }
   if (lastStatus === 429) {
-    throw new AppError(429, 'Le service d’images n’a pas pu produire l’image pour l’instant. Réessayez dans une minute : vos points ont été rendus.', 'GEMINI_IMAGE_RATE_LIMITED');
+    throw new AppError(429, 'L’image n’a pas pu être produite. Vos points ont été rendus.', 'GEMINI_IMAGE_RATE_LIMITED');
   }
   if (lastStatus === 503) {
-    throw new AppError(503, 'Le service d’images n’a pas pu produire l’image pour l’instant. Réessayez dans un instant : vos points ont été rendus.', 'GEMINI_IMAGE_OVERLOADED');
+    throw new AppError(503, 'L’image n’a pas pu être produite. Vos points ont été rendus.', 'GEMINI_IMAGE_OVERLOADED');
   }
   if (lastStatus === 504) {
     throw new AppError(504, 'L’image n’a pas été produite à temps. Réessayez : vos points ont été rendus.', 'GEMINI_IMAGE_TIMEOUT');

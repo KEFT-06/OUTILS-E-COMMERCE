@@ -107,7 +107,7 @@ export async function exchangeGoogleCode(code: string, flow: GoogleFlowState): P
       signal: AbortSignal.timeout(TIMEOUT_MS),
     });
   } catch {
-    throw new AppError(502, 'Google n’a pas répondu. Réessayez dans un instant.', 'GOOGLE_UNREACHABLE');
+    throw new AppError(502, 'La connexion avec Google n’a pas abouti.', 'GOOGLE_UNREACHABLE');
   }
   const payload = (await response.json().catch(() => null)) as { id_token?: string; error?: string } | null;
   if (!response.ok || !payload?.id_token) {

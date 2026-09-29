@@ -204,12 +204,12 @@ export async function generateJson<T>(input: {
     throw new AppError(502, `Réponse illisible du ${service.name}. Réessayez : vos points ont été rendus.`, `${service.code}_UNREADABLE`);
   }
   if (lastStatus === 429) {
-    throw new AppError(429, `Le ${service.name} n’a pas pu terminer pour l’instant. Réessayez dans une minute : vos points ont été rendus.`, `${service.code}_RATE_LIMITED`);
+    throw new AppError(429, `Le ${service.name} n’a pas pu aboutir. Vos points ont été rendus.`, `${service.code}_RATE_LIMITED`);
   }
   if (lastStatus === 503) {
     throw new AppError(
       503,
-      `Le ${service.name} est surchargé en ce moment. Réessayez dans quelques minutes : vos points ont été rendus.`,
+      `Le ${service.name} n’a pas pu aboutir. Vos points ont été rendus.`,
       `${service.code}_OVERLOADED`,
     );
   }
@@ -225,7 +225,7 @@ export async function generateJson<T>(input: {
   }
   throw new AppError(
     503,
-    `Le ${service.name} rencontre une panne passagère. Réessayez dans quelques minutes : vos points ont été rendus.`,
+    `Le ${service.name} n’a pas pu aboutir. Vos points ont été rendus.`,
     `${service.code}_UNAVAILABLE`,
   );
 }

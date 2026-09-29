@@ -229,7 +229,7 @@ function gammaFailure(status: number): AppError {
   }
   if (status === 404) return new AppError(404, 'Génération introuvable.', 'GAMMA_GENERATION_NOT_FOUND');
   if (status === 429)
-    return new AppError(429, 'Le service de mise en page est très demandé. Réessayez dans quelques instants.', 'GAMMA_RATE_LIMITED');
+    return new AppError(429, 'La mise en page n’a pas pu être lancée.', 'GAMMA_RATE_LIMITED');
   if (status === 400)
     return new AppError(502, 'La mise en page a été refusée. Reformulez le conte, puis réessayez.', 'GAMMA_REJECTED_REQUEST');
   return new AppError(502, 'Le service de mise en page est momentanément indisponible.', 'GAMMA_UNAVAILABLE');
@@ -425,7 +425,7 @@ async function freshPdf(generationRef: string, gammaId: string | null): Promise<
   if (!fileId)
     throw new AppError(
       409,
-      'Le PDF de ce conte n’est pas encore disponible. Réessayez dans un instant.',
+      'Le PDF de ce conte est en cours de préparation.',
       'STORYBOOK_PDF_UNAVAILABLE',
     );
 
@@ -447,7 +447,7 @@ async function freshPdf(generationRef: string, gammaId: string | null): Promise<
     if (polled.success && polled.data.status === 'failed') break;
     await new Promise((resolve) => setTimeout(resolve, 3_000));
   }
-  throw new AppError(502, 'Le PDF de ce conte n’a pas pu être produit. Réessayez dans quelques minutes.', 'STORYBOOK_PDF_FAILED');
+  throw new AppError(502, 'Le PDF de ce conte n’a pas pu être produit.', 'STORYBOOK_PDF_FAILED');
 }
 
 const fileNameOf = (title: string) =>

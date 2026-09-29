@@ -120,6 +120,8 @@ export interface FakeProviders {
    * qu'un tour de rédaction échoue entièrement.
    */
   setOverload: (calls: number) => void;
+  /** Le rédacteur du rapport répond 503 aux N prochains appels (rapport ou partie). */
+  setReportOverload: (calls: number) => void;
   close: () => Promise<void>;
 }
 
@@ -197,6 +199,7 @@ export async function startFakeProviders(): Promise<FakeProviders> {
   const studies = new Map<string, string>();
   const searchQueries: { token: string | undefined; query: string | null; country: string | null }[] = [];
   let overloadRemaining = 0;
+  let reportOverloadRemaining = 0;
 
   const server: Server = createServer((req, res) => {
     const chunks: Buffer[] = [];
@@ -246,6 +249,11 @@ export async function startFakeProviders(): Promise<FakeProviders> {
             }
             if (input.includes('« panne')) return send(500, { error: { message: 'erreur interne' } });
             if (input.includes('« illisible')) return send(200, completed('{}'));
+            // Rapport rédigé : refus passagers simulés, pour éprouver la reprise automatique.
+            if (reportOverloadRemaining > 0 && (input.includes('Rédige maintenant le rapport') || input.includes('RÉDIGE LA PARTIE'))) {
+              reportOverloadRemaining -= 1;
+              return send(503, { error: { message: 'The model is overloaded. Please try again later.' } });
+            }
             // Rapport long : un plan, puis une réponse par partie.
             if ((body as { response_format?: unknown }).response_format && input.includes('PLAN DU RAPPORT')) {
               const niche = /« ([^»]+) »/.exec(input)?.[1] ?? 'la niche';
@@ -311,6 +319,9 @@ export async function startFakeProviders(): Promise<FakeProviders> {
     writerCalls,
     setOverload: (calls: number) => {
       overloadRemaining = calls;
+    },
+    setReportOverload: (calls: number) => {
+      reportOverloadRemaining = calls;
     },
     searchQueries,
     agentCalls,

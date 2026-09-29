@@ -131,11 +131,12 @@ describe('Analyse — attente quand l’IA est saturée', () => {
     assert.equal(enAttente.status, 'waiting');
 
     // On se place à la dernière tentative prévue : la suivante doit renoncer, pas attendre encore.
-    await avancerRendezVous(jobId, 3);
+    await avancerRendezVous(jobId, 4);
     const dernier = await waitForStatus(agent, jobId, ['failed', 'completed']);
 
     assert.equal(dernier.status, 'failed', 'l’analyse finit par renoncer');
-    assert.match(dernier.error?.message ?? '', /surchargé/);
+    assert.match(dernier.error?.message ?? '', /points ont été rendus/);
+    assert.doesNotMatch(dernier.error?.message ?? '', /réessayez dans|surchargé|très demandé/i, 'aucun message ne demande d’attendre');
     // Et là, les points reviennent : l'attente est terminée, le service n'a rien rendu.
     assert.equal(await creditsOf(agent), avant, 'les points sont rendus à l’abandon');
     providers.setOverload(0);

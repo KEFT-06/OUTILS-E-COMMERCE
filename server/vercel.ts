@@ -72,7 +72,7 @@ export default async function handler(request: IncomingMessage, response: Server
     response.statusCode = 503;
     response.setHeader('Content-Type', 'application/json; charset=utf-8');
     response.setHeader('Cache-Control', 'no-store');
-    response.end(JSON.stringify({ error: { code: 'DATABASE_UNAVAILABLE', message: 'Le service est momentanément indisponible. Réessayez dans un instant.' } }));
+    response.end(JSON.stringify({ error: { code: 'DATABASE_UNAVAILABLE', message: 'Le service est momentanément indisponible.' } }));
     return;
   }
   app(request as never, response as never);

@@ -201,7 +201,8 @@ describe('Rédaction par l’IA', () => {
     const before = await balance(agent);
     const overloaded = await agent.post('/api/writing/product').send({ product: { ...PRODUCT, title: 'Saturé partout' } }).expect(503);
     assert.equal(overloaded.body.error.code, 'WRITING_OVERLOADED');
-    assert.match(overloaded.body.error.message, /surchargé/);
+    assert.match(overloaded.body.error.message, /points ont été rendus/);
+    assert.doesNotMatch(overloaded.body.error.message, /réessayez dans|surchargé|très demandé/i, 'aucun message ne demande d’attendre');
     // Trois modèles : le principal, le secours, puis le dernier recours d'une génération stable.
     assert.deepEqual(models, ['gemini-3.6-flash', 'gemini-3.6-flash', 'gemini-3.5-flash', 'gemini-3.5-flash', 'gemini-2.5-flash', 'gemini-2.5-flash'], 'deux tentatives par modèle, pas davantage');
     assert.equal(await balance(agent), before, 'points rendus');

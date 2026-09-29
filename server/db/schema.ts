@@ -402,6 +402,12 @@ export const reportDocuments = pgTable(
     model: text('model'),
     /** Longueur demandée par l'utilisateur, en pages A4. */
     targetPages: integer('target_pages'),
+    /**
+     * Refus passagers déjà réessayés, et instant du prochain essai : la rédaction reprend seule au
+     * lieu d'échouer (décision du 29/09/2026 : toute création doit aboutir).
+     */
+    retryCount: integer('retry_count').notNull().default(0),
+    retryAfter: moment('retry_after'),
     creditsCharged: integer('credits_charged').notNull().default(0),
     debitTransactionId: uuid('debit_transaction_id'),
     refunded: boolean('refunded').notNull().default(false),

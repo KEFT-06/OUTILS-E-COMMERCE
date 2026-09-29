@@ -142,6 +142,36 @@ describe('Rapport rédigé après l’analyse', () => {
     assert.equal(before.credits.total - (await balance(agent)).credits.total, 6, 'douze pages : deux tranches de dix, trois points chacune');
   });
 
+  it('reprend seule après un refus passager, sans message ni nouveau débit', async () => {
+    const { agent } = await signInWithPlan(app, 'redaction-reprise@exemple.com', 'pro');
+    const report = await analyzedReport(agent, 'élevage de poulets');
+    const before = await balance(agent);
+
+    // Quatre refus : tout le premier essai échoue (le client réessaie lui-même quatre fois).
+    providers.setReportOverload(4);
+    await agent.post(`/api/reports/${report.id}/document`).send({ pages: 5 }).expect(202);
+
+    const { getDb } = await import('@server/db/client');
+    const { reportDocuments } = await import('@server/db/schema');
+    const { eq } = await import('drizzle-orm');
+    let programme = false;
+    for (let attempt = 0; attempt < 200 && !programme; attempt += 1) {
+      const [row] = await getDb().select().from(reportDocuments).where(eq(reportDocuments.reportId, report.id));
+      programme = Boolean(row?.retryAfter);
+      if (!programme) await sleep(100);
+    }
+    assert.ok(programme, 'un nouvel essai est programmé au lieu d’un échec');
+    const enCours = (await agent.get(`/api/reports/${report.id}/document`).expect(200)).body.document as Document;
+    assert.equal(enCours.status, 'writing', 'l’écran montre toujours une rédaction en cours');
+    assert.equal(enCours.error, null, 'aucun message d’erreur ni d’attente');
+
+    // Échéance avancée : un test n'attend pas quinze secondes.
+    await getDb().update(reportDocuments).set({ retryAfter: new Date(Date.now() - 1_000) }).where(eq(reportDocuments.reportId, report.id));
+    const document = await waitForDocument(agent, report.id);
+    assert.equal(document.status, 'ready', JSON.stringify(document.error));
+    assert.equal(before.credits.total - (await balance(agent)).credits.total, 3, 'débité une seule fois');
+  });
+
   it('rend les points une seule fois quand la rédaction échoue', async () => {
     const { agent } = await signInWithPlan(app, 'redaction-echec@exemple.com', 'pro');
     const report = await analyzedReport(agent, 'rapport refusé');

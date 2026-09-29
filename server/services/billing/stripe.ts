@@ -66,7 +66,7 @@ async function stripeRequest<T>(method: 'GET' | 'POST', path: string, body?: Rec
       signal: AbortSignal.timeout(TIMEOUT_MS),
     });
   } catch {
-    throw new AppError(504, 'Le service de paiement n’a pas répondu à temps. Réessayez dans un instant.', 'PAYMENT_TIMEOUT');
+    throw new AppError(504, 'Le service de paiement n’a pas répondu à temps.', 'PAYMENT_TIMEOUT');
   }
 
   if (!response.ok) {

@@ -120,7 +120,7 @@ function chariowFailure(status: number): AppError {
   if (status === 429) {
     return new AppError(
       429,
-      'Chariow limite temporairement le nombre de requêtes. Réessayez dans une minute.',
+      'Chariow n’a pas répondu à la demande.',
       'CHARIOW_RATE_LIMITED',
     );
   }
