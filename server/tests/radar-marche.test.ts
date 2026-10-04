@@ -11,7 +11,9 @@ import { closeTestApp, createTestApp } from './support/helpers';
  * plateforme depuis l'automne 2026 (mesuré le 04/10/2026 sur une vraie boutique) :
  *
  *   · la LISTE du catalogue ne donne plus les ventes — nom, prix, avis seulement ;
- *   · la FICHE de chaque produit donne `sales_count` et la catégorie.
+ *   · la FICHE de chaque produit donne `sales_count` et la catégorie ;
+ *   · les prix reviennent dans la devise du LIEU du demandeur, sauf si `?currency=` est précisé :
+ *     depuis le serveur d'Irlande, 1 100 FCFA revenaient « 2 EUR ».
  *
  * Le radar lisait la liste : toutes les ventes arrivaient vides, l'écran affichait « — » et
  * « 0 ventes », et plus aucune accélération n'était signalée.
@@ -48,7 +50,11 @@ const fausseVitrine = createServer((req, res) => {
         slug: produit.slug,
         type: 'downloadable',
         status: 'published',
-        pricing: { type: 'one_time', current_price: { value: produit.prix, currency: 'XAF' }, price: { value: produit.prix * 4, currency: 'XAF' } },
+        // Sans `?currency=`, la plateforme répond dans la devise du demandeur : ici l'euro, comme depuis l'Irlande.
+        pricing:
+          url.searchParams.get('currency') === 'XAF'
+            ? { type: 'one_time', current_price: { value: produit.prix, currency: 'XAF' } }
+            : { type: 'one_time', current_price: { value: Math.round((produit.prix / 656) * 100) / 100, currency: 'EUR' } },
         rating: { total_ratings: { value: 3 } },
       })),
       pagination: { next_page_url: null, has_more_pages: false },
@@ -106,6 +112,27 @@ describe('Radar — ventes lues dans la fiche de chaque produit', () => {
     assert.equal(recettes.sales, 3_564, 'les ventes faites AVANT la surveillance sont affichées');
     assert.equal(recettes.salesTracked, 0);
     assert.equal(recettes.category, 'health_and_wellness');
+    assert.equal(recettes.price, 1_100, 'le prix de la boutique, et non sa conversion arrondie en euros');
+    assert.equal(recettes.currency, 'XAF');
+  });
+
+  it('remplace sans bruit un ancien prix relevé en euros par le prix réel, sans annoncer de changement', async () => {
+    const { getDb } = await import('@server/db/client');
+    const { watchItems, watchEvents } = await import('@server/db/schema');
+    const { eq } = await import('drizzle-orm');
+    const { agent } = await signInWithPlan(app, 'radar-devise-serveur@exemple.test', 'pro');
+    const ajout = await agent.post('/api/radar/watches').send({ target: base }).expect(201);
+    const id = ajout.body.watch.id as string;
+
+    // État d'avant le correctif : prix relevés depuis l'Irlande, en euros arrondis.
+    await getDb().update(watchItems).set({ priceValue: 2, currency: 'EUR' }).where(eq(watchItems.watchId, id));
+    const releve = await agent.post(`/api/radar/watches/${id}/sweep`).expect(200);
+    assert.equal(releve.body.outcome.priceChanged, 0, 'la boutique n’a rien changé : aucun événement');
+
+    const { body } = await agent.get(`/api/radar/watches/${id}/items`).expect(200);
+    assert.ok(body.items.every((item: { price: number; currency: string }) => item.price === 1_100 && item.currency === 'XAF'));
+    const evenements = await getDb().select().from(watchEvents).where(eq(watchEvents.watchId, id));
+    assert.equal(evenements.filter((event) => event.kind === 'price_changed').length, 0);
   });
 
   it('sépare les ventes depuis la création de celles faites depuis le suivi, et signale l’accélération', async () => {

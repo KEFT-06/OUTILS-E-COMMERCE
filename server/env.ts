@@ -406,6 +406,13 @@ const schema = z.object({
    * pèserait sur le site d'un tiers sans rien apprendre de plus.
    */
   RADAR_SWEEP_INTERVAL_HOURS: z.coerce.number().int().min(1).max(168).default(24),
+  /**
+   * Devise dans laquelle le radar demande les prix à la vitrine. Sans cela, la plateforme répond
+   * dans la devise du LIEU D'OÙ PART LA REQUÊTE : depuis un serveur en Irlande, un produit à
+   * 1 100 FCFA revenait « 2 EUR » (mesuré en production le 04/10/2026), puis était reconverti à
+   * l'écran en 1 312 FCFA. Le franc CFA est la devise de la grande majorité des boutiques suivies.
+   */
+  RADAR_PRICE_CURRENCY: z.string().regex(/^[A-Z]{3}$/).default('XAF'),
 
   /**
    * Collecte publicitaire (découverte de boutiques et mur d'espionnage) : jeton Apify, créé sur

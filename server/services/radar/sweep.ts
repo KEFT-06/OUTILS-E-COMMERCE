@@ -1,6 +1,7 @@
 import { and, eq, inArray, isNull } from 'drizzle-orm';
 import { getDb } from '@server/db/client';
 import { watchEvents, watchItems, watches, type WatchEventKind, type WatchItemRow, type WatchRow } from '@server/db/schema';
+import { env } from '@server/env';
 import { AppError } from '@server/middleware';
 import { indexStoreCatalog, normalHost } from '@server/services/market';
 import { sourceFor } from '@server/services/radar/sources';
@@ -108,7 +109,13 @@ export async function applyObservations(
         prix de sa vitrine vient de changer de stratégie de vente, pas de décor.
       */
       if (previous.priceValue !== null && observation.priceValue !== null) {
-        if (previous.currency !== observation.currency) {
+        if (previous.currency !== observation.currency && previous.currency !== env.RADAR_PRICE_CURRENCY && observation.currency === env.RADAR_PRICE_CURRENCY) {
+          /*
+            Ancien prix relevé dans la devise du lieu du serveur (euro, dollar), nouveau prix dans
+            la devise de référence : c'est NOTRE relevé qui a changé, pas la boutique. Aucun
+            événement — sinon chaque produit de chaque boutique annoncerait une « devise changée ».
+          */
+        } else if (previous.currency !== observation.currency) {
           // Devise différente : les deux montants ne se comparent pas. Ne pas dire « augmenté »
           // pour 5 000 XOF devenus 5 000 XAF — ce serait inventer une hausse qui n'existe pas.
           outcome.priceChanged += 1;

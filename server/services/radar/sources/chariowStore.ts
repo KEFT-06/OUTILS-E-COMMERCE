@@ -200,6 +200,16 @@ function catalogUrl(externalId: string): string {
   return `${env.CHARIOW_STOREFRONT_URL.replace(/\/+$/, '')}/storefront/${encodeURIComponent(externalId)}/products`;
 }
 
+/**
+ * Demande les prix dans la devise de référence. La plateforme accepte `?currency=` ; sans lui,
+ * elle choisit la devise d'après l'adresse du demandeur — donc celle du pays du serveur.
+ */
+function inReferenceCurrency(address: string): string {
+  const url = new URL(address);
+  url.searchParams.set('currency', env.RADAR_PRICE_CURRENCY);
+  return url.toString();
+}
+
 function toObservation(product: z.infer<typeof productSchema>): RadarObservation {
   const money = product.pricing?.effective ?? product.pricing?.current_price ?? null;
   return {
@@ -214,7 +224,7 @@ function toObservation(product: z.infer<typeof productSchema>): RadarObservation
 }
 
 function detailUrl(externalId: string, productId: string): string {
-  return `${catalogUrl(externalId)}/${encodeURIComponent(productId)}`;
+  return inReferenceCurrency(`${catalogUrl(externalId)}/${encodeURIComponent(productId)}`);
 }
 
 /**
@@ -259,7 +269,7 @@ export const chariowStoreSource: RadarSource = {
     // Identifiant donné directement : rien à deviner, on vérifie juste qu'il répond.
     if (/^store_[a-z0-9]{6,24}$/i.test(input.trim())) {
       const externalId = input.trim();
-      const catalog = catalogSchema.parse(await fetchJson(catalogUrl(externalId)));
+      const catalog = catalogSchema.parse(await fetchJson(inReferenceCurrency(catalogUrl(externalId))));
       const store = catalog.data[0]?.store ?? null;
       return {
         source: 'chariow_store',
@@ -293,7 +303,7 @@ export const chariowStoreSource: RadarSource = {
     let next: string | null = catalogUrl(externalId);
 
     for (let page = 0; next && page < MAX_PAGES; page += 1) {
-      const catalog = catalogSchema.parse(await fetchJson(next));
+      const catalog = catalogSchema.parse(await fetchJson(inReferenceCurrency(next)));
       for (const product of catalog.data) {
         // Un brouillon n'est pas en vente : le compter ferait naître de faux articles.
         if (product.status && product.status !== 'published') continue;

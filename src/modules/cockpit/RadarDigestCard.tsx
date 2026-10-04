@@ -4,7 +4,9 @@ import { ArrowUpRight, Radar } from 'lucide-react';
 import { pathOf } from '@/app/navigation';
 import { apiRequest } from '@/shared/lib/api';
 import { useCachedState } from '@/shared/lib/apiCache';
+import { eventText } from '@/modules/radar/radarText';
 import { formatRelativeFr } from '@/shared/lib/formatDate';
+import { useMoney } from '@/shared/lib/money';
 import { useRadarUnread } from '@/shared/stores/useRadarUnread';
 import type { RadarDashboard } from '@/shared/types/radar';
 import { Button } from '@/shared/ui/button';
@@ -29,6 +31,8 @@ export function RadarDigestCard() {
   // Compteur exact et déjà mutualisé avec les barres de navigation : le déduire de la liste
   // tronquée plafonnerait la pastille à cinq, quel que soit le nombre réel de nouveautés.
   const nonLus = useRadarUnread();
+  // Montants du fil dans la devise du compte, comme sur l'écran du Radar.
+  const money = useMoney();
 
   useEffect(() => {
     let cancelled = false;
@@ -83,7 +87,7 @@ export function RadarDigestCard() {
             <li key={event.id} className="py-2.5">
               {/* La phrase est celle rédigée par le serveur : l'accueil, l'écran Radar et
                   l'e-mail disent donc exactement la même chose. */}
-              <p className="text-sm leading-relaxed break-words">{event.summary}</p>
+              <p className="text-sm leading-relaxed break-words">{eventText(event, money.format)}</p>
               <p className="text-xs text-muted-foreground">
                 {event.watchLabel} · {formatRelativeFr(event.occurredAt)}
               </p>
