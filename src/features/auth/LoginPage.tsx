@@ -5,7 +5,7 @@ import { usePublicPageMeta } from '@/shared/hooks/usePublicPageMeta';
 import { Controller, useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
-import { ArrowLeft, Check, KeyRound, Lock, ShieldCheck, Smartphone, TriangleAlert, UserPlus } from 'lucide-react';
+import { ArrowLeft, Check, KeyRound, Lock, Smartphone, TriangleAlert, UserPlus } from 'lucide-react';
 import { useAuth } from '@/features/auth/AuthContext';
 import { useProviders } from '@/shared/hooks/useProviders';
 import { CountryCombobox } from '@/shared/components/CountryCombobox';
@@ -369,15 +369,9 @@ function SignupForm() {
 }
 
 const PROMISES = [
-  'Chaque taux s’ouvre sur le détail de son calcul.',
+  'Chaque chiffre affiché cite sa source.',
   'La conformité publicitaire est vérifiée avant d’exporter une page de vente ou un kit de lancement.',
   'Le coût en points s’affiche avant chaque action.',
-];
-
-const SECURITY = [
-  { icon: KeyRound, text: 'Mot de passe haché avec Argon2id : il n’est jamais stocké en clair.' },
-  { icon: Lock, text: 'Connexion bloquée automatiquement après cinq essais erronés.' },
-  { icon: ShieldCheck, text: 'Code de sécurité ou application en second facteur, obligatoire pour l’administration.' },
 ];
 
 /** Raisons renvoyées par le retour de Google (`?erreur=`), traduites pour l'écran. */
@@ -450,18 +444,6 @@ export function LoginPage() {
                     <Check className="size-3.5" aria-hidden="true" />
                   </span>
                   {promise}
-                </li>
-              ))}
-            </ul>
-          </div>
-
-          <div className="space-y-3 rounded-xl border bg-background p-5">
-            <p className="text-sm font-semibold">Votre compte est protégé</p>
-            <ul className="space-y-2.5">
-              {SECURITY.map(({ icon: Icon, text }) => (
-                <li key={text} className="flex items-start gap-2.5 text-sm text-muted-foreground">
-                  <Icon className="mt-0.5 size-4 shrink-0 text-brand-green-text" aria-hidden="true" />
-                  {text}
                 </li>
               ))}
             </ul>
