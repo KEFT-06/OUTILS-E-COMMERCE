@@ -1,8 +1,9 @@
-import { useEffect, useState } from 'react';
+import { useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { ArrowUpRight, Radar } from 'lucide-react';
 import { pathOf } from '@/app/navigation';
 import { apiRequest } from '@/shared/lib/api';
+import { useCachedState } from '@/shared/lib/apiCache';
 import { formatRelativeFr } from '@/shared/lib/formatDate';
 import { useRadarUnread } from '@/shared/stores/useRadarUnread';
 import type { RadarDashboard } from '@/shared/types/radar';
@@ -24,7 +25,7 @@ import { Card, CardAction, CardContent, CardDescription, CardHeader, CardTitle }
 const APERCU = 3;
 
 export function RadarDigestCard() {
-  const [data, setData] = useState<RadarDashboard | null>(null);
+  const [data, setData, keepData] = useCachedState<RadarDashboard>('/api/radar?events=5');
   // Compteur exact et déjà mutualisé avec les barres de navigation : le déduire de la liste
   // tronquée plafonnerait la pastille à cinq, quel que soit le nombre réel de nouveautés.
   const nonLus = useRadarUnread();
@@ -34,6 +35,8 @@ export function RadarDigestCard() {
     // Trois lignes affichées : on ne demande que ce qui sera montré, plus une marge.
     apiRequest<RadarDashboard>('/api/radar?events=5')
       .then((payload) => {
+        // Retenue même si l'écran a été quitté entre-temps : elle servira à sa prochaine ouverture.
+        keepData(payload);
         if (!cancelled) setData(payload);
       })
       // Complément de l'accueil : s'il échoue, le Cockpit reste entier.
@@ -41,7 +44,7 @@ export function RadarDigestCard() {
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [setData, keepData]);
 
   if (!data || data.watches.length === 0 || data.events.length === 0) return null;
 

@@ -15,6 +15,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/shared/ui/dialog';
+import { useCachedState } from '@/shared/lib/apiCache';
 import { type ApiError, readApiError, toApiError } from '@/shared/lib/apiError';
 import { ComplianceBlockedError } from '@/shared/lib/complianceGate';
 import { formatDateFr } from '@/shared/lib/formatDate';
@@ -71,7 +72,7 @@ export function LaunchKitView({ products, market }: { products: DigitalProductId
   const productDrafts = useProductDrafts();
   const kitDrafts = useLaunchKitDrafts();
 
-  const [config, setConfig] = useState<LaunchKitConfig | null>(null);
+  const [config, setConfig, keepConfig] = useCachedState<LaunchKitConfig>('/api/launch-kit/config');
   const [loadError, setLoadError] = useState<ApiError | null>(null);
   const [productId, setProductId] = useState(products[0]?.id ?? '');
   const [duration, setDuration] = useState<number | null>(null);
@@ -92,6 +93,8 @@ export function LaunchKitView({ products, market }: { products: DigitalProductId
         return (await response.json()) as LaunchKitConfig;
       })
       .then((payload) => {
+        // Retenue même si l'écran a été quitté entre-temps : elle servira à sa prochaine ouverture.
+        keepConfig(payload);
         if (cancelled) return;
         setConfig(payload);
         setDuration((current) => current ?? payload.scriptFormats[0]?.durationSeconds ?? null);
@@ -102,7 +105,7 @@ export function LaunchKitView({ products, market }: { products: DigitalProductId
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [setConfig, keepConfig]);
 
   const baseProduct = products.find((candidate) => candidate.id === productId) ?? products[0];
 

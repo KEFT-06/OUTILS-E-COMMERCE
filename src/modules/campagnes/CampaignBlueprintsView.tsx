@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState, type ComponentType } from 'react';
 import { parseAmount } from '@/shared/lib/parseAmount';
 import { AlertTriangle, ExternalLink, Eye, Scissors, TrendingUp } from 'lucide-react';
 import { PageHeader } from '@/shared/components/PageHeader';
+import { useCachedState } from '@/shared/lib/apiCache';
 import { type ApiError, readApiError, toApiError } from '@/shared/lib/apiError';
 import { formatDateFr } from '@/shared/lib/formatDate';
 import { useUserCurrency } from '@/shared/lib/money';
@@ -48,7 +49,7 @@ function positiveNumber(raw: string): number | null {
 }
 
 export function CampaignBlueprintsView() {
-  const [config, setConfig] = useState<CampaignBlueprintConfig | null>(null);
+  const [config, setConfig, keepConfig] = useCachedState<CampaignBlueprintConfig>('/api/campaigns/blueprints');
   const [error, setError] = useState<ApiError | null>(null);
   const [platformId, setPlatformId] = useState('meta');
   const [budgetInput, setBudgetInput] = useState('');
@@ -66,6 +67,8 @@ export function CampaignBlueprintsView() {
         return (await response.json()) as CampaignBlueprintConfig;
       })
       .then((payload) => {
+        // Retenue même si l'écran a été quitté entre-temps : elle servira à sa prochaine ouverture.
+        keepConfig(payload);
         if (!cancelled) setConfig(payload);
       })
       .catch((caught: unknown) => {
@@ -74,7 +77,7 @@ export function CampaignBlueprintsView() {
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [setConfig, keepConfig]);
 
   const platform = config?.platforms.find((candidate) => candidate.id === platformId);
   const blueprints = useMemo(

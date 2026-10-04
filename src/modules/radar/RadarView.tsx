@@ -3,6 +3,7 @@ import { ArrowDownRight, ArrowUpRight, ListTree, Plus, RefreshCw, Store, Trash2,
 import { toast } from 'sonner';
 import { PageHeader } from '@/shared/components/PageHeader';
 import { apiRequest } from '@/shared/lib/api';
+import { useCachedState } from '@/shared/lib/apiCache';
 import { toApiError, type ApiError } from '@/shared/lib/apiError';
 import { formatRelativeFr } from '@/shared/lib/formatDate';
 import { safeHttpUrl } from '@/shared/lib/safeUrl';
@@ -176,13 +177,13 @@ function WatchCard({
 }
 
 export function RadarView() {
-  const [data, setData] = useState<RadarDashboard | null>(null);
+  const [data, setData] = useCachedState<RadarDashboard>('/api/radar');
   const [loadError, setLoadError] = useState<ApiError | null>(null);
   const [target, setTarget] = useState('');
   const [isAdding, setIsAdding] = useState(false);
   const [busyWatch, setBusyWatch] = useState<string | null>(null);
   /** Interrupteur du résumé par e-mail, tenu localement pour répondre au clic sans attendre. */
-  const [alerts, setAlerts] = useState(true);
+  const [alerts, setAlerts] = useState(() => data?.alertsEnabled ?? true);
   /**
    * Boutique dont le catalogue est ouvert. On garde l'identifiant, pas l'objet : après un
    * relevé ou un retrait, le panneau suit la liste rechargée au lieu d'afficher des
@@ -199,7 +200,7 @@ export function RadarView() {
     } catch (caught) {
       setLoadError(toApiError(caught, 'Le radar n’a pas pu être chargé.'));
     }
-  }, []);
+  }, [setData]);
 
   useEffect(() => {
     void load();

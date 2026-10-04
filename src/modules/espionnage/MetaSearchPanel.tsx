@@ -4,6 +4,7 @@ import { toast } from "sonner";
 import { countryName } from "@server/shared/countries";
 import { AdCard, AdDetailsDialog } from "@/modules/espionnage/AdCard";
 import { apiRequest } from "@/shared/lib/api";
+import { useCachedState } from "@/shared/lib/apiCache";
 import { toApiError } from "@/shared/lib/apiError";
 import { formatRelativeFr } from "@/shared/lib/formatDate";
 import { MAX_POLL_MISSES, pollStatus } from "@/shared/lib/polling";
@@ -66,7 +67,7 @@ const POLL_MS = 4_000;
 const EXEMPLES = ["chariow", "formation", "ebook", "coaching"];
 
 export function MetaSearchPanel() {
-  const [apercu, setApercu] = useState<AdSearchOverview | null>(null);
+  const [apercu, setApercu] = useCachedState<AdSearchOverview>("/api/espionnage/searches");
   const [motCle, setMotCle] = useState("");
   const [pays, setPays] = useState<string>("ALL");
   const [recherche, setRecherche] = useState<AdSearch | null>(null);
@@ -104,7 +105,7 @@ export function MetaSearchPanel() {
     } catch {
       // L'aperçu (recherches récentes, quota) est un confort : la recherche reste possible sans lui.
     }
-  }, []);
+  }, [setApercu]);
 
   useEffect(() => {
     void chargerApercu();

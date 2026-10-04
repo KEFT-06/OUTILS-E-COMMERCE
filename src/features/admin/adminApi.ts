@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { apiRequest } from '@/shared/lib/api';
+import { cacheEpoch, lastKnown, remember } from '@/shared/lib/apiCache';
 import { type ApiError, toApiError } from '@/shared/lib/apiError';
 import type { CreditBalance, FeatureId, Permission, PlanId } from '@/shared/types/auth';
 
@@ -301,11 +302,22 @@ export interface AuditPage {
 /**
  * Lecture d'une ressource d'administration : chargement, erreur, rechargement et
  * rafraîchissement périodique quand l'onglet est visible. `path` null : rien à charger.
+ *
+ * Une page déjà vue pendant la visite (même adresse, mêmes filtres) se réaffiche tout de suite,
+ * puis se met à jour sans indicateur de chargement.
  */
 export function useAdminResource<T>(path: string | null, options: { refreshMs?: number } = {}) {
-  const [data, setData] = useState<T | null>(null);
+  const [data, setState] = useState<T | null>(() => (path ? lastKnown<T>(path) : null));
   const [error, setError] = useState<ApiError | null>(null);
-  const [loading, setLoading] = useState(path !== null);
+  const [loading, setLoading] = useState(path !== null && data === null);
+  const [epoch] = useState(cacheEpoch);
+  const setData = useCallback(
+    (next: T | null) => {
+      if (path) remember(path, next, epoch);
+      setState(next);
+    },
+    [path, epoch],
+  );
   const controllerRef = useRef<AbortController | null>(null);
 
   const load = useCallback(
@@ -317,7 +329,11 @@ export function useAdminResource<T>(path: string | null, options: { refreshMs?: 
       controllerRef.current?.abort();
       const controller = new AbortController();
       controllerRef.current = controller;
-      if (!silent) setLoading(true);
+      if (!silent) {
+        const known = lastKnown<T>(path);
+        if (known !== null) setState(known);
+        setLoading(known === null);
+      }
 
       try {
         const result = await apiRequest<T>(path, { signal: controller.signal });
@@ -330,7 +346,7 @@ export function useAdminResource<T>(path: string | null, options: { refreshMs?: 
         if (!controller.signal.aborted) setLoading(false);
       }
     },
-    [path],
+    [path, setData],
   );
 
   useEffect(() => {

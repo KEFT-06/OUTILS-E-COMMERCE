@@ -1,10 +1,11 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { Store } from "lucide-react";
 import { toast } from "sonner";
 import { AdCard, AdDetailsDialog } from "@/modules/espionnage/AdCard";
 import { MetaSearchPanel } from "@/modules/espionnage/MetaSearchPanel";
 import { PageHeader } from "@/shared/components/PageHeader";
 import { apiRequest } from "@/shared/lib/api";
+import { useCachedState } from "@/shared/lib/apiCache";
 import { toApiError } from "@/shared/lib/apiError";
 import type {
   EspionnageView as EspionnageData,
@@ -65,7 +66,6 @@ const ANCIENNETE = [
 export function EspionnageView() {
   // Aucune consigne d'administration sur cet écran, pas même pour un administrateur : la
   // collecte tourne seule, et l'écran d'un abonné ne doit rien montrer de la cuisine (29/09/2026).
-  const [data, setData] = useState<EspionnageData | null>(null);
   const [erreur, setErreur] = useState<string | null>(null);
   const [anciennete, setAnciennete] = useState("0");
   const [format, setFormat] = useState<"tous" | "image" | "video">("tous");
@@ -86,7 +86,7 @@ export function EspionnageView() {
     nom: string;
   } | null>(null);
 
-  const load = useCallback(async () => {
+  const adresse = useMemo(() => {
     // Aucune limite demandée : le serveur sert ce que le palier autorise. En fixer une ici
     // rognait ce que les paliers supérieurs avaient payé, sans que rien ne le dise.
     const params = new URLSearchParams({ sort: tri });
@@ -95,12 +95,14 @@ export function EspionnageView() {
     if (etat !== "toutes") params.set("etat", etat);
     if (annonceur?.pageId) params.set("pageId", annonceur.pageId);
     else if (annonceur?.storeHost) params.set("storeHost", annonceur.storeHost);
+    return `/api/espionnage?${params.toString()}`;
+  }, [anciennete, format, etat, tri, annonceur]);
+  // Le mur déjà vu avec ces réglages se réaffiche tout de suite, puis il est relu.
+  const [data, setData] = useCachedState<EspionnageData>(adresse);
+
+  const load = useCallback(async () => {
     try {
-      setData(
-        await apiRequest<EspionnageData>(
-          `/api/espionnage?${params.toString()}`,
-        ),
-      );
+      setData(await apiRequest<EspionnageData>(adresse));
       setErreur(null);
     } catch (caught) {
       setErreur(
@@ -108,7 +110,7 @@ export function EspionnageView() {
           .message,
       );
     }
-  }, [anciennete, format, etat, tri, annonceur]);
+  }, [adresse, setData]);
 
   useEffect(() => {
     void load();

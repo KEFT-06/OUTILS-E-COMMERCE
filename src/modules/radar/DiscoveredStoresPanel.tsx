@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { Compass, Plus, RefreshCw } from 'lucide-react';
 import { toast } from 'sonner';
 import { apiRequest } from '@/shared/lib/api';
+import { useCachedState } from '@/shared/lib/apiCache';
 import { toApiError } from '@/shared/lib/apiError';
 import { formatRelativeFr } from '@/shared/lib/formatDate';
 import type { DiscoveryView } from '@/shared/types/radar';
@@ -32,7 +33,7 @@ export function DiscoveredStoresPanel({
   onWatch: (host: string) => Promise<void>;
   disabled: boolean;
 }) {
-  const [data, setData] = useState<DiscoveryView | null>(null);
+  const [data, setData] = useCachedState<DiscoveryView>('/api/radar/discover');
   const [busy, setBusy] = useState<string | null>(null);
   const [refreshing, setRefreshing] = useState(false);
 
@@ -43,7 +44,7 @@ export function DiscoveredStoresPanel({
       // La découverte est un complément : son absence ne doit pas abîmer l'écran.
       setData(null);
     }
-  }, []);
+  }, [setData]);
 
   useEffect(() => {
     void load();

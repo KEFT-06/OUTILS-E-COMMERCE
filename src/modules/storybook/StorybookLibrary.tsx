@@ -3,6 +3,7 @@ import { BookOpen, Download } from 'lucide-react';
 import { countryName } from '@server/shared/countries';
 import { NoDataState } from '@/shared/components/NoDataState';
 import { apiRequest } from '@/shared/lib/api';
+import { useCachedState } from '@/shared/lib/apiCache';
 import { toApiError } from '@/shared/lib/apiError';
 import { type StorybookEntry, storybookPdfPath } from '@/shared/types/storybook';
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from '@/shared/ui/accordion';
@@ -25,13 +26,15 @@ const STATUS: Record<StorybookEntry['status'], { label: string; variant: 'succes
 const formatDate = (iso: string) => new Date(iso).toLocaleDateString('fr-FR', { day: 'numeric', month: 'long', year: 'numeric' });
 
 export function StorybookLibrary({ version }: { version: number }) {
-  const [entries, setEntries] = useState<StorybookEntry[] | null>(null);
+  const [entries, setEntries, keepEntries] = useCachedState<StorybookEntry[]>('/api/storybook/books');
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     let cancelled = false;
     apiRequest<{ storybooks: StorybookEntry[] }>('/api/storybook/books')
       .then(({ storybooks }) => {
+        // Retenue même si l'écran a été quitté entre-temps : elle servira à sa prochaine ouverture.
+        keepEntries(storybooks);
         if (!cancelled) {
           setEntries(storybooks);
           setError(null);
@@ -43,7 +46,7 @@ export function StorybookLibrary({ version }: { version: number }) {
     return () => {
       cancelled = true;
     };
-  }, [version]);
+  }, [version, setEntries, keepEntries]);
 
   return (
     <Card>

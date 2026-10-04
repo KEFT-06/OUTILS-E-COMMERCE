@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { AlertTriangle, TrendingUp } from 'lucide-react';
 import { ConnectChariowLink } from '@/shared/components/ConnectChariowLink';
+import { useCachedState } from '@/shared/lib/apiCache';
 import { type ApiError, readApiError, toApiError } from '@/shared/lib/apiError';
 import { fractionDigits } from '@server/shared/currency';
 import { formatDateFr } from '@/shared/lib/formatDate';
@@ -22,10 +23,10 @@ import { Skeleton } from '@/shared/ui/skeleton';
 const PERIOD_DAYS = 30;
 
 export function SalesSummaryCard() {
-  const [data, setData] = useState<SalesSummaryResponse | null>(null);
+  const [data, setData, keepData] = useCachedState<SalesSummaryResponse>(`/api/marketplaces/sales-summary?days=${PERIOD_DAYS}`);
   const money = useMoney();
   const [error, setError] = useState<ApiError | null>(null);
-  const [isLoading, setIsLoading] = useState(true);
+  const [isLoading, setIsLoading] = useState(data === null);
 
   useEffect(() => {
     let cancelled = false;
@@ -38,6 +39,8 @@ export function SalesSummaryCard() {
         return (await response.json()) as SalesSummaryResponse;
       })
       .then((payload) => {
+        // Retenue même si l'écran a été quitté entre-temps : elle servira à sa prochaine ouverture.
+        keepData(payload);
         if (!cancelled) setData(payload);
       })
       .catch((caught: unknown) => {
@@ -50,7 +53,7 @@ export function SalesSummaryCard() {
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [setData, keepData]);
 
   return (
     <div className="space-y-4">

@@ -9,6 +9,7 @@ import { LevelBadge } from '@/modules/multilingue/GuideBadges';
 import { LanguageSelect } from '@/modules/multilingue/LanguagePicker';
 import { ReviewerPanel } from '@/modules/multilingue/ReviewerPanel';
 import { type Guide, type GuideSummary, guidesApi } from '@/modules/multilingue/guidesApi';
+import { useCachedState } from '@/shared/lib/apiCache';
 import { PageHeader } from '@/shared/components/PageHeader';
 import { ApiError, toApiError } from '@/shared/lib/apiError';
 import { formatDateFr } from '@/shared/lib/formatDate';
@@ -261,7 +262,7 @@ function TopLanguagesCard() {
 
 function GuideList({ onCreated }: { onCreated: (guide: Guide) => void }) {
   const { account } = useAuth();
-  const [data, setData] = useState<{ limits: { languages: number | null }; guides: GuideSummary[] } | null>(null);
+  const [data, setData, keepData] = useCachedState<{ limits: { languages: number | null }; guides: GuideSummary[] }>('/api/guides');
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
@@ -269,6 +270,8 @@ function GuideList({ onCreated }: { onCreated: (guide: Guide) => void }) {
     guidesApi
       .list()
       .then((loaded) => {
+        // Retenue même si l'écran a été quitté entre-temps : elle servira à sa prochaine ouverture.
+        keepData(loaded);
         if (!cancelled) setData(loaded);
       })
       .catch((caught: unknown) => {
@@ -277,7 +280,7 @@ function GuideList({ onCreated }: { onCreated: (guide: Guide) => void }) {
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [setData, keepData]);
 
   if (error) {
     return (

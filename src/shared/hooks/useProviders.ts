@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { lastKnown, remember } from '@/shared/lib/apiCache';
 
 export interface ServerProviders {
   /** Analyse, rédaction et traduction. */
@@ -19,9 +20,12 @@ export interface ServerProviders {
   paymentMode: 'test' | 'live' | null;
 }
 
+const KNOWN = 'fournisseurs';
+
 /** Fournisseurs configurés sur le serveur, lus sur /api/health, sans jamais voir de clé. null : pas encore connu. */
 export function useProviders(): ServerProviders | null {
-  const [providers, setProviders] = useState<ServerProviders | null>(null);
+  // Dernier état connu pendant la visite : les boutons ne repassent pas par « inconnu » à chaque écran.
+  const [providers, setProviders] = useState<ServerProviders | null>(() => lastKnown<ServerProviders>(KNOWN));
 
   useEffect(() => {
     let cancelled = false;
@@ -29,7 +33,7 @@ export function useProviders(): ServerProviders | null {
       .then((response) => (response.ok ? response.json() : null))
       .then((data: { providers?: Record<string, boolean>; paymentMode?: 'test' | 'live' | null } | null) => {
         if (!cancelled && data?.providers) {
-          setProviders({
+          const next: ServerProviders = {
             text: Boolean(data.providers.text),
             // « images » est lu à part : il suivait l'indicateur vidéo du temps où un seul
             // fournisseur faisait les deux, et une couverture était refusée quand la vidéo l'était.
@@ -40,7 +44,9 @@ export function useProviders(): ServerProviders | null {
             payments: Boolean(data.providers.payments),
             googleAuth: Boolean(data.providers.googleAuth),
             paymentMode: data.paymentMode ?? null,
-          });
+          };
+          remember(KNOWN, next);
+          setProviders(next);
         }
       })
       .catch(() => undefined);

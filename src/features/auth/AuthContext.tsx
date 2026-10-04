@@ -1,5 +1,6 @@
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react';
 import { SESSION_EXPIRED_EVENT, apiRequest } from '@/shared/lib/api';
+import { forgetResponses } from '@/shared/lib/apiCache';
 import { bindAccountStores, flushAccountStores } from '@/shared/stores/persistentStore';
 import type { Account, SecondFactorMethods } from '@/shared/types/auth';
 
@@ -79,9 +80,10 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const accountId = account?.id;
 
-  // Brouillons de l'espace de travail : ceux du compte connecté, et de lui seul.
+  // Brouillons de l'espace de travail et mémoire des écrans : ceux du compte connecté, et de lui seul.
   useEffect(() => {
     bindAccountStores(accountId ?? null);
+    forgetResponses();
   }, [accountId]);
 
   useEffect(() => {

@@ -15,6 +15,7 @@ import { PlanCards } from '@/shared/components/PlanCards';
 import { findCountry } from '@server/shared/countries';
 import { PageHeader } from '@/shared/components/PageHeader';
 import { apiRequest, passwordProblemsOf } from '@/shared/lib/api';
+import { useCachedState } from '@/shared/lib/apiCache';
 import { type ApiError, readApiError, toApiError } from '@/shared/lib/apiError';
 import { triggerDownload } from '@/shared/lib/download';
 import { formatDateFr, formatRelativeFr } from '@/shared/lib/formatDate';
@@ -255,16 +256,17 @@ interface LedgerEntry {
 function CreditHistoryDialog() {
   const { costTable } = useCreditGate();
   const [open, setOpen] = useState(false);
-  const [entries, setEntries] = useState<LedgerEntry[] | null>(null);
+  const [entries, setEntries, keepEntries] = useCachedState<LedgerEntry[]>('/api/account/credits');
   const [error, setError] = useState<ApiError | null>(null);
 
   useEffect(() => {
     if (!open) return;
     let cancelled = false;
-    setEntries(null);
+    // La dernière liste connue reste affichée pendant la relecture.
     setError(null);
     apiRequest<{ entries: LedgerEntry[] }>('/api/account/credits')
       .then((result) => {
+        keepEntries(result.entries);
         if (!cancelled) setEntries(result.entries);
       })
       .catch((caught: unknown) => {
@@ -273,7 +275,7 @@ function CreditHistoryDialog() {
     return () => {
       cancelled = true;
     };
-  }, [open]);
+  }, [open, setEntries, keepEntries]);
 
   const actionLabel = (id: string) => costTable?.actions.find((action) => action.id === id)?.label ?? id;
 
@@ -997,7 +999,7 @@ interface SessionItem {
 function SessionsList() {
   const { setAccount } = useAuth();
   const navigate = useNavigate();
-  const [sessions, setSessions] = useState<SessionItem[] | null>(null);
+  const [sessions, setSessions] = useCachedState<SessionItem[]>('/api/account/sessions');
   const [error, setError] = useState<ApiError | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
 
@@ -1009,7 +1011,7 @@ function SessionsList() {
     } catch (caught) {
       setError(toApiError(caught, 'Les appareils n’ont pas pu être chargés.'));
     }
-  }, []);
+  }, [setSessions]);
 
   useEffect(() => {
     void load();

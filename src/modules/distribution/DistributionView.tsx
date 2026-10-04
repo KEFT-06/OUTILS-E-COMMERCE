@@ -4,6 +4,7 @@ import { AlertTriangle, CheckCircle2, Info, PackageOpen, PackageSearch, XCircle 
 import { ConnectChariowLink } from '@/shared/components/ConnectChariowLink';
 import { NoDataState } from '@/shared/components/NoDataState';
 import { PageHeader } from '@/shared/components/PageHeader';
+import { useCachedState } from '@/shared/lib/apiCache';
 import { type ApiError, readApiError, toApiError } from '@/shared/lib/apiError';
 import { cn } from '@/shared/lib/utils';
 import type { MarketplaceInfo, MarketplaceProduct } from '@/shared/types/marketplaces';
@@ -32,7 +33,7 @@ const CAPABILITIES: { key: keyof MarketplaceInfo['capabilities']; label: string 
 ];
 
 export function DistributionView() {
-  const [marketplaces, setMarketplaces] = useState<MarketplaceInfo[] | null>(null);
+  const [marketplaces, setMarketplaces, keepMarketplaces] = useCachedState<MarketplaceInfo[]>('/api/marketplaces');
   const [loadError, setLoadError] = useState<ApiError | null>(null);
 
   useEffect(() => {
@@ -46,6 +47,8 @@ export function DistributionView() {
         return (await response.json()) as { marketplaces: MarketplaceInfo[] };
       })
       .then((payload) => {
+        // Retenue même si l'écran a été quitté entre-temps : elle servira à sa prochaine ouverture.
+        keepMarketplaces(payload.marketplaces);
         if (!cancelled) setMarketplaces(payload.marketplaces);
       })
       .catch((caught: unknown) => {
@@ -55,7 +58,7 @@ export function DistributionView() {
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [setMarketplaces, keepMarketplaces]);
 
   // Un catalogue par boutique reliée qui sait le lire : Chariow, Shopify, WooCommerce.
   const catalogs = marketplaces?.filter((marketplace) => marketplace.available && marketplace.capabilities.readProducts) ?? [];

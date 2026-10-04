@@ -5,6 +5,7 @@ import { pathOf, type ModuleId } from '@/app/navigation';
 import { useCreditGate } from '@/app/providers/CreditGateProvider';
 import { useAuth } from '@/features/auth/AuthContext';
 import { PageHeader } from '@/shared/components/PageHeader';
+import { useCachedState } from '@/shared/lib/apiCache';
 import { useMoney } from '@/shared/lib/money';
 import { cn } from '@/shared/lib/utils';
 import type { MarketAnalysisReport } from '@/shared/types/analysis';
@@ -54,7 +55,7 @@ const GETTING_STARTED: { module: ModuleId; title: string; text: string }[] = [
  * « Système en ligne » qui clignotait sans rien mesurer.
  */
 function useProviderStatus() {
-  const [providers, setProviders] = useState<Record<string, boolean> | null>(null);
+  const [providers, setProviders, keepProviders] = useCachedState<Record<string, boolean>>('/api/health');
   const [failed, setFailed] = useState(false);
 
   useEffect(() => {
@@ -62,6 +63,7 @@ function useProviderStatus() {
     fetch('/api/health')
       .then((response) => (response.ok ? response.json() : Promise.reject(new Error(String(response.status)))))
       .then((data: { providers?: Record<string, boolean> }) => {
+        keepProviders(data.providers ?? {});
         if (!cancelled) setProviders(data.providers ?? {});
       })
       .catch(() => {
@@ -70,7 +72,7 @@ function useProviderStatus() {
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [setProviders, keepProviders]);
 
   return { providers, failed };
 }

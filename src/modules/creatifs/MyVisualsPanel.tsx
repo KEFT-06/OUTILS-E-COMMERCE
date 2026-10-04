@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { Download, Images } from 'lucide-react';
 import { NoDataState } from '@/shared/components/NoDataState';
 import { apiRequest } from '@/shared/lib/api';
+import { cacheEpoch, lastKnown, remember } from '@/shared/lib/apiCache';
 import { toApiError } from '@/shared/lib/apiError';
 import { formatDateFr } from '@/shared/lib/formatDate';
 import { Button } from '@/shared/ui/button';
@@ -32,18 +33,23 @@ interface VisualPage {
 const fileUrl = (requestId: string, attachment = false) =>
   `/api/creatives/requests/${encodeURIComponent(requestId)}/file${attachment ? '?disposition=attachment' : ''}`;
 
+const FIRST_PAGE = '/api/creatives/visuals?page=1';
+
 export function MyVisualsPanel({ version }: { version: number }) {
-  const [visuals, setVisuals] = useState<VisualEntry[] | null>(null);
+  // Première page : la dernière connue s'affiche tout de suite, puis elle est relue.
+  const [visuals, setVisuals] = useState<VisualEntry[] | null>(() => lastKnown<VisualPage>(FIRST_PAGE)?.visuals ?? null);
   const [page, setPage] = useState(1);
-  const [hasMore, setHasMore] = useState(false);
+  const [hasMore, setHasMore] = useState(() => lastKnown<VisualPage>(FIRST_PAGE)?.hasMore ?? false);
   const [loadingMore, setLoadingMore] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   // Première page, rechargée à chaque nouveau visuel.
   useEffect(() => {
     let cancelled = false;
-    apiRequest<VisualPage>('/api/creatives/visuals?page=1')
+    const epoch = cacheEpoch();
+    apiRequest<VisualPage>(FIRST_PAGE)
       .then((result) => {
+        remember(FIRST_PAGE, result, epoch);
         if (cancelled) return;
         setVisuals(result.visuals);
         setHasMore(result.hasMore);

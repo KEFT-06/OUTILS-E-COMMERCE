@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { ArrowLeft } from 'lucide-react';
 import { apiRequest } from '@/shared/lib/api';
+import { cacheEpoch, lastKnown, remember } from '@/shared/lib/apiCache';
 import { toApiError } from '@/shared/lib/apiError';
 import { formatDateFr } from '@/shared/lib/formatDate';
 import { useMoney } from '@/shared/lib/money';
@@ -41,7 +42,8 @@ const SEUILS: { value: string; label: string; hint: string }[] = [
 export function WatchItemsPanel({ watch, onBack }: { watch: WatchSummary; onBack: () => void }) {
   // Prix des boutiques surveillées, convertis dans la devise de l'utilisateur.
   const money = useMoney();
-  const [items, setItems] = useState<WatchItemView[] | null>(null);
+  const path = `/api/radar/watches/${watch.id}/items`;
+  const [items, setItems] = useState<WatchItemView[] | null>(() => lastKnown<WatchItemView[]>(path));
   const [error, setError] = useState<string | null>(null);
   const [etat, setEtat] = useState<Etat>('tous');
   const [seuil, setSeuil] = useState('0');
@@ -49,10 +51,13 @@ export function WatchItemsPanel({ watch, onBack }: { watch: WatchSummary; onBack
 
   useEffect(() => {
     let cancelled = false;
-    setItems(null);
+    const epoch = cacheEpoch();
+    // Catalogue déjà ouvert pendant cette visite : il s'affiche tout de suite, puis il est relu.
+    setItems(lastKnown<WatchItemView[]>(path));
     setError(null);
-    apiRequest<{ items: WatchItemView[] }>(`/api/radar/watches/${watch.id}/items`)
+    apiRequest<{ items: WatchItemView[] }>(path)
       .then((payload) => {
+        remember(path, payload.items, epoch);
         if (!cancelled) setItems(payload.items);
       })
       .catch((caught: unknown) => {
@@ -61,7 +66,7 @@ export function WatchItemsPanel({ watch, onBack }: { watch: WatchSummary; onBack
     return () => {
       cancelled = true;
     };
-  }, [watch.id, watch.lastSweptAt]);
+  }, [path, watch.lastSweptAt]);
 
   const visibles = useMemo(() => {
     if (!items) return [];

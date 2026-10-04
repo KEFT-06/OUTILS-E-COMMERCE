@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { Gauge, TrendingDown, TrendingUp, Users } from 'lucide-react';
 import { toast } from 'sonner';
 import { apiRequest } from '@/shared/lib/api';
+import { useCachedState } from '@/shared/lib/apiCache';
 import { toApiError } from '@/shared/lib/apiError';
 import { Badge } from '@/shared/ui/badge';
 import { Button } from '@/shared/ui/button';
@@ -77,7 +78,7 @@ function Comparaison({ label, mien, median }: { label: string; mien: number; med
 }
 
 export function PerformanceBenchmarkPanel() {
-  const [data, setData] = useState<PerformanceView | null>(null);
+  const [data, setData] = useCachedState<PerformanceView>('/api/market/performance');
   const [busy, setBusy] = useState(false);
 
   const charger = useCallback(() => {
@@ -85,7 +86,7 @@ export function PerformanceBenchmarkPanel() {
       .then(setData)
       // Ce panneau est un complément : s'il ne répond pas, le radar reste lisible sans lui.
       .catch(() => undefined);
-  }, []);
+  }, [setData]);
 
   useEffect(charger, [charger]);
 

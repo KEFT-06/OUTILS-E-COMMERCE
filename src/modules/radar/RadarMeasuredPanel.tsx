@@ -1,8 +1,9 @@
-import { useEffect, useState } from 'react';
+import { useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { Radar } from 'lucide-react';
 import { pathOf } from '@/app/navigation';
 import { apiRequest } from '@/shared/lib/api';
+import { useCachedState } from '@/shared/lib/apiCache';
 import { formatRelativeFr } from '@/shared/lib/formatDate';
 import { useMoney } from '@/shared/lib/money';
 import type { RadarMeasurements } from '@/shared/types/radar';
@@ -25,13 +26,15 @@ import { Card, CardAction, CardContent, CardDescription, CardHeader, CardTitle }
  */
 
 export function RadarMeasuredPanel() {
-  const [data, setData] = useState<RadarMeasurements | null>(null);
+  const [data, setData, keepData] = useCachedState<RadarMeasurements>('/api/radar/measurements');
   const money = useMoney();
 
   useEffect(() => {
     let cancelled = false;
     apiRequest<RadarMeasurements>('/api/radar/measurements')
       .then((payload) => {
+        // Retenue même si l'écran a été quitté entre-temps : elle servira à sa prochaine ouverture.
+        keepData(payload);
         if (!cancelled) setData(payload);
       })
       // Le radar est un complément : s'il ne répond pas, l'analyse reste lisible et
@@ -40,7 +43,7 @@ export function RadarMeasuredPanel() {
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [setData, keepData]);
 
   if (!data || data.stores === 0) return null;
 
