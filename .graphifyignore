@@ -1,10 +1,19 @@
 # Graphify project index rules.
 # Keep the graph focused on source, docs, config, and schema files.
+#
+# Règle de tri : le graphe sert à s'orienter dans le code MÉTIER sans lire les fichiers. Tout ce
+# qui est généré, copié d'une bibliothèque ou sans logique propre l'alourdit pour rien — chaque
+# nœud inutile se paie à chaque question posée au graphe.
 
 # Dependencies and package-manager caches
 node_modules/
 .pnp
 .pnp.js
+
+# Lockfiles : 600 Ko de versions, aucune architecture
+package-lock.json
+collecteur/package-lock.json
+*.lock
 
 # Build and generated outputs
 dist/
@@ -15,6 +24,33 @@ coverage/
 uploads/
 generated/
 *.tsbuildinfo
+
+# Migrations générées (3,5 Mo d'instantanés JSON et de SQL) : la source est server/db/schema.ts
+server/db/migrations/
+
+# Composants d'interface génériques (shadcn, magicui) : code de bibliothèque, importé partout,
+# qui fabrique de faux « nœuds centraux » et noie les liens du métier
+src/shared/ui/
+
+# Tests : un fichier par fonctionnalité, retrouvable par son nom (server/tests/<sujet>.test.ts) ;
+# dans le graphe ils doublent chaque module sans rien dire de l'architecture
+server/tests/
+*.test.ts
+*.test.tsx
+
+# Fichiers statiques : images, drapeaux, captures, icônes
+public/
+*.png
+*.jpg
+*.jpeg
+*.svg
+*.ico
+*.webp
+*.gif
+*.mp4
+*.pdf
+*.woff
+*.woff2
 
 # Local secrets and runtime state
 .env
@@ -28,6 +64,11 @@ generated/
 .eslintcache
 graphify-out/
 graph.json
+.claude/
+
+# Intégration continue et fichiers sans contenu
+.github/
+0
 
 # Editor and OS noise
 .DS_Store
