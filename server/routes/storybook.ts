@@ -7,19 +7,31 @@ import { findOwnedGeneration, runBilledGeneration, settleGeneration } from '@ser
 import {
   type StorybookBrief,
   briefText,
-  createStorybook,
   generationIdSchema,
   getStorybookGeneration,
   listStorybooks,
   recordStorybook,
   sendStorybookPdf,
+  sendStorybookPicture,
   storyDraftSchema,
   storybookBriefSchema,
   submitStorybook,
   writeStory,
 } from '@server/services/storybook';
+import {
+  OWN_ENGINE,
+  OWN_PROVIDER,
+  beginIllustration,
+  getOwnStorybookStatus,
+  isOwnGeneration,
+  ownIllustrationAvailable,
+  startOwnIllustration,
+} from '@server/services/storybook/illustrate';
 
-/** Storybook africain : conte rédigé par Gemini, mis en page et illustré par Gamma (server/services/storybook). */
+/**
+ * Storybook africain : conte rédigé par Gemini, illustré par le circuit « maison » (même
+ * personnage à chaque page), Gamma en secours (server/services/storybook).
+ */
 
 export const storybookRouter = Router();
 
@@ -80,8 +92,13 @@ storybookRouter.post(
  * Lance la création d'un conte.
  *
  * Ordre des contrôles : compte et palier, validation, conformité du brief, puis disponibilité de
- * Gemini et de Gamma. La conformité passe avant les fournisseurs pour que l'auteur puisse corriger
- * son brief même sur un serveur sans clé.
+ * la rédaction et d'au moins un circuit d'illustration. La conformité passe avant les fournisseurs
+ * pour que l'auteur puisse corriger son brief même sur un serveur sans clé.
+ *
+ * L'ILLUSTRATION CHOISIT SON CIRCUIT TOUTE SEULE. Le circuit « maison » d'abord : il dessine une
+ * planche des personnages et la donne en modèle à chaque page, ce qui garde le même visage d'un
+ * bout à l'autre. S'il ne peut pas partir (moteur d'images fermé, stockage absent), le conte passe
+ * par la mise en page externe au lieu d'échouer — l'auteur n'a rien à choisir ni à vérifier.
  *
  * Le corps peut porter un `story` : celui que l'auteur vient de lire et d'approuver dans
  * l'aperçu, éventuellement corrigé. Sans lui, le conte est écrit puis illustré d'un seul geste,
@@ -103,7 +120,8 @@ storybookRouter.post(
     );
 
     if (!providers.gemini) throw providerUnavailable('rédaction automatique');
-    if (!providers.gamma) throw providerUnavailable('mise en page illustrée');
+    const maison = ownIllustrationAvailable();
+    if (!maison && !providers.gamma) throw providerUnavailable('mise en page illustrée');
 
     /*
       Le conte approuvé dans l'aperçu est réutilisé tel quel : le réécrire produirait une autre
@@ -132,13 +150,29 @@ storybookRouter.post(
       actionId: approuve.success ? 'storybook_illustration' : 'storybook_generation',
       kind: 'storybook',
       provider: 'gamma',
-      run: async () =>
-        approuve.success
-          ? { ...(await submitStorybook(brief, approuve.data)), story: approuve.data }
-          : createStorybook(brief),
-      describe: (created) => ({ providerRef: created.generationId, state: 'pending', fileFormat: 'pdf' }),
+      run: async () => {
+        const story = approuve.success ? approuve.data : await writeStory(brief);
+        if (maison) {
+          try {
+            return { ...(await startOwnIllustration(brief, story)), story, engine: OWN_ENGINE };
+          } catch (error) {
+            // Sans secours, l'échec est celui du conte : les points sont rendus et l'auteur le voit.
+            if (!providers.gamma) throw error;
+            console.warn('[conte] circuit maison indisponible, mise en page externe :', error instanceof Error ? error.message : error);
+          }
+        }
+        return { ...(await submitStorybook(brief, story)), story, engine: null };
+      },
+      describe: (created) => ({
+        providerRef: created.generationId,
+        state: 'pending',
+        fileFormat: 'pdf',
+        provider: created.engine === OWN_ENGINE ? OWN_PROVIDER : 'gamma',
+      }),
     });
-    const storybookId = await recordStorybook(req.auth!, brief, result.generationId, result.story);
+    const storybookId = await recordStorybook(req.auth!, brief, result.generationId, result.story, result.engine);
+    // Les pages se dessinent après la réponse : l'écran suit leur avancée.
+    if (result.engine === OWN_ENGINE) beginIllustration(result.generationId);
 
     res.status(202).json({ generationId: result.generationId, storybookId, title: result.story.title });
   }),
@@ -159,8 +193,17 @@ storybookRouter.get(
   requireAuth,
   routeLimiter(10, 60),
   asyncRoute(async (req, res) => {
-    if (!providers.gamma) throw providerUnavailable('mise en page illustrée');
     await sendStorybookPdf(req.auth!, req.params.storybookId, res);
+  }),
+);
+
+/** Illustration d'une page (0 : la couverture), pour l'aperçu du conte à l'écran. */
+storybookRouter.get(
+  '/books/:storybookId/pages/:position',
+  requireAuth,
+  routeLimiter(240, 60),
+  asyncRoute(async (req, res) => {
+    await sendStorybookPicture(req.auth!, req.params.storybookId, req.params.position, res);
   }),
 );
 
@@ -172,6 +215,12 @@ storybookRouter.get(
     const parsed = generationIdSchema.safeParse(req.params.generationId);
     if (!parsed.success) {
       throw new AppError(400, 'Identifiant de génération invalide.', 'INVALID_GENERATION_ID');
+    }
+    if (isOwnGeneration(parsed.data)) {
+      await findOwnedGeneration(req.auth!, OWN_PROVIDER, parsed.data);
+      // Le circuit maison règle lui-même la génération (points gardés ou rendus) en fin de tranche.
+      res.json(await getOwnStorybookStatus(parsed.data));
+      return;
     }
     if (!providers.gamma) throw providerUnavailable('mise en page illustrée');
 

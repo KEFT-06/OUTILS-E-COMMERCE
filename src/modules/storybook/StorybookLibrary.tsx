@@ -5,7 +5,7 @@ import { NoDataState } from '@/shared/components/NoDataState';
 import { apiRequest } from '@/shared/lib/api';
 import { useCachedState } from '@/shared/lib/apiCache';
 import { toApiError } from '@/shared/lib/apiError';
-import { type StorybookEntry, storybookPdfPath } from '@/shared/types/storybook';
+import { type StorybookEntry, storybookPdfPath, storybookPicturePath } from '@/shared/types/storybook';
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from '@/shared/ui/accordion';
 import { Badge } from '@/shared/ui/badge';
 import { Button } from '@/shared/ui/button';
@@ -13,9 +13,16 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/sha
 import { Spinner } from '@/shared/ui/spinner';
 
 /**
- * « Mes contes » : les storybooks du compte, avec leur texte, leur lien de consultation et le
- * téléchargement du PDF (servi par le serveur, jamais par le lien secret d'export).
+ * « Mes contes » : les storybooks du compte, avec leurs pages illustrées et le téléchargement du
+ * PDF (servi par le serveur, jamais par un lien d'export secret).
+ *
+ * Tant qu'un conte est en cours, la liste se relit toute seule : l'auteur qui a quitté l'écran
+ * pendant l'illustration le retrouve « Prêt » sans recharger, et la relecture relance au besoin
+ * une illustration restée en chemin.
  */
+
+/** Rythme de relecture tant qu'un conte est en cours. */
+const REFRESH_MS = 8_000;
 
 const STATUS: Record<StorybookEntry['status'], { label: string; variant: 'success' | 'info' | 'danger' }> = {
   completed: { label: 'Prêt', variant: 'success' },
@@ -28,6 +35,15 @@ const formatDate = (iso: string) => new Date(iso).toLocaleDateString('fr-FR', { 
 export function StorybookLibrary({ version }: { version: number }) {
   const [entries, setEntries, keepEntries] = useCachedState<StorybookEntry[]>('/api/storybook/books');
   const [error, setError] = useState<string | null>(null);
+  /** Avance à chaque relecture automatique, tant qu'un conte est en cours. */
+  const [tick, setTick] = useState(0);
+  const pending = entries?.some((entry) => entry.status === 'pending') ?? false;
+
+  useEffect(() => {
+    if (!pending) return;
+    const timer = setTimeout(() => setTick((value) => value + 1), REFRESH_MS);
+    return () => clearTimeout(timer);
+  }, [pending, tick, entries]);
 
   useEffect(() => {
     let cancelled = false;
@@ -46,7 +62,7 @@ export function StorybookLibrary({ version }: { version: number }) {
     return () => {
       cancelled = true;
     };
-  }, [version, setEntries, keepEntries]);
+  }, [version, tick, setEntries, keepEntries]);
 
   return (
     <Card>
@@ -55,7 +71,7 @@ export function StorybookLibrary({ version }: { version: number }) {
           <BookOpen className="size-4 text-brand-green-text" aria-hidden="true" />
           Mes contes
         </CardTitle>
-        <CardDescription>Relisez le texte de chaque page, ouvrez le conte en ligne ou téléchargez son PDF.</CardDescription>
+        <CardDescription>Relisez chaque page et téléchargez le PDF.</CardDescription>
       </CardHeader>
       <CardContent>
         {error ? (
@@ -106,15 +122,27 @@ export function StorybookLibrary({ version }: { version: number }) {
                     )}
                     <ol className="space-y-3">
                       {entry.story.pages.map((page, index) => (
-                        <li key={`${entry.id}-${index}`} className="rounded-lg border bg-muted/30 p-3 text-sm">
-                          <p className="text-xs font-semibold tracking-wide text-muted-foreground uppercase">
-                            Page {index + 1} · {page.heading}
-                          </p>
-                          <p className="mt-1 leading-relaxed">{page.text}</p>
+                        <li
+                          key={`${entry.id}-${index}`}
+                          className="flex flex-col gap-3 rounded-lg border bg-muted/30 p-3 text-sm sm:flex-row"
+                        >
+                          {entry.pictures.includes(index + 1) && (
+                            <img
+                              src={storybookPicturePath(entry.id, index + 1)}
+                              alt={`Illustration de la page ${index + 1}`}
+                              loading="lazy"
+                              className="aspect-[4/3] w-full shrink-0 rounded-md border object-cover sm:w-44"
+                            />
+                          )}
+                          <div className="min-w-0">
+                            <p className="text-xs font-semibold tracking-wide text-muted-foreground uppercase">
+                              Page {index + 1} · {page.heading}
+                            </p>
+                            <p className="mt-1 leading-relaxed">{page.text}</p>
+                          </div>
                         </li>
                       ))}
                     </ol>
-                    <p className="text-xs text-muted-foreground">Texte, mise en page et illustrations produits automatiquement.</p>
                   </AccordionContent>
                 </AccordionItem>
               );

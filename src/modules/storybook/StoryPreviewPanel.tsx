@@ -22,9 +22,10 @@ import { Textarea } from '@/shared/ui/textarea';
  *  · la SCÈNE à illustrer, également corrigeable. Elle ne paraîtra pas dans le livre, mais
  *    c'est elle qui décide de l'image — la corriger est souvent plus utile que de corriger
  *    le texte, et personne ne le devinerait si elle restait cachée ;
- *  · la FICHE DU PERSONNAGE, en tête. C'est le seul moyen dont dispose la mise en page pour
- *    garder le même visage d'une page à l'autre, et l'écran annonce déjà que cette constance
- *    n'est pas garantie. La montrer, c'est donner à l'auteur la seule prise qu'il ait dessus.
+ *  · la FICHE DU PERSONNAGE, en tête, et celle des personnages secondaires récurrents. Le
+ *    serveur en tire une planche de référence, donnée en modèle à chaque illustration : c'est
+ *    elle qui garde le même visage et les mêmes vêtements d'une page à l'autre. La corriger
+ *    ici, c'est décider de l'apparence du personnage dans tout le livre.
  *
  * Rien n'est renvoyé au serveur tant que l'auteur n'a pas lancé l'illustration : tant qu'il
  * relit, il ne paie rien de plus.
@@ -128,17 +129,30 @@ export function StoryPreviewPanel({ story, onIllustrate, onRewrite, busy, coutIl
             className="font-display text-lg font-extrabold"
           />
           {/*
-            La fiche du personnage ne paraît pas dans le livre : c'est la consigne que la mise
-            en page recopie à chaque illustration pour garder le même visage. L'écran annonce
-            déjà que cette constance n'est pas garantie — la montrer donne à l'auteur la seule
-            prise qu'il ait dessus.
+            Les fiches ne paraissent pas dans le livre : le serveur en tire la planche de
+            référence qui sert de modèle à chaque illustration. Elles décident de l'apparence
+            des personnages dans tout le livre.
           */}
           <ChampCorrigeable
-            label="Fiche du personnage — recopiée à chaque illustration"
+            label="Apparence du personnage principal — la même à chaque page"
             valeur={brouillon.characterSheet}
             lignes={3}
             onChange={(valeur) => setBrouillon((actuel) => ({ ...actuel, characterSheet: valeur }))}
           />
+          {(brouillon.cast ?? []).map((membre, rang) => (
+            <ChampCorrigeable
+              key={rang}
+              label={`Apparence de ${membre.name} — la même à chaque page`}
+              valeur={membre.sheet}
+              lignes={3}
+              onChange={(valeur) =>
+                setBrouillon((actuel) => ({
+                  ...actuel,
+                  cast: (actuel.cast ?? []).map((autre, index) => (index === rang ? { ...autre, sheet: valeur } : autre)),
+                }))
+              }
+            />
+          ))}
         </div>
 
         <div className="space-y-4">

@@ -15,6 +15,7 @@ import { convertAmount, currencyForCountry, getRates, isSupportedCurrency } from
 import { LaunchKitUnavailableError, getLaunchKitConfig } from '@server/services/launchKit';
 import { FEATURES, PlansUnavailableError, getPlanConfig, planPrice } from '@server/services/plans';
 import { PricingUnavailableError, getPricing, pricingIn } from '@server/services/pricing';
+import { ownIllustrationAvailable } from '@server/services/storybook/illustrate';
 import { AD_FRAMEWORKS } from '@server/shared/adFrameworks';
 import { findCountry } from '@server/shared/countries';
 
@@ -94,7 +95,7 @@ catalogRouter.get(
         */
         image: imagesConfigured(),
         video: veoConfigured(),
-        storybook: providers.gamma,
+        storybook: providers.gamma || ownIllustrationAvailable(),
         webSearch: providers.webSearch,
         email: providers.email,
         payments: providers.payments,

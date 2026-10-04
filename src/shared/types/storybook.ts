@@ -20,12 +20,16 @@ export interface StorybookStatus {
   gammaUrl?: string;
   storybookId?: string;
   errorMessage?: string;
+  /** Illustrations terminées sur illustrations attendues, couverture comprise. Absent : avancée inconnue. */
+  progress?: { done: number; total: number };
 }
 
 /** Conte rédigé par l'IA : une page = un titre, un texte et la scène à illustrer. */
 export interface StoryDraft {
   title: string;
   characterSheet: string;
+  /** Personnages secondaires récurrents, dessinés avec le principal pour rester identiques d'une page à l'autre. */
+  cast?: { name: string; sheet: string }[];
   coverIllustration: string;
   pages: { heading: string; text: string; illustration: string }[];
 }
@@ -41,8 +45,14 @@ export interface StorybookEntry {
   status: 'pending' | 'completed' | 'failed';
   gammaUrl: string | null;
   story: StoryDraft;
+  /** Rangs dont l'illustration peut être affichée : 0 pour la couverture, puis 1 à N pour les pages. */
+  pictures: number[];
   createdAt: string;
 }
 
 /** Adresse de téléchargement du PDF d'un conte (servi par le serveur). */
 export const storybookPdfPath = (storybookId: string) => `/api/storybook/books/${encodeURIComponent(storybookId)}/pdf`;
+
+/** Adresse de l'illustration d'une page (0 : la couverture). */
+export const storybookPicturePath = (storybookId: string, position: number) =>
+  `/api/storybook/books/${encodeURIComponent(storybookId)}/pages/${position}`;

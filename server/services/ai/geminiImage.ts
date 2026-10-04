@@ -41,6 +41,27 @@ export function geminiImagesConfigured(): boolean {
   return Boolean(env.GEMINI_API_KEY);
 }
 
+/** Image donnée en modèle au moteur : il en reprend les personnages et le trait. */
+export interface ImageReference {
+  mimeType: string;
+  bytes: Buffer;
+}
+
+export interface GeminiImageInput {
+  prompt: string;
+  aspectRatio: ImageAspectRatio;
+  imageSize?: '1K' | '2K';
+  /**
+   * Images de référence, placées avant la consigne. C'est ce qui permet de redessiner le MÊME
+   * personnage dans une autre scène : décrire un visage par écrit ne suffit pas à le retrouver.
+   */
+  references?: ImageReference[];
+  /** Modèles à essayer à la place de la chaîne habituelle (ils doivent accepter une image en entrée). */
+  models?: string[];
+  /** Budget de toute la chaîne, quand l'appelant enchaîne beaucoup d'images dans un temps compté. */
+  budgetMs?: number;
+}
+
 /** Réponse de Google, ou null si le délai a expiré ou la connexion a été coupée. */
 async function callOnce(
   model: string,
@@ -48,6 +69,7 @@ async function callOnce(
   aspectRatio: ImageAspectRatio,
   imageSize: '1K' | '2K',
   timeoutMs: number,
+  references: ImageReference[] = [],
 ): Promise<{ status: number; payload: ImagePayload | null } | null> {
   const url = `${env.GEMINI_API_URL.replace(/\/+$/, '')}/v1beta/models/${encodeURIComponent(model)}:generateContent`;
   let response: Response;
@@ -56,7 +78,15 @@ async function callOnce(
       method: 'POST',
       headers: { 'x-goog-api-key': env.GEMINI_API_KEY ?? '', 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        contents: [{ role: 'user', parts: [{ text: prompt }] }],
+        contents: [
+          {
+            role: 'user',
+            parts: [
+              ...references.map((reference) => ({ inlineData: { mimeType: reference.mimeType, data: reference.bytes.toString('base64') } })),
+              { text: prompt },
+            ],
+          },
+        ],
         generationConfig: { responseModalities: ['IMAGE'], imageConfig: { aspectRatio, imageSize } },
       }),
       signal: AbortSignal.timeout(timeoutMs),
@@ -72,11 +102,7 @@ function imageModels(): string[] {
   return [...new Set([env.GEMINI_IMAGE_MODEL, ...env.GEMINI_IMAGE_FALLBACK_MODELS])];
 }
 
-export async function generateGeminiImage(input: {
-  prompt: string;
-  aspectRatio: ImageAspectRatio;
-  imageSize?: '1K' | '2K';
-}): Promise<ImageResult> {
+export async function generateGeminiImage(input: GeminiImageInput): Promise<ImageResult> {
   try {
     const image = await produceImage(input);
     lastOutcome = { ok: true, code: null, at: new Date().toISOString() };
@@ -87,14 +113,10 @@ export async function generateGeminiImage(input: {
   }
 }
 
-async function produceImage(input: {
-  prompt: string;
-  aspectRatio: ImageAspectRatio;
-  imageSize?: '1K' | '2K';
-}): Promise<ImageResult> {
+async function produceImage(input: GeminiImageInput): Promise<ImageResult> {
   if (!env.GEMINI_API_KEY) throw providerUnavailable('génération d’images');
   const imageSize = input.imageSize ?? '1K';
-  const deadline = Date.now() + CHAIN_BUDGET_MS;
+  const deadline = Date.now() + (input.budgetMs ?? CHAIN_BUDGET_MS);
 
   /*
     Chaque modèle Nano Banana a ses propres limites chez Google. Un seul modèle, abandonné au
@@ -104,11 +126,11 @@ async function produceImage(input: {
   */
   let lastStatus: number | null = null;
   let freeTierOnly = true;
-  for (const model of imageModels()) {
+  for (const model of input.models?.length ? input.models : imageModels()) {
     for (const waitMs of [0, 2_500]) {
       if (deadline - Date.now() - waitMs < MIN_ATTEMPT_MS) break;
       await sleep(waitMs);
-      const answer = await callOnce(model, input.prompt, input.aspectRatio, imageSize, Math.min(TIMEOUT_MS, deadline - Date.now()));
+      const answer = await callOnce(model, input.prompt, input.aspectRatio, imageSize, Math.min(TIMEOUT_MS, deadline - Date.now()), input.references);
       if (!answer) {
         lastStatus = 504;
         freeTierOnly = false;

@@ -29,6 +29,7 @@ import { AppError } from '@server/middleware';
 import { AUTH_EVENT_LABELS, recordAuthEvent } from '@server/services/audit';
 import { passwordInputSchema, verifyAccountOwner } from '@server/services/auth';
 import { hasAuthenticatorApp, hasSecurityCode } from '@server/services/auth/factors';
+import { removeStoryFiles, storyFilesOf } from '@server/services/storybook/illustrate';
 import { listWorkspaceDocuments } from '@server/services/workspace';
 import { sessionEndLabel } from '@server/shared/sessions';
 
@@ -303,6 +304,8 @@ export const accountDeletionSchema = z.object({
  */
 export async function deleteOwnAccount(user: UserRow, input: { password: string; code?: string }): Promise<void> {
   await verifyAccountOwner(user, input);
+  // Les illustrations des contes sont hors de la base : relevées ici, effacées une fois le compte supprimé.
+  const storyFiles = await storyFilesOf(user.id);
 
   await getDb().transaction(async (tx) => {
     if (user.role === 'admin') {
@@ -333,4 +336,5 @@ export async function deleteOwnAccount(user: UserRow, input: { password: string;
       tx,
     );
   });
+  await removeStoryFiles(storyFiles);
 }

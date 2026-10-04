@@ -188,6 +188,20 @@ const schema = z.object({
    */
   GAMMA_IMAGE_MODEL: z.string().regex(/^[\w.-]+$/).default('gemini-3-pro-image'),
   /**
+   * Modèles qui dessinent les pages d'un conte À PARTIR DE LA PLANCHE DES PERSONNAGES, essayés
+   * dans l'ordre. Ils doivent accepter une image en entrée : c'est elle qui garde le même
+   * visage et les mêmes vêtements d'une page à l'autre.
+   *
+   * Mesuré le 04/10/2026 sur « gemini-3.1-flash-image » : 9 à 13 secondes par page, personnage
+   * principal ET personnage secondaire identiques sur toutes les scènes. Le modèle Pro n'est
+   * pas pris ici : un conte de vingt pages compte vingt-deux images, et il coûte le double.
+   */
+  STORYBOOK_IMAGE_MODELS: z
+    .string()
+    .regex(/^[\w.-]+(,[\w.-]+)*$/)
+    .default('gemini-3.1-flash-image,gemini-2.5-flash-image')
+    .transform((list) => list.split(',')),
+  /**
    * Génération d'images par Cloudflare Workers AI : fournisseur principal, Gemini en secours.
    * Le jeton demande les droits « Workers AI » en lecture ET en écriture
    * (dash.cloudflare.com → Workers AI → Use REST API). Sans ces deux variables, tout repasse

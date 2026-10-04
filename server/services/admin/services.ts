@@ -5,6 +5,7 @@ import { env, isProd, providers } from '@server/env';
 import { lastGoogleRefusal } from '@server/services/ai/googleRefusal';
 import { lastImageOutcome } from '@server/services/ai/image';
 import { videoArchiveConfigured } from '@server/services/creatives/archive';
+import { ownIllustrationAvailable } from '@server/services/storybook/illustrate';
 
 /**
  * État des services du site, vérifié en direct pour l'administration.
@@ -264,12 +265,15 @@ async function checkPerplexity(): Promise<ServiceCheck> {
 }
 
 async function checkGamma(): Promise<ServiceCheck> {
-  const base = { id: 'gamma', name: 'Gamma', role: 'Mise en page, illustrations et PDF des storybooks' };
+  // Les contes sont d'abord illustrés par le serveur (même personnage à chaque page) ; Gamma n'est plus que le secours.
+  const base = { id: 'gamma', name: 'Gamma', role: 'Secours des storybooks : mise en page, illustrations et PDF' };
   if (!providers.gamma)
     return {
       ...base,
       state: 'off',
-      detail: 'Aucune clé : les storybooks sont fermés.',
+      detail: ownIllustrationAvailable()
+        ? 'Aucune clé : les storybooks sont illustrés par le serveur, sans secours si le moteur d’images se ferme.'
+        : 'Aucune clé : les storybooks sont fermés.',
       action: 'Créer une clé (offre Pro ou plus) dans Gamma → Settings → API keys, et la mettre dans GAMMA_API_KEY.',
     };
   const api = `${trimmed(env.GAMMA_API_URL)}/v1.0`;

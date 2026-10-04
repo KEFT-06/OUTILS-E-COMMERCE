@@ -571,6 +571,20 @@ export const storybooks = pgTable(
     story: jsonb('story').$type<Record<string, unknown>>().notNull(),
     /** pending · completed · failed */
     status: text('status').notNull(),
+    /**
+     * Qui illustre : « maison » — le serveur dessine chaque page à partir d'une planche de
+     * référence des personnages, ce qui garde le même visage d'une page à l'autre ; vide — le
+     * circuit de mise en page externe (contes d'avant, et secours).
+     */
+    engine: text('engine'),
+    /** Brief d'origine : l'illustration reprend par tranches, et doit retrouver style et pays. */
+    brief: jsonb('brief').$type<Record<string, unknown>>(),
+    /** Rangs déjà illustrés et déposés : 0 pour la couverture, puis 1 à N pour les pages. */
+    illustrated: jsonb('illustrated').$type<number[]>().notNull().default(sql`'[]'::jsonb`),
+    /** Tant que cette date n'est pas passée, une tranche d'illustration est en cours : personne d'autre n'y touche. */
+    leaseUntil: moment('lease_until'),
+    /** Tranches d'illustration déjà lancées : au-delà d'un plafond, le conte est abandonné et remboursé. */
+    slices: integer('slices').notNull().default(0),
     createdAt: createdAt(),
     completedAt: moment('completed_at'),
   },

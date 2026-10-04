@@ -7,7 +7,7 @@ import { MAX_POLL_MISSES, lostTrackMessage, pollStatus } from '@/shared/lib/poll
 import { useAuth } from '@/features/auth/AuthContext';
 import { CountryCombobox } from '@/shared/components/CountryCombobox';
 import { guessCountryCode } from '@/shared/lib/geo';
-import { type StoryDraft, type StorybookBrief, type StorybookStatus, storybookPdfPath } from '@/shared/types/storybook';
+import { type StoryDraft, type StorybookBrief, type StorybookStatus, storybookPdfPath, storybookPicturePath } from '@/shared/types/storybook';
 import { StorybookLibrary } from '@/modules/storybook/StorybookLibrary';
 import { StoryPreviewPanel } from '@/modules/storybook/StoryPreviewPanel';
 import { Alert, AlertDescription, AlertTitle } from '@/shared/ui/alert';
@@ -20,15 +20,13 @@ import { Spinner } from '@/shared/ui/spinner';
 import { Textarea } from '@/shared/ui/textarea';
 
 /**
- * Storybook africain : le conte est rédigé, mis en page et illustré une page à la fois ;
- * le PDF se télécharge depuis le site.
+ * Storybook africain : le conte est rédigé, relu par son auteur, puis illustré une page à la
+ * fois ; le PDF se télécharge depuis le site.
  *
- * Trois engagements visibles à l'écran, parce qu'ils conditionnent ce que l'auteur
- * peut promettre à ses propres lecteurs :
- *  - la cohérence du personnage d'une page à l'autre n'est pas garantie ;
- *  - aucun fait culturel n'est inventé : seuls les éléments fournis par l'auteur
- *    servent de références culturelles précises ;
- *  - le conte généré n'a pas été relu par le vérificateur de conformité.
+ * L'écran ne demande plus à l'auteur de vérifier quoi que ce soit après coup. Le personnage
+ * reste le même d'une page à l'autre parce que le serveur le dessine d'après une planche de
+ * référence ; aucun fait culturel n'est inventé, seuls les éléments fournis par l'auteur servant
+ * de références précises. L'avancée affichée est le compte réel des illustrations terminées.
  */
 
 /** Cadence de sondage recommandée par le service de mise en page. */
@@ -70,6 +68,8 @@ export function StorybookView() {
   const [story, setStory] = useState<StoryDraft | null>(null);
   const [elapsedSeconds, setElapsedSeconds] = useState(0);
   const [result, setResult] = useState<StorybookStatus | null>(null);
+  /** Illustrations terminées sur attendues, tel que le serveur le compte. */
+  const [progress, setProgress] = useState<StorybookStatus['progress'] | null>(null);
   const [error, setError] = useState<ApiError | null>(null);
   const [title, setTitle] = useState<string | null>(null);
   /** Change à chaque conte créé : la liste « Mes contes » se recharge. */
@@ -174,6 +174,7 @@ export function StorybookView() {
   const illustrer = async (approuve: StoryDraft) => {
     setError(null);
     setResult(null);
+    setProgress(null);
 
     try {
       // Points réservés par le serveur au lancement, rendus automatiquement si le conte échoue.
@@ -213,6 +214,7 @@ export function StorybookView() {
               continue;
             }
             misses = 0;
+            if (status.progress) setProgress(status.progress);
             if (status.status === 'completed') {
               setResult({ ...status, storybookId: status.storybookId ?? storybookId });
               setLibraryVersion((version) => version + 1);
@@ -389,11 +391,31 @@ export function StorybookView() {
       {isGenerating && (
         <Alert variant="info" role="status">
           <Spinner />
-          <AlertDescription className="tabular-nums">
-            {title
-              ? `« ${title} » est rédigé : mise en page et illustration de chaque page en cours`
-              : 'Le conte est rédigé, page par page'}{' '}
-            — {elapsedSeconds} s écoulées. Comptez en général 2 à 5 minutes.
+          <AlertDescription className="w-full space-y-2 tabular-nums">
+            <p>
+              {title ? `« ${title} » : ` : ''}
+              {progress
+                ? progress.done === 0
+                  ? 'personnages dessinés, illustration des pages en cours'
+                  : `illustration ${progress.done} sur ${progress.total}`
+                : 'illustration de chaque page en cours'}{' '}
+              — {elapsedSeconds} s
+            </p>
+            {progress && (
+              <div
+                className="h-1.5 w-full overflow-hidden rounded-full bg-muted"
+                role="progressbar"
+                aria-valuemin={0}
+                aria-valuemax={progress.total}
+                aria-valuenow={progress.done}
+                aria-label="Illustrations terminées"
+              >
+                <div
+                  className="h-full rounded-full bg-brand-green-text transition-[width] duration-500"
+                  style={{ width: `${Math.round((progress.done / Math.max(1, progress.total)) * 100)}%` }}
+                />
+              </div>
+            )}
           </AlertDescription>
         </Alert>
       )}
@@ -431,20 +453,22 @@ export function StorybookView() {
             </CardTitle>
           </CardHeader>
           <CardContent className="space-y-4">
+            {/* La couverture, quand le serveur a illustré le conte lui-même : on voit ce qu'on télécharge. */}
+            {result.progress && (
+              <img
+                src={storybookPicturePath(result.storybookId, 0)}
+                alt={title ? `Couverture de « ${title} »` : 'Couverture du conte'}
+                className="aspect-[3/4] w-full max-w-56 rounded-lg border object-cover"
+              />
+            )}
             <div className="flex flex-wrap gap-2">
-              {result.storybookId && (
-                <Button asChild>
-                  <a href={storybookPdfPath(result.storybookId)} download>
-                    <Download />
-                    Télécharger le PDF
-                  </a>
-                </Button>
-              )}
+              <Button asChild>
+                <a href={storybookPdfPath(result.storybookId)} download>
+                  <Download />
+                  Télécharger le PDF
+                </a>
+              </Button>
             </div>
-            <ul className="list-disc space-y-1 pl-4 text-sm text-muted-foreground">
-              <li>Le texte généré n’a pas été relu par le vérificateur de conformité : relisez-le avant toute diffusion.</li>
-              <li>Vérifiez que le personnage reste reconnaissable d’une page à l’autre.</li>
-            </ul>
           </CardContent>
         </Card>
       )}

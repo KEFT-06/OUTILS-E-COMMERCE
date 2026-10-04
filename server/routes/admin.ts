@@ -47,6 +47,7 @@ import { AUTH_EVENT_LABELS, clientInfo, recordAudit } from '@server/services/aud
 import { emailSchema, issuePasswordToken, nameSchema, verifyStepUp } from '@server/services/auth';
 import { PERMISSIONS, PERMISSION_IDS, isPermission } from '@server/services/auth/permissions';
 import { revokeUserSessions } from '@server/services/auth/sessions';
+import { removeStoryFiles, storyFilesOf } from '@server/services/storybook/illustrate';
 import { convertAmount, getRates, toMinorUnits } from '@server/services/currency';
 import { FEATURES, getPlan, getPlanConfig, isFeature } from '@server/services/plans';
 import { audienceSummary } from '@server/services/audience';
@@ -668,6 +669,8 @@ adminRouter.delete(
     const body = req.body as z.infer<typeof deleteUserSchema>;
 
     await verifyStepUp(auth.account.user, body.confirmationCode);
+    // Les illustrations des contes sont hors de la base : relevées ici, effacées une fois le compte supprimé.
+    const storyFiles = await storyFilesOf(target.id);
 
     await getDb().transaction(async (tx) => {
       // Verrou : deux suppressions simultanées ne peuvent pas laisser le site sans administrateur.
@@ -690,6 +693,7 @@ adminRouter.delete(
       await tx.update(auditLogs).set({ targetUserId: null }).where(eq(auditLogs.targetUserId, target.id));
       await tx.delete(users).where(eq(users.id, target.id));
     });
+    await removeStoryFiles(storyFiles);
 
     res.json({ deleted: true, email: target.email });
   }),

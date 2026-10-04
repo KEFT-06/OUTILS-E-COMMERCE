@@ -9,20 +9,23 @@ import { env } from '@server/env';
 import { AppError, marketSchema, providerUnavailable } from '@server/middleware';
 import type { RequestAuth } from '@server/middleware/auth';
 import { generateJson } from '@server/services/ai/gemini';
+import { OWN_ENGINE, resumeStalled, sendOwnStorybookPdf, sendOwnStorybookPicture } from '@server/services/storybook/illustrate';
 import { countryName } from '@server/shared/countries';
 
 /**
- * Storybook africain : chaque IA fait ce qu'elle fait le mieux.
+ * Storybook africain.
  *
- *  1. Gemini rédige le conte : titre, texte de chaque page adapté à l'âge, description de
- *     l'illustration de chaque page et fiche du personnage principal, reprise à l'identique.
- *  2. Gamma met en page le texte tel quel (une carte par page), génère une illustration par page
- *     avec le modèle d'image choisi (Gemini « Nano Banana » par défaut) et exporte un PDF.
- *  3. Le serveur garde le conte sur le compte et sert le PDF au téléchargement.
+ *  1. Gemini rédige le conte : titre, texte de chaque page adapté à l'âge, scène de chaque
+ *     illustration, fiche du personnage principal et des personnages secondaires récurrents.
+ *  2. L'illustration passe par le circuit « maison » (services/storybook/illustrate.ts) : une
+ *     planche de référence des personnages, donnée en modèle à chaque page — le même visage et
+ *     les mêmes vêtements d'un bout à l'autre du livre. Le serveur assemble lui-même le PDF.
+ *  3. EN SECOURS, quand ce circuit n'est pas disponible (moteur d'images fermé, stockage absent),
+ *     Gamma met en page et illustre : il ne reçoit qu'une fiche écrite, recopiée à chaque image,
+ *     sans pouvoir garantir l'identique. Mieux vaut un conte ainsi qu'aucun conte.
  *
  * Aucun fait culturel n'est inventé : seuls les éléments fournis par l'auteur servent de
- * références culturelles précises. Gamma n'expose ni graine ni référence de personnage : la
- * fiche du personnage est répétée pour chaque illustration, sans pouvoir garantir l'identique.
+ * références culturelles précises.
  *
  * Le lien d'export PDF de Gamma est un secret qui expire (une semaine) : il ne quitte jamais ce
  * serveur, qui le redemande à chaque téléchargement et relance un export gratuit s'il a expiré.
@@ -77,6 +80,8 @@ export interface StoryPage {
 export interface StoryDraft {
   title: string;
   characterSheet: string;
+  /** Personnages secondaires récurrents : dessinés sur la planche de référence, à côté du principal. */
+  cast?: { name: string; sheet: string }[];
   coverIllustration: string;
   pages: StoryPage[];
 }
@@ -102,7 +107,8 @@ export function buildStoryPrompt(brief: StorybookBrief): string {
     '3. N’invente aucun fait historique, aucune tradition ni aucun proverbe présenté comme authentique : comme références culturelles précises, n’utilise que les éléments fournis par l’auteur.',
     '4. Aucune violence, aucune peur excessive, aucun contenu inadapté aux enfants ; le message se comprend sans morale assénée.',
     '5. characterSheet : fiche visuelle précise et constante du personnage principal, en anglais (âge, carnation, coiffure, vêtements et couleurs, signe distinctif), reprise telle quelle pour chaque illustration.',
-    '6. illustration (en anglais) : la scène de la page en une ou deux phrases — lieu, action, émotion, cadrage — sans texte ni lettre dans l’image. coverIllustration : l’image de couverture.',
+    '6. illustration (en anglais) : la scène de la page en une ou deux phrases — lieu, action, émotion, cadrage — sans texte ni lettre dans l’image. Nomme chaque personnage présent par son nom, toujours le même. coverIllustration : l’image de couverture.',
+    '6 bis. cast : au plus deux personnages secondaires RÉCURRENTS (présents dans au moins deux pages) — name : le nom employé dans les scènes ; sheet : sa fiche visuelle précise, en anglais, comme characterSheet. Liste vide s’il n’y en a pas.',
     `7. title : titre court et attrayant, en ${language}. heading : titre court de la page, en ${language}.`,
     '8. Réponds uniquement en JSON, selon le schéma.',
   ].join('\n');
@@ -115,6 +121,7 @@ export const STORY_RESPONSE_SCHEMA = {
   properties: {
     title: STRING,
     characterSheet: STRING,
+    cast: { type: 'ARRAY', items: { type: 'OBJECT', properties: { name: STRING, sheet: STRING }, required: ['name', 'sheet'] } },
     coverIllustration: STRING,
     pages: {
       type: 'ARRAY',
@@ -137,6 +144,7 @@ const clean = (max: number) =>
 const storySchema = z.object({
   title: clean(120),
   characterSheet: clean(400),
+  cast: z.array(z.object({ name: clean(60), sheet: clean(400) }).catch({ name: '', sheet: '' })).catch([]),
   coverIllustration: clean(400),
   pages: z
     .array(
@@ -152,7 +160,8 @@ export function parseStory(value: unknown, pages: number): StoryDraft {
   if (!story.title || !story.characterSheet || written.length < pages) {
     throw new Error(`Conte incomplet : ${written.length} page(s) sur ${pages}.`);
   }
-  return { ...story, pages: written.slice(0, pages) };
+  const cast = story.cast.filter((member) => member.name && member.sheet).slice(0, 2);
+  return { ...story, cast, pages: written.slice(0, pages) };
 }
 
 export async function writeStory(brief: StorybookBrief): Promise<StoryDraft> {
@@ -267,19 +276,6 @@ export async function submitStorybook(brief: StorybookBrief, story: StoryDraft):
 }
 
 /**
- * Rédige le conte puis lance sa mise en page chez Gamma, d'un seul geste.
- *
- * Conservé pour les appels qui ne passent pas par l'aperçu. Le parcours normal écrit
- * d'abord (`writeStory`), montre le texte, et n'illustre qu'après validation : voir la
- * remarque sur les deux étapes dans `routes/storybook.ts`.
- */
-export async function createStorybook(brief: StorybookBrief): Promise<{ generationId: string; story: StoryDraft }> {
-  const story = await writeStory(brief);
-  const { generationId } = await submitStorybook(brief, story);
-  return { generationId, story };
-}
-
-/**
  * Le conte tel qu'il revient de l'aperçu, avant d'être envoyé à l'illustration.
  *
  * Il repart du navigateur, donc il est validé comme n'importe quelle entrée : longueurs
@@ -289,6 +285,10 @@ export async function createStorybook(brief: StorybookBrief): Promise<{ generati
 export const storyDraftSchema = z.object({
   title: z.string().trim().min(1).max(200),
   characterSheet: z.string().trim().min(1).max(2_000),
+  cast: z
+    .array(z.object({ name: z.string().trim().min(1).max(80), sheet: z.string().trim().min(1).max(2_000) }))
+    .max(2)
+    .optional(),
   coverIllustration: z.string().trim().min(1).max(2_000),
   pages: z
     .array(
@@ -357,12 +357,20 @@ export async function getStorybookGeneration(generationId: string): Promise<Stor
   };
 }
 
-export async function recordStorybook(auth: RequestAuth, brief: StorybookBrief, generationId: string, story: StoryDraft): Promise<string> {
+export async function recordStorybook(
+  auth: RequestAuth,
+  brief: StorybookBrief,
+  generationId: string,
+  story: StoryDraft,
+  engine: string | null = null,
+): Promise<string> {
   const [row] = await getDb()
     .insert(storybooks)
     .values({
       userId: auth.account.user.id,
       generationRef: generationId,
+      engine,
+      brief: brief as unknown as Record<string, unknown>,
       title: story.title,
       language: brief.language,
       country: brief.country,
@@ -381,6 +389,8 @@ export async function listStorybooks(auth: RequestAuth) {
     .where(eq(storybooks.userId, auth.account.user.id))
     .orderBy(desc(storybooks.createdAt))
     .limit(50);
+  // Un conte laissé en cours (écran fermé pendant l'illustration) reprend à l'ouverture de la liste.
+  resumeStalled(rows);
   return rows.map((row) => ({
     id: row.id,
     generationId: row.generationRef,
@@ -391,6 +401,8 @@ export async function listStorybooks(auth: RequestAuth) {
     status: row.status as 'pending' | 'completed' | 'failed',
     gammaUrl: row.gammaUrl,
     story: row.story as unknown as StoryDraft,
+    /** Rangs dont l'illustration peut être affichée (0 : couverture). Vide pour un conte du circuit de secours. */
+    pictures: row.engine === OWN_ENGINE ? [...row.illustrated].sort((a, b) => a - b) : [],
     createdAt: row.createdAt.toISOString(),
   }));
 }
@@ -462,6 +474,8 @@ const fileNameOf = (title: string) =>
 export async function sendStorybookPdf(auth: RequestAuth, storybookId: string | undefined, res: ExpressResponse): Promise<void> {
   const row = await ownedStorybook(auth, storybookId);
   if (row.status !== 'completed') throw new AppError(409, 'Le conte n’est pas encore prêt.', 'STORYBOOK_NOT_READY');
+  if (row.engine === OWN_ENGINE) return sendOwnStorybookPdf(row, fileNameOf(row.title), res);
+  if (!env.GAMMA_API_KEY) throw providerUnavailable('mise en page illustrée');
 
   const pdf = await freshPdf(row.generationRef, row.gammaId);
   const invalid = () => new AppError(502, 'Le fichier reçu n’est pas un PDF valide.', 'STORYBOOK_PDF_INVALID');
@@ -498,4 +512,17 @@ export async function sendStorybookPdf(auth: RequestAuth, storybookId: string | 
     }
   }
   await pipeline(Readable.from(body()), res);
+}
+
+/** Illustration d’une page d’un conte du compte (0 : la couverture), pour l’aperçu à l’écran. */
+export async function sendStorybookPicture(
+  auth: RequestAuth,
+  storybookId: string | undefined,
+  position: string | undefined,
+  res: ExpressResponse,
+): Promise<void> {
+  const row = await ownedStorybook(auth, storybookId);
+  const rank = z.coerce.number().int().min(0).max(20).safeParse(position);
+  if (!rank.success || row.engine !== OWN_ENGINE) throw new AppError(404, 'Illustration introuvable.', 'STORYBOOK_PICTURE_NOT_FOUND');
+  await sendOwnStorybookPicture(row, rank.data, res);
 }

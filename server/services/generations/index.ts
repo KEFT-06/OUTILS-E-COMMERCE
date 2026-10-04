@@ -29,7 +29,8 @@ export async function runBilledGeneration<T>(input: {
   kind: GenerationKind;
   provider: string;
   run: () => Promise<T>;
-  describe: (result: T) => { providerRef: string | null; state: GenerationState; fileFormat?: string | null };
+  /** `provider` : à renseigner quand le circuit réellement emprunté ne se connaît qu'après coup (secours). */
+  describe: (result: T) => { providerRef: string | null; state: GenerationState; fileFormat?: string | null; provider?: string };
   /** Vidéo longue : étape précédente, durée totale et résolution, enregistrées avec la génération. */
   video?: { parentId?: string | null; durationSeconds?: number | null; resolution?: string | null };
 }): Promise<{ result: T; generation: GenerationRow }> {
@@ -60,7 +61,7 @@ export async function runBilledGeneration<T>(input: {
     .values({
       userId: account.user.id,
       kind: input.kind,
-      provider: input.provider,
+      provider: described.provider ?? input.provider,
       providerRef: described.providerRef,
       status: described.state === 'failed' ? 'pending' : described.state,
       fileFormat: described.fileFormat ?? null,

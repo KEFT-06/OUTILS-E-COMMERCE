@@ -6,6 +6,7 @@ import { AppError } from '@server/middleware';
 import { fileFormatOf, generationStateOf, getCreativeStatus } from '@server/services/creatives';
 import { settleGeneration, type GenerationRow } from '@server/services/generations';
 import { getStorybookGeneration } from '@server/services/storybook';
+import { OWN_PROVIDER, getOwnStorybookStatus } from '@server/services/storybook/illustrate';
 
 /**
  * Suivi des générations que plus aucun écran ne surveille.
@@ -23,7 +24,7 @@ const RESUME_AFTER_MS = 10 * 60_000;
 const ABANDON_AFTER_MS = 48 * 3_600_000;
 const BATCH_SIZE = 25;
 
-const NOT_FOUND_CODES = new Set(['GAMMA_GENERATION_NOT_FOUND', 'FAL_NOT_FOUND', 'VEO_NOT_FOUND']);
+const NOT_FOUND_CODES = new Set(['GAMMA_GENERATION_NOT_FOUND', 'FAL_NOT_FOUND', 'VEO_NOT_FOUND', 'STORYBOOK_NOT_FOUND']);
 
 async function checkWithProvider(generation: GenerationRow): Promise<GenerationRow> {
   if (!generation.providerRef) return settleGeneration(generation, 'failed');
@@ -38,6 +39,11 @@ async function checkWithProvider(generation: GenerationRow): Promise<GenerationR
     if (generation.provider === 'fal' && providers.fal) {
       const status = await getCreativeStatus(generation.providerRef, 'fal');
       return settleGeneration(generation, generationStateOf(status.status), fileFormatOf(status));
+    }
+    // Conte illustré ici : consulter son état relance une tranche si plus personne n'y travaille.
+    if (generation.provider === OWN_PROVIDER) {
+      const status = await getOwnStorybookStatus(generation.providerRef);
+      return settleGeneration(generation, status.status, status.status === 'completed' ? 'pdf' : null);
     }
     if (generation.provider === 'gamma' && providers.gamma) {
       const status = await getStorybookGeneration(generation.providerRef);

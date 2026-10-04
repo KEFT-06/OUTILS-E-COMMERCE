@@ -13,6 +13,9 @@ import { build } from 'esbuild';
  *  - @node-rs/argon2 : module natif (binaire propre à la plateforme), impossible à assembler ;
  *  - PGlite : base embarquée du développement, jamais chargée en production, et qui lit ses
  *    fichiers WebAssembly à côté d'elle.
+ *  - html2canvas, canvg, dompurify : modules facultatifs de jsPDF (rendu de HTML et de SVG), que
+ *    le PDF des contes n'appelle jamais. jsPDF ne les charge qu'à l'intérieur de ces fonctions-là ;
+ *    assemblés, ils ajoutaient 1,8 Mo à lire à chaque démarrage à froid, pour rien.
  *
  * Les dépendances écrites en CommonJS appellent `require`, `__dirname` et `__filename`, absents
  * d'un module ES : la bannière les recrée à partir de l'adresse du fichier.
@@ -25,7 +28,15 @@ await build({
   target: 'node20',
   outfile: 'dist/vercel.js',
   sourcemap: true,
-  external: ['@node-rs/argon2', '@electric-sql/pglite', 'drizzle-orm/pglite', 'drizzle-orm/pglite/migrator'],
+  external: [
+    '@node-rs/argon2',
+    '@electric-sql/pglite',
+    'drizzle-orm/pglite',
+    'drizzle-orm/pglite/migrator',
+    'html2canvas',
+    'canvg',
+    'dompurify',
+  ],
   banner: {
     js: [
       "import { createRequire as __smartCreatorRequire } from 'node:module';",
