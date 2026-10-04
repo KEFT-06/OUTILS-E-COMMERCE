@@ -19,6 +19,7 @@ import {
   type AnalysisResponse,
 } from '@server/services/analysis/prompt';
 import type { ResearchEngine, ResearchOutcome } from '@server/services/analysis/research';
+import { nicheSignalsSource } from '@server/services/analysis/signals';
 import type { WebSource } from '@server/services/analysis/webSearch';
 import { conversionHints, currencyForCountry, getRates } from '@server/services/currency';
 import type { DataProvenance } from '@server/shared/provenance';
@@ -33,6 +34,7 @@ import type {
   TauxLevel,
 } from '@server/shared/analysis';
 import { countryName } from '@server/shared/countries';
+import { deriveVerdict } from '@server/shared/verdict';
 
 /**
  * Analyse de niche (module 2) : étude de marché ET rédaction de la fiche par Perplexity (décision
@@ -136,12 +138,21 @@ export function assembleReport(input: {
     virality: assessed('virality'),
   };
 
-  const evaluatedRates = Object.values(rates).filter((rate) => rate.basis !== 'unavailable').length;
-  const verdictAllowed = (VERDICTS as readonly string[]).includes(response.verdict) && sources.length > 0 && evaluatedRates >= 2;
-  const overallVerdict = verdictAllowed ? (response.verdict as OverallVerdict) : null;
-  const verdictRationale = overallVerdict
-    ? response.verdictRationale
-    : `Verdict non établi : ${sources.length === 0 ? noSource : 'trop peu de taux ont pu être évalués à partir des sources'}.`;
+  /*
+    Un verdict, toujours. Celui du rédacteur d'abord, qui a lu les sources ; à défaut, celui que
+    donnent les niveaux relevés. « Non établi — trop peu de taux ont pu être évalués » rendait la
+    question à celui qui la posait (vu par un client le 04/10/2026) : une niche dont rien ne
+    mesure la demande est un pari, et le dire est une réponse.
+  */
+  const stated = sources.length > 0 && (VERDICTS as readonly string[]).includes(response.verdict) ? (response.verdict as OverallVerdict) : null;
+  const derived = deriveVerdict(rates);
+  const overallVerdict: OverallVerdict = stated ?? derived.verdict;
+  const verdictRationale =
+    stated && response.verdictRationale
+      ? response.verdictRationale
+      : sources.length === 0
+        ? `Niche non documentée (${noSource}) : traitez-la comme un pari, et validez-la par un test à petit budget avant de produire.`
+        : derived.rationale;
 
   const competitors: CompetitorInsight[] = response.competitors
     .flatMap((competitor) => {
@@ -395,13 +406,21 @@ export async function writeReport(input: {
   // Devise du pays de l'UTILISATEUR, et non du marché étudié : chacun ne lit que la sienne.
   const rates = await getRates();
   const currency = currencyForCountry(input.userCountry ?? market, rates);
+  // Nos propres relevés (ventes affichées, prix, publicités en cours) rejoignent les sources de
+  // l'étude : c'est ce que le web ne publie pas, et ce qui permet de trancher sur la demande.
+  const own = await nicheSignalsSource(request.query, Math.max(0, ...research.sources.map((source) => source.id)) + 1, now).catch((error: unknown) => {
+    console.warn('[analyse] relevés internes indisponibles :', error instanceof Error ? error.message : error);
+    return null;
+  });
+  const sources = own ? [...research.sources, own] : research.sources;
+
   const response = await generateJsonWithPerplexity({
     service: SERVICE,
     prompt: buildAnalysisPrompt({
       query: request.query,
       marketName,
       today: todayLabel(now),
-      sources: research.sources,
+      sources,
       webSearchConfigured: true,
       memo: research.memo,
       currency: { code: currency, conversions: conversionHints(currency, rates) },
@@ -429,7 +448,7 @@ export async function writeReport(input: {
     market,
     now,
     timeZone: env.REPORTING_TIMEZONE,
-    sources: research.sources,
+    sources,
     webSearchConfigured: true,
     research: research.engine,
     response,

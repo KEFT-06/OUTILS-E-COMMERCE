@@ -17,6 +17,7 @@ import {
   Target,
   Users,
 } from 'lucide-react';
+import { settledVerdict } from '@server/shared/verdict';
 import { BrandLogo } from '@/shared/components/BrandLogo';
 import { ComplianceBlockDialog } from '@/shared/components/ComplianceBlockDialog';
 import { ComplianceBlockedError, checkReportCompliance, exportReportPDF } from '@/shared/lib/complianceGate';
@@ -72,6 +73,8 @@ function Empty({ children }: { children: string }) {
 export function ReportPDFView({ report }: ReportPDFViewProps) {
   const location = useLocation();
   const money = useMoney();
+  // Toujours un verdict : celui du rapport, ou celui que ses niveaux donnent.
+  const verdict = settledVerdict(report);
   const [tab, setTab] = useState<TabId>('synthese');
   const [isDownloading, setIsDownloading] = useState(false);
   const [blockedVerdict, setBlockedVerdict] = useState<ReportComplianceVerdict | null>(null);
@@ -137,12 +140,10 @@ export function ReportPDFView({ report }: ReportPDFViewProps) {
           <div className="space-y-2">
             <p className="text-xs font-semibold tracking-[0.18em] text-brand-green uppercase">Dossier de la niche</p>
             <h1 className="font-display text-2xl leading-tight font-extrabold tracking-tight sm:text-4xl">{report.nicheName}</h1>
-            {report.overallVerdict && (
-              <span className="inline-flex items-center gap-2 rounded-full bg-background/10 px-3 py-1 text-sm font-semibold ring-1 ring-background/20">
-                <Target className="size-4 text-brand-green" aria-hidden />
-                {report.overallVerdict}
-              </span>
-            )}
+            <span className="inline-flex items-center gap-2 rounded-full bg-background/10 px-3 py-1 text-sm font-semibold ring-1 ring-background/20">
+              <Target className="size-4 text-brand-green" aria-hidden />
+              {verdict.verdict}
+            </span>
           </div>
           <dl className="grid grid-cols-2 gap-3 sm:grid-cols-4">
             {stats.map((stat) => (
@@ -181,8 +182,8 @@ export function ReportPDFView({ report }: ReportPDFViewProps) {
         <TabsContent value="synthese" className="space-y-6">
           <section className="rounded-3xl border bg-card p-6 shadow-sm sm:p-8">
             <p className="text-lg leading-relaxed text-foreground sm:text-xl">{report.executiveSummary}</p>
-            {report.verdictRationale && (
-              <p className="mt-4 border-l-4 border-brand-green pl-4 text-sm leading-relaxed text-muted-foreground">{report.verdictRationale}</p>
+            {verdict.rationale && (
+              <p className="mt-4 border-l-4 border-brand-green pl-4 text-sm leading-relaxed text-muted-foreground">{verdict.rationale}</p>
             )}
           </section>
           {report.strategicActionPlan.length > 0 && (

@@ -1,4 +1,5 @@
 import { jsPDF } from 'jspdf';
+import { settledVerdict } from '@server/shared/verdict';
 import { toPdfSafe } from '@/shared/lib/pdfText';
 import { safeHttpUrl } from '@/shared/lib/safeUrl';
 import { usageBySource } from '@/shared/lib/sourceUsage';
@@ -111,7 +112,7 @@ export async function generateAnalysisPDF(
   doc.setFontSize(9);
   doc.setTextColor(203, 213, 225);
   doc.text(
-    toPdfSafe(`Date : ${report.dateCreated}  |  Verdict : ${report.overallVerdict ?? 'non établi'}  |  ID : #${report.id.substring(0, 12)}`),
+    toPdfSafe(`Date : ${report.dateCreated}  |  Verdict : ${settledVerdict(report).verdict}  |  ID : #${report.id.substring(0, 12)}`),
     margin + 8,
     currentY + 30,
   );
@@ -124,7 +125,7 @@ export async function generateAnalysisPDF(
   doc.setFontSize(9.5);
   doc.setTextColor(51, 65, 85);
   const summaryLines = doc.splitTextToSize(
-    toPdfSafe(`${report.executiveSummary}${report.verdictRationale ? `\n${report.verdictRationale}` : ''}`),
+    toPdfSafe(`${report.executiveSummary}${settledVerdict(report).rationale ? `\n${settledVerdict(report).rationale}` : ''}`),
     contentWidth,
   );
   checkPageBreak(summaryLines.length * 4.8);

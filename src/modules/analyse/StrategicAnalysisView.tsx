@@ -19,6 +19,7 @@ import { LegalNotice } from '@/modules/analyse/LegalNotice';
 import { cn } from '@/shared/lib/utils';
 import type { MarketAnalysisReport, OverallVerdict } from '@/shared/types/analysis';
 import { Badge } from '@/shared/ui/badge';
+import { settledVerdict } from '@server/shared/verdict';
 import { Button } from '@/shared/ui/button';
 import { Card, CardContent } from '@/shared/ui/card';
 import {
@@ -85,6 +86,8 @@ function Bullets({ items, tone = 'default' }: { items: string[]; tone?: 'default
 }
 
 export function StrategicAnalysisView({ report, onNavigateToProducts, onNavigateToMetaAds, onDelete }: StrategicAnalysisViewProps) {
+  // Toujours un verdict : celui du rapport, ou celui que ses niveaux donnent (rapports d'avant le 04/10/2026).
+  const verdict = settledVerdict(report);
   const isExampleReport = report.dataProvenance?.rates?.isDemonstration ?? false;
   const findings = report.keyFindings ?? [];
   const risks = report.risks ?? [];
@@ -114,16 +117,10 @@ export function StrategicAnalysisView({ report, onNavigateToProducts, onNavigate
             </div>
             <div className="shrink-0 space-y-1.5 rounded-lg border bg-muted/40 p-4 lg:max-w-xs">
               <p className="text-xs text-muted-foreground">Verdict de l’analyse</p>
-              {report.overallVerdict ? (
-                <Badge variant={VERDICT_VARIANT[report.overallVerdict]} className="px-2.5 py-1 text-sm">
-                  {report.overallVerdict}
-                </Badge>
-              ) : (
-                <Badge variant="secondary" className="px-2.5 py-1 text-sm">
-                  Non établi
-                </Badge>
-              )}
-              {report.verdictRationale && <p className="text-xs leading-relaxed text-muted-foreground">{report.verdictRationale}</p>}
+              <Badge variant={VERDICT_VARIANT[verdict.verdict]} className="px-2.5 py-1 text-sm">
+                {verdict.verdict}
+              </Badge>
+              {verdict.rationale && <p className="text-xs leading-relaxed text-muted-foreground">{verdict.rationale}</p>}
             </div>
           </div>
 

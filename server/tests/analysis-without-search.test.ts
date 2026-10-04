@@ -72,8 +72,11 @@ describe('Analyse de niche sans recherche web', () => {
     }
     assert.equal(report.dataProvenance?.rates, undefined, 'aucune provenance de taux sans source');
     assert.equal(report.dataProvenance?.competitors, undefined);
-    assert.equal(report.overallVerdict, null);
+    // Un rapport rend toujours un verdict : une niche que rien ne documente est un pari, et il le dit.
+    assert.equal(report.overallVerdict, 'Niche Risquée');
     assert.match(report.verdictRationale ?? '', /aucune recherche web/);
+    assert.match(report.verdictRationale ?? '', /pari.*test à petit budget/);
+    assert.doesNotMatch(report.verdictRationale ?? '', /non établi/i);
     assert.match(report.digitalProducts[0]?.pricingNote ?? '', /faute de recherche web/);
     /*
       Sans aucune source, la décision la plus importante est de NE RIEN produire. Le rapport la
