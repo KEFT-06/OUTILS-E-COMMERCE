@@ -112,6 +112,8 @@ export interface FakeProviders {
   geminiCalls: FakeCall[];
   /** Rédactions demandées à Perplexity (fiche d'analyse et rapport rédigé). */
   writerCalls: FakeCall[];
+  /** Demandes de précision des titres de produits restés génériques. */
+  sharpenCalls: string[];
   searchQueries: { token: string | undefined; query: string | null; country: string | null }[];
   agentCalls: AgentCall[];
   /**
@@ -195,6 +197,7 @@ export function fakeWrittenReport(input: string): string {
 export async function startFakeProviders(): Promise<FakeProviders> {
   const geminiCalls: FakeCall[] = [];
   const writerCalls: FakeCall[] = [];
+  const sharpenCalls: string[] = [];
   const agentCalls: AgentCall[] = [];
   const studies = new Map<string, string>();
   const searchQueries: { token: string | undefined; query: string | null; country: string | null }[] = [];
@@ -244,6 +247,20 @@ export async function startFakeProviders(): Promise<FakeProviders> {
           if (!input.startsWith('Étude de marché pour un créateur')) {
             writerCalls.push({ key: token, prompt: input });
             const completed = (text: string) => ({ id: `resp_${agentCalls.length}`, status: 'completed', model: 'openai/gpt-6-luna', output: [{ type: 'message', content: [{ type: 'output_text', text }] }] });
+            // Titres de produits à préciser : petite réponse à part, hors du compte des rédactions.
+            if (input.startsWith('Titres de produits à préciser') && !input.includes('« panne')) {
+              writerCalls.pop();
+              sharpenCalls.push(input);
+              const indexes = [...input.matchAll(/^(\d+)\. Titre actuel/gm)].map((match) => Number(match[1]));
+              return send(200, completed(JSON.stringify({
+                products: indexes.map((index) => ({
+                  index,
+                  title: 'Guide pour élever 10 à 50 poules en ville sans gêner ses voisins',
+                  targetProblem: 'Élever des poules sans place ni conflit de voisinage',
+                  angle: 'Contrainte urbaine',
+                })),
+              })));
+            }
             if (input.includes('« saturé') && overloadRemaining > 0) {
               overloadRemaining -= 1;
               return send(503, { error: { message: 'The model is overloaded. Please try again later.' } });
@@ -326,6 +343,7 @@ export async function startFakeProviders(): Promise<FakeProviders> {
     base: `http://127.0.0.1:${(server.address() as AddressInfo).port}`,
     geminiCalls,
     writerCalls,
+    sharpenCalls,
     setOverload: (calls: number) => {
       overloadRemaining = calls;
     },

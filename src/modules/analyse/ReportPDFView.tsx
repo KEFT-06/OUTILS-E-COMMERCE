@@ -265,6 +265,11 @@ export function ReportPDFView({ report }: ReportPDFViewProps) {
                         <BookOpen className="size-3" aria-hidden />
                         {product.typeName}
                       </Badge>
+                      {product.angle && (
+                        <Badge variant="outline" className="mb-2 ml-1.5 border-brand-green-text/40 font-normal text-brand-green-text">
+                          {product.angle}
+                        </Badge>
+                      )}
                       <h3 className="font-display text-lg leading-snug font-bold">{product.title}</h3>
                       <p className="text-sm text-muted-foreground">{product.subtitle}</p>
                     </div>
@@ -275,6 +280,12 @@ export function ReportPDFView({ report }: ReportPDFViewProps) {
                       </span>
                     )}
                   </div>
+                  {product.targetProblem && (
+                    <p className="text-sm">
+                      <span className="font-semibold">Problème visé : </span>
+                      {product.targetProblem}
+                    </p>
+                  )}
                   <p className="text-sm">
                     <span className="font-semibold">Promesse : </span>
                     {product.transformationPromise}

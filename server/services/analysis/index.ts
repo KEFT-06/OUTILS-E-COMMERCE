@@ -7,6 +7,7 @@ import { env } from '@server/env';
 import { AppError, marketSchema, nicheQuerySchema } from '@server/middleware';
 import type { RequestAuth } from '@server/middleware/auth';
 import { generateJsonWithPerplexity } from '@server/services/ai/perplexity';
+import { sharpenProductTitles } from '@server/services/analysis/productAngles';
 import {
   ANALYSIS_PROMPT_VERSION,
   ANALYSIS_RESPONSE_SCHEMA,
@@ -196,6 +197,8 @@ export function assembleReport(input: {
       estimatedMarginPercent: null,
       pricingNote: sources.length > 0 && product.pricingNote ? product.pricingNote : pricingFallback,
       targetAudience: product.targetAudience,
+      ...(product.targetProblem ? { targetProblem: product.targetProblem } : {}),
+      ...(product.angle ? { angle: product.angle } : {}),
       transformationPromise: product.transformationPromise,
       tableOfContents: product.modules
         .filter((module) => module.title)
@@ -409,6 +412,15 @@ export async function writeReport(input: {
     onModel: (used) => {
       model = used;
     },
+  });
+
+  // Les titres restés génériques sont précisés avant l'enregistrement : un sujet ne se vend pas, un angle si.
+  response.products = await sharpenProductTitles(response.products, {
+    niche: request.query,
+    marketName,
+    memo: research.memo,
+    service: SERVICE,
+    timeoutMs: 60_000,
   });
 
   const report = assembleReport({

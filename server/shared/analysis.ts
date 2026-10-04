@@ -86,6 +86,10 @@ export interface DigitalProductIdea {
   /** Repères de prix tirés des sources, ou raison de leur absence. */
   pricingNote?: string;
   targetAudience: string;
+  /** Problème précis que vit l'acheteur. Absent des analyses antérieures au 04/10/2026. */
+  targetProblem?: string;
+  /** Ce qui distingue le produit, en quelques mots : mécanisme, contrainte levée, spécificité locale. */
+  angle?: string;
   transformationPromise: string;
   tableOfContents: {
     moduleNumber: number;

@@ -51,6 +51,9 @@ interface Report {
   searchTrends: { keyword: string; volume: string | null }[];
   digitalProducts: {
     id: string;
+    title: string;
+    angle?: string;
+    targetProblem?: string;
     recommendedPrice: number | null;
     estimatedMarginPercent: number | null;
     currency: string;
@@ -166,6 +169,10 @@ describe('Analyse de niche', () => {
     assert.equal(report.overallVerdict, 'Opportunité Forte');
     assert.ok(report.searchTrends.every((keyword) => keyword.volume === null));
     assert.equal(report.digitalProducts[0]!.recommendedPrice, null);
+    // « Guide du poulailler urbain » nomme un sujet : le serveur le fait préciser avant d'enregistrer.
+    assert.equal(report.digitalProducts[0]!.title, 'Guide pour élever 10 à 50 poules en ville sans gêner ses voisins');
+    assert.equal(report.digitalProducts[0]!.angle, 'Contrainte urbaine');
+    assert.match(report.digitalProducts[0]!.targetProblem!, /sans place/);
     assert.equal(report.digitalProducts[0]!.currency, 'XAF', 'devise du marché visé');
     assert.equal(report.adCampaigns[0]!.scenes.at(-1)!.timing.split(' - ')[1], '0:30');
 
@@ -381,5 +388,35 @@ describe('Renvois de sources hors du texte', () => {
     assert.deepEqual(usage.get(1), ['Synthèse', 'Demande']);
     assert.deepEqual(usage.get(2), ['Demande', 'Saturation', 'Boutique A'], 'une même page peut fonder plusieurs passages, sans doublon');
     assert.equal(usage.get(3), undefined, 'une source que rien ne cite ne se voit attribuer aucun passage');
+  });
+});
+
+describe('Idées de produits — un angle, pas un sujet', () => {
+  it('reconnaît un titre générique et laisse passer un titre positionné', async () => {
+    const { isGenericProductTitle } = await import('@server/services/analysis/productAngles');
+    for (const titre of ['Guide complet pour perdre du poids', 'Guide complet sur la gestion du diabète', 'Manuel sur la création de contenu TikTok', 'Formation en élevage de poulets']) {
+      assert.equal(isGenericProductTitle(titre), true, `« ${titre} » nomme un sujet`);
+    }
+    for (const titre of [
+      'Guide complet pour perdre du poids en continuant de manger des plats africains traditionnels',
+      'Le plan de 30 jours pour stabiliser sa glycémie naturellement grâce aux aliments locaux',
+      'Comment générer ses 1000 premiers abonnés TikTok en 14 jours sans montrer son visage',
+    ]) {
+      assert.equal(isGenericProductTitle(titre), false, `« ${titre} » porte un angle`);
+    }
+  });
+
+  it('garde le titre d’origine quand la réécriture reste générique ou échoue, sans bloquer l’analyse', async () => {
+    const { sharpenProductTitles } = await import('@server/services/analysis/productAngles');
+    const produit = { title: 'Guide du jardinage', subtitle: '', targetAudience: '', transformationPromise: '', targetProblem: '', angle: '' };
+    // Service injoignable : l'appel échoue, le produit revient tel quel.
+    const rendu = await sharpenProductTitles([produit], {
+      niche: 'Jardinage « panne',
+      marketName: null,
+      memo: null,
+      service: { name: 'service de test', code: 'TEST', log: 'test' },
+      timeoutMs: 9_000,
+    });
+    assert.equal(rendu[0]!.title, 'Guide du jardinage');
   });
 });

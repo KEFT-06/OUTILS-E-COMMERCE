@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { PRODUCT_ANGLE_RULE } from '@server/services/analysis/productAngles';
 import type { WebSource } from '@server/services/analysis/webSearch';
 
 /**
@@ -86,6 +87,7 @@ export function buildAnalysisPrompt(input: {
     '- keywords : 5 à 8 expressions que les acheteurs taperaient dans un moteur de recherche, avec leur intention. Aucun volume.',
     '- competitors : au plus 4 concurrents présents dans les sources : nom, lien ou compte tel qu’il apparaît dans la source, prix constatés ou « Prix non indiqué dans les sources », positionnement, forces et faiblesses visibles dans les sources, un angle à exploiter, sourceIds.',
     '- products : de 3 à 8 idées de produits digitaux adaptées au marché visé. LE NOMBRE SUIT LE POTENTIEL que tu viens d’attribuer : une niche saturée ou à demande faible n’en mérite que 3, une niche à demande élevée et faible saturation en mérite 6 à 8. Varie les TYPES entre eux (ebook, modèle, masterclass, offre groupée, micro-outil) plutôt que de décliner la même idée. Chaque idée : titre, sous-titre, type, public, promesse de transformation réaliste, pricingNote (prix constatés chez les concurrents avec leurs numéros de source, ou « Aucun prix constaté dans les sources »), 5 à 8 modules (titre et contenu), un aimant à prospects gratuit (titre, format, accroche).',
+    PRODUCT_ANGLE_RULE,
     '- adScripts : 2 scripts vidéo pour Meta Ads avec deux méthodes différentes parmi AIDA, PAS et BAB : accroche des 3 premières secondes, texte principal, titre, bouton d’appel à l’action, format 9:16 ou 1:1, durée de 15 ou 30 secondes, une scène par étape de la méthode (phase = nom exact de l’étape : AIDA → Attention, Intérêt, Désir, Action ; PAS → Problème, Agitation, Solution ; BAB → Avant, Après, Pont) avec sa durée en secondes, le visuel, le texte à l’écran, la voix off et l’ambiance sonore ; centres d’intérêt, public et placements suggérés.',
     '- actionPlan : 3 étapes (valider la demande, produire, lancer), chacune avec 3 à 5 actions concrètes.',
     '- keyFindings : 4 à 6 constats clés tirés de l’étude : title (quelques mots), detail (2 ou 3 phrases), sourceIds. Des réponses, jamais des questions ouvertes ni des « points à vérifier ».',
@@ -155,6 +157,8 @@ export const ANALYSIS_RESPONSE_SCHEMA = {
           subtitle: STRING,
           type: { type: 'STRING', enum: [...PRODUCT_TYPES] },
           targetAudience: STRING,
+          targetProblem: STRING,
+          angle: STRING,
           transformationPromise: STRING,
           pricingNote: STRING,
           modules: {
@@ -167,7 +171,7 @@ export const ANALYSIS_RESPONSE_SCHEMA = {
             required: ['title', 'format', 'hook'],
           },
         },
-        required: ['title', 'subtitle', 'type', 'targetAudience', 'transformationPromise', 'pricingNote', 'modules', 'leadMagnet'],
+        required: ['title', 'subtitle', 'type', 'targetAudience', 'targetProblem', 'angle', 'transformationPromise', 'pricingNote', 'modules', 'leadMagnet'],
       },
     },
     adScripts: {
@@ -350,6 +354,8 @@ const product = z
     subtitle: text(240),
     type: z.enum(PRODUCT_TYPES).catch('ebook'),
     targetAudience: text(400),
+    targetProblem: text(300),
+    angle: text(120),
     transformationPromise: text(500),
     pricingNote: text(400),
     modules: z.array(z.object({ title: text(160), details: text(600) }).catch({ title: '', details: '' })).catch([]),
@@ -360,6 +366,8 @@ const product = z
     subtitle: '',
     type: 'ebook',
     targetAudience: '',
+    targetProblem: '',
+    angle: '',
     transformationPromise: '',
     pricingNote: '',
     modules: [],
