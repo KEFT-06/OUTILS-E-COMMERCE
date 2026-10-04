@@ -3,6 +3,7 @@ import { useLocation } from 'react-router-dom';
 import { Download, Moon, MoreHorizontal, Search, Sparkles, Sun } from 'lucide-react';
 import { ACCOUNT_PATH, MODULE_GROUPS, findAdminSection, findModule } from '@/app/navigation';
 import { usePreferences } from '@/app/providers/PreferencesContext';
+import { AppBackButton } from '@/shared/components/BackButton';
 import { useWorkspace } from '@/app/providers/WorkspaceProvider';
 import {
   Breadcrumb,
@@ -94,7 +95,13 @@ export function AppHeader() {
 
   return (
     <header className="sticky top-0 z-30 flex h-14 shrink-0 items-center gap-2 border-b bg-background/90 px-3 backdrop-blur supports-[backdrop-filter]:bg-background/75 sm:px-4">
-      <SidebarTrigger className="-ml-1" />
+      {/*
+        Sur téléphone, le menu s'ouvre par « Menu » dans la barre du bas : le doubler ici prenait
+        la place du bouton Retour et faisait déborder la barre à 320 px.
+      */}
+      <SidebarTrigger className="-ml-1 hidden md:inline-flex" />
+      {/* Retour à l'écran précédent de l'espace connecté : toujours au même endroit, sur tous les écrans. */}
+      <AppBackButton className="size-8 shrink-0 max-md:-ml-1" />
       <Separator orientation="vertical" className="mr-1 hidden data-[orientation=vertical]:h-5 md:block" />
 
       {/*
@@ -123,7 +130,7 @@ export function AppHeader() {
       <div className="ml-auto flex shrink-0 items-center gap-1.5 sm:gap-2">
         {currentReport && reports.length > 0 && rapportUtileIci && (
         <Select value={currentReport.id} onValueChange={selectReport}>
-          <SelectTrigger size="sm" aria-label="Niche analysée" className="w-[8.5rem] sm:w-[13rem] xl:w-[17rem]">
+          <SelectTrigger size="sm" aria-label="Niche analysée" className="w-[6.5rem] min-[360px]:w-[8.5rem] sm:w-[13rem] xl:w-[17rem]">
             <SelectValue />
           </SelectTrigger>
           <SelectContent align="end">

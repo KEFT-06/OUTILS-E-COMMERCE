@@ -1,7 +1,8 @@
 import { useEffect } from 'react';
 import { Link } from 'react-router-dom';
-import { Compass } from 'lucide-react';
+import { ArrowLeft, Compass } from 'lucide-react';
 import { BrandLogo } from '@/shared/components/BrandLogo';
+import { useBack } from '@/shared/components/BackButton';
 import { Button } from '@/shared/ui/button';
 import { Empty, EmptyContent, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from '@/shared/ui/empty';
 
@@ -10,6 +11,7 @@ import { Empty, EmptyContent, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTi
  * (server/services/seo) ; ici, le titre suit aussi une navigation faite dans le navigateur.
  */
 export function NotFoundPage() {
+  const { canGoBack, goBack } = useBack('site', null);
   useEffect(() => {
     document.title = 'Page introuvable · Smart Creator';
   }, []);
@@ -32,6 +34,12 @@ export function NotFoundPage() {
           </EmptyDescription>
         </EmptyHeader>
         <EmptyContent className="flex-row flex-wrap justify-center gap-2">
+          {canGoBack && (
+            <Button variant="outline" onClick={goBack}>
+              <ArrowLeft />
+              Page précédente
+            </Button>
+          )}
           <Button asChild>
             <Link to="/">Retour à l’accueil</Link>
           </Button>

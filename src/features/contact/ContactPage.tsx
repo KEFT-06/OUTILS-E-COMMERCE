@@ -3,7 +3,7 @@ import { Link, useSearchParams } from 'react-router-dom';
 import { Controller, useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
-import { ArrowLeft, Mail, MailCheck, TriangleAlert } from 'lucide-react';
+import { Mail, MailCheck, TriangleAlert } from 'lucide-react';
 import { useAuth } from '@/features/auth/AuthContext';
 import { apiRequest } from '@/shared/lib/api';
 import { type ApiError, toApiError } from '@/shared/lib/apiError';
@@ -11,6 +11,7 @@ import { useTrackVisit } from '@/shared/hooks/useTrackVisit';
 import { usePublicPageMeta } from '@/shared/hooks/usePublicPageMeta';
 import { Alert, AlertDescription, AlertTitle } from '@/shared/ui/alert';
 import { BrandLogo } from '@/shared/components/BrandLogo';
+import { SiteBackButton } from '@/shared/components/BackButton';
 import { Button } from '@/shared/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/shared/ui/card';
 import { Field, FieldDescription, FieldError, FieldGroup, FieldLabel } from '@/shared/ui/field';
@@ -104,12 +105,7 @@ export function ContactPage() {
         <Link to="/" className="rounded-md" aria-label="Accueil Smart Creator">
           <BrandLogo size="md" />
         </Link>
-        <Button variant="ghost" size="sm" asChild>
-          <Link to="/">
-            <ArrowLeft />
-            Accueil
-          </Link>
-        </Button>
+        <SiteBackButton />
       </header>
 
       <main className="mt-10 w-full max-w-xl">

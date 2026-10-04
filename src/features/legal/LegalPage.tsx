@@ -3,10 +3,10 @@ import { Link } from 'react-router-dom';
 import { formatDateFr } from '@/shared/lib/formatDate';
 import { useTrackVisit } from '@/shared/hooks/useTrackVisit';
 import { usePublicPageMeta } from '@/shared/hooks/usePublicPageMeta';
-import { AlertTriangle, ArrowLeft } from 'lucide-react';
+import { AlertTriangle } from 'lucide-react';
 import { Alert, AlertDescription, AlertTitle } from '@/shared/ui/alert';
 import { BrandLogo } from '@/shared/components/BrandLogo';
-import { Button } from '@/shared/ui/button';
+import { SiteBackButton } from '@/shared/components/BackButton';
 
 /**
  * Pages légales.
@@ -373,12 +373,8 @@ export function LegalPage({ kind }: { kind: LegalKind }) {
           <Link to="/" className="rounded-md" aria-label="Accueil Smart Creator">
             <BrandLogo size="sm" />
           </Link>
-          <Button variant="ghost" size="sm" asChild>
-            <Link to="/">
-              <ArrowLeft />
-              Accueil
-            </Link>
-          </Button>
+          {/* Ouverte depuis Mon compte ou le pied de page : on revient d'où l'on vient, pas à l'accueil. */}
+          <SiteBackButton />
         </div>
       </header>
 
