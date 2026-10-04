@@ -563,6 +563,21 @@ const schema = z.object({
    */
   CRON_SECRET: z.string().min(16).optional(),
 
+  /**
+   * Référencement. Codes de validation donnés par les outils pour propriétaires de sites : celui
+   * de Google (Search Console → « Balise HTML », la valeur de « content ») et celui de Bing
+   * (Webmaster Tools → « Balise meta », la valeur de « content »). Posés sur l'accueil, ils
+   * prouvent que le site appartient à celui qui le déclare.
+   */
+  GOOGLE_SITE_VERIFICATION: z.string().regex(/^[A-Za-z0-9_-]{10,100}$/).optional(),
+  BING_SITE_VERIFICATION: z.string().regex(/^[A-Za-z0-9_-]{10,100}$/).optional(),
+  /**
+   * Déclaration des pages aux moteurs (IndexNow). L'adresse du service ; « off » : aucune
+   * déclaration. La clé est facultative : sans elle, le site en tire une de ses secrets, stable
+   * d'une mise en ligne à l'autre, qu'il publie à « /<clé>.txt ».
+   */
+  INDEXNOW_URL: z.union([z.literal('off'), z.string().url()]).default('https://api.indexnow.org/indexnow'),
+  INDEXNOW_KEY: z.string().regex(/^[A-Za-z0-9-]{8,128}$/).optional(),
 });
 
 const cleaned = cleanedEnv(process.env);

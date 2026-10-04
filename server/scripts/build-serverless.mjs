@@ -28,6 +28,9 @@ await build({
   target: 'node20',
   outfile: 'dist/vercel.js',
   sourcemap: true,
+  // Date de mise en ligne, lue par le plan du site : chez l'hébergeur, les fichiers portent une
+  // date fixe vieille de plusieurs années, qui faisait annoncer « modifié en 2018 » aux moteurs.
+  define: { __BUILD_DATE__: JSON.stringify(new Date().toISOString().slice(0, 10)) },
   external: [
     '@node-rs/argon2',
     '@electric-sql/pglite',

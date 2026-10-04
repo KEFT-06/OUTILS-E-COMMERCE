@@ -8,6 +8,7 @@ import { env, isProd } from '@server/env';
 import { apiLimiter, corsMiddleware, errorHandler, httpsRedirect, ipCeilingLimiter, notFoundHandler } from '@server/middleware';
 import { api } from '@server/routes';
 import { mountClient, mountSeoRoutes } from '@server/services/seo';
+import { indexNowKey } from '@server/services/seo/indexNow';
 import { supabaseStorage } from '@server/services/storage/supabase';
 
 /** Origine du stockage de fichiers, seulement s'il est configuré : le navigateur y dépose en direct. */
@@ -114,9 +115,11 @@ export function createApp(options: CreateAppOptions = {}) {
     const here = dirname(fileURLToPath(import.meta.url));
     mountClient(app, options.clientDir ?? join(here, 'client'), env.APP_URL, {
       serveStaticFiles: options.serveStaticFiles ?? true,
+      verification: { google: env.GOOGLE_SITE_VERIFICATION, bing: env.BING_SITE_VERIFICATION },
+      indexNowKey: indexNowKey(),
     });
   } else {
-    mountSeoRoutes(app, env.APP_URL, new Date().toISOString().slice(0, 10));
+    mountSeoRoutes(app, env.APP_URL, new Date().toISOString().slice(0, 10), { indexNowKey: indexNowKey() });
   }
 
   app.use(notFoundHandler);

@@ -10,6 +10,7 @@ import { sweepSessions } from '@server/services/auth/sessions';
 import { archivePendingVideos, purgeExpiredVideos } from '@server/services/creatives/archive';
 import { purgeStaleVideoUploads } from '@server/services/writing/videoUpload';
 import { continueEbookInBackground, resumeEbookJobs } from '@server/services/writing/ebookJobs';
+import { submitToIndexNow } from '@server/services/seo/indexNow';
 import { sweepPendingGenerations } from '@server/services/generations/sweeper';
 import { sweepDueWatches } from '@server/services/radar/sweeper';
 import { z } from 'zod';
@@ -181,6 +182,12 @@ cronRouter.get(
       return null;
     });
 
+    // Référencement : les pages publiques sont déclarées aux moteurs, une fois par mise en ligne.
+    const referencement = await submitToIndexNow().catch((error: unknown) => {
+      console.warn('[cron] déclaration aux moteurs de recherche :', error instanceof Error ? error.message : error);
+      return null;
+    });
+
     const index = await indexDiscoveredStores(230_000).catch((error: unknown) => {
       console.warn('[cron] index du marché :', error instanceof Error ? error.message : error);
       return null;
@@ -189,7 +196,7 @@ cronRouter.get(
       console.warn('[cron] alertes :', error instanceof Error ? error.message : error);
       return null;
     });
-    res.json({ redactions, index, alertes });
+    res.json({ redactions, referencement, index, alertes });
   }),
 );
 

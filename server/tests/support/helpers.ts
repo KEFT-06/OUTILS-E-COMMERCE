@@ -60,6 +60,11 @@ export async function createTestApp(overrides: Record<string, string> = {}): Pro
     STRIPE_WEBHOOK_SECRET: '',
     STRIPE_API_URL: 'http://127.0.0.1:9',
     EXCHANGE_RATES_URL: 'off',
+    // Déclaration aux moteurs de recherche : jamais depuis une suite de tests.
+    INDEXNOW_URL: 'off',
+    INDEXNOW_KEY: '',
+    GOOGLE_SITE_VERIFICATION: '',
+    BING_SITE_VERIFICATION: '',
     ...overrides,
   });
 

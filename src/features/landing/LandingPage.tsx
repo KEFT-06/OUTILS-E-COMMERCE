@@ -6,6 +6,7 @@ import { ArrowRight, ChevronDown, ExternalLink, Menu, Moon, Scale, ShieldCheck, 
 import { MODULES, MODULE_GROUPS, type ModuleGroup } from '@/app/navigation';
 import { usePreferences } from '@/app/providers/PreferencesContext';
 import { useAuth } from '@/features/auth/AuthContext';
+import { LANDING_COMMITMENTS, LANDING_FAQ, LANDING_GROUPS } from '@server/shared/landingContent';
 import { COUNTRIES, countryName } from '@server/shared/countries';
 import { CountryFlag } from '@/shared/components/CountryFlag';
 import { PlanCards } from '@/shared/components/PlanCards';
@@ -64,63 +65,14 @@ const BorderBeam = lazy(() => import('@/shared/ui/magicui/border-beam').then((mo
  * l'outil lui-même disait le contraire.
  */
 
-const GROUP_PITCH: Record<ModuleGroup, string> = {
-  voir: 'Lire la demande, la concurrence et les prix pratiqués.',
-  creer: 'Structurer le produit, ses visuels, ses scripts et sa page de vente.',
-  vendre: 'Préparer la campagne, suivre les ventes et animer vos affiliés.',
-};
+// Les textes viennent d'une source partagée avec le serveur : ce qu'un moteur de recherche indexe
+// (contenu servi sans JavaScript, données structurées) est exactement ce que le visiteur lit ici.
+const GROUP_PITCH = Object.fromEntries(LANDING_GROUPS.map((group) => [group.id, group.pitch])) as Record<ModuleGroup, string>;
 
-const COMMITMENTS = [
-  {
-    icon: Scale,
-    title: 'Chaque chiffre porte sa source',
-    body: 'Concurrents, prix et niveaux de marché ne s’affichent que s’ils viennent d’une page web citée dans le rapport. Sans source, le taux reste « non évalué » plutôt que deviné.',
-  },
-  {
-    icon: ShieldCheck,
-    title: 'La conformité a un droit de veto',
-    body: 'Promesses de gains chiffrées, avant/après trompeurs, témoignages non étayés : repérés avec une reformulation proposée. Fiche produit, guide, page de vente, kit de lancement et dossier PDF ne se téléchargent pas sans ce contrôle.',
-  },
-  {
-    icon: Wallet,
-    title: 'Le coût est annoncé avant',
-    body: 'Chaque action affiche son coût en points, son équivalent en monnaie locale et votre solde après l’opération, avant que vous ne validiez.',
-  },
-];
+const COMMITMENT_ICONS = [Scale, ShieldCheck, Wallet];
+const COMMITMENTS = LANDING_COMMITMENTS.map((commitment, index) => ({ ...commitment, icon: COMMITMENT_ICONS[index]! }));
 
-const FAQ = [
-  {
-    question: 'Smart Creator publie-t-il mes produits sur les marketplaces ?',
-    answer:
-      'Non. Vous publiez sur la marketplace à partir de l’export du studio, puis Smart Creator suit vos ventes.',
-  },
-  {
-    question: 'Les analyses de marché sont-elles en temps réel ?',
-    answer:
-      'Oui : chaque analyse est faite au moment où vous la demandez, à partir de pages web citées une à une.',
-  },
-  {
-    question: 'Mes publicités seront-elles acceptées par Meta ou TikTok ?',
-    answer:
-      'Personne ne peut le garantir. Le vérificateur signale les formulations à risque avant l’export ; la décision finale revient toujours à la plateforme.',
-  },
-  {
-    question: 'Où sont stockées mes données ?',
-    answer:
-      'Sur votre compte, dans une base protégée. Vous pouvez en télécharger une copie ou tout supprimer depuis Mon compte.',
-    link: { to: '/confidentialite', label: 'Politique de confidentialité' },
-  },
-  {
-    question: 'Combien coûte Smart Creator ?',
-    answer:
-      'Le palier Gratuit permet de commencer sans carte bancaire. Les forfaits Plus, Pro, Max et Elite Enterprise sont détaillés dans la section Paliers, avec leur prix dans la devise de votre pays. Chaque action affiche son coût en points avant validation.',
-  },
-  {
-    question: 'Smart Creator est-il disponible dans mon pays ?',
-    answer:
-      'Oui : l’outil est international. Choisissez votre pays à l’inscription : tous les montants s’affichent ensuite dans la devise de votre pays, et dans aucune autre.',
-  },
-];
+const FAQ = LANDING_FAQ;
 
 /** Quelques pays montrés en bandeau : l'outil couvre tous les pays du monde. */
 const SHOWCASE_COUNTRIES = ['CM', 'CI', 'SN', 'CD', 'NG', 'GH', 'KE', 'MA', 'BJ', 'GA', 'FR', 'BE', 'CA', 'US', 'GB', 'BR', 'IN', 'AE', 'ZA', 'HT'];
