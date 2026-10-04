@@ -141,7 +141,12 @@ export default function App() {
                     <Route path="services" element={<AdminServicesPage />} />
                     <Route path="securite" element={<AdminSecurityPage />} />
                   </Route>
-                  <Route path="*" element={<Navigate to="cockpit" replace />} />
+                  {/*
+                    Adresse inconnue de l'espace de travail (ancien lien, faute de frappe) : retour au
+                    cockpit, par son adresse ENTIÈRE. Un chemin relatif s'ajoutait à l'adresse fautive
+                    — /app/dossier/cockpit/cockpit/cockpit… — et la page tournait sans fin (04/10/2026).
+                  */}
+                  <Route path="*" element={<Navigate to="/app/cockpit" replace />} />
                 </Route>
               </Route>
 
