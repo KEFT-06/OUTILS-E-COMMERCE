@@ -232,6 +232,13 @@
       "when": 1790680959600,
       "tag": "0032_rapport_tranches",
       "breakpoints": true
+    },
+    {
+      "idx": 33,
+      "version": "7",
+      "when": 1791077747659,
+      "tag": "0033_radar_marche_alertes",
+      "breakpoints": true
     }
   ]
 }

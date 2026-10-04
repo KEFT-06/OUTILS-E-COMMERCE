@@ -1,17 +1,18 @@
-import { useCallback, useEffect, useState } from 'react';
-import { ArrowDownRight, ArrowUpRight, ListTree, Plus, RefreshCw, Store, Trash2, TrendingUp } from 'lucide-react';
+import { useCallback, useEffect, useRef, useState } from 'react';
+import { Link, useSearchParams } from 'react-router-dom';
+import { ArrowDownRight, ArrowUpRight, ListTree, Megaphone, Plus, RefreshCw, Store, Trash2, TrendingUp } from 'lucide-react';
 import { toast } from 'sonner';
 import { PageHeader } from '@/shared/components/PageHeader';
 import { apiRequest } from '@/shared/lib/api';
 import { useCachedState } from '@/shared/lib/apiCache';
 import { toApiError, type ApiError } from '@/shared/lib/apiError';
 import { formatRelativeFr } from '@/shared/lib/formatDate';
+import { useMoney } from '@/shared/lib/money';
 import { safeHttpUrl } from '@/shared/lib/safeUrl';
 import { cn } from '@/shared/lib/utils';
 import { resetRadarUnread } from '@/shared/stores/useRadarUnread';
 import type { RadarDashboard, WatchEventKind, WatchEventView, WatchSummary } from '@/shared/types/radar';
 import { Alert, AlertDescription, AlertTitle } from '@/shared/ui/alert';
-import { Badge } from '@/shared/ui/badge';
 import { Button } from '@/shared/ui/button';
 import { Card, CardAction, CardContent, CardDescription, CardHeader, CardTitle } from '@/shared/ui/card';
 import { Empty, EmptyDescription, EmptyHeader, EmptyTitle } from '@/shared/ui/empty';
@@ -21,6 +22,9 @@ import { Spinner } from '@/shared/ui/spinner';
 import { Switch } from '@/shared/ui/switch';
 import { DiscoveredStoresPanel } from '@/modules/radar/DiscoveredStoresPanel';
 import { PerformanceBenchmarkPanel } from '@/modules/radar/PerformanceBenchmarkPanel';
+import { NicheProductsPanel } from '@/modules/radar/NicheProductsPanel';
+import { dureeLisible, eventText, joursDepuis } from '@/modules/radar/radarText';
+import { SalesViewToggle, type SalesView } from '@/modules/radar/SalesViewToggle';
 import { WatchItemsPanel } from '@/modules/radar/WatchItemsPanel';
 
 /**
@@ -47,13 +51,14 @@ const COUNTER_ORDER: { kind: WatchEventKind; label: string }[] = [
 ];
 
 function EventRow({ event }: { event: WatchEventView }) {
+  const money = useMoney();
   const style = EVENT_STYLE[event.kind];
   const Icon = style.icon;
   return (
     <li className={cn('flex items-start gap-3 py-3', !event.read && 'font-medium')}>
       <Icon className={cn('mt-0.5 size-4 shrink-0', style.tone)} aria-hidden="true" />
       <div className="min-w-0 flex-1 space-y-1">
-        <p className="text-sm leading-relaxed break-words">{event.summary}</p>
+        <p className="text-sm leading-relaxed break-words">{eventText(event, money.format)}</p>
         <p className="text-xs text-muted-foreground">
           {event.watchLabel} · {formatRelativeFr(event.occurredAt)}
         </p>
@@ -69,14 +74,20 @@ function WatchCard({
   onRemove,
   onOpen,
   busy,
+  vue,
 }: {
   watch: WatchSummary;
   onSweep: (id: string) => void;
   onRemove: (id: string) => void;
   onOpen: (watch: WatchSummary) => void;
   busy: string | null;
+  vue: SalesView;
 }) {
   const lien = safeHttpUrl(watch.url ?? undefined);
+  const host = watch.url ? watch.url.replace(/^https?:\/\//, '').replace(/\/.*$/, '') : null;
+  const ventes = vue === 'globale' ? watch.totalSales : watch.trackedSales;
+  // Plus ancienne trace connue de la boutique : notre premier passage, ou sa première publicité.
+  const anciennete = Math.max(watch.trackedDays, watch.firstAdAt ? joursDepuis(watch.firstAdAt) : 0);
 
   /*
     Un relevé en retard doit se voir.
@@ -101,9 +112,8 @@ function WatchCard({
           <span className="truncate">{watch.label}</span>
         </CardTitle>
         <CardDescription>
-          {/* L'ancienneté du suivi est l'actif du produit : elle est annoncée la première. */}
-          Sous surveillance depuis {watch.trackedDays} jour{watch.trackedDays > 1 ? 's' : ''}
-          {watch.lastSweptAt ? ` · dernier relevé ${formatRelativeFr(watch.lastSweptAt)}` : ' · premier relevé en attente'}
+          En ligne depuis au moins {dureeLisible(anciennete)}
+          {watch.lastSweptAt ? ` · relevée ${formatRelativeFr(watch.lastSweptAt)}` : ''}
         </CardDescription>
         <CardAction className="flex items-center gap-1">
           <Button
@@ -137,8 +147,8 @@ function WatchCard({
             <p className="text-xs text-muted-foreground">arrêtés</p>
           </div>
           <div>
-            <p className="font-display text-xl font-bold">{watch.totalSales.toLocaleString('fr-FR')}</p>
-            <p className="text-xs text-muted-foreground">ventes affichées</p>
+            <p className="font-display text-xl font-bold tabular-nums">{watch.itemsWithSales > 0 ? ventes.toLocaleString('fr-FR') : '—'}</p>
+            <p className="text-xs text-muted-foreground">{vue === 'globale' ? 'ventes au total' : 'ventes depuis le suivi'}</p>
           </div>
         </div>
         {!watch.active && (
@@ -153,15 +163,21 @@ function WatchCard({
           <p className="text-xs text-amber-600 dark:text-amber-500">Dernier relevé en échec : {watch.lastError}</p>
         )}
         {enRetard && !watch.lastError && (
-          <p className="text-xs text-amber-600 dark:text-amber-500">
-            Relevé en retard : les chiffres ci-dessous datent du dernier passage, pas d’aujourd’hui. Vous pouvez relever
-            cette boutique maintenant.
-          </p>
+          <p className="text-xs text-amber-600 dark:text-amber-500">Chiffres du dernier relevé : actualisez cette boutique.</p>
+        )}
+        {watch.activeAds > 0 && host && (
+          <Button asChild variant="ghost" size="sm" className="-ml-2 h-8 gap-1.5 px-2 text-brand-green-text">
+            <Link to={`/app/espionnage?boutique=${encodeURIComponent(host)}`}>
+              <Megaphone className="size-4" />
+              {watch.activeAds} publicité{watch.activeAds > 1 ? 's' : ''} en cours
+              {watch.adsCheckedAt ? ` · contrôlé ${formatRelativeFr(watch.adsCheckedAt)}` : ''}
+            </Link>
+          </Button>
         )}
         <div className="flex flex-wrap gap-2">
           <Button variant="secondary" size="sm" className="flex-1" onClick={() => onOpen(watch)}>
             <ListTree className="size-4" />
-            Voir le catalogue suivi
+            Voir le catalogue
           </Button>
           {lien && (
             <Button asChild variant="outline" size="sm">
@@ -175,6 +191,8 @@ function WatchCard({
     </Card>
   );
 }
+
+const VUE_VENTES = 'sc.radar.vueVentes';
 
 export function RadarView() {
   const [data, setData] = useCachedState<RadarDashboard>('/api/radar');
@@ -190,6 +208,27 @@ export function RadarView() {
    * compteurs périmés — ou une boutique qui n'existe plus.
    */
   const [ouverteId, setOuverteId] = useState<string | null>(null);
+  /** Lecture des ventes : total depuis la création, ou depuis la mise sous surveillance. Retenue d'une visite à l'autre. */
+  const [vue, setVueState] = useState<SalesView>(() => {
+    try {
+      return window.localStorage.getItem(VUE_VENTES) === 'suivi' ? 'suivi' : 'globale';
+    } catch {
+      return 'globale';
+    }
+  });
+  const setVue = (next: SalesView) => {
+    setVueState(next);
+    try {
+      window.localStorage.setItem(VUE_VENTES, next);
+    } catch {
+      // Stockage indisponible : le choix vaudra pour cette visite.
+    }
+  };
+  const [params, setParams] = useSearchParams();
+  /** Boutique demandée par un autre écran (« Ouvrir dans le Radar ») et niche à comparer. */
+  const boutiqueDemandee = params.get('boutique');
+  const niche = params.get('niche');
+  const demandeTraitee = useRef<string | null>(null);
 
   const load = useCallback(async () => {
     try {
@@ -285,6 +324,39 @@ export function RadarView() {
     }
   }
 
+  /*
+    Arrivée depuis une publicité (« Ouvrir dans le Radar ») : la boutique s'ouvre si elle est déjà
+    surveillée ; sinon elle est mise sous surveillance, puis ouverte. Une seule fois par demande.
+  */
+  useEffect(() => {
+    if (!boutiqueDemandee || !data || demandeTraitee.current === boutiqueDemandee) return;
+    demandeTraitee.current = boutiqueDemandee;
+    const host = boutiqueDemandee.toLowerCase();
+    const trouver = (watches: WatchSummary[]) => watches.find((watch) => (watch.url ?? '').toLowerCase().includes(host.replace(/\.mychariow\.(com|shop)$/, '.mychariow.')));
+    const effacer = () => {
+      params.delete('boutique');
+      setParams(params, { replace: true });
+    };
+    const deja = trouver(data.watches);
+    if (deja) {
+      setOuverteId(deja.id);
+      effacer();
+      return;
+    }
+    void (async () => {
+      try {
+        const { watch } = await apiRequest<{ watch: WatchSummary }>('/api/radar/watches', { method: 'POST', body: { target: host } });
+        toast.success('Boutique ajoutée à votre radar.');
+        await load();
+        setOuverteId(watch.id);
+      } catch (caught) {
+        toast.error(toApiError(caught, 'Cette boutique n’a pas pu être ouverte dans le radar.').message);
+      } finally {
+        effacer();
+      }
+    })();
+  }, [boutiqueDemandee, data, load, params, setParams]);
+
   const quotaAtteint =
     data !== null && data.limit !== null && data.watches.filter((watch) => watch.active).length >= data.limit;
   const sansAcces = data?.limit === 0;
@@ -295,7 +367,7 @@ export function RadarView() {
       <PageHeader
         eyebrow="Voir"
         title="Radar"
-        description="Le radar relève chaque boutique surveillée une fois par jour, sans que vous l’ouvriez. Il voit ce qu’aucune page ne montre : le jour où un produit s’arrête, celui où il apparaît, et le moment où les ventes accélèrent."
+        description="Les boutiques de vos concurrents, relevées chaque jour : produits, prix, ventes et publicités."
       />
 
       {loadError && (
@@ -310,8 +382,7 @@ export function RadarView() {
           <EmptyHeader>
             <EmptyTitle>Le radar n’est pas inclus dans votre palier</EmptyTitle>
             <EmptyDescription>
-              Surveiller une boutique demande un passage quotidien sur son catalogue. Cette fonction s’ouvre à partir du
-              palier Plus.
+              Cette fonction s’ouvre à partir du palier Plus.
             </EmptyDescription>
           </EmptyHeader>
         </Empty>
@@ -320,8 +391,7 @@ export function RadarView() {
           <CardHeader>
             <CardTitle>Surveiller une boutique</CardTitle>
             <CardDescription>
-              Collez le lien d’une boutique Chariow, ou son sous-domaine seul. Le premier relevé part tout de suite ; les
-              suivants se font chaque nuit.
+              Collez le lien d’une boutique Chariow.
             </CardDescription>
           </CardHeader>
           <CardContent>
@@ -372,10 +442,26 @@ export function RadarView() {
 
       {!sansAcces && <DiscoveredStoresPanel onWatch={watchFromList} disabled={quotaAtteint} />}
 
-      {ouverte && <WatchItemsPanel watch={ouverte} onBack={() => setOuverteId(null)} />}
+      {niche && !sansAcces && (
+        <NicheProductsPanel
+          niche={niche}
+          vue={vue}
+          onVue={setVue}
+          onClose={() => {
+            params.delete('niche');
+            setParams(params, { replace: true });
+          }}
+        />
+      )}
+
+      {ouverte && <WatchItemsPanel watch={ouverte} onBack={() => setOuverteId(null)} vue={vue} onVue={setVue} />}
 
       {data && data.watches.length > 0 && (
         <>
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <h2 className="font-display text-lg font-bold tracking-tight">Boutiques surveillées</h2>
+            <SalesViewToggle value={vue} onChange={setVue} />
+          </div>
           <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
             {data.watches.map((watch) => (
               <WatchCard
@@ -385,6 +471,7 @@ export function RadarView() {
                 onRemove={remove}
                 onOpen={(cible) => setOuverteId(cible.id)}
                 busy={busyWatch}
+                vue={vue}
               />
             ))}
           </div>
@@ -400,7 +487,7 @@ export function RadarView() {
             <CardContent>
               {data.events.length === 0 ? (
                 <p className="py-6 text-center text-sm text-muted-foreground">
-                  Rien n’a encore bougé. Le radar a besoin d’au moins deux passages pour comparer — revenez demain.
+                  Rien n’a encore bougé.
                 </p>
               ) : (
                 <ul className="divide-y">
@@ -419,22 +506,17 @@ export function RadarView() {
           <EmptyHeader>
             <EmptyTitle>Le radar ne surveille rien pour l’instant</EmptyTitle>
             <EmptyDescription>
-              Ajoutez la boutique d’un concurrent ci-dessus. Chaque jour de surveillance construit un historique que
-              personne ne peut rattraper : une vitrine ne montre que son présent.
+              Ajoutez la boutique d’un concurrent ci-dessus.
             </EmptyDescription>
           </EmptyHeader>
         </Empty>
       )}
 
-      {data && data.watches.length > 0 && (
+      {data && data.watches.length > 0 && data.emailConfigured && (
         <Card>
           <CardHeader>
-            <CardTitle>Être averti sans ouvrir le site</CardTitle>
-            <CardDescription>
-              {data.emailConfigured
-                ? 'Un résumé par e-mail, au plus une fois par jour, et seulement s’il y a quelque chose à dire.'
-                : 'Aucun fournisseur d’e-mail n’est configuré sur ce serveur : le résumé ne peut pas encore être envoyé.'}
-            </CardDescription>
+            <CardTitle>Être averti par e-mail</CardTitle>
+            <CardDescription>Un résumé, au plus une fois par jour.</CardDescription>
             <CardAction>
               <Switch
                 checked={alerts && data.emailConfigured}
@@ -447,13 +529,6 @@ export function RadarView() {
         </Card>
       )}
 
-      <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
-        <Badge variant="outline">Relevé quotidien</Badge>
-        <span>
-          Le radar lit le catalogue que chaque boutique affiche publiquement à ses visiteurs, une fois par jour. Aucune
-          donnée privée, aucun compte client.
-        </span>
-      </div>
     </div>
   );
 }

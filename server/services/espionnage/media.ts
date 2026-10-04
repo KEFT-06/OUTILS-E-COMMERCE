@@ -175,3 +175,68 @@ export async function purgeStaleThumbnails(now = new Date(), limit = 500): Promi
   for (const row of rows) await getDb().update(spiedAds).set({ thumbnailPath: null }).where(eq(spiedAds.id, row.id));
   return { purged: rows.length };
 }
+
+/** Types de fichiers remis en téléchargement, et leur extension. */
+const DOWNLOAD_TYPES: Record<string, string> = { ...IMAGE_TYPES, 'video/mp4': 'mp4', 'video/quicktime': 'mov', 'video/webm': 'webm' };
+/** Les vidéos de Meta sont servies par les mêmes hôtes que les images, plus son réseau vidéo. */
+const META_MEDIA_HOST = /(^|\.)(fbcdn\.net|cdninstagram\.com|fbsbx\.com)$/i;
+const DOWNLOAD_TIMEOUT_VIDEO_MS = 120_000;
+
+/**
+ * Remet le fichier d'origine d'une publicité : la vidéo, ou l'image en pleine définition.
+ *
+ * Rien n'est conservé chez nous : le fichier est relayé depuis les serveurs de Meta, en flux,
+ * tant que son adresse signée vit (quelques jours après la dernière collecte). Passé ce délai,
+ * l'aperçu que nous gardons est remis à la place ; s'il n'existe pas, l'écran le dit.
+ */
+export async function sendAdDownload(adId: string | undefined, res: ExpressResponse): Promise<void> {
+  const notFound = new AppError(404, 'Publicité introuvable.', 'SPY_AD_NOT_FOUND');
+  if (!adId || !/^[0-9a-f-]{36}$/.test(adId)) throw notFound;
+  const [row] = await getDb()
+    .select({ externalId: spiedAds.externalId, downloadUrl: spiedAds.downloadUrl, mediaUrl: spiedAds.mediaUrl, thumbnailPath: spiedAds.thumbnailPath })
+    .from(spiedAds)
+    .where(eq(spiedAds.id, adId))
+    .limit(1);
+  if (!row) throw notFound;
+  const nom = `publicite-${row.externalId.replace(/[^\w-]/g, '')}`;
+
+  for (const raw of [row.downloadUrl, row.mediaUrl]) {
+    if (!raw) continue;
+    try {
+      const url = await assertPublicUrl(raw, 'L’adresse du visuel');
+      const local = !isProd && url.hostname === '127.0.0.1';
+      if (!local && !META_MEDIA_HOST.test(url.hostname)) continue;
+      const response = await fetch(url, { signal: AbortSignal.timeout(DOWNLOAD_TIMEOUT_VIDEO_MS) });
+      const type = (response.headers.get('content-type') ?? '').split(';')[0]!.trim().toLowerCase();
+      const extension = DOWNLOAD_TYPES[type];
+      if (!response.ok || !response.body || !extension) continue;
+      res.setHeader('Content-Type', type);
+      res.setHeader('Content-Disposition', `attachment; filename="${nom}.${extension}"`);
+      const taille = response.headers.get('content-length');
+      if (taille) res.setHeader('Content-Length', taille);
+      res.setHeader('Cache-Control', 'private, no-store');
+      res.setHeader('X-Content-Type-Options', 'nosniff');
+      // En flux : une vidéo de plusieurs dizaines de mégaoctets ne tient pas en mémoire d'une fonction.
+      const reader = response.body.getReader();
+      for (let chunk = await reader.read(); !chunk.done; chunk = await reader.read()) res.write(Buffer.from(chunk.value));
+      res.end();
+      return;
+    } catch {
+      // Adresse expirée ou refusée : on essaie la suivante, puis l'aperçu conservé.
+    }
+  }
+
+  const target = supabaseStorage();
+  const object = target && row.thumbnailPath ? await getObject(target, BUCKET_ID, row.thumbnailPath) : null;
+  if (!object) {
+    throw new AppError(410, 'Le fichier de cette publicité n’est plus disponible chez Meta.', 'SPY_MEDIA_EXPIRED');
+  }
+  const type = object.headers.get('content-type') ?? 'image/jpeg';
+  const bytes = Buffer.from(await object.arrayBuffer());
+  res.setHeader('Content-Type', type);
+  res.setHeader('Content-Disposition', `attachment; filename="${nom}.${IMAGE_TYPES[type] ?? 'jpg'}"`);
+  res.setHeader('Content-Length', String(bytes.length));
+  res.setHeader('Cache-Control', 'private, no-store');
+  res.setHeader('X-Content-Type-Options', 'nosniff');
+  res.end(bytes);
+}

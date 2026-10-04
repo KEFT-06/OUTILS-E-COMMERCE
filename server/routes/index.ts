@@ -2,6 +2,7 @@ import { Router } from 'express';
 import { authenticate } from '@server/middleware/auth';
 import { accountRouter } from '@server/routes/account';
 import { adminRouter } from '@server/routes/admin';
+import { alertsRouter } from '@server/routes/alerts';
 import { analysisRouter } from '@server/routes/analysis';
 import { authRouter } from '@server/routes/auth';
 import { billingRouter } from '@server/routes/billing';
@@ -51,6 +52,7 @@ api.use('/storybook', storybookRouter);
 api.use('/creatives', creativesRouter);
 api.use('/radar', radarRouter);
 api.use('/espionnage', espionnageRouter);
+api.use('/alerts', alertsRouter);
 api.use('/market', marketRouter);
 // Déclencheur périodique : protégé par son propre secret, pas par une session utilisateur.
 api.use('/cron', cronRouter);

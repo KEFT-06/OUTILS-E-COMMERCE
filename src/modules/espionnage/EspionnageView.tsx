@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { Store } from "lucide-react";
+import { useSearchParams } from "react-router-dom";
+import { RefreshCw, Store } from "lucide-react";
 import { toast } from "sonner";
+import { countryName } from "@server/shared/countries";
 import { AdCard, AdDetailsDialog } from "@/modules/espionnage/AdCard";
 import { MetaSearchPanel } from "@/modules/espionnage/MetaSearchPanel";
 import { PageHeader } from "@/shared/components/PageHeader";
@@ -63,7 +65,29 @@ const ANCIENNETE = [
   },
 ] as const;
 
+const SERIE_VUE = "sc.espionnage.serie";
+
+/**
+ * Série de départ : celle qui SUIT la dernière vue. Le mur rouvrait toujours sur les mêmes
+ * annonces — les plus anciennes du tri — et donnait l'impression de ne jamais bouger
+ * (remarque du propriétaire, 04/10/2026). Chaque visite reprend donc là où la précédente
+ * s'est arrêtée ; « Actualiser » passe à la suite sans quitter l'écran.
+ */
+function serieDeDepart(): number {
+  try {
+    const vue = window.localStorage.getItem(SERIE_VUE);
+    if (vue === null) return 0;
+    const numero = Number(vue);
+    return Number.isInteger(numero) && numero >= 0 ? numero + 1 : 0;
+  } catch {
+    return 0;
+  }
+}
+
 export function EspionnageView() {
+  // Arrivée depuis le Radar (« X publicités en cours ») : le mur s'ouvre sur cette boutique.
+  const [searchParams] = useSearchParams();
+  const boutique = searchParams.get("boutique");
   // Aucune consigne d'administration sur cet écran, pas même pour un administrateur : la
   // collecte tourne seule, et l'écran d'un abonné ne doit rien montrer de la cuisine (29/09/2026).
   const [erreur, setErreur] = useState<string | null>(null);
@@ -77,6 +101,9 @@ export function EspionnageView() {
   */
   const [etat, setEtat] = useState<"toutes" | "active" | "arretee">("active");
   const [tri, setTri] = useState<"oldest" | "newest" | "variants">("oldest");
+  const [serie, setSerie] = useState(() => (boutique ? 0 : serieDeDepart()));
+  const [actualisation, setActualisation] = useState(false);
+  const [pays, setPays] = useState("tous");
   const [busy, setBusy] = useState<string | null>(null);
   const [details, setDetails] = useState<LibraryAd | null>(null);
   /** « Toutes les annonces de cet annonceur », comme sur la page d'un annonceur chez Meta. */
@@ -84,7 +111,7 @@ export function EspionnageView() {
     pageId: string | null;
     storeHost: string | null;
     nom: string;
-  } | null>(null);
+  } | null>(() => (boutique ? { pageId: null, storeHost: boutique.toLowerCase(), nom: boutique } : null));
 
   const adresse = useMemo(() => {
     // Aucune limite demandée : le serveur sert ce que le palier autorise. En fixer une ici
@@ -95,8 +122,10 @@ export function EspionnageView() {
     if (etat !== "toutes") params.set("etat", etat);
     if (annonceur?.pageId) params.set("pageId", annonceur.pageId);
     else if (annonceur?.storeHost) params.set("storeHost", annonceur.storeHost);
+    if (pays !== "tous") params.set("country", pays);
+    if (serie > 0) params.set("batch", String(serie));
     return `/api/espionnage?${params.toString()}`;
-  }, [anciennete, format, etat, tri, annonceur]);
+  }, [anciennete, format, etat, tri, annonceur, pays, serie]);
   // Le mur déjà vu avec ces réglages se réaffiche tout de suite, puis il est relu.
   const [data, setData] = useCachedState<EspionnageData>(adresse);
 
@@ -124,8 +153,43 @@ export function EspionnageView() {
     return () => clearInterval(timer);
   }, [collecting, load]);
 
+  // La série réellement servie est retenue pour la prochaine visite (le serveur revient à la
+  // première après la dernière).
+  const serieServie = data?.batch;
+  useEffect(() => {
+    if (serieServie === undefined) return;
+    try {
+      window.localStorage.setItem(SERIE_VUE, String(serieServie));
+    } catch {
+      // Stockage indisponible : la prochaine visite repartira de la première série.
+    }
+  }, [serieServie]);
+
+  /** Un autre réglage, une autre liste : on la reprend à son début. */
+  const regler = <T,>(appliquer: (valeur: T) => void) => (valeur: T) => {
+    setSerie(0);
+    appliquer(valeur);
+  };
+
+  async function actualiser() {
+    setActualisation(true);
+    try {
+      // Ce qu'une collecte terminée a rapporté entre dans le mur avant de servir la suite.
+      const { adsAdded } = await apiRequest<{ adsAdded: number }>("/api/espionnage/refresh", { method: "POST" });
+      if (adsAdded > 0) toast.success(`${adsAdded} nouvelle${adsAdded > 1 ? "s" : ""} annonce${adsAdded > 1 ? "s" : ""} sur le mur.`);
+    } catch {
+      // La suite du mur reste lisible même si la récolte n'a pas répondu.
+    }
+    const suivante = data ? (data.batch + 1) % Math.max(1, data.batches) : serie + 1;
+    if (suivante === serie) await load();
+    else setSerie(suivante);
+    setActualisation(false);
+    document.getElementById("dernieres-publicites")?.scrollIntoView({ behavior: "smooth", block: "start" });
+  }
+
   const voirAnnonceur = (ad: LibraryAd) => {
     setDetails(null);
+    setSerie(0);
     setAnnonceur({
       pageId: ad.pageId,
       storeHost: ad.storeHost,
@@ -168,10 +232,21 @@ export function EspionnageView() {
           les dernières publicités repérées dessous. */}
       <MetaSearchPanel />
 
-      <section className="space-y-6" aria-labelledby="dernieres-publicites">
-        <h2 id="dernieres-publicites" className="font-display text-xl font-bold tracking-tight">
-          Dernières publicités repérées
-        </h2>
+      <section className="space-y-6" aria-label="Dernières publicités repérées">
+        <div className="flex scroll-mt-20 flex-wrap items-center justify-between gap-3" id="dernieres-publicites">
+          <h2 className="font-display text-xl font-bold tracking-tight">Dernières publicités repérées</h2>
+          <div className="flex items-center gap-3">
+            {data && data.batches > 1 && (
+              <span className="text-sm text-muted-foreground tabular-nums">
+                Série {data.batch + 1} sur {data.batches}
+              </span>
+            )}
+            <Button variant="outline" onClick={() => void actualiser()} disabled={actualisation || data === null}>
+              <RefreshCw className={actualisation ? "animate-spin" : undefined} />
+              Actualiser
+            </Button>
+          </div>
+        </div>
           {erreur && (
             <Alert variant="destructive">
               <AlertTitle>Mur indisponible</AlertTitle>
@@ -189,7 +264,7 @@ export function EspionnageView() {
               <Button
                 size="sm"
                 variant="ghost"
-                onClick={() => setAnnonceur(null)}
+                onClick={() => regler(setAnnonceur)(null)}
               >
                 Retirer ce filtre
               </Button>
@@ -219,7 +294,7 @@ export function EspionnageView() {
               </div>
 
               <div className="flex flex-wrap gap-2 md:justify-end">
-                <Select value={anciennete} onValueChange={setAnciennete}>
+                <Select value={anciennete} onValueChange={regler(setAnciennete)}>
                   <SelectTrigger
                     className="w-full sm:w-72"
                     aria-label="Ancienneté de diffusion"
@@ -237,7 +312,7 @@ export function EspionnageView() {
 
                 <Select
                   value={etat}
-                  onValueChange={(value) => setEtat(value as typeof etat)}
+                  onValueChange={regler((value: string) => setEtat(value as typeof etat))}
                 >
                   <SelectTrigger
                     className="w-full sm:w-44"
@@ -254,7 +329,7 @@ export function EspionnageView() {
 
                 <Select
                   value={format}
-                  onValueChange={(value) => setFormat(value as typeof format)}
+                  onValueChange={regler((value: string) => setFormat(value as typeof format))}
                 >
                   <SelectTrigger
                     className="w-full sm:w-40"
@@ -269,9 +344,25 @@ export function EspionnageView() {
                   </SelectContent>
                 </Select>
 
+                {data && data.countries.length > 0 && (
+                  <Select value={pays} onValueChange={regler(setPays)}>
+                    <SelectTrigger className="w-full sm:w-48" aria-label="Pays de diffusion">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="tous">Tous les pays</SelectItem>
+                      {data.countries.map((code) => (
+                        <SelectItem key={code} value={code}>
+                          {countryName(code)}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                )}
+
                 <Select
                   value={tri}
-                  onValueChange={(value) => setTri(value as typeof tri)}
+                  onValueChange={regler((value: string) => setTri(value as typeof tri))}
                 >
                   <SelectTrigger
                     className="w-full sm:w-64"
@@ -315,9 +406,9 @@ export function EspionnageView() {
                 {data.hiddenByPlan > 1 ? "ent" : ""} à ce filtre
               </AlertTitle>
               <AlertDescription>
-                Votre palier affiche {data.visibleLimit} annonces à la fois. Les
-                autres sont déjà collectées et vous attendent sur un palier
-                supérieur.
+                Votre palier affiche {data.visibleLimit} annonces à la fois :
+                « Actualiser » montre les suivantes. Un palier supérieur en
+                affiche davantage d’un coup.
               </AlertDescription>
             </Alert>
           )}

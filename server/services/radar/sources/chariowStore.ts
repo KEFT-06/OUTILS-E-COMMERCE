@@ -17,6 +17,15 @@ import type { RadarObservation, RadarSource, RadarTarget } from '@server/service
  *   · `sales_count` — les ventes cumulées de chaque produit, en clair ;
  *   · `pricing.effective.value` — le prix réellement pratiqué, remises comprises.
  *
+ * DEPUIS L'AUTOMNE 2026, LES VENTES NE SONT PLUS DANS LA LISTE. Mesuré le 04/10/2026 sur une
+ * vraie vitrine : le catalogue ne rend plus que le nom, le prix (`pricing.current_price`) et
+ * les avis ; `sales_count` et la catégorie ne sont publiés que par la fiche de chaque produit :
+ *
+ *   GET {CHARIOW_STOREFRONT_URL}/storefront/{store_…}/products/{prd_…}   → sales_count, category
+ *
+ * Le radar affichait donc « — » partout, et ne voyait plus aucune vente. Chaque relevé lit
+ * désormais les fiches, quelques-unes à la fois, dans un temps borné (voir `readDetails`).
+ *
  * Ce qu'elle ne publie PAS : aucune date de création. L'ancienneté d'un produit ne
  * s'obtient donc que par l'observation — c'est précisément ce que le radar existe pour faire.
  *
@@ -30,6 +39,12 @@ const TIMEOUT_MS = 20_000;
 const MAX_HTML_BYTES = 2_000_000;
 /** Pages de catalogue suivies au plus : borne le travail sur une très grosse boutique. */
 const MAX_PAGES = 20;
+/** Fiches produit lues au plus par relevé : au-delà, le catalogue est couvert en plusieurs jours. */
+const DETAILS_MAX = 120;
+/** Fiches lues en même temps : la vitrine est celle d'un tiers, on ne la sollicite pas en rafale. */
+const DETAILS_CONCURRENCY = 4;
+/** Temps accordé à la lecture des fiches d'une boutique. */
+const DETAILS_BUDGET_MS = 25_000;
 const USER_AGENT = 'SmartCreatorRadar/1.0 (+veille concurrentielle ; une visite par jour)';
 
 /** Hôtes autorisés. Sans cette liste, une adresse fournie par un utilisateur ferait
@@ -47,6 +62,7 @@ const moneySchema = z.object({
 const productSchema = z.object({
   id: z.string().min(1),
   name: z.string().min(1),
+  slug: z.string().nullable().optional(),
   type: z.string().nullable().optional(),
   status: z.string().nullable().optional(),
   pricing: z
@@ -58,6 +74,12 @@ const productSchema = z.object({
     .optional(),
   sales_count: z.object({ value: z.number().nullable().optional() }).nullable().optional(),
   store: z.object({ name: z.string().nullable().optional(), url: z.string().nullable().optional() }).nullable().optional(),
+});
+
+/** Fiche d'un produit : ce que la liste ne publie plus. */
+const detailSchema = z.object({
+  sales_count: z.object({ value: z.number().nullable().optional() }).nullable().optional(),
+  category: z.object({ value: z.string().nullable().optional() }).nullable().optional(),
 });
 
 const catalogSchema = z.object({
@@ -187,7 +209,49 @@ function toObservation(product: z.infer<typeof productSchema>): RadarObservation
     priceValue: typeof money?.value === 'number' ? Math.round(money.value) : null,
     currency: money?.currency ?? null,
     salesCount: typeof product.sales_count?.value === 'number' ? product.sales_count.value : null,
+    slug: product.slug?.trim() || null,
   };
+}
+
+function detailUrl(externalId: string, productId: string): string {
+  return `${catalogUrl(externalId)}/${encodeURIComponent(productId)}`;
+}
+
+/**
+ * Complète les relevés par la fiche de chaque produit : ventes cumulées et catégorie.
+ *
+ * Borné trois fois : en nombre (DETAILS_MAX), en temps (DETAILS_BUDGET_MS) et en débit
+ * (DETAILS_CONCURRENCY). Sur un catalogue plus grand que la borne, le point de départ avance
+ * d'un jour sur l'autre : chaque produit est lu au moins un jour sur deux, et le dernier compte
+ * connu reste affiché entre-temps. Un refus de débit arrête la lecture au lieu d'insister.
+ */
+async function readDetails(externalId: string, observations: RadarObservation[], now = new Date()): Promise<void> {
+  const pending = observations.filter((observation) => observation.salesCount === null);
+  if (pending.length === 0) return;
+
+  const jour = Math.floor(now.getTime() / 86_400_000);
+  const start = pending.length > DETAILS_MAX ? (jour * DETAILS_MAX) % pending.length : 0;
+  const queue = [...pending.slice(start), ...pending.slice(0, start)].slice(0, DETAILS_MAX);
+  const deadline = Date.now() + DETAILS_BUDGET_MS;
+  let stopped = false;
+
+  const worker = async () => {
+    for (let observation = queue.shift(); observation && !stopped && Date.now() < deadline; observation = queue.shift()) {
+      try {
+        const payload = (await fetchJson(detailUrl(externalId, observation.externalId))) as { data?: unknown } | null;
+        const detail = detailSchema.safeParse(payload?.data ?? payload);
+        if (!detail.success) continue;
+        const sales = detail.data.sales_count?.value;
+        if (typeof sales === 'number') observation.salesCount = sales;
+        observation.category = detail.data.category?.value?.trim() || null;
+      } catch (error) {
+        // La plateforme demande de ralentir : on s'arrête là, le relevé de demain reprendra.
+        // Toute autre fiche illisible est simplement passée : elle ne fait pas échouer le relevé.
+        if (error instanceof AppError && error.code === 'RADAR_SOURCE_RATE_LIMITED') stopped = true;
+      }
+    }
+  };
+  await Promise.all(Array.from({ length: DETAILS_CONCURRENCY }, worker));
 }
 
 export const chariowStoreSource: RadarSource = {
@@ -243,6 +307,7 @@ export const chariowStoreSource: RadarSource = {
       next = suivant && suivant.startsWith(env.CHARIOW_STOREFRONT_URL.replace(/\/+$/, '')) ? suivant : null;
     }
 
+    await readDetails(externalId, observations);
     return observations;
   },
 };

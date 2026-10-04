@@ -56,6 +56,9 @@ const ADVERTISER_WINDOW_MS = 60 * 24 * 3_600_000;
 const NOT_A_STORE = new Set(['www', 'api', 'api-edge', 'app', 'cdn', 'images', 'assets', 'static']);
 
 export interface DiscoveredStore {
+  /** Publicités de la boutique vues en cours au dernier contrôle du mur. */
+  activeAds: number;
+  adsCheckedAt: string | null;
   host: string;
   label: string | null;
   adCount: number;
@@ -95,10 +98,24 @@ export async function listDiscoveredStores(limit = 100): Promise<DiscoveredStore
     .orderBy(desc(discoveredStores.adCount), desc(discoveredStores.lastSeenAt))
     .limit(Math.min(Math.max(limit, 1), 300));
 
+  // Publicités réellement en cours, lues sur le mur : `adCount` n'est qu'un cumul d'apparitions.
+  const hosts = rows.map((row) => row.host);
+  const enCours =
+    hosts.length === 0
+      ? []
+      : await getDb()
+          .select({ host: spiedAds.storeHost, total: sql<number>`count(*) filter (where ${spiedAds.active})`, checkedAt: sql<Date | null>`max(${spiedAds.lastSeenAt})` })
+          .from(spiedAds)
+          .where(inArray(spiedAds.storeHost, hosts))
+          .groupBy(spiedAds.storeHost);
+  const parBoutique = new Map(enCours.map((row) => [row.host, row]));
+
   return rows.map((row) => ({
     host: row.host,
     label: row.label,
     adCount: row.adCount,
+    activeAds: Number(parBoutique.get(row.host)?.total ?? 0),
+    adsCheckedAt: parBoutique.get(row.host)?.checkedAt ? new Date(parBoutique.get(row.host)!.checkedAt!).toISOString() : null,
     firstSeenAt: row.firstSeenAt.toISOString(),
     lastSeenAt: row.lastSeenAt.toISOString(),
   }));
@@ -387,7 +404,12 @@ export async function runDiscovery(now = new Date()): Promise<DiscoveryOutcome> 
  * une erreur d'écriture — sans la repayer. `server/scripts/collect-ads.ts --from` emprunte ce
  * chemin, et c'est le MÊME que celui de la collecte réelle : rien n'y est simulé.
  */
-export async function ingestDiscoveryItems(items: unknown[], now = new Date()): Promise<DiscoveryOutcome> {
+/**
+ * `country` : pays de la recherche qui a rapporté ces annonces (ISO, ou null pour tous pays). La
+ * bibliothèque ne publie les pays de diffusion que pour l'Union européenne ; ailleurs, le seul
+ * moyen de savoir où une annonce tourne est de l'avoir trouvée en cherchant dans ce pays.
+ */
+export async function ingestDiscoveryItems(items: unknown[], now = new Date(), country: string | null = null): Promise<DiscoveryOutcome> {
   // On ne lit aucun champ nommé : on cherche les hôtes de vitrine dans l'enregistrement
   // entier. Le fournisseur peut renommer ses colonnes sans rien casser ici.
   const comptes = new Map<string, number>();
@@ -441,7 +463,11 @@ export async function ingestDiscoveryItems(items: unknown[], now = new Date()): 
     Le même passage alimente les deux écrans : les boutiques repérées du Radar et le mur
     d'espionnage. Une seconde collecte pour les mêmes annonces paierait deux fois la même donnée.
   */
-  const annonces = items.map((item) => readMetaAd(item, now)).filter((annonce) => annonce !== null);
+  const pays = country && /^[A-Z]{2}$/.test(country) ? [country] : [];
+  const annonces = items
+    .map((item) => readMetaAd(item, now))
+    .filter((annonce) => annonce !== null)
+    .map((annonce) => ({ ...annonce, countries: pays }));
 
   /*
     Les annonces s'écrivent par paquets, et non une par une.
@@ -471,10 +497,15 @@ export async function ingestDiscoveryItems(items: unknown[], now = new Date()): 
           advertiser: sql`excluded.advertiser`,
           mediaUrl: sql`excluded.media_url`,
           mediaKind: sql`excluded.media_kind`,
+          downloadUrl: sql`coalesce(excluded.download_url, ${spiedAds.downloadUrl})`,
+          // Les pays s'ajoutent d'une collecte à l'autre, sans doublon.
+          countries: sql`(select coalesce(jsonb_agg(distinct pays), '[]'::jsonb) from jsonb_array_elements_text(${spiedAds.countries} || excluded.countries) as pays)`,
           startedAt: sql`excluded.started_at`,
           variants: sql`excluded.variants`,
           platforms: sql`excluded.platforms`,
           active: sql`excluded.active`,
+          // L'arrêt se date au passage qui le constate ; une annonce relancée efface cette date.
+          stoppedAt: sql`case when excluded.active then null when ${spiedAds.active} then ${now.toISOString()}::timestamptz else ${spiedAds.stoppedAt} end`,
           lastSeenAt: now,
           pageId: sql`coalesce(excluded.page_id, ${spiedAds.pageId})`,
           pageUrl: sql`coalesce(excluded.page_url, ${spiedAds.pageUrl})`,

@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import { z } from 'zod';
 import { providers } from '@server/env';
+import { indexMarketInBackground, searchMarketProducts } from '@server/services/market';
 import { AppError, asyncRoute, routeLimiter, validateBody } from '@server/middleware';
 import { requireAuth, requirePermission } from '@server/middleware/auth';
 import { effectiveLimits } from '@server/services/accounts';
@@ -200,5 +201,20 @@ radarRouter.post(
   routeLimiter(60, 3),
   asyncRoute(async (_req, res) => {
     res.json({ outcome: await runDiscovery() });
+  }),
+);
+
+/**
+ * Concurrence d'une niche : les produits des boutiques connues dont le nom porte un mot
+ * distinctif de la niche, avec leur prix et leurs ventes. Ouvert depuis l'analyse d'une niche.
+ */
+radarRouter.get(
+  '/market',
+  asyncRoute(async (req, res) => {
+    const niche = typeof req.query.niche === 'string' ? req.query.niche.trim().slice(0, 160) : '';
+    if (niche.length < 2) throw new AppError(400, 'Indiquez la niche à comparer.', 'MARKET_NICHE_MISSING');
+    res.json(await searchMarketProducts(niche));
+    // L'index se complète pendant qu'on le consulte : le seul réveil automatique est quotidien.
+    indexMarketInBackground();
   }),
 );

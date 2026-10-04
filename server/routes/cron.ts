@@ -11,6 +11,8 @@ import { archivePendingVideos, purgeExpiredVideos } from '@server/services/creat
 import { purgeStaleVideoUploads } from '@server/services/writing/videoUpload';
 import { sweepPendingGenerations } from '@server/services/generations/sweeper';
 import { sweepDueWatches } from '@server/services/radar/sweeper';
+import { detectAlerts } from '@server/services/alerts';
+import { indexDiscoveredStores } from '@server/services/market';
 
 /**
  * Déclencheur périodique du radar, pour les hébergements où rien ne tourne entre deux requêtes.
@@ -156,5 +158,28 @@ cronRouter.get(
     });
 
     res.json({ generations, sessions, sweep, digests, harvest, discovery, performance, videos, expired, uploads, thumbnails, avatars, staleThumbnails });
+  }),
+);
+
+/**
+ * Second réveil quotidien, une heure après le premier : le catalogue des boutiques repérées
+ * par leurs publicités rejoint l'index du marché, puis les alertes sont calculées sur un index
+ * frais. Séparé du premier parce que celui-ci épuise déjà le temps qu'une fonction peut tenir.
+ */
+cronRouter.get(
+  '/marche',
+  asyncRoute(async (req, res) => {
+    if (!env.CRON_SECRET) throw new AppError(503, 'Le déclencheur périodique n’est pas configuré sur ce serveur.', 'CRON_NOT_CONFIGURED');
+    if (!secretIsValid(req)) throw new AppError(401, 'Déclencheur refusé.', 'CRON_DENIED');
+
+    const index = await indexDiscoveredStores(230_000).catch((error: unknown) => {
+      console.warn('[cron] index du marché :', error instanceof Error ? error.message : error);
+      return null;
+    });
+    const alertes = await detectAlerts().catch((error: unknown) => {
+      console.warn('[cron] alertes :', error instanceof Error ? error.message : error);
+      return null;
+    });
+    res.json({ index, alertes });
   }),
 );

@@ -21,7 +21,17 @@ export interface WatchSummary {
   trackedDays: number;
   liveItems: number;
   endedItems: number;
+  /** Ventes cumulées depuis la création des produits encore en vente. */
   totalSales: number;
+  /** Ventes faites depuis la mise sous surveillance. */
+  trackedSales: number;
+  /** Produits en vente dont le compte de ventes est connu. Zéro : rien à additionner. */
+  itemsWithSales: number;
+  /** Publicités de la boutique vues en cours au dernier contrôle. */
+  activeAds: number;
+  /** Début de la plus ancienne publicité connue de la boutique. */
+  firstAdAt: string | null;
+  adsCheckedAt: string | null;
   unreadEvents: number;
 }
 
@@ -50,9 +60,16 @@ export interface WatchItemView {
   id: string;
   name: string;
   kind: string | null;
+  category: string | null;
   price: number | null;
   currency: string | null;
+  /** Ventes cumulées depuis la création du produit. null : non publiées. */
   sales: number | null;
+  /** Ventes faites depuis la mise sous surveillance. null : non publiées. */
+  salesTracked: number | null;
+  /** Début de la plus ancienne publicité connue pour ce produit. */
+  firstAdAt: string | null;
+  activeAds: number;
   firstSeenAt: string;
   lastSeenAt: string;
   /** null : encore en vente. */
@@ -80,6 +97,9 @@ export interface RadarMeasurements {
 }
 
 export interface DiscoveredStore {
+  /** Publicités de la boutique vues en cours au dernier contrôle. */
+  activeAds: number;
+  adsCheckedAt: string | null;
   host: string;
   label: string | null;
   /** Publicités où la boutique est apparue : un indice d'activité, pas une mesure. */
@@ -114,6 +134,10 @@ export interface SpiedAd {
   advertiser: string | null;
   /** Adresse signée par Meta : elle expire, d'où le repli prévu à l'affichage. */
   mediaUrl: string | null;
+  /** Le fichier d'origine (vidéo ou image) peut être téléchargé. */
+  downloadable?: boolean;
+  /** Pays où l'annonce a été vue en diffusion (ISO). */
+  countries?: string[];
   mediaKind: string | null;
   startedAt: string | null;
   /** Jours pendant lesquels l'annonce a été VUE en diffusion : la donnée qui fait la valeur du mur. */
@@ -166,6 +190,8 @@ export interface AdSearchOverview {
 
 export interface EspionnageView {
   ads: SpiedAd[];
+  /** Pays pour lesquels au moins une annonce a été relevée (ISO). */
+  countries: string[];
   total: number;
   stores: number;
   lastCollectedAt: string | null;
@@ -174,6 +200,55 @@ export interface EspionnageView {
   visibleLimit: number | null;
   /** Annonces correspondant aux filtres mais masquées par le palier. */
   hiddenByPlan: number;
+  /** Annonces correspondant aux filtres, toutes séries confondues. */
+  matching: number;
+  /** Série affichée (0 = la première) et nombre de séries : « Actualiser » passe à la suivante. */
+  batch: number;
+  batches: number;
   /** Une collecte tourne : de nouvelles annonces arrivent dans quelques minutes. */
   collecting?: boolean;
+}
+
+/** Produit d'une boutique connue, trouvé pour une niche (index du marché). */
+export interface MarketProduct {
+  id: string;
+  name: string;
+  category: string | null;
+  kind: string | null;
+  storeHost: string;
+  storeLabel: string | null;
+  storeUrl: string;
+  price: number | null;
+  currency: string | null;
+  /** Ventes cumulées depuis la création du produit. null : non publiées. */
+  sales: number | null;
+  /** Ventes depuis notre premier relevé. null : non publiées. */
+  salesTracked: number | null;
+  firstSeenAt: string;
+  firstAdAt: string | null;
+  activeAds: number;
+}
+
+export interface MarketSearch {
+  niche: string;
+  keywords: string[];
+  products: MarketProduct[];
+  stores: number;
+  indexedStores: number;
+  indexedProducts: number;
+}
+
+export type AlertKind = 'winner' | 'niche_trend' | 'ad_stopped';
+export type AlertLevel = 'info' | 'opportunity' | 'major';
+
+/** Alerte du fil : produit gagnant, tendance de niche, ou arrêt d'une publicité installée. */
+export interface AlertItem {
+  id: string;
+  kind: AlertKind;
+  level: AlertLevel;
+  title: string;
+  body: string;
+  payload: Record<string, unknown>;
+  occurredAt: string;
+  unread: boolean;
 }

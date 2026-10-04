@@ -3,7 +3,9 @@
   "buildCommand": "npm run vercel-build",
   "outputDirectory": "dist/client",
   "framework": null,
-  "regions": ["dub1"],
+  "regions": [
+    "dub1"
+  ],
   "functions": {
     "api/index.js": {
       "maxDuration": 300,
@@ -49,6 +51,10 @@
     {
       "path": "/api/cron/radar",
       "schedule": "0 3 * * *"
+    },
+    {
+      "path": "/api/cron/marche",
+      "schedule": "0 4 * * *"
     }
   ]
 }

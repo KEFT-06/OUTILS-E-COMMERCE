@@ -1,7 +1,9 @@
 import { useState } from 'react';
+import { Link } from 'react-router-dom';
 import {
   AtSign,
   CheckCircle2,
+  Download,
   ExternalLink,
   Eye,
   Facebook,
@@ -13,9 +15,12 @@ import {
   MessagesSquare,
   MoreHorizontal,
   Play,
+  Radar,
   Radio,
   Store,
 } from 'lucide-react';
+import { countryName } from '@server/shared/countries';
+import { CountryFlag } from '@/shared/components/CountryFlag';
 import { safeHttpUrl } from '@/shared/lib/safeUrl';
 import { cn } from '@/shared/lib/utils';
 import type { LibraryAd } from '@/shared/types/radar';
@@ -236,6 +241,23 @@ function Pastilles({ ad }: { ad: LibraryAd }) {
   );
 }
 
+/** Pays où l'annonce a été vue en diffusion. Rien n'est affiché quand aucun pays n'a été relevé. */
+function Pays({ codes }: { codes: string[] }) {
+  if (codes.length === 0) return null;
+  return (
+    <p className="flex flex-wrap items-center gap-x-2 gap-y-1">
+      Diffusée en
+      {codes.slice(0, 6).map((code) => (
+        <span key={code} className="inline-flex items-center gap-1 font-medium">
+          <CountryFlag code={code} />
+          {countryName(code)}
+        </span>
+      ))}
+      {codes.length > 6 && <span className="text-muted-foreground">+{codes.length - 6}</span>}
+    </p>
+  );
+}
+
 export function AdCard({
   ad,
   onWatch,
@@ -277,6 +299,14 @@ export function AdCard({
                 <DropdownMenuItem disabled={busy === ad.storeHost} onSelect={() => ad.storeHost && onWatch(ad.storeHost)}>
                   <Eye />
                   Surveiller la boutique chaque jour
+                </DropdownMenuItem>
+              )}
+              {ad.downloadable && (
+                <DropdownMenuItem asChild>
+                  <a href={`/api/espionnage/ads/${ad.id}/download`} download>
+                    <Download />
+                    Télécharger le visuel
+                  </a>
                 </DropdownMenuItem>
               )}
               {lien && (
@@ -326,13 +356,36 @@ export function AdCard({
             Cette publicité a plusieurs versions <Info className="size-4 text-muted-foreground" aria-hidden="true" />
           </p>
         ) : null}
-        {/* Honnêteté : une collecte ne ramène qu'une partie des annonces ; ne plus revoir n'est pas un arrêt. */}
-        {ad.active && ad.daysSinceSeen > 7 && (
-          <p className="text-xs text-muted-foreground">Non revue depuis {ad.daysSinceSeen} jours par la collecte</p>
+        <Pays codes={ad.countries ?? []} />
+        {ad.daysSinceSeen > 0 && (
+          <p className="text-xs text-muted-foreground">
+            État contrôlé il y a {ad.daysSinceSeen} jour{ad.daysSinceSeen > 1 ? 's' : ''}
+          </p>
         )}
         <Button variant="secondary" className="mt-1 h-11 w-full text-base font-medium" onClick={() => onShowDetails(ad)}>
           {recapitulatif ? 'Voir les détails du récapitulatif' : 'Voir les détails de la publicité'}
         </Button>
+        {/* Les deux gestes les plus demandés, à portée de pouce : la boutique derrière l'annonce, et son visuel. */}
+        {(ad.storeHost || ad.downloadable) && (
+          <div className="flex gap-2">
+            {ad.storeHost && (
+              <Button asChild variant="outline" className="h-10 min-w-0 flex-1">
+                <Link to={`/app/radar?boutique=${encodeURIComponent(ad.storeHost)}`}>
+                  <Radar />
+                  <span className="truncate">Ouvrir dans le Radar</span>
+                </Link>
+              </Button>
+            )}
+            {ad.downloadable && (
+              <Button asChild variant="outline" className={cn('h-10', !ad.storeHost && 'flex-1')}>
+                <a href={`/api/espionnage/ads/${ad.id}/download`} download aria-label="Télécharger le visuel de cette publicité">
+                  <Download />
+                  {!ad.storeHost && 'Télécharger le visuel'}
+                </a>
+              </Button>
+            )}
+          </div>
+        )}
       </div>
 
       <div className="mx-5 border-t" />
@@ -437,6 +490,22 @@ export function AdDetailsDialog({
                   <a href={lien} target="_blank" rel="noreferrer noopener">
                     Voir le produit
                     <ExternalLink />
+                  </a>
+                </Button>
+              )}
+              {ad.storeHost && (
+                <Button asChild size="sm" variant="outline">
+                  <Link to={`/app/radar?boutique=${encodeURIComponent(ad.storeHost)}`}>
+                    <Radar />
+                    Ouvrir dans le Radar
+                  </Link>
+                </Button>
+              )}
+              {ad.downloadable && (
+                <Button asChild size="sm" variant="outline">
+                  <a href={`/api/espionnage/ads/${ad.id}/download`} download>
+                    <Download />
+                    Télécharger le visuel
                   </a>
                 </Button>
               )}

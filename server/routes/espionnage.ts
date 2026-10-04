@@ -4,8 +4,8 @@ import { providers } from '@server/env';
 import { asyncRoute, routeLimiter, validateBody } from '@server/middleware';
 import { requireAuth } from '@server/middleware/auth';
 import { effectiveLimits } from '@server/services/accounts';
-import { listSpiedAds, refreshWallInBackground, spiedStores } from '@server/services/espionnage';
-import { sendAdThumbnail, sendPageAvatar } from '@server/services/espionnage/media';
+import { listSpiedAds, refreshWall, refreshWallInBackground, spiedStores } from '@server/services/espionnage';
+import { sendAdDownload, sendAdThumbnail, sendPageAvatar } from '@server/services/espionnage/media';
 import {
   type AdSearchRequest,
   adSearchRequestSchema,
@@ -53,11 +53,13 @@ const filtersSchema = z.object({
   storeHost: z.string().trim().max(200).optional(),
   pageId: z.string().regex(/^\d{5,30}$/).optional(),
   mediaKind: z.enum(['image', 'video']).optional(),
+  country: z.string().trim().toUpperCase().regex(/^[A-Z]{2}$/).optional(),
   // « active » : ce que Meta déclarait en cours à la dernière collecte ; « arretee » : l'inverse.
   etat: z.enum(['active', 'arretee']).optional(),
   search: z.string().trim().max(120).optional(),
   sort: z.enum(['oldest', 'newest', 'variants']).optional(),
   limit: z.coerce.number().int().min(1).max(200).optional(),
+  batch: z.coerce.number().int().min(0).max(100_000).optional(),
 });
 
 espionnageRouter.get(
@@ -68,6 +70,24 @@ espionnageRouter.get(
     const limite = effectiveLimits(req.auth!.account).spiedAdsVisible;
     res.json(await listSpiedAds(parsed.success ? parsed.data : {}, limite));
     refreshWallInBackground();
+  }),
+);
+
+/** Fichier d'origine d'une publicité (vidéo ou image), remis en téléchargement à un compte connecté. */
+espionnageRouter.get(
+  '/ads/:id/download',
+  routeLimiter(10, 60),
+  asyncRoute(async (req, res) => {
+    await sendAdDownload(req.params.id, res);
+  }),
+);
+
+/** « Actualiser » : fait entrer dans le mur ce qu'une collecte terminée a rapporté. Aucune dépense. */
+espionnageRouter.post(
+  '/refresh',
+  routeLimiter(10, 30),
+  asyncRoute(async (_req, res) => {
+    res.json(await refreshWall());
   }),
 );
 

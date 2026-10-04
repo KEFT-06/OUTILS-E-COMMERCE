@@ -466,6 +466,17 @@ const schema = z.object({
   SPY_SEARCH_CACHE_HOURS: z.coerce.number().int().min(1).max(720).default(24),
 
   /**
+   * Seuils des alertes (services/alerts). Produit gagnant : ventes atteintes dans les premiers
+   * jours d'un lancement. Tendance : boutiques différentes lançant un produit proche dans la même
+   * fenêtre. Publicité installée : jours de diffusion avant qu'un arrêt mérite une alerte.
+   */
+  ALERT_WINNER_SALES: z.coerce.number().int().min(1).max(100_000).default(30),
+  ALERT_WINNER_DAYS: z.coerce.number().int().min(1).max(30).default(3),
+  ALERT_TREND_STORES: z.coerce.number().int().min(2).max(50).default(3),
+  ALERT_TREND_HOURS: z.coerce.number().int().min(24).max(720).default(72),
+  ALERT_AD_MIN_DAYS: z.coerce.number().int().min(7).max(720).default(60),
+
+  /**
    * Référence marché : combien de produits numériques existent déjà sur une niche, depuis quand,
    * et à quel prix — mesuré sur Gumroad, la plus grande place de marché de produits numériques.
    *

@@ -34,6 +34,10 @@ export interface SpiedAdView {
   advertiser: string | null;
   mediaUrl: string | null;
   mediaKind: string | null;
+  /** Le fichier d'origine (vidéo ou image) peut être téléchargé. */
+  downloadable: boolean;
+  /** Pays où une collecte a vu cette annonce en diffusion (ISO). Vide : inconnu. */
+  countries: string[];
   startedAt: string | null;
   /**
    * Jours pendant lesquels l'annonce a été VUE en diffusion, de sa date de début au dernier
@@ -73,6 +77,8 @@ export interface EspionnageFilters {
   /** Toutes les annonces d'un annonceur, comme « voir toutes les annonces » chez Meta. */
   pageId?: string;
   mediaKind?: 'image' | 'video';
+  /** Pays de diffusion relevé (ISO) : ne garde que les annonces vues dans ce pays. */
+  country?: string;
   /**
    * État déclaré par Meta à la dernière collecte qui a vu l'annonce. La bibliothèque de Meta
    * propose ce filtre en premier, et c'est souvent la seule question : « qu'est-ce qui tourne
@@ -83,10 +89,17 @@ export interface EspionnageFilters {
   search?: string;
   sort?: 'oldest' | 'newest' | 'variants';
   limit?: number;
+  /**
+   * Série demandée, la première valant 0. Le mur servait toujours les mêmes premières annonces
+   * du tri : « Actualiser » passe à la série suivante, et revient à la première après la dernière.
+   */
+  batch?: number;
 }
 
 export interface EspionnageView {
   ads: SpiedAdView[];
+  /** Pays pour lesquels au moins une annonce a été relevée (ISO). */
+  countries: string[];
   /** Annonces en base, toutes boutiques confondues, avant filtrage. */
   total: number;
   stores: number;
@@ -97,6 +110,11 @@ export interface EspionnageView {
   visibleLimit: number | null;
   /** Annonces retenues par les filtres mais masquées par le palier. Zéro : rien n'est caché. */
   hiddenByPlan: number;
+  /** Annonces retenues par les filtres, toutes séries confondues. */
+  matching: number;
+  /** Série servie (0 = la première) et nombre de séries : « Actualiser » passe à la suivante. */
+  batch: number;
+  batches: number;
   /** Une collecte tourne chez le fournisseur : de nouvelles annonces arrivent dans quelques minutes. */
   collecting: boolean;
 }
@@ -105,6 +123,8 @@ const JOUR_MS = 86_400_000;
 
 /** Plafond de page, tous paliers confondus : deux cents vignettes suffisent à alourdir l'écran. */
 const PLAFOND_ABSOLU = 200;
+/** Annonces qui montent en tête à chaque « Actualiser » quand tout le mur tient sur une page. */
+const ROTATION = 24;
 
 /**
  * Durée pendant laquelle l'annonce a été VUE en diffusion : de sa date de début au dernier
@@ -135,6 +155,8 @@ function viewOf(row: typeof spiedAds.$inferSelect, now: Date): SpiedAdView {
     advertiser: row.advertiser,
     mediaUrl: row.mediaUrl,
     mediaKind: row.mediaKind,
+    downloadable: Boolean(row.downloadUrl ?? row.mediaUrl ?? row.thumbnailPath),
+    countries: row.countries,
     startedAt: row.startedAt?.toISOString() ?? null,
     runningDays: runningDays(row.startedAt, row.lastSeenAt),
     variants: row.variants,
@@ -195,6 +217,7 @@ export async function listSpiedAds(
   if (filters.storeHost) conditions.push(eq(spiedAds.storeHost, filters.storeHost));
   if (filters.pageId) conditions.push(eq(spiedAds.pageId, filters.pageId));
   if (filters.mediaKind) conditions.push(eq(spiedAds.mediaKind, filters.mediaKind));
+  if (filters.country) conditions.push(sql`${spiedAds.countries} @> ${JSON.stringify([filters.country])}::jsonb`);
   if (filters.etat) conditions.push(eq(spiedAds.active, filters.etat === 'active'));
   if (filters.search) {
     /*
@@ -229,7 +252,29 @@ export async function listSpiedAds(
         : // Par défaut les plus anciennes : ce sont celles qui ont prouvé quelque chose.
           [asc(spiedAds.startedAt)];
 
-  const rows = await getDb().select().from(spiedAds).where(where).orderBy(...order).limit(limit);
+  const [correspondantes] = await getDb().select({ total: count() }).from(spiedAds).where(where);
+  const matching = Number(correspondantes?.total ?? 0);
+  /*
+    Deux cas. Plus d'annonces que le palier n'en montre : chaque série est une page entière,
+    sans recouvrement. Tout tient sur une page : la série fait tourner l'ordre d'un écran
+    (ROTATION annonces), pour que le haut du mur change quand même — sinon « Actualiser »
+    n'aurait rien à montrer à un palier qui voit déjà tout.
+  */
+  const fits = matching <= limit;
+  const step = fits ? Math.min(ROTATION, Math.max(matching, 1)) : limit;
+  const batches = Math.max(1, Math.ceil(matching / step));
+  // Au-delà de la dernière série, on revient à la première : le bouton ne mène jamais à un mur vide.
+  const batch = Math.max(0, filters.batch ?? 0) % batches;
+
+  // L'identifiant départage les dates égales : sans lui, deux séries pourraient se chevaucher.
+  const page = await getDb()
+    .select()
+    .from(spiedAds)
+    .where(where)
+    .orderBy(...order, asc(spiedAds.id))
+    .limit(limit)
+    .offset(fits ? 0 : batch * limit);
+  const rows = fits ? [...page.slice(batch * step), ...page.slice(0, batch * step)] : page;
 
   /*
     Combien d'annonces le palier cache-t-il, parmi celles que les filtres retiennent ? On le
@@ -242,17 +287,19 @@ export async function listSpiedAds(
     l'abonnement. Accuser le palier de ce qu'il n'a pas fait pousse à payer pour rien, et
     l'utilisateur qui souscrit découvre que rien ne change.
   */
-  let hiddenByPlan = 0;
-  if (visibleLimit !== null) {
-    const [correspondantes] = await getDb().select({ total: count() }).from(spiedAds).where(where);
-    hiddenByPlan = Math.max(0, Number(correspondantes?.total ?? 0) - visibleLimit);
-  }
+  const hiddenByPlan = visibleLimit !== null ? Math.max(0, matching - visibleLimit) : 0;
 
   const [totaux] = await getDb()
     .select({ total: count(), stores: sql<number>`count(distinct ${spiedAds.storeHost})` })
     .from(spiedAds);
 
+  // Pays relevés sur tout le mur, pour le filtre : on ne propose que ce qui existe.
+  const paysConnus = await getDb()
+    .select({ pays: sql<string>`distinct jsonb_array_elements_text(${spiedAds.countries})` })
+    .from(spiedAds);
+
   return {
+    countries: paysConnus.map((row) => row.pays).sort(),
     ads: rows.map((row) => viewOf(row, now)),
     total: Number(totaux?.total ?? 0),
     stores: Number(totaux?.stores ?? 0),
@@ -260,6 +307,9 @@ export async function listSpiedAds(
     configured: providers.apify,
     visibleLimit,
     hiddenByPlan,
+    matching,
+    batch,
+    batches,
     collecting: providers.apify ? (await pendingCollectionRuns()) > 0 : false,
   };
 }
@@ -279,6 +329,22 @@ export function refreshWallInBackground(): void {
     await storeMissingThumbnails(60);
     await storeMissingAvatars(30);
   }, 'tenue du mur d’espionnage');
+}
+
+/**
+ * « Actualiser » : ce qu'une collecte terminée a rapporté entre dans le mur tout de suite, au
+ * lieu d'attendre le passage de la nuit. Ne lance AUCUNE collecte : chacune est facturée, et
+ * son rythme reste celui du planificateur.
+ */
+export async function refreshWall(now = new Date()): Promise<{ collecting: boolean; adsAdded: number }> {
+  if (!providers.apify) return { collecting: false, adsAdded: 0 };
+  let adsAdded = 0;
+  if ((await pendingCollectionRuns()) > 0) adsAdded = (await harvestCollectionRuns(now)).adsKept ?? 0;
+  runInBackground(async () => {
+    await storeMissingThumbnails(60);
+    await storeMissingAvatars(30);
+  }, 'aperçus du mur d’espionnage');
+  return { collecting: (await pendingCollectionRuns()) > 0, adsAdded };
 }
 
 /** Boutiques présentes sur le mur, pour alimenter le filtre par boutique. */

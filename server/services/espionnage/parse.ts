@@ -152,6 +152,8 @@ export function readAnyMetaAd(raw: unknown, now: Date): MetaAdFields | null {
     advertiser: (snap.pageName ?? ad.pageName)?.trim().slice(0, 200) || null,
     mediaUrl: media.url?.slice(0, 2_000) ?? null,
     mediaKind: media.kind,
+    // Fichier d'origine, pour le téléchargement : la vidéo elle-même, ou l'image en pleine définition.
+    downloadUrl: (video ? (video.videoHdUrl ?? video.videoSdUrl) : image ? (image.originalImageUrl ?? image.resizedImageUrl) : null)?.slice(0, 2_000) ?? null,
     // Secondes, pas millisecondes : mesuré. Multiplier au mauvais facteur daterait toutes les
     // annonces de 1970 et l'ancienneté n'aurait aucun sens.
     startedAt: typeof ad.startDate === 'number' && ad.startDate > 0 ? new Date(ad.startDate * 1000) : null,

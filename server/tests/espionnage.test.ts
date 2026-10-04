@@ -409,4 +409,42 @@ describe('Mur d’espionnage — ce que le palier laisse voir', () => {
     assert.equal(bride.body.ads.length, 6, 'le palier Gratuit s’arrête à six');
     assert.ok(bride.body.hiddenByPlan > 60, 'et l’écran peut annoncer tout ce qui manque');
   });
+
+  it('« Actualiser » sert d’autres annonces à chaque série, puis revient à la première', async () => {
+    // Le mur rouvrait toujours sur les mêmes premières annonces (remarque du 04/10/2026).
+    const { agent: gratuit } = await signInWithPlan(app, 'espion-serie@exemple.test', 'free');
+    const premiere = await gratuit.get('/api/espionnage?etat=active').expect(200);
+    const seconde = await gratuit.get('/api/espionnage?etat=active&batch=1').expect(200);
+    const ids = (vue: { body: { ads: { id: string }[] } }) => vue.body.ads.map((ad) => ad.id);
+
+    assert.equal(premiere.body.batch, 0);
+    assert.equal(seconde.body.batch, 1);
+    assert.ok(premiere.body.batches > 10, `plus de soixante annonces, six à la fois (reçu ${premiere.body.batches} séries)`);
+    assert.equal(ids(seconde).length, 6);
+    assert.equal(ids(seconde).filter((id) => ids(premiere).includes(id)).length, 0, 'aucune annonce de la première série ne revient dans la seconde');
+
+    // Après la dernière série, on retombe sur la première : jamais de mur vide.
+    const apresLaFin = await gratuit.get(`/api/espionnage?etat=active&batch=${premiere.body.batches}`).expect(200);
+    assert.equal(apresLaFin.body.batch, 0);
+    assert.deepEqual(ids(apresLaFin), ids(premiere));
+  });
+
+  it('fait tourner le haut du mur même quand le palier voit déjà tout', async () => {
+    const { agent: pro } = await signInWithPlan(app, 'espion-rotation@exemple.test', 'pro');
+    const premiere = await pro.get('/api/espionnage?storeHost=boutique-masse.mychariow.com').expect(200);
+    const suivante = await pro.get('/api/espionnage?storeHost=boutique-masse.mychariow.com&batch=1').expect(200);
+
+    assert.equal(premiere.body.matching, 70);
+    assert.equal(premiere.body.batches, 3, '70 annonces, 24 qui montent en tête à chaque fois');
+    assert.equal(suivante.body.ads.length, 70, 'aucune annonce ne disparaît : seul l’ordre tourne');
+    assert.equal(suivante.body.ads[0].id, premiere.body.ads[24].id, 'la 25e annonce passe en tête');
+    assert.equal(suivante.body.ads.at(-1).id, premiere.body.ads[23].id, 'et les premières passent à la fin');
+  });
+
+  it('« Actualiser » ne lance aucune collecte payante', async () => {
+    const { agent } = await signInWithPlan(app, 'espion-actualiser@exemple.test', 'pro');
+    const reponse = await agent.post('/api/espionnage/refresh').expect(200);
+    assert.equal(reponse.body.collecting, false);
+    assert.equal(reponse.body.adsAdded, 0);
+  });
 });

@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
-import { Compass, Plus, RefreshCw } from 'lucide-react';
+import { Link } from 'react-router-dom';
+import { Compass, Megaphone, Plus, RefreshCw } from 'lucide-react';
 import { toast } from 'sonner';
 import { apiRequest } from '@/shared/lib/api';
 import { useCachedState } from '@/shared/lib/apiCache';
@@ -89,9 +90,8 @@ export function DiscoveredStoresPanel({
           Boutiques repérées
         </CardTitle>
         <CardDescription>
-          Trouvées dans les publicités en cours de la plateforme
-          {data.lastRunAt ? `, dernière collecte ${formatRelativeFr(data.lastRunAt)}` : ''}. Le nombre de publicités dit
-          qui dépense ; les ventes n’apparaîtront qu’après la mise sous surveillance.
+          Les boutiques qui font de la publicité en ce moment
+          {data.lastRunAt ? ` · contrôlé ${formatRelativeFr(data.lastRunAt)}` : ''}
         </CardDescription>
         {data.canRefresh && (
           <CardAction>
@@ -105,8 +105,7 @@ export function DiscoveredStoresPanel({
       <CardContent>
         {data.stores.length === 0 ? (
           <p className="py-4 text-center text-sm text-muted-foreground">
-            Aucune boutique repérée pour l’instant. La collecte tourne d’elle-même, à intervalle réglé par
-            l’administrateur.
+            Aucune boutique repérée pour l’instant.
           </p>
         ) : (
           <ul className="divide-y">
@@ -116,9 +115,18 @@ export function DiscoveredStoresPanel({
                   <p className="truncate text-sm font-medium">{store.label ?? store.host}</p>
                   <p className="truncate text-xs text-muted-foreground">{store.host}</p>
                 </div>
-                <Badge variant="outline" className="whitespace-nowrap">
-                  {store.adCount} pub{store.adCount > 1 ? 's' : ''}
-                </Badge>
+                {store.activeAds > 0 ? (
+                  <Button asChild variant="ghost" size="sm" className="h-8 gap-1.5 px-2 text-brand-green-text">
+                    <Link to={`/app/espionnage?boutique=${encodeURIComponent(store.host)}`}>
+                      <Megaphone className="size-3.5" />
+                      {store.activeAds} pub{store.activeAds > 1 ? 's' : ''} en cours
+                    </Link>
+                  </Button>
+                ) : (
+                  <Badge variant="outline" className="whitespace-nowrap">
+                    aucune pub en cours
+                  </Badge>
+                )}
                 <Button
                   size="sm"
                   variant="secondary"

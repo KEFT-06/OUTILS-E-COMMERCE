@@ -2,6 +2,7 @@ import { and, eq, inArray, isNull } from 'drizzle-orm';
 import { getDb } from '@server/db/client';
 import { watchEvents, watchItems, watches, type WatchEventKind, type WatchItemRow, type WatchRow } from '@server/db/schema';
 import { AppError } from '@server/middleware';
+import { indexStoreCatalog, normalHost } from '@server/services/market';
 import { sourceFor } from '@server/services/radar/sources';
 import type { RadarObservation } from '@server/services/radar/types';
 
@@ -78,6 +79,8 @@ export async function applyObservations(
             salesCount: observation.salesCount,
             // Point de départ figé : tout ce qui s'ajoutera ensuite a été vendu sous nos yeux.
             salesAtFirstSeen: observation.salesCount,
+            category: observation.category ?? null,
+            slug: observation.slug ?? null,
             firstSeenAt: now,
             lastSeenAt: now,
           })
@@ -175,7 +178,12 @@ export async function applyObservations(
           kind: observation.kind,
           priceValue: observation.priceValue,
           currency: observation.currency,
-          salesCount: observation.salesCount,
+          // Ventes non lues à ce passage (fiche pas encore relue) : le dernier compte connu reste.
+          salesCount: observation.salesCount ?? previous.salesCount,
+          // Premier compte de ventes connu pour cet article : c'est le point de départ du suivi.
+          ...(previous.salesAtFirstSeen === null && observation.salesCount !== null ? { salesAtFirstSeen: observation.salesCount } : {}),
+          ...(observation.category !== undefined ? { category: observation.category } : {}),
+          ...(observation.slug ? { slug: observation.slug } : {}),
           lastSeenAt: now,
           endedAt: null,
         })
@@ -261,7 +269,14 @@ const MAX_FAILURES = 5;
 export async function sweepWatch(watch: WatchRow, now = new Date()): Promise<SweepOutcome> {
   try {
     const observations = await sourceFor(watch.source).observe(watch.externalId);
-    return await applyObservations(watch, observations, now);
+    const outcome = await applyObservations(watch, observations, now);
+    // Le même relevé nourrit l'index du marché, partagé : il n'est pas refait pour lui.
+    if (watch.url) {
+      await indexStoreCatalog({ externalId: watch.externalId, host: normalHost(watch.url), label: watch.label }, observations, now).catch((error: unknown) =>
+        console.warn('[marché] index non mis à jour :', watch.label, error instanceof Error ? error.message : error),
+      );
+    }
+    return outcome;
   } catch (error) {
     const raison = error instanceof AppError ? error.message : 'Erreur inattendue pendant le relevé.';
     const echecs = watch.failureCount + 1;

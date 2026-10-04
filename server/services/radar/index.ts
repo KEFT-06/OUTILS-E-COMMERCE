@@ -1,6 +1,6 @@
 import { and, count, desc, eq, gte, inArray, isNull, sql } from 'drizzle-orm';
 import { getDb, isUniqueViolation } from '@server/db/client';
-import { users, watchEvents, watchItems, watches, type WatchRow } from '@server/db/schema';
+import { spiedAds, users, watchEvents, watchItems, watches, type WatchRow } from '@server/db/schema';
 import { AppError } from '@server/middleware';
 import { sourceFor } from '@server/services/radar/sources';
 import { sweepWatch, type SweepOutcome } from '@server/services/radar/sweep';
@@ -30,9 +30,56 @@ export interface WatchSummary {
   trackedDays: number;
   liveItems: number;
   endedItems: number;
-  /** Ventes cumulées de tout ce qui est encore en vente. */
+  /** Ventes cumulées de tout ce qui est encore en vente, depuis la création des produits. */
   totalSales: number;
+  /** Ventes faites depuis la mise sous surveillance (ou depuis le premier compte lu). */
+  trackedSales: number;
+  /** Produits en vente dont la source publie le compte de ventes. Zéro : rien à additionner. */
+  itemsWithSales: number;
+  /** Publicités de cette boutique vues en cours à la dernière collecte du mur. */
+  activeAds: number;
+  /** Début de la plus ancienne publicité connue de la boutique. null : aucune repérée. */
+  firstAdAt: string | null;
+  /** Dernier passage de la collecte qui a vu une de ses publicités. */
+  adsCheckedAt: string | null;
   unreadEvents: number;
+}
+
+/** Hôte d'une vitrine, sous la forme gardée par le mur d'espionnage (toujours en .com). */
+export function storeHostOf(url: string | null): string | null {
+  if (!url) return null;
+  try {
+    return new URL(url).hostname.toLowerCase().replace(/\.mychariow\.shop$/, '.mychariow.com');
+  } catch {
+    return null;
+  }
+}
+
+interface StoreAds {
+  activeAds: number;
+  firstAdAt: Date | null;
+  checkedAt: Date | null;
+}
+
+/** Publicités connues du mur pour ces boutiques : en cours, plus ancienne, dernier contrôle. */
+async function adsByStore(hosts: string[]): Promise<Map<string, StoreAds>> {
+  if (hosts.length === 0) return new Map();
+  const rows = await getDb()
+    .select({
+      host: spiedAds.storeHost,
+      activeAds: sql<number>`count(*) filter (where ${spiedAds.active})`,
+      firstAdAt: sql<Date | null>`min(${spiedAds.startedAt})`,
+      checkedAt: sql<Date | null>`max(${spiedAds.lastSeenAt})`,
+    })
+    .from(spiedAds)
+    .where(inArray(spiedAds.storeHost, hosts))
+    .groupBy(spiedAds.storeHost);
+  return new Map(
+    rows.map((row) => [
+      row.host,
+      { activeAds: Number(row.activeAds), firstAdAt: row.firstAdAt ? new Date(row.firstAdAt) : null, checkedAt: row.checkedAt ? new Date(row.checkedAt) : null },
+    ]),
+  );
 }
 
 export interface WatchEventView {
@@ -150,6 +197,8 @@ export async function listWatches(userId: string, onlyId?: string): Promise<Watc
       liveItems: sql<number>`count(distinct case when ${watchItems.endedAt} is null then ${watchItems.id} end)`,
       endedItems: sql<number>`count(distinct case when ${watchItems.endedAt} is not null then ${watchItems.id} end)`,
       totalSales: sql<number>`coalesce(sum(case when ${watchItems.endedAt} is null then ${watchItems.salesCount} else 0 end), 0)`,
+      trackedSales: sql<number>`coalesce(sum(case when ${watchItems.endedAt} is null then greatest(${watchItems.salesCount} - ${watchItems.salesAtFirstSeen}, 0) else 0 end), 0)`,
+      itemsWithSales: sql<number>`count(distinct case when ${watchItems.endedAt} is null and ${watchItems.salesCount} is not null then ${watchItems.id} end)`,
     })
     .from(watches)
     .leftJoin(watchItems, eq(watchItems.watchId, watches.id))
@@ -164,6 +213,8 @@ export async function listWatches(userId: string, onlyId?: string): Promise<Watc
     .where(and(eq(watches.userId, userId), isNull(watchEvents.readAt)))
     .groupBy(watchEvents.watchId);
   const unreadByWatch = new Map(unread.map((row) => [row.watchId, Number(row.total)]));
+  const ads = await adsByStore(rows.flatMap((row) => storeHostOf(row.url) ?? []));
+  const adsOf = (url: string | null) => ads.get(storeHostOf(url) ?? '') ?? null;
 
   return rows.map((row) => ({
     id: row.id,
@@ -178,6 +229,11 @@ export async function listWatches(userId: string, onlyId?: string): Promise<Watc
     liveItems: Number(row.liveItems),
     endedItems: Number(row.endedItems),
     totalSales: Number(row.totalSales),
+    trackedSales: Number(row.trackedSales),
+    itemsWithSales: Number(row.itemsWithSales),
+    activeAds: adsOf(row.url)?.activeAds ?? 0,
+    firstAdAt: adsOf(row.url)?.firstAdAt?.toISOString() ?? null,
+    adsCheckedAt: adsOf(row.url)?.checkedAt?.toISOString() ?? null,
     unreadEvents: unreadByWatch.get(row.id) ?? 0,
   }));
 }
@@ -253,20 +309,50 @@ export async function sweepNow(userId: string, watchId: string): Promise<SweepOu
 
 /** Articles d'une surveillance : ce qui est en vente, puis ce qui s'est arrêté. */
 export async function watchItemsOf(userId: string, watchId: string) {
-  await requireWatch(userId, watchId);
+  const watch = await requireWatch(userId, watchId);
   const rows = await getDb()
     .select()
     .from(watchItems)
     .where(eq(watchItems.watchId, watchId))
-    .orderBy(desc(watchItems.salesCount));
+    .orderBy(sql`${watchItems.salesCount} desc nulls last`);
+
+  /*
+    Première publicité connue de chaque produit. La vitrine ne publie aucune date de création :
+    la date de début d'une publicité, elle, est publiée par la régie et remonte bien avant notre
+    premier passage. C'est la seule borne d'ancienneté qui ne dépende pas de l'observation.
+  */
+  const host = storeHostOf(watch.url);
+  const ads = host
+    ? await getDb()
+        .select({ landingUrl: spiedAds.landingUrl, startedAt: spiedAds.startedAt, active: spiedAds.active })
+        .from(spiedAds)
+        .where(eq(spiedAds.storeHost, host))
+    : [];
+  const adsOf = (slug: string | null) => {
+    if (!slug) return { firstAdAt: null as Date | null, activeAds: 0 };
+    // Le nom du produit doit être un segment entier de l'adresse : « /guide » ne vaut pas « /guide-2 ».
+    const segment = `/${slug.toLowerCase()}`;
+    const mene = (adresse: string) => {
+      const chemin = adresse.toLowerCase().split(/[?#]/)[0]!.replace(/\/+$/, '');
+      return chemin.endsWith(segment) || chemin.includes(`${segment}/`);
+    };
+    const siennes = ads.filter((ad) => mene(ad.landingUrl));
+    const debuts = siennes.flatMap((ad) => (ad.startedAt ? [ad.startedAt.getTime()] : []));
+    return { firstAdAt: debuts.length ? new Date(Math.min(...debuts)) : null, activeAds: siennes.filter((ad) => ad.active).length };
+  };
 
   return rows.map((row) => ({
     id: row.id,
     name: row.name,
     kind: row.kind,
+    category: row.category,
     price: row.priceValue,
     currency: row.currency,
     sales: row.salesCount,
+    /** Ventes faites depuis le premier compte lu. null : la source ne publie pas le compte. */
+    salesTracked: row.salesCount !== null && row.salesAtFirstSeen !== null ? Math.max(0, row.salesCount - row.salesAtFirstSeen) : null,
+    firstAdAt: adsOf(row.slug).firstAdAt?.toISOString() ?? null,
+    activeAds: adsOf(row.slug).activeAds,
     firstSeenAt: row.firstSeenAt.toISOString(),
     lastSeenAt: row.lastSeenAt.toISOString(),
     endedAt: row.endedAt?.toISOString() ?? null,

@@ -100,6 +100,8 @@ export const users = pgTable(
     savedNiches: jsonb('saved_niches').$type<string[]>().notNull().default(sql`'[]'::jsonb`),
     /** Résumé du radar par e-mail. Vrai par défaut : un radar dont personne n'est averti ne sert à rien. */
     radarAlertsEnabled: boolean('radar_alerts_enabled').notNull().default(true),
+    /** Dernière ouverture du fil d'alertes : tout ce qui est arrivé depuis compte dans la cloche. */
+    alertsSeenAt: moment('alerts_seen_at'),
     /**
      * Participation aux repères partagés de performance (server/services/performanceLoop).
      *
@@ -1011,6 +1013,10 @@ export const watchItems = pgTable(
      * colonne, il faudrait un relevé de ventes par jour et par article pour la même chose.
      */
     salesAtFirstSeen: integer('sales_at_first_seen'),
+    /** Catégorie déclarée par la source (« health_and_wellness »…) : rattache l'article à une niche. */
+    category: text('category'),
+    /** Nom du produit dans son adresse : relie une publicité à l'article qu'elle vend. */
+    slug: text('slug'),
     firstSeenAt: moment('first_seen_at').notNull().defaultNow(),
     lastSeenAt: moment('last_seen_at').notNull().defaultNow(),
     /** Renseigné au premier passage où l'article a disparu : sa date de mort. */
@@ -1064,11 +1070,90 @@ export const discoveredStores = pgTable(
     adCount: integer('ad_count').notNull().default(0),
     firstSeenAt: createdAt(),
     lastSeenAt: moment('last_seen_at').notNull().defaultNow(),
+    /** Identifiant « store_… » de la boutique, résolu au premier relevé de son catalogue. */
+    storeExternalId: text('store_external_id'),
+    /** Dernier relevé de son catalogue dans l'index du marché. null : jamais relevée. */
+    indexedAt: moment('indexed_at'),
   },
   (table) => [
     uniqueIndex('discovered_stores_host_unique').on(table.host),
     index('discovered_stores_seen_idx').on(table.lastSeenAt),
   ],
+).enableRLS();
+
+/**
+ * Index du marché : les produits des boutiques connues (surveillées par un compte, ou repérées
+ * par leurs publicités), relevés dans le catalogue public de chaque vitrine.
+ *
+ * Table PARTAGÉE, comme `discoveredStores` : le catalogue public d'une boutique est le même pour
+ * tout le monde. C'est elle qui répond à « qui vend déjà sur cette niche, à quel prix, et
+ * combien », et qui nourrit les alertes (produit qui décolle, niche qui s'emballe).
+ *
+ * `firstSeenAt` est la date de notre premier relevé, pas celle de la mise en ligne : la vitrine
+ * ne publie aucune date de création. Un produit vu pour la première fois lors d'un relevé qui
+ * n'est PAS le premier de sa boutique est, lui, réellement nouveau (`launchedAt`).
+ */
+export const marketProducts = pgTable(
+  'market_products',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    /** Identifiant de la boutique chez la plateforme, ex. « store_9pks4k44h7ji ». */
+    storeExternalId: text('store_external_id').notNull(),
+    /** Hôte de la vitrine, normalisé en .com : relie le produit à ses publicités et à une surveillance. */
+    storeHost: text('store_host').notNull(),
+    storeLabel: text('store_label'),
+    /** Identifiant du produit chez la plateforme, ex. « prd_ihe7xfcu ». */
+    externalId: text('external_id').notNull(),
+    name: text('name').notNull(),
+    /** Nom plié (minuscules, sans accents) : la recherche par niche s'y fait sans calcul par ligne. */
+    nameKey: text('name_key').notNull(),
+    slug: text('slug'),
+    kind: text('kind'),
+    category: text('category'),
+    priceValue: integer('price_value'),
+    currency: text('currency'),
+    salesCount: integer('sales_count'),
+    /** Ventes au premier relevé qui les a lues : point de départ des ventes « depuis le suivi ». */
+    salesAtFirstSeen: integer('sales_at_first_seen'),
+    firstSeenAt: moment('first_seen_at').notNull().defaultNow(),
+    /** Renseigné seulement pour un produit apparu APRÈS le premier relevé de sa boutique : un vrai lancement. */
+    launchedAt: moment('launched_at'),
+    /** Ventes relevées au plus près de trois jours après le lancement : la mesure du « produit gagnant ». */
+    salesAtDay3: integer('sales_at_day_3'),
+    lastSeenAt: moment('last_seen_at').notNull().defaultNow(),
+    endedAt: moment('ended_at'),
+  },
+  (table) => [
+    uniqueIndex('market_products_unique').on(table.storeExternalId, table.externalId),
+    index('market_products_category_idx').on(table.category),
+    index('market_products_launch_idx').on(table.launchedAt),
+    index('market_products_host_idx').on(table.storeHost),
+  ],
+).enableRLS();
+
+/**
+ * Alertes : ce que le croisement du radar, de l'index du marché et du mur publicitaire a
+ * remarqué — produit qui décolle, niche où plusieurs boutiques lancent la même chose, publicité
+ * installée qui s'arrête. Partagées par tous les comptes, comme les données dont elles viennent.
+ */
+export const ALERT_KINDS = ['winner', 'niche_trend', 'ad_stopped'] as const;
+export const ALERT_LEVELS = ['info', 'opportunity', 'major'] as const;
+
+export const alerts = pgTable(
+  'alerts',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    kind: text('kind').$type<(typeof ALERT_KINDS)[number]>().notNull(),
+    level: text('level').$type<(typeof ALERT_LEVELS)[number]>().notNull(),
+    title: text('title').notNull(),
+    body: text('body').notNull(),
+    /** De quoi ouvrir la boutique, la publicité ou la niche concernée depuis la carte de l'alerte. */
+    payload: jsonb('payload').$type<Record<string, unknown>>().notNull().default(sql`'{}'::jsonb`),
+    /** Une même constatation ne produit qu'une alerte, quel que soit le nombre de passages. */
+    dedupeKey: text('dedupe_key').notNull(),
+    occurredAt: createdAt(),
+  },
+  (table) => [uniqueIndex('alerts_dedupe_unique').on(table.dedupeKey), index('alerts_feed_idx').on(table.occurredAt)],
 ).enableRLS();
 
 /**
@@ -1151,12 +1236,21 @@ export const spiedAds = pgTable(
     mediaUrl: text('media_url'),
     /** image · video */
     mediaKind: text('media_kind'),
+    /**
+     * Fichier d'origine chez Meta (vidéo, ou image en pleine définition), pour le téléchargement.
+     * Adresse signée qui expire en quelques jours : chaque collecte la rafraîchit. Jamais copié chez nous.
+     */
+    downloadUrl: text('download_url'),
+    /** Pays (ISO) des collectes qui ont vu cette annonce en diffusion. Vide : collecte tous pays confondus. */
+    countries: jsonb('countries').$type<string[]>().notNull().default(sql`'[]'::jsonb`),
     /** Début de diffusion annoncé par Meta : la seule ancienneté qui ne demande aucune observation. */
     startedAt: moment('started_at'),
     /** Nombre de variantes regroupées sous la même annonce : un indice de test à grande échelle. */
     variants: integer('variants').notNull().default(1),
     platforms: jsonb('platforms').$type<string[]>().notNull().default(sql`'[]'::jsonb`),
     active: boolean('active').notNull().default(true),
+    /** Passage qui a vu l'annonce déclarée arrêtée alors qu'elle était en cours au précédent. null : en cours, ou arrêt jamais constaté. */
+    stoppedAt: moment('stopped_at'),
     firstSeenAt: createdAt(),
     lastSeenAt: moment('last_seen_at').notNull().defaultNow(),
     /** Page Facebook annonceuse (`pageID`) : ouvre « toutes les annonces de cet annonceur ». */

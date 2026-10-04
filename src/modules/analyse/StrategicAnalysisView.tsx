@@ -6,6 +6,7 @@ import {
   FileText,
   Lightbulb,
   Megaphone,
+  Radar,
   Search,
   ShieldCheck,
   Sparkles,
@@ -266,16 +267,24 @@ export function StrategicAnalysisView({ report, onNavigateToProducts, onNavigate
             Le rapport complet de cette niche
           </p>
           <p className="text-sm text-muted-foreground">
-            Taux en image, concurrents, idées de produits, scripts vidéo et sources dans le Dossier PDF — et la rédaction du
-            rapport, de 1 à 250 pages, à la taille que vous choisissez.
+            Concurrents, idées de produits, scripts vidéo et sources, de 1 à 250 pages.
           </p>
         </div>
-        <Button asChild size="lg" className="shrink-0">
-          <Link to="/app/dossier-pdf#rediger">
-            <FileText aria-hidden />
-            Rédiger un rapport
-          </Link>
-        </Button>
+        <div className="flex shrink-0 flex-col gap-2 sm:flex-row">
+          {/* La concurrence de cette niche, dans le Radar, sans rien ressaisir : qui vend, à quel prix, combien. */}
+          <Button asChild size="lg" variant="outline">
+            <Link to={`/app/radar?niche=${encodeURIComponent(report.nicheName)}`}>
+              <Radar aria-hidden />
+              Voir la concurrence
+            </Link>
+          </Button>
+          <Button asChild size="lg">
+            <Link to="/app/dossier-pdf#rediger">
+              <FileText aria-hidden />
+              Rédiger un rapport
+            </Link>
+          </Button>
+        </div>
       </div>
 
       <LegalNotice variant="block" />

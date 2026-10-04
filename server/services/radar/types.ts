@@ -22,8 +22,15 @@ export interface RadarObservation {
    */
   priceValue: number | null;
   currency: string | null;
-  /** Ventes cumulées, quand la source les publie. */
+  /**
+   * Ventes cumulées, quand la source les publie. null : non lues à ce passage — le dernier
+   * compte connu est alors gardé, jamais effacé.
+   */
   salesCount: number | null;
+  /** Catégorie déclarée par la source (« health_and_wellness »…). Absente : non lue à ce passage. */
+  category?: string | null;
+  /** Nom du produit dans son adresse : relie une publicité à l'article qu'elle vend. */
+  slug?: string | null;
 }
 
 /** Une cible de surveillance, telle qu'elle est enregistrée. */
