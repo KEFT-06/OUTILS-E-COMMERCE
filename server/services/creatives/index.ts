@@ -168,7 +168,19 @@ export function creativeText(brief: VisualBrief | VideoBrief): string {
 /** Longueur maximale retenue pour la consigne du modèle d'image. */
 const VISUAL_PROMPT_MAX = 3000;
 
-/** Structure de la méthode publicitaire choisie, étape par étape ; consigne « contenu » sinon. */
+/**
+ * Structure de la méthode publicitaire choisie ; consigne « contenu » sinon.
+ *
+ * UNE IMAGE PUBLICITAIRE EST UNE SEULE SCÈNE. La consigne listait les étapes de la méthode
+ * « dans l'ordre de lecture », avec leur nom : le moteur en tirait une planche en quatre cases,
+ * chacune légendée « ATTENTION », « INTEREST », « DESIRE », « ACTION », en anglais et avec des
+ * textes inventés (« Modest d'apartment in Yaoundé ») — vu sur un vrai visuel le 04/10/2026.
+ * Une image qu'aucun vendeur ne peut diffuser. La méthode guide désormais la composition d'une
+ * scène unique, et le nom de ses étapes ne part plus dans la consigne d'une image.
+ *
+ * Pour une vidéo, les étapes restent une suite de temps — mais sans leur nom, qui finissait
+ * incrusté à l'écran.
+ */
 function frameworkLines(brief: VisualBrief | VideoBrief, durationSeconds?: number): string[] {
   if (brief.purpose === 'content') {
     return ['Purpose: organic content (presentation, tutorial or storytelling), not a hard-sell advertisement. No call to action.'];
@@ -176,20 +188,23 @@ function frameworkLines(brief: VisualBrief | VideoBrief, durationSeconds?: numbe
   const framework = findAdFramework(brief.adFramework);
   if (!framework) return [];
 
-  const count = framework.steps.length;
-  const seconds = (value: number) => value.toFixed(1).replace(/\.0$/, '');
+  const beats = framework.steps.map((step, index) => brief.frameworkBeats?.[index]?.trim() || step.direction);
+  if (durationSeconds) {
+    const count = beats.length;
+    const seconds = (value: number) => value.toFixed(1).replace(/\.0$/, '');
+    return [
+      `Advertising storytelling structure: ${framework.acronym}. It guides the sequence only: never show or say the names of its steps.`,
+      'Sequence the video in these beats, in this order:',
+      ...beats.map(
+        (beat, index) => `${index + 1}. (${seconds((index * durationSeconds) / count)}–${seconds(((index + 1) * durationSeconds) / count)} s) ${beat}`,
+      ),
+    ];
+  }
+  const role = (index: number) => (index === 0 ? 'What catches the eye first' : index === beats.length - 1 ? 'What the viewer is left wanting to do' : 'What the scene also makes visible');
   return [
-    `Advertising copywriting structure: ${framework.acronym} (${framework.steps.map((step) => step.name).join(', ')}).`,
-    durationSeconds
-      ? 'Sequence the video in these beats, in this order:'
-      : 'Compose the single image so that it conveys these beats, in reading order:',
-    ...framework.steps.map((step, index) => {
-      const custom = brief.frameworkBeats?.[index]?.trim();
-      const timing = durationSeconds
-        ? ` (${seconds((index * durationSeconds) / count)}–${seconds(((index + 1) * durationSeconds) / count)} s)`
-        : '';
-      return `${index + 1}. ${step.name}${timing}: ${custom || step.direction}`;
-    }),
+    `The ${framework.acronym} advertising method guides how this single scene is composed. It is a guide for you, never something to draw: do not write or depict the names of its steps.`,
+    'Within that one scene:',
+    ...beats.map((beat, index) => `- ${role(index)}: ${beat}`),
   ];
 }
 
@@ -199,8 +214,14 @@ function frameworkLines(brief: VisualBrief | VideoBrief, durationSeconds?: numbe
  * stéréotypes) partent toujours.
  */
 function buildPrompt(brief: VisualBrief | VideoBrief, options: { maxLength: number; durationSeconds?: number }): string {
+  const still = !options.durationSeconds;
+  const kind = brief.purpose === 'content' ? (still ? 'Content image' : 'Video content') : still ? 'Advertising image' : 'Advertising video';
   const head = [
-    `${brief.purpose === 'content' ? 'Video content' : 'Advertising creative'} for "${brief.productName}".`,
+    `${kind} for "${brief.productName}".`,
+    // Une image est UNE scène : sans cette ligne, le moteur rend volontiers une planche en plusieurs cases.
+    ...(still
+      ? ['ONE single image: one scene, one moment, one frame. Never a collage, a grid, a split screen, a storyboard, comic panels or a before/after pair.']
+      : []),
     `Creative direction (prospect awareness level: ${brief.awarenessLevel.replace('_', ' ')}): ${AWARENESS_DIRECTION[brief.awarenessLevel]}`,
   ];
   const tail = [
@@ -209,8 +230,8 @@ function buildPrompt(brief: VisualBrief | VideoBrief, options: { maxLength: numb
     ...(brief.audience ? [`Target audience: ${brief.audience}.`] : []),
     ...(brief.visualStyle ? [`Visual style: ${brief.visualStyle}.`] : []),
     brief.onScreenText
-      ? `If text appears, it must read exactly: "${brief.onScreenText}". No other text.`
-      : 'No text, no logos, no watermarks.',
+      ? `The ONLY text allowed anywhere in the image is this one line, written once, exactly as given, same language and spelling: "${brief.onScreenText}". No other words at all: no captions, labels, headings, speech bubbles or interface text; any book cover, sign, screen or packaging in the scene stays blank or out of focus.`
+      : 'No text anywhere: no captions, labels, headings, speech bubbles, logos or watermarks; any book cover, sign, screen or packaging in the scene stays blank or out of focus.',
     'No real brand logos, no celebrities, no invented testimonials, prices or figures.',
     ...(options.durationSeconds
       ? [`Duration: ${options.durationSeconds} seconds, smooth camera movement, the beats flowing naturally within one continuous take.`]
@@ -449,11 +470,20 @@ export async function streamCreativeFile(
       await relayMedia(archived, 'video', requestId, disposition, res);
       return;
     }
-    const generation = await getVeoGeneration(requestId);
-    if (generation.status !== 'completed' || !generation.mediaUrl) {
-      throw new AppError(409, "Aucun fichier disponible : la génération n'est pas terminée.", 'CREATIVE_NOT_READY');
-    }
-    await relayMedia(await fetchVeoMedia(generation.mediaUrl), 'video', requestId, disposition, res);
+    /*
+      Un second essai avant de renoncer. Le lecteur vidéo ne demande le fichier qu'UNE fois :
+      une coupure d'une seconde chez le fournisseur lui rendait une erreur, et l'auteur voyait
+      une vidéo « cassée » alors qu'elle était prête (constaté le 04/10/2026 : 504 au premier
+      appel, fichier servi huit secondes plus tard au second).
+    */
+    const upstream = await withOneRetry(async () => {
+      const generation = await getVeoGeneration(requestId);
+      if (generation.status !== 'completed' || !generation.mediaUrl) {
+        throw new AppError(409, "Aucun fichier disponible : la génération n'est pas terminée.", 'CREATIVE_NOT_READY');
+      }
+      return fetchVeoMedia(generation.mediaUrl);
+    });
+    await relayMedia(upstream, 'video', requestId, disposition, res);
     return;
   }
 
@@ -466,6 +496,17 @@ export async function streamCreativeFile(
   }
 
   await relayMedia(await fetchGeneratedMedia(media.url), media.mediaType, requestId, disposition, res);
+}
+
+/** Réessaie une fois, après une courte pause, quand le fournisseur est injoignable ou trop lent. Jamais sur un refus. */
+async function withOneRetry<T>(run: () => Promise<T>): Promise<T> {
+  try {
+    return await run();
+  } catch (error) {
+    if (!(error instanceof AppError) || ![502, 503, 504].includes(error.status)) throw error;
+    await new Promise((resolve) => setTimeout(resolve, 1_500));
+    return run();
+  }
 }
 
 /**

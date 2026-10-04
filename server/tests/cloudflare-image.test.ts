@@ -301,8 +301,27 @@ describe('Visuels publicitaires produits chez nous', () => {
     // Les deux lignes de garde voyagent avec la consigne : sans elles, ce modèle ajoute de
     // lui-même un slogan et le logo d'une marque réelle. Mesuré, pas supposé.
     const consigne = geminiImageCalls.at(-1)!.prompt;
-    assert.match(consigne, /No text, no logos, no watermarks/);
+    assert.match(consigne, /No text anywhere: no captions, labels, headings, speech bubbles, logos or watermarks/);
     assert.match(consigne, /No real brand logos/);
+    /*
+      Une image publicitaire est UNE scène. La consigne listait les étapes de la méthode avec
+      leur nom, et le moteur rendait une planche en quatre cases légendées « ATTENTION »,
+      « INTEREST »… en anglais (vu sur un vrai visuel le 04/10/2026).
+    */
+    assert.match(consigne, /^Content image for "Formation couture"\./, 'une image n’est pas annoncée comme une vidéo');
+    assert.match(consigne, /ONE single image: one scene, one moment, one frame/);
+    assert.match(consigne, /Never a collage, a grid, a split screen, a storyboard/);
+
+    const { buildVisualInput, visualBriefSchema } = await import('@server/services/creatives');
+    const publicite = buildVisualInput(
+      visualBriefSchema.parse({ ...BRIEF, purpose: 'ad', adFramework: 'aida', onScreenText: 'Vos œufs frais, chez vous' }),
+    ).prompt;
+    assert.match(publicite, /^Advertising image for/);
+    assert.match(publicite, /ONE single image: one scene, one moment, one frame/);
+    assert.match(publicite, /The AIDA advertising method guides how this single scene is composed\. It is a guide for you, never something to draw/);
+    assert.match(publicite, /- What catches the eye first: Open with a striking/);
+    assert.doesNotMatch(publicite, /\d\. (Attention|Interest|Desire|Action)/, 'le nom des étapes ne part plus dans la consigne d’une image');
+    assert.match(publicite, /The ONLY text allowed anywhere in the image is this one line, written once, exactly as given, same language and spelling: "Vos œufs frais, chez vous"/);
 
     const requestId = lance.body.requestId as string;
     const suivi = await agent.get(`/api/creatives/requests/${requestId}`).expect(200);

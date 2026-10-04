@@ -236,11 +236,14 @@ describe('Méthodes publicitaires', () => {
 
     const { prompt } = buildVideoInput(brief);
     assert.ok(prompt.length <= 2500, `consigne de ${prompt.length} caractères`);
-    assert.match(prompt, /structure: AIDA/);
+    assert.match(prompt, /^Advertising video for/);
+    assert.match(prompt, /structure: AIDA\. It guides the sequence only: never show or say the names of its steps/);
     // Huit secondes en quatre étapes : 0–2, 2–4, 4–6, 6–8. Le découpage suit désormais une
     // durée que le modèle accepte, là où dix secondes étaient refusées.
-    assert.match(prompt, /1\. Attention \(0–2 s\): Une question/);
-    assert.match(prompt, /4\. Action \(6–8 s\)/);
+    // Le nom des étapes ne part plus : il finissait incrusté à l'écran.
+    assert.match(prompt, /1\. \(0–2 s\) Une question/);
+    assert.match(prompt, /4\. \(6–8 s\) End on a clear, direct call to action moment/);
+    assert.doesNotMatch(prompt, /\d\. (Attention|Interest|Desire|Action)/);
     assert.match(prompt, /United States/);
     assert.match(prompt, /No real brand logos/);
   });

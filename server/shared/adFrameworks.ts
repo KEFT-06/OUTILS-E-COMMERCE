@@ -97,7 +97,7 @@ export const AD_FRAMEWORKS: readonly AdFramework[] = [
   {
     id: 'bab',
     acronym: 'BAB',
-    expansion: 'Before, After, Bridge (avant, après, pont)',
+    expansion: 'Avant, Après, Pont',
     summary: 'Montre la situation actuelle, la situation idéale, puis le produit comme pont entre les deux.',
     bestFor: 'Formations et produits de transformation.',
     steps: [
@@ -124,7 +124,7 @@ export const AD_FRAMEWORKS: readonly AdFramework[] = [
   {
     id: 'fab',
     acronym: 'FAB',
-    expansion: 'Features, Advantages, Benefits',
+    expansion: 'Caractéristiques, Avantages, Bénéfices',
     summary: 'Caractéristiques, avantages, puis bénéfices concrets pour le client.',
     bestFor: 'Produits techniques ou riches en fonctionnalités.',
     steps: [
@@ -151,7 +151,7 @@ export const AD_FRAMEWORKS: readonly AdFramework[] = [
   {
     id: '4c',
     acronym: '4C',
-    expansion: 'Clear, Concise, Compelling, Credible',
+    expansion: 'Clair, Concis, Convaincant, Crédible',
     summary: 'Un message clair, court, convaincant et crédible.',
     bestFor: 'Vidéos très courtes et formats Stories.',
     steps: [
@@ -223,7 +223,7 @@ export const AD_FRAMEWORKS: readonly AdFramework[] = [
   {
     id: 'odc',
     acronym: 'ODC',
-    expansion: 'Offer, Deadline, Call to Action',
+    expansion: 'Offre, Échéance, Appel à l’action',
     summary: 'Offre, urgence ou date limite, action. Très efficace pour les promotions.',
     bestFor: 'Promotions et offres limitées dans le temps.',
     steps: [
@@ -250,7 +250,7 @@ export const AD_FRAMEWORKS: readonly AdFramework[] = [
   {
     id: '4p',
     acronym: '4P',
-    expansion: 'Promise, Picture, Proof, Push',
+    expansion: 'Promesse, Image, Preuve, Incitation',
     summary: 'Promesse forte, projection du résultat, preuves, appel à l’action.',
     bestFor: 'Lancements de produit et offres phares.',
     steps: [
@@ -283,7 +283,7 @@ export const AD_FRAMEWORKS: readonly AdFramework[] = [
   {
     id: 'pppp',
     acronym: 'PPPP',
-    expansion: 'Picture, Promise, Prove, Push',
+    expansion: 'Image, Promesse, Preuve, Incitation',
     summary: 'Crée une image mentale, promet un résultat, le prouve, puis invite à agir.',
     bestFor: 'Récits visuels et émotionnels.',
     steps: [
@@ -316,7 +316,7 @@ export const AD_FRAMEWORKS: readonly AdFramework[] = [
   {
     id: 'acca',
     acronym: 'ACCA',
-    expansion: 'Awareness, Comprehension, Conviction, Action',
+    expansion: 'Prise de conscience, Compréhension, Conviction, Action',
     summary: 'Fait prendre conscience du besoin, explique, convainc, puis incite à agir.',
     bestFor: 'Marchés qui ignorent encore qu’ils ont un besoin.',
     steps: [
@@ -349,7 +349,7 @@ export const AD_FRAMEWORKS: readonly AdFramework[] = [
   {
     id: 'pastor',
     acronym: 'PASTOR',
-    expansion: 'Problem, Amplify, Story/Solution, Transformation, Offer, Response',
+    expansion: 'Problème, Amplification, Récit et solution, Transformation, Offre, Réponse',
     summary: 'Version plus complète de PAS, utile pour les pages de vente.',
     bestFor: 'Vidéos de vente longues et pages de vente.',
     steps: [
@@ -394,7 +394,7 @@ export const AD_FRAMEWORKS: readonly AdFramework[] = [
   {
     id: 'quest',
     acronym: 'QUEST',
-    expansion: 'Qualify, Understand, Educate, Stimulate, Transition',
+    expansion: 'Qualifier, Comprendre, Éduquer, Stimuler, Faire passer à l’action',
     summary: 'Cible le bon public, comprend son besoin, l’éduque et le guide vers l’offre.',
     bestFor: 'Produits de niche et contenus éducatifs qui vendent.',
     steps: [
