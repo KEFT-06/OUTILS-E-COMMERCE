@@ -1,0 +1,40 @@
+# Collecteur maison : lit la bibliothèque publicitaire publique avec un navigateur piloté
+# (Crawlee + Playwright) et verse ce qu'il trouve au site, chaque nuit, sans frais de collecte.
+#
+# Pour qu'il VERSE ses relevés, ajouter dans le dépôt (Settings → Secrets and variables → Actions)
+# le secret CRON_SECRET, identique à celui du site. Sans lui, le passage n'est qu'un essai :
+# il lit, compte, et ne verse rien.
+name: Collecte des publicités
+
+on:
+  schedule:
+    # Tous les jours à 01 h 30 UTC, avant le relevé du radar (03 h) et l'index du marché (04 h).
+    - cron: '30 1 * * *'
+  workflow_dispatch:
+
+concurrency:
+  group: collecte
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  collecte:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Installer le collecteur
+        run: npm --prefix collecteur ci
+      - name: Installer le navigateur
+        run: npx --prefix collecteur playwright install --with-deps chromium
+      - name: Collecter
+        env:
+          CRON_SECRET: ${{ secrets.CRON_SECRET }}
+          COLLECTE_SITE: ${{ vars.COLLECTE_SITE || 'https://www.smartcreatorcm.com' }}
+          COLLECTE_NAVIGATEUR: chromium
+        run: node collecteur/collecte.mjs

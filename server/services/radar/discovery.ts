@@ -122,7 +122,7 @@ export async function listDiscoveredStores(limit = 100): Promise<DiscoveredStore
 }
 
 /** Action inscrite au journal à chaque collecte lancée, qu'elle rapporte quelque chose ou non. */
-const DISCOVERY_AUDIT_ACTION = 'radar.discovery.run';
+export const DISCOVERY_AUDIT_ACTION = 'radar.discovery.run';
 
 /** Le planificateur n'est pas une personne : aucune ligne du journal ne doit lui en prêter une. */
 const SYSTEM_ACTOR = { id: null, email: 'radar@planificateur' } as const;

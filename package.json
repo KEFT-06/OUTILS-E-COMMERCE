@@ -26,7 +26,10 @@
     "lint": "eslint . --max-warnings 0",
     "format": "prettier --write \"**/*.{ts,tsx,css,md,json}\"",
     "clean": "rimraf dist",
-    "radar:collect": "tsx server/scripts/collect-ads.ts"
+    "radar:collect": "tsx server/scripts/collect-ads.ts",
+    "collecte:installer": "npm --prefix collecteur install",
+    "collecte": "node --env-file-if-exists=.env collecteur/collecte.mjs",
+    "collecte:essai": "node collecteur/collecte.mjs --essai --max=60 --pays=ALL"
   },
   "dependencies": {
     "@electric-sql/pglite": "^0.5.8",

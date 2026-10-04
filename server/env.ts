@@ -471,6 +471,16 @@ const schema = z.object({
   SPY_SEARCH_MONTHLY_ADS: z.coerce.number().int().min(0).max(1_000_000).default(1_200),
   /** Heures pendant lesquelles une recherche faite est relue gratuitement, par tous les comptes. */
   SPY_SEARCH_CACHE_HOURS: z.coerce.number().int().min(1).max(720).default(24),
+  /**
+   * Collecteur maison (dossier collecteur/) : pays où il cherche, et annonces lues au plus par
+   * mot-clé et par pays. « ALL » relève tous pays confondus ; un pays nommé permet de dire où
+   * une annonce est diffusée, ce que la bibliothèque ne publie pas hors d'Europe.
+   */
+  SPY_COLLECT_COUNTRIES: z
+    .string()
+    .default('ALL,CM,CI,SN,BJ,TG,BF,ML,CD,GA,CG,FR')
+    .transform((value) => [...new Set(value.split(',').map((code) => code.trim().toUpperCase()).filter((code) => /^(ALL|[A-Z]{2})$/.test(code)))]),
+  SPY_COLLECT_MAX_PER_QUERY: z.coerce.number().int().min(20).max(5_000).default(600),
 
   /**
    * Seuils des alertes (services/alerts). Produit gagnant : ventes atteintes dans les premiers

@@ -11,7 +11,9 @@ import { archivePendingVideos, purgeExpiredVideos } from '@server/services/creat
 import { purgeStaleVideoUploads } from '@server/services/writing/videoUpload';
 import { sweepPendingGenerations } from '@server/services/generations/sweeper';
 import { sweepDueWatches } from '@server/services/radar/sweeper';
+import { z } from 'zod';
 import { detectAlerts } from '@server/services/alerts';
+import { collectorPlan, ingestLibraryRecords, recordCollectorRun } from '@server/services/espionnage/library';
 import { indexDiscoveredStores } from '@server/services/market';
 
 /**
@@ -181,5 +183,50 @@ cronRouter.get(
       return null;
     });
     res.json({ index, alertes });
+  }),
+);
+
+/* -------------------------------------------------------------------------- */
+/*  Collecteur maison (dossier collecteur/)                                    */
+/* -------------------------------------------------------------------------- */
+
+function requireCollector(req: Request): void {
+  if (!env.CRON_SECRET) throw new AppError(503, 'Le déclencheur périodique n’est pas configuré sur ce serveur.', 'CRON_NOT_CONFIGURED');
+  if (!secretIsValid(req)) throw new AppError(401, 'Déclencheur refusé.', 'CRON_DENIED');
+}
+
+/** Ce que le collecteur doit relever : mots-clés, pays, annonces installées à contrôler. */
+cronRouter.get(
+  '/collecte',
+  asyncRoute(async (req, res) => {
+    requireCollector(req);
+    res.json(await collectorPlan());
+  }),
+);
+
+const collecteSchema = z.object({
+  /** Pays de la recherche qui a rapporté ces annonces ; « ALL » : tous pays confondus. */
+  country: z.string().trim().toUpperCase().regex(/^(ALL|[A-Z]{2})$/).default('ALL'),
+  items: z.array(z.record(z.string(), z.unknown())).max(200),
+  /** Dernier lot d'un passage : il est inscrit au journal, et les alertes sont recalculées. */
+  done: z.boolean().default(false),
+  summary: z.record(z.string(), z.unknown()).optional(),
+});
+
+/** Versement d'un lot d'annonces lues dans la bibliothèque publique. */
+cronRouter.post(
+  '/collecte',
+  asyncRoute(async (req, res) => {
+    requireCollector(req);
+    const parsed = collecteSchema.safeParse(req.body);
+    if (!parsed.success) throw new AppError(400, 'Lot d’annonces illisible.', 'COLLECT_INVALID');
+    const { country, items, done, summary } = parsed.data;
+    const outcome = await ingestLibraryRecords(items, country === 'ALL' ? null : country);
+    let alertes: number | null = null;
+    if (done) {
+      await recordCollectorRun(summary ?? {});
+      alertes = await detectAlerts().catch(() => null);
+    }
+    res.json({ ...outcome, alertes });
   }),
 );
