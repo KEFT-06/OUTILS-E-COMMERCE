@@ -131,6 +131,8 @@ async function produceImage(input: {
         recordGoogleRefusal(kind, model, detail);
         // Projet de la clé bloqué (crédits épuisés, facturation absente) : les autres modèles
         // partagent ce projet et refuseraient de même. On sort tout de suite vers le secours.
+        // Un modèle sans franchise gratuite (« no_free_tier »), lui, ne dit rien des suivants :
+        // la chaîne continue, et ne conclut à la facturation que si tous ont refusé ainsi.
         if (kind === 'billing') {
           console.error('[image gemini] projet Google sans crédit ni facturation : les images passent par le secours.');
           throw new AppError(

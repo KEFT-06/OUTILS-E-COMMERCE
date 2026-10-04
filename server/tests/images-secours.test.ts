@@ -19,6 +19,9 @@ const IMAGE = { candidates: [{ content: { parts: [{ inlineData: { mimeType: 'ima
 let geminiAnswers: Record<string, { status: number; body: unknown }> = {};
 let geminiCalls: string[] = [];
 let cloudflareCalls = 0;
+/** Nombre d'images que le second moteur « écarte » avant d'en rendre une. */
+let cloudflareFlags = 0;
+const FLAGGED = { success: false, errors: [{ code: 3030, message: 'AiError: Your output has been flagged. Please choose another prompt / input image combination' }] };
 
 const fake = createServer((req, res) => {
   req.resume();
@@ -36,6 +39,7 @@ const fake = createServer((req, res) => {
     }
     if ((req.url ?? '').includes('/ai/run/')) {
       cloudflareCalls += 1;
+      if (cloudflareCalls <= cloudflareFlags) return send(400, FLAGGED);
       return send(200, { success: true, result: { image: PNG } });
     }
     send(404, {});
@@ -63,6 +67,7 @@ beforeEach(() => {
   geminiAnswers = {};
   geminiCalls = [];
   cloudflareCalls = 0;
+  cloudflareFlags = 0;
 });
 
 const premium = async () => {
@@ -103,6 +108,25 @@ describe('Images — modèles de secours', () => {
     assert.deepEqual(geminiCalls, ['gemini-3-pro-image'], 'les autres Nano Banana partagent le projet : inutile de les essayer');
     assert.equal(cloudflareCalls, 1);
     assert.ok(image.bytes.length > 0);
+  });
+
+  it('refait une image écartée par le filtre du second moteur, au lieu d’accuser la description', async () => {
+    // Mesuré le 04/10/2026 : une consigne anodine « signalée » par ce moteur, rendue sans difficulté par l'autre.
+    cloudflareFlags = 1;
+    const { generateImage } = await import('@server/services/ai/image');
+    const image = await generateImage({ prompt: 'Une formatrice devant son ordinateur', aspectRatio: '3:4', tier: 'quality' });
+    assert.equal(cloudflareCalls, 2, 'un second tirage');
+    assert.equal(geminiCalls.length, 0);
+    assert.ok(image.bytes.length > 0);
+  });
+
+  it('passe à l’autre moteur quand le filtre écarte deux tirages de suite', async () => {
+    cloudflareFlags = 2;
+    const { generateImage } = await import('@server/services/ai/image');
+    const image = await generateImage({ prompt: 'Une formatrice devant son ordinateur', aspectRatio: '3:4', tier: 'quality' });
+    assert.equal(cloudflareCalls, 2);
+    assert.deepEqual(geminiCalls, ['gemini-3-pro-image'], 'l’image est rendue par l’autre moteur');
+    assert.equal(image.model, 'gemini-3-pro-image');
   });
 
   it('ne se replie pas sur une description refusée : l’autre moteur la refuserait de même', async () => {

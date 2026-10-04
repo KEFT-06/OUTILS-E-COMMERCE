@@ -19,6 +19,8 @@ const refus = (message: string, quotaId?: string, quotaValue?: string) => ({
   },
 });
 const CREDITS = refus('Your prepayment credits are depleted. Please go to AI Studio at https://ai.studio/projects to manage your project and billing.');
+const SANS_FRANCHISE = refus('Quota exceeded for metric: generate_content_free_tier_requests, limit: 0');
+const IMAGE = { candidates: [{ content: { parts: [{ inlineData: { mimeType: 'image/png', data: 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==' } }] } }] };
 const MINUTE = refus('You exceeded your current quota, please check your plan and billing details.', 'GenerateRequestsPerMinutePerProjectPerModel', '10');
 
 let reponses: Record<string, { status: number; body: unknown }> = {};
@@ -66,8 +68,9 @@ describe('Refus de Google', () => {
   it('distingue débit de la minute, quota du jour et projet sans crédit', async () => {
     const { classifyGoogle429 } = await import('@server/services/ai/googleRefusal');
     assert.equal(classifyGoogle429(CREDITS), 'billing');
-    assert.equal(classifyGoogle429(refus('Quota exceeded for metric: generate_content_free_tier_requests, limit: 0')), 'billing');
-    assert.equal(classifyGoogle429(refus('quota', 'GenerateRequestsPerDayPerProjectPerModel-FreeTier', '0')), 'billing');
+    // Sans franchise gratuite sur CE modèle : le refus ne vaut pas pour les autres.
+    assert.equal(classifyGoogle429(SANS_FRANCHISE), 'no_free_tier');
+    assert.equal(classifyGoogle429(refus('quota', 'GenerateRequestsPerDayPerProjectPerModel-FreeTier', '0')), 'no_free_tier');
     assert.equal(classifyGoogle429(MINUTE), 'per_minute');
     assert.equal(classifyGoogle429(refus('quota', 'GenerateRequestsPerDayPerProjectPerModel', '250')), 'per_day');
     assert.equal(classifyGoogle429(null), 'unknown');
@@ -83,6 +86,30 @@ describe('Refus de Google', () => {
     assert.equal(appels.length, 1, 'un seul appel : les autres modèles partagent le même projet');
     const { lastGoogleRefusal } = await import('@server/services/ai/googleRefusal');
     assert.equal(lastGoogleRefusal()?.kind, 'billing', 'la cause est gardée pour l’état des services');
+  });
+
+  it('essaie les modèles d’image suivants quand le premier n’a pas de franchise gratuite', async () => {
+    // Constaté en production le 04/10/2026 : le modèle principal refusait ainsi, et le site
+    // annonçait « images pas encore activées » sans essayer les modèles voisins.
+    reponses = { 'gemini-3-pro-image': { status: 429, body: SANS_FRANCHISE }, 'gemini-3.1-flash-image': { status: 200, body: IMAGE } };
+    const { generateGeminiImage } = await import('@server/services/ai/geminiImage');
+    const image = await generateGeminiImage({ prompt: 'Une couturière dans son atelier', aspectRatio: '1:1' });
+    assert.equal(image.model, 'gemini-3.1-flash-image');
+    assert.equal(appels.length, 2, 'le modèle refusé, puis le suivant');
+  });
+
+  it('ne conclut à la facturation que si tous les modèles d’image refusent faute de franchise', async () => {
+    reponses = Object.fromEntries(['gemini-3-pro-image', 'gemini-3.1-flash-image', 'gemini-2.5-flash-image'].map((m) => [m, { status: 429, body: SANS_FRANCHISE }]));
+    const { generateGeminiImage } = await import('@server/services/ai/geminiImage');
+    await assert.rejects(generateGeminiImage({ prompt: 'Une couturière', aspectRatio: '1:1' }), (error: { code?: string }) => error.code === 'GEMINI_IMAGE_BILLING_REQUIRED');
+    assert.equal(appels.length, 3, 'chaque modèle a eu sa chance');
+  });
+
+  it('n’essaie aucun autre modèle d’image quand le projet n’a plus de crédit', async () => {
+    reponses = { 'gemini-3-pro-image': { status: 429, body: CREDITS } };
+    const { generateGeminiImage } = await import('@server/services/ai/geminiImage');
+    await assert.rejects(generateGeminiImage({ prompt: 'Une couturière', aspectRatio: '1:1' }), (error: { code?: string }) => error.code === 'GEMINI_IMAGE_BILLING_REQUIRED');
+    assert.equal(appels.length, 1);
   });
 
   it('passe la vidéo au modèle lite quand le quota du modèle principal est atteint, et la suit au bon endroit', async () => {

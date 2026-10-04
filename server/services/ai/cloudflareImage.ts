@@ -94,6 +94,15 @@ function cloudflareFailure(status: number, detail: string): AppError {
       'CF_IMAGE_QUOTA_EXHAUSTED',
     );
   }
+  /*
+    « Your output has been flagged » : le filtre du fournisseur écarte l'IMAGE PRODUITE, pas la
+    description. Mesuré le 04/10/2026 sur une consigne anodine (une femme devant son ordinateur),
+    que l'autre moteur a rendue sans difficulté. Ce n'est donc ni une faute de l'auteur ni un
+    refus définitif : un nouvel essai, ou l'autre moteur, a toutes ses chances.
+  */
+  if (status === 400 && /flagged/i.test(detail)) {
+    return new AppError(502, 'L’image n’a pas pu être produite. Réessayez : vos points ont été rendus.', 'CF_IMAGE_FLAGGED');
+  }
   if (status === 400 || status === 422) {
     return new AppError(502, 'La description de l’image a été refusée. Reformulez-la : vos points ont été rendus.', 'CF_IMAGE_BAD_INPUT');
   }
@@ -123,7 +132,11 @@ export interface CloudflareImageInput {
 
 export async function generateCloudflareImage(input: CloudflareImageInput): Promise<ImageResult> {
   try {
-    const image = await produce(input);
+    // Une image écartée par le filtre est refaite une fois : le tirage suivant passe souvent.
+    const image = await produce(input).catch((error: unknown) => {
+      if (error instanceof AppError && error.code === 'CF_IMAGE_FLAGGED') return produce(input);
+      throw error;
+    });
     lastOutcome = { ok: true, code: null, at: new Date().toISOString(), ...(image.neurons ? { neurons: image.neurons } : {}) };
     return image;
   } catch (error) {

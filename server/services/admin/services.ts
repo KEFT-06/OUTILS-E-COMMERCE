@@ -112,7 +112,7 @@ async function checkGemini(): Promise<ServiceCheck> {
     const refus = lastGoogleRefusal();
     const recent = refus && Date.now() - new Date(refus.at).getTime() < 6 * 3_600_000;
     const quand = refus ? new Date(refus.at).toLocaleString('fr-FR', { timeZone: env.REPORTING_TIMEZONE }) : '';
-    if (recent && refus.kind === 'billing') {
+    if (recent && (refus.kind === 'billing' || refus.kind === 'no_free_tier')) {
       return {
         ...base,
         state: 'error',

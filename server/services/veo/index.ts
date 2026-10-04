@@ -73,8 +73,9 @@ function veoFailure(status: number, detail: string, payload: unknown = null): Ap
   if (status === 429) {
     const kind = classifyGoogle429(payload);
     recordGoogleRefusal(kind, 'veo', detail);
-    // Projet de la clé sans crédit : les autres modèles Veo refuseraient de même.
-    if (kind === 'billing') {
+    // Projet de la clé sans crédit ni facturation : aucun modèle Veo n'a de franchise gratuite,
+    // les autres refuseraient de même.
+    if (kind === 'billing' || kind === 'no_free_tier') {
       return new AppError(503, 'Le rendu vidéo est momentanément indisponible : l’administrateur en a été informé. Vos points ont été rendus.', 'VEO_BILLING_REQUIRED');
     }
     return new AppError(

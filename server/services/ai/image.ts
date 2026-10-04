@@ -32,6 +32,8 @@ const INFRASTRUCTURE_FAILURES = new Set([
   'CF_IMAGE_FAILED',
   'CF_IMAGE_MISSING',
   'CF_IMAGE_ACCESS_DENIED',
+  // Image écartée par le filtre du fournisseur, pas la description : l'autre moteur a sa chance.
+  'CF_IMAGE_FLAGGED',
   'GEMINI_IMAGE_RATE_LIMITED',
   'GEMINI_IMAGE_OVERLOADED',
   'GEMINI_IMAGE_TIMEOUT',
