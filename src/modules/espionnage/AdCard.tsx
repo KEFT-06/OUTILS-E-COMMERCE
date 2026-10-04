@@ -20,6 +20,7 @@ import {
   Store,
 } from 'lucide-react';
 import { countryName } from '@server/shared/countries';
+import { followableOnRadar } from '@server/shared/storefronts';
 import { CountryFlag } from '@/shared/components/CountryFlag';
 import { safeHttpUrl } from '@/shared/lib/safeUrl';
 import { cn } from '@/shared/lib/utils';
@@ -295,7 +296,8 @@ export function AdCard({
                 <Store />
                 Toutes les publicités de cet annonceur
               </DropdownMenuItem>
-              {ad.storeHost && (
+              {/* Le Radar ne relève que les vitrines Chariow : on ne propose pas de surveiller ce qu'il ne saurait pas lire. */}
+              {ad.storeHost && followableOnRadar(ad.storeHost) && (
                 <DropdownMenuItem disabled={busy === ad.storeHost} onSelect={() => ad.storeHost && onWatch(ad.storeHost)}>
                   <Eye />
                   Surveiller la boutique chaque jour
@@ -368,12 +370,20 @@ export function AdCard({
         {/* Les deux gestes les plus demandés, à portée de pouce : la boutique derrière l'annonce, et son visuel. */}
         {(ad.storeHost || ad.downloadable) && (
           <div className="flex gap-2">
-            {ad.storeHost && (
+            {ad.storeHost && followableOnRadar(ad.storeHost) && (
               <Button asChild variant="outline" className="h-10 min-w-0 flex-1">
                 <Link to={`/app/radar?boutique=${encodeURIComponent(ad.storeHost)}`}>
                   <Radar />
                   <span className="truncate">Ouvrir dans le Radar</span>
                 </Link>
+              </Button>
+            )}
+            {ad.storeHost && !followableOnRadar(ad.storeHost) && (
+              <Button asChild variant="outline" className="h-10 min-w-0 flex-1">
+                <a href={`https://${ad.storeHost}`} target="_blank" rel="noreferrer noopener">
+                  <Store />
+                  <span className="truncate">Voir la boutique</span>
+                </a>
               </Button>
             )}
             {ad.downloadable && (
@@ -463,7 +473,7 @@ export function AdDetailsDialog({
                       Boutique : <span className="font-medium text-foreground">{ad.storeHost}</span>
                     </>
                   ) : (
-                    'Hors boutiques de la plateforme'
+                    'Aucune boutique reconnue derrière cette publicité'
                   )}
                   {ad.displayFormat ? ` · format ${ad.displayFormat.toLowerCase()}` : ''}
                 </p>
@@ -493,12 +503,20 @@ export function AdDetailsDialog({
                   </a>
                 </Button>
               )}
-              {ad.storeHost && (
+              {ad.storeHost && followableOnRadar(ad.storeHost) && (
                 <Button asChild size="sm" variant="outline">
                   <Link to={`/app/radar?boutique=${encodeURIComponent(ad.storeHost)}`}>
                     <Radar />
                     Ouvrir dans le Radar
                   </Link>
+                </Button>
+              )}
+              {ad.storeHost && !followableOnRadar(ad.storeHost) && (
+                <Button asChild size="sm" variant="outline">
+                  <a href={`https://${ad.storeHost}`} target="_blank" rel="noreferrer noopener">
+                    <Store />
+                    Voir la boutique
+                  </a>
                 </Button>
               )}
               {ad.downloadable && (

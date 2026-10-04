@@ -8,6 +8,7 @@ import { AppError } from '@server/middleware';
 import type { RequestAuth } from '@server/middleware/auth';
 import { effectiveLimits } from '@server/services/accounts';
 import { readAnyMetaAd } from '@server/services/espionnage/parse';
+import { followableOnRadar } from '@server/shared/storefronts';
 import {
   FAILED_RUN,
   adLibraryUrl,
@@ -170,7 +171,7 @@ async function viewOf(row: SearchRow, auth: RequestAuth, fromCache: boolean): Pr
     fromCache,
     ads,
     hiddenByPlan: all.length - ads.length,
-    platformAds: all.filter((ad) => ad.storeHost).length,
+    platformAds: all.filter((ad) => followableOnRadar(ad.storeHost)).length,
   };
 }
 

@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import type { spiedAds } from '@server/db/schema';
+import { findStorefront } from '@server/shared/storefronts';
 
 /**
  * Lecture d'une annonce de la bibliothèque publicitaire Meta, telle que la collecte la rend.
@@ -18,6 +19,11 @@ import type { spiedAds } from '@server/db/schema';
  *  · les boutiques ne sont pas toutes en .com ou .shop. Mesuré le 28/09/2026 sur 30 annonces :
  *    .store, .online et .market aussi — onze annonces sur trente étaient jetées pour cette seule
  *    raison. Toute extension est donc acceptée derrière « mychariow ».
+ *  · la plateforme n'est pas seule : au Cameroun, en Côte d'Ivoire et au Sénégal, la plupart des
+ *    annonces relevées le 04/10/2026 mènent à des boutiques Maketou ou Shopify. Les trois sont
+ *    reconnues (server/shared/storefronts.ts).
+ *  · une annonce à plusieurs cartes porte parfois son lien dans les cartes, et pas à la racine :
+ *    le lien de chaque carte est une destination au même titre que le lien principal.
  */
 
 const mediaSchema = z
@@ -78,9 +84,6 @@ export const metaAdSchema = z
 
 export type MetaAd = z.infer<typeof metaAdSchema>;
 
-/** Hôte de vitrine de la plateforme, avec son sous-domaine, quelle que soit l'extension. */
-const STOREFRONT_HOST = /\b([a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?)\.mychariow\.[a-z]{2,12}\b/i;
-
 /**
  * Coupe un texte sans jamais laisser une moitié d'emoji.
  *
@@ -99,17 +102,14 @@ const shortText = (value: string | null | undefined, max: number): string | null
   if (!text || /^\{\{.*\}\}$/.test(text)) return null;
   return clip(text, max) || null;
 };
-/** Sous-domaines techniques : ce ne sont pas des boutiques. */
-const NOT_A_STORE = new Set(['www', 'api', 'api-edge', 'app', 'cdn', 'images', 'assets', 'static']);
-
 export type SpiedAdInsert = typeof spiedAds.$inferInsert;
 
 /** Une annonce quelconque de la bibliothèque : boutique de la plateforme et lien peuvent manquer. */
 export type MetaAdFields = Omit<SpiedAdInsert, 'storeHost' | 'landingUrl'> & { storeHost: string | null; landingUrl: string | null };
 
 /**
- * Traduit une annonce en ligne de mur d'espionnage, ou rend null quand elle ne mène pas à la
- * plateforme. On ne regarde que le lien de destination et la légende : ce sont les deux seuls
+ * Traduit une annonce en ligne de mur d'espionnage, ou rend null quand elle ne mène à aucune
+ * boutique reconnue. On ne regarde que les liens de destination et la légende : ce sont les seuls
  * champs qui prouvent la redirection.
  */
 export function readMetaAd(raw: unknown, now: Date): SpiedAdInsert | null {
@@ -121,7 +121,7 @@ export function readMetaAd(raw: unknown, now: Date): SpiedAdInsert | null {
 /**
  * Lit n'importe quelle annonce, qu'elle mène ou non à la plateforme : c'est ce que rend une
  * recherche par mot-clé, comme dans la bibliothèque de Meta. `storeHost` n'est renseigné que
- * pour une boutique de la plateforme, prouvée par le lien ou la légende.
+ * pour une boutique reconnue (Chariow, Maketou, Shopify), prouvée par un lien ou la légende.
  */
 export function readAnyMetaAd(raw: unknown, now: Date): MetaAdFields | null {
   const parsed = metaAdSchema.safeParse(raw);
@@ -130,13 +130,12 @@ export function readAnyMetaAd(raw: unknown, now: Date): MetaAdFields | null {
   const snap = ad.snapshot;
   if (!snap) return null;
 
-  const preuve = `${snap.linkUrl ?? ''} ${snap.caption ?? ''}`;
-  const trouve = STOREFRONT_HOST.exec(preuve);
-  const sous = trouve?.[1]?.toLowerCase();
-  const chariow = sous && !NOT_A_STORE.has(sous) ? `${sous}.mychariow.com` : null;
+  const cardLinks = (snap.cards ?? []).map((card) => card.linkUrl ?? '').filter((link) => link.startsWith('http'));
+  // Le lien principal et la légende d'abord : une carte ne l'emporte que s'ils ne désignent aucune boutique.
+  const boutique = findStorefront(`${snap.linkUrl ?? ''} ${snap.caption ?? ''}`) ?? findStorefront(cardLinks.join(' '));
 
   const externalId = String(ad.adArchiveID ?? ad.adArchiveId ?? '').trim();
-  const landingUrl = (snap.linkUrl ?? '').trim();
+  const landingUrl = (snap.linkUrl?.trim().startsWith('http') ? snap.linkUrl : (cardLinks[0] ?? '')).trim();
   if (!externalId) return null;
 
   // Création dynamique ou carrousel : le visuel est dans la première carte, pas à la racine.
@@ -156,8 +155,8 @@ export function readAnyMetaAd(raw: unknown, now: Date): MetaAdFields | null {
 
   return {
     externalId,
-    // « .shop » et « .com » désignent la même boutique : une seule forme, celle que le radar surveille.
-    storeHost: chariow,
+    // « .shop » et « .com » désignent la même boutique Chariow : une seule forme, celle que le radar surveille.
+    storeHost: boutique?.host ?? null,
     landingUrl: landingUrl.startsWith('http') ? landingUrl.slice(0, 2_000) : null,
     title: clip(snap.title?.replace(/\s+/g, ' ').trim() ?? '', 300) || null,
     bodyText: clip(snap.body?.text?.trim() ?? '', 4_000) || null,

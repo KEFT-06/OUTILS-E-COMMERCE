@@ -3,6 +3,7 @@ import { useSearchParams } from "react-router-dom";
 import { RefreshCw, Store } from "lucide-react";
 import { toast } from "sonner";
 import { countryName } from "@server/shared/countries";
+import { STOREFRONT_LABELS, type Storefront } from "@server/shared/storefronts";
 import { AdCard, AdDetailsDialog } from "@/modules/espionnage/AdCard";
 import { MetaSearchPanel } from "@/modules/espionnage/MetaSearchPanel";
 import { PageHeader } from "@/shared/components/PageHeader";
@@ -104,6 +105,8 @@ export function EspionnageView() {
   const [serie, setSerie] = useState(() => (boutique ? 0 : serieDeDepart()));
   const [actualisation, setActualisation] = useState(false);
   const [pays, setPays] = useState("tous");
+  /** Plateforme de la boutique où mène l'annonce : Chariow, Maketou, Shopify. */
+  const [plateforme, setPlateforme] = useState<"toutes" | Storefront>("toutes");
   const [busy, setBusy] = useState<string | null>(null);
   const [details, setDetails] = useState<LibraryAd | null>(null);
   /** « Toutes les annonces de cet annonceur », comme sur la page d'un annonceur chez Meta. */
@@ -123,11 +126,14 @@ export function EspionnageView() {
     if (annonceur?.pageId) params.set("pageId", annonceur.pageId);
     else if (annonceur?.storeHost) params.set("storeHost", annonceur.storeHost);
     if (pays !== "tous") params.set("country", pays);
+    if (plateforme !== "toutes") params.set("storefront", plateforme);
     if (serie > 0) params.set("batch", String(serie));
     return `/api/espionnage?${params.toString()}`;
-  }, [anciennete, format, etat, tri, annonceur, pays, serie]);
+  }, [anciennete, format, etat, tri, annonceur, pays, plateforme, serie]);
   // Le mur déjà vu avec ces réglages se réaffiche tout de suite, puis il est relu.
   const [data, setData] = useCachedState<EspionnageData>(adresse);
+
+  const boutiquesAffichees = useMemo(() => new Set((data?.ads ?? []).map((ad) => ad.storeHost)).size, [data]);
 
   const load = useCallback(async () => {
     try {
@@ -286,9 +292,9 @@ export function EspionnageView() {
                     : "…"}
                 </p>
                 <p className="text-sm text-muted-foreground">
-                  {data
-                    ? `chez ${data.stores} boutique${data.stores > 1 ? "s" : ""}`
-                    : ""}
+                  {/* Les boutiques des annonces AFFICHÉES : le total du mur, sous un filtre, annonçait
+                      « 78 annonces chez 198 boutiques ». */}
+                  {data ? `chez ${boutiquesAffichees} boutique${boutiquesAffichees > 1 ? "s" : ""}` : ""}
                   {hint ? ` · ${hint}` : ""}
                 </p>
               </div>
@@ -343,6 +349,26 @@ export function EspionnageView() {
                     <SelectItem value="video">Vidéos</SelectItem>
                   </SelectContent>
                 </Select>
+
+                {/* Proposé seulement quand le mur porte plus d'une plateforme : un filtre à un seul choix n'en est pas un. */}
+                {data && (data.storefronts?.length ?? 0) > 1 && (
+                  <Select
+                    value={plateforme}
+                    onValueChange={regler((value: string) => setPlateforme(value as typeof plateforme))}
+                  >
+                    <SelectTrigger className="w-full sm:w-48" aria-label="Plateforme de la boutique">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="toutes">Toutes les plateformes</SelectItem>
+                      {data.storefronts.map((entry) => (
+                        <SelectItem key={entry.id} value={entry.id}>
+                          {STOREFRONT_LABELS[entry.id]} · {entry.ads.toLocaleString("fr-FR")}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                )}
 
                 {data && data.countries.length > 0 && (
                   <Select value={pays} onValueChange={regler(setPays)}>

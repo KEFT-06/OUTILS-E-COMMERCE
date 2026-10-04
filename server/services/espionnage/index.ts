@@ -6,10 +6,12 @@ import { providers } from '@server/env';
 import { harvestCollectionRuns, lastDiscoveryAt, pendingCollectionRuns } from '@server/services/radar/discovery';
 import { storeMissingAvatars, storeMissingThumbnails } from '@server/services/espionnage/media';
 import { runInBackground } from '@server/shared/backgroundWork';
+import { STOREFRONTS, type Storefront } from '@server/shared/storefronts';
 
 /**
- * Mur d'espionnage : les publicités qui tournent en ce moment et qui mènent à une boutique de la
- * plateforme. C'est la réponse à « que vendent ceux qui paient de la publicité, et depuis quand ».
+ * Mur d'espionnage : les publicités qui tournent en ce moment et qui mènent à une boutique
+ * reconnue (Chariow, Maketou, Shopify). C'est la réponse à « que vendent ceux qui paient de la
+ * publicité, et depuis quand ».
  *
  * Ce module ne collecte rien : il LIT ce que le passage payant de la découverte a déposé. Une
  * seule collecte, deux écrans — sinon on paierait deux fois la même donnée.
@@ -79,6 +81,8 @@ export interface EspionnageFilters {
   mediaKind?: 'image' | 'video';
   /** Pays de diffusion relevé (ISO) : ne garde que les annonces vues dans ce pays. */
   country?: string;
+  /** Plateforme de la boutique où mène l'annonce. */
+  storefront?: Storefront;
   /**
    * État déclaré par Meta à la dernière collecte qui a vu l'annonce. La bibliothèque de Meta
    * propose ce filtre en premier, et c'est souvent la seule question : « qu'est-ce qui tourne
@@ -100,6 +104,8 @@ export interface EspionnageView {
   ads: SpiedAdView[];
   /** Pays pour lesquels au moins une annonce a été relevée (ISO). */
   countries: string[];
+  /** Plateformes présentes sur le mur, avec leur nombre d'annonces : on ne propose que ce qui existe. */
+  storefronts: { id: Storefront; ads: number }[];
   /** Annonces en base, toutes boutiques confondues, avant filtrage. */
   total: number;
   stores: number;
@@ -143,6 +149,10 @@ const ROTATION = 24;
  */
 const runningDays = (startedAt: Date | null, lastSeenAt: Date): number | null =>
   startedAt ? Math.max(0, Math.floor((lastSeenAt.getTime() - startedAt.getTime()) / JOUR_MS)) : null;
+
+/** Forme des hôtes de chaque plateforme, tels que la lecture des annonces les enregistre. */
+const HOST_LIKE: Record<Storefront, string> = { chariow: '%.mychariow.com', maketou: '%.mymaketou.%', shopify: '%.myshopify.com' };
+const onStorefront = (storefront: Storefront): SQL => sql`${spiedAds.storeHost} like ${HOST_LIKE[storefront]}`;
 
 function viewOf(row: typeof spiedAds.$inferSelect, now: Date): SpiedAdView {
   return {
@@ -218,6 +228,7 @@ export async function listSpiedAds(
   if (filters.pageId) conditions.push(eq(spiedAds.pageId, filters.pageId));
   if (filters.mediaKind) conditions.push(eq(spiedAds.mediaKind, filters.mediaKind));
   if (filters.country) conditions.push(sql`${spiedAds.countries} @> ${JSON.stringify([filters.country])}::jsonb`);
+  if (filters.storefront) conditions.push(onStorefront(filters.storefront));
   if (filters.etat) conditions.push(eq(spiedAds.active, filters.etat === 'active'));
   if (filters.search) {
     /*
@@ -298,8 +309,16 @@ export async function listSpiedAds(
     .select({ pays: sql<string>`distinct jsonb_array_elements_text(${spiedAds.countries})` })
     .from(spiedAds);
 
+  const parPlateforme = await Promise.all(
+    STOREFRONTS.map(async (id) => {
+      const [row] = await getDb().select({ ads: count() }).from(spiedAds).where(onStorefront(id));
+      return { id, ads: Number(row?.ads ?? 0) };
+    }),
+  );
+
   return {
     countries: paysConnus.map((row) => row.pays).sort(),
+    storefronts: parPlateforme.filter((entry) => entry.ads > 0),
     ads: rows.map((row) => viewOf(row, now)),
     total: Number(totaux?.total ?? 0),
     stores: Number(totaux?.stores ?? 0),

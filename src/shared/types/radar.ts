@@ -192,6 +192,8 @@ export interface EspionnageView {
   ads: SpiedAd[];
   /** Pays pour lesquels au moins une annonce a été relevée (ISO). */
   countries: string[];
+  /** Plateformes présentes sur le mur (Chariow, Maketou, Shopify), avec leur nombre d'annonces. */
+  storefronts: { id: 'chariow' | 'maketou' | 'shopify'; ads: number }[];
   total: number;
   stores: number;
   lastCollectedAt: string | null;

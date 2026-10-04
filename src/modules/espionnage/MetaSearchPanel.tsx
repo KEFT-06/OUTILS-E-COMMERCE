@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { Library, Loader2, Search, Store, X } from "lucide-react";
 import { toast } from "sonner";
 import { countryName } from "@server/shared/countries";
+import { followableOnRadar } from "@server/shared/storefronts";
 import { AdCard, AdDetailsDialog } from "@/modules/espionnage/AdCard";
 import { apiRequest } from "@/shared/lib/api";
 import { useCachedState } from "@/shared/lib/apiCache";
@@ -233,7 +234,7 @@ export function MetaSearchPanel() {
 
   const quota = apercu?.quota;
   const annonces = (recherche?.ads ?? [])
-    .filter((ad) => !seulementChariow || ad.storeHost)
+    .filter((ad) => !seulementChariow || followableOnRadar(ad.storeHost))
     .filter((ad) => !annonceur || ad.pageId === annonceur.pageId);
 
   return (

@@ -9,7 +9,8 @@
  * Il ne peut pas tourner chez l'hébergeur du site (pas de navigateur dans une fonction) : il
  * tourne sur un poste ou dans une tâche planifiée.
  *
- *   node collecte.mjs                    passage complet : mots-clés × pays, puis contrôle des annonces anciennes
+ *   node collecte.mjs                    passage complet : mots-clés × pays, autres plateformes (Maketou, Shopify)
+ *                                        dans les pays visés, puis contrôle des annonces anciennes
  *   node collecte.mjs --essai            lit sans rien verser, et dit ce qu'il a trouvé
  *   node collecte.mjs --mots=mychariow --pays=CM,CI --max=300
  *
@@ -61,10 +62,14 @@ async function plan() {
     }
   }
   const list = (value) => (typeof value === 'string' ? value.split(',').map((item) => item.trim()).filter(Boolean) : null);
+  // Des mots ou des pays donnés à la main décrivent tout le passage : les recherches du site ne s'y ajoutent pas.
+  const aLaMain = list(option('mots')) !== null || list(option('pays')) !== null;
+  const extra = fromSite.extra ?? { queries: [], countries: [], maxPerQuery: 150 };
   return {
     queries: list(option('mots')) ?? fromSite.queries,
     countries: (list(option('pays')) ?? fromSite.countries).map((code) => code.toUpperCase()),
     maxPerQuery: Number(option('max', fromSite.maxPerQuery)) || 600,
+    extra: aLaMain ? { queries: [], countries: [], maxPerQuery: 0 } : extra,
     toVerify: option('sans-controle', false) ? [] : fromSite.toVerify,
   };
 }
@@ -133,6 +138,20 @@ function harvest(text, into) {
 
 const totals = { lues: 0, versees: 0, gardees: 0, boutiquesNouvelles: 0, controlees: 0, arretees: 0, echecs: 0 };
 
+/** Où mènent les annonces lues, par famille d'adresses (« *.mychariow.shop ») : le compte rendu d'un essai. */
+const destinations = new Map();
+function noteDestination(ad) {
+  let host = String(ad.snapshot?.caption ?? '').toLowerCase();
+  try {
+    host = new URL(ad.snapshot.link_url).hostname.toLowerCase();
+  } catch {
+    // Pas de lien lisible : la légende tient lieu d'adresse.
+  }
+  const labels = host.replace(/^www\./, '').split('.').filter(Boolean);
+  const family = labels.length > 2 ? `*.${labels.slice(1).join('.')}` : labels.join('.') || '(sans lien)';
+  destinations.set(family, (destinations.get(family) ?? 0) + 1);
+}
+
 /** Verse un lot au site, ou le compte seulement pendant un essai. */
 async function verser(items, country, done = false, summary = undefined) {
   if (ESSAI) return;
@@ -152,7 +171,11 @@ async function verser(items, country, done = false, summary = undefined) {
 const programme = await plan();
 log.info(
   `${ESSAI ? 'ESSAI (rien n’est versé)' : `Versement vers ${SITE}`} — ${programme.queries.length} mot(s)-clé(s) × ${programme.countries.length} pays, ` +
-    `${programme.maxPerQuery} annonces au plus par recherche, ${programme.toVerify.length} annonce(s) ancienne(s) à contrôler.`,
+    `${programme.maxPerQuery} annonces au plus par recherche` +
+    (programme.extra.queries.length > 0
+      ? ` ; autres plateformes : ${programme.extra.queries.length} mot(s) × ${programme.extra.countries.length} pays, ${programme.extra.maxPerQuery} au plus`
+      : '') +
+    ` ; ${programme.toVerify.length} annonce(s) ancienne(s) à contrôler.`,
 );
 
 // Rien n'est gardé sur le disque : ni file d'attente, ni captures.
@@ -215,6 +238,7 @@ const crawler = new PlaywrightCrawler({
       stalled = found.size === before ? stalled + 1 : 0;
     }
     const ads = [...found.values()].slice(0, max).map(slim);
+    ads.forEach(noteDestination);
     totals.lues += ads.length;
     log.info(`« ${query} » · ${country} : ${ads.length} annonce(s) lue(s).`);
     await verser(ads, country);
@@ -231,6 +255,14 @@ const requetes = [
       url: searchUrl(query, country),
       uniqueKey: `recherche:${query}:${country}`,
       userData: { kind: 'recherche', query, country, max: programme.maxPerQuery },
+    })),
+  ),
+  // Boutiques des autres plateformes : jamais tous pays confondus, et avec leur propre plafond.
+  ...programme.extra.queries.flatMap((query) =>
+    programme.extra.countries.map((country) => ({
+      url: searchUrl(query, country),
+      uniqueKey: `recherche:${query}:${country}`,
+      userData: { kind: 'recherche', query, country, max: programme.extra.maxPerQuery },
     })),
   ),
   ...programme.toVerify.map((id) => ({ url: adUrl(id), uniqueKey: `controle:${id}`, userData: { kind: 'controle', id } })),
@@ -250,4 +282,8 @@ console.log(
       : `, ${totals.gardees} gardées sur le mur, ${totals.boutiquesNouvelles} boutique(s) nouvelle(s), ${totals.controlees} ancienne(s) contrôlée(s) dont ${totals.arretees} arrêtée(s).`) +
     (totals.echecs ? ` ${totals.echecs} recherche(s) abandonnée(s).` : ''),
 );
+if (ESSAI && destinations.size > 0) {
+  const top = [...destinations.entries()].sort((a, b) => b[1] - a[1]).slice(0, 12);
+  console.log(`Destinations : ${top.map(([family, count]) => `${family} × ${count}`).join(', ')}.`);
+}
 process.exit(totals.lues === 0 && totals.controlees === 0 ? 1 : 0);

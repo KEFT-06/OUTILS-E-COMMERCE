@@ -126,6 +126,73 @@ describe('Collecteur maison', () => {
     assert.equal(await discoveryIsDue(), false);
   });
 
+  /*
+    Relevé réel du 04/10/2026, 717 annonces cherchées au Cameroun, en Côte d'Ivoire et au
+    Sénégal : 357 mènent à « *.myshopify.com », 335 à « *.mymaketou.shop » ou « .store ». Le mur
+    ne gardait que Chariow.
+  */
+  it('reconnaît les boutiques Maketou et Shopify, sans les confier au Radar', async () => {
+    const { findStorefront, followableOnRadar, storefrontOfHost } = await import('@server/shared/storefronts');
+    assert.deepEqual(findStorefront('https://awa-shop.mymaketou.shop/p/guide'), { host: 'awa-shop.mymaketou.shop', storefront: 'maketou' });
+    assert.deepEqual(findStorefront('AWA.MYMAKETOU.STORE'), { host: 'awa.mymaketou.store', storefront: 'maketou' }, 'l’extension Maketou est gardée');
+    assert.deepEqual(findStorefront('https://q1x-9z.myshopify.com/products/x'), { host: 'q1x-9z.myshopify.com', storefront: 'shopify' });
+    assert.deepEqual(findStorefront('https://kpougeet.mychariow.shop/prd_1'), { host: 'kpougeet.mychariow.com', storefront: 'chariow' });
+    assert.equal(findStorefront('https://www.myshopify.com/ et https://exemple.com'), null, 'ni sous-domaine technique, ni site quelconque');
+    assert.equal(storefrontOfHost('awa.mymaketou.store'), 'maketou');
+    assert.equal(followableOnRadar('awa.mymaketou.shop'), false);
+    assert.equal(followableOnRadar('kpougeet.mychariow.com'), true);
+
+    const maketou = annonce({
+      ad_archive_id: '2000000000000001',
+      page_name: 'Boutique Awa',
+      snapshot: { ...annonce().snapshot, link_url: 'https://awa-shop.mymaketou.shop/p/guide', caption: 'awa-shop.mymaketou.shop', page_name: 'Boutique Awa' },
+    });
+    // Annonce à plusieurs cartes : aucun lien à la racine, la destination est dans les cartes.
+    const shopify = annonce({
+      ad_archive_id: '2000000000000002',
+      page_name: 'Mode Dakar',
+      snapshot: {
+        ...annonce().snapshot,
+        link_url: null,
+        caption: null,
+        page_name: 'Mode Dakar',
+        cards: [
+          { title: 'Robe', body: 'Wax', link_url: 'https://q1x-9z.myshopify.com/products/robe', cta_text: 'Acheter' },
+          { title: 'Sac', body: 'Cuir', link_url: 'https://q1x-9z.myshopify.com/products/sac', cta_text: 'Acheter' },
+        ],
+      },
+    });
+    const versement = await verser({ country: 'SN', items: [maketou, shopify] }).expect(200);
+    assert.equal(versement.body.adsKept, 2, 'les deux sont rangées sur le mur');
+    assert.equal(versement.body.storesNew, 0, 'le Radar ne relève que Chariow : aucune boutique ne lui est confiée');
+
+    const { agent } = await signInWithPlan(app, 'collecteur-plateformes@exemple.test', 'pro');
+    const mur = await agent.get('/api/espionnage').query({ etat: 'active' }).expect(200);
+    assert.deepEqual(
+      (mur.body.storefronts as { id: string; ads: number }[]).map((entry) => `${entry.id}:${entry.ads}`),
+      ['chariow:1', 'maketou:1', 'shopify:1'],
+      'le filtre ne propose que les plateformes présentes, avec leur compte',
+    );
+    const surMaketou = await agent.get('/api/espionnage').query({ storefront: 'maketou' }).expect(200);
+    assert.deepEqual((surMaketou.body.ads as { storeHost: string }[]).map((ad) => ad.storeHost), ['awa-shop.mymaketou.shop']);
+    const surShopify = await agent.get('/api/espionnage').query({ storefront: 'shopify' }).expect(200);
+    const [robe] = surShopify.body.ads as { storeHost: string; landingUrl: string; countries: string[] }[];
+    assert.equal(robe!.storeHost, 'q1x-9z.myshopify.com');
+    assert.equal(robe!.landingUrl, 'https://q1x-9z.myshopify.com/products/robe', 'le lien de la première carte tient lieu de destination');
+    assert.deepEqual(robe!.countries, ['SN']);
+    const surChariow = await agent.get('/api/espionnage').query({ storefront: 'chariow' }).expect(200);
+    assert.ok((surChariow.body.ads as { storeHost: string }[]).every((ad) => ad.storeHost.endsWith('.mychariow.com')));
+    // Une plateforme inconnue n'est pas une erreur à afficher : le mur est servi sans ce filtre.
+    const inconnue = await agent.get('/api/espionnage').query({ storefront: 'amazon' }).expect(200);
+    assert.equal(inconnue.body.matching, mur.body.total);
+
+    // Le plan du collecteur cherche ces plateformes pays par pays, jamais tous pays confondus.
+    const plan = await request(app).get('/api/cron/collecte').set('Authorization', `Bearer ${SECRET}`).expect(200);
+    assert.deepEqual(plan.body.extra.queries, ['mymaketou', 'myshopify']);
+    assert.ok(plan.body.extra.countries.includes('SN') && !plan.body.extra.countries.includes('ALL'));
+    assert.ok(plan.body.extra.maxPerQuery < plan.body.maxPerQuery, 'plafond plus bas que pour la plateforme principale');
+  });
+
   it('écarte un lot illisible sans rien enregistrer', async () => {
     await verser({ country: 'Cameroun', items: [] }).expect(400);
     await verser({ items: 'pas une liste' }).expect(400);

@@ -6,6 +6,7 @@ import { requireAuth } from '@server/middleware/auth';
 import { effectiveLimits } from '@server/services/accounts';
 import { listSpiedAds, refreshWall, refreshWallInBackground, spiedStores } from '@server/services/espionnage';
 import { sendAdDownload, sendAdThumbnail, sendPageAvatar } from '@server/services/espionnage/media';
+import { STOREFRONTS } from '@server/shared/storefronts';
 import {
   type AdSearchRequest,
   adSearchRequestSchema,
@@ -54,6 +55,7 @@ const filtersSchema = z.object({
   pageId: z.string().regex(/^\d{5,30}$/).optional(),
   mediaKind: z.enum(['image', 'video']).optional(),
   country: z.string().trim().toUpperCase().regex(/^[A-Z]{2}$/).optional(),
+  storefront: z.enum(STOREFRONTS).optional(),
   // « active » : ce que Meta déclarait en cours à la dernière collecte ; « arretee » : l'inverse.
   etat: z.enum(['active', 'arretee']).optional(),
   search: z.string().trim().max(120).optional(),

@@ -495,6 +495,20 @@ const schema = z.object({
     .default('ALL,CM,CI,SN,BJ,TG,BF,ML,CD,GA,CG,FR')
     .transform((value) => [...new Set(value.split(',').map((code) => code.trim().toUpperCase()).filter((code) => /^(ALL|[A-Z]{2})$/.test(code)))]),
   SPY_COLLECT_MAX_PER_QUERY: z.coerce.number().int().min(20).max(5_000).default(600),
+  /**
+   * Boutiques des autres plateformes (Maketou, Shopify) : mots cherchés par le collecteur, pays
+   * où il les cherche, et annonces lues au plus par mot et par pays. Jamais « ALL » : ces mots,
+   * tous pays confondus, ramèneraient le monde entier. « off » : aucune recherche de ce genre.
+   */
+  SPY_COLLECT_EXTRA_QUERIES: z
+    .string()
+    .default('mymaketou,myshopify')
+    .transform((value) => (value.trim() === 'off' ? [] : [...new Set(value.split(',').map((word) => word.trim().toLowerCase()).filter((word) => /^[a-z0-9.-]{3,40}$/.test(word)))])),
+  SPY_COLLECT_EXTRA_COUNTRIES: z
+    .string()
+    .default('CM,CI,SN,BJ,TG,BF,ML,CD,GA,CG')
+    .transform((value) => [...new Set(value.split(',').map((code) => code.trim().toUpperCase()).filter((code) => /^[A-Z]{2}$/.test(code)))]),
+  SPY_COLLECT_EXTRA_MAX: z.coerce.number().int().min(20).max(2_000).default(150),
 
   /**
    * Seuils des alertes (services/alerts). Produit gagnant : ventes atteintes dans les premiers

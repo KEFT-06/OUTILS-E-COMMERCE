@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { Bell, Eye, Flame, PenSquare, Radar, Rocket, TriangleAlert, type LucideIcon } from 'lucide-react';
 import { toast } from 'sonner';
+import { followableOnRadar } from '@server/shared/storefronts';
 import { PageHeader } from '@/shared/components/PageHeader';
 import { apiRequest } from '@/shared/lib/api';
 import { useCachedState } from '@/shared/lib/apiCache';
@@ -43,6 +44,7 @@ function AlertCard({ alert }: { alert: AlertItem }) {
   const currency = useUserCurrency();
 
   const host = texte(alert.payload.storeHost);
+  const surRadar = followableOnRadar(host);
   const keyword = texte(alert.payload.keyword);
   // Idée de départ du produit à créer : le produit qui décolle, ou le sujet de la tendance.
   const idee = texte(alert.payload.productName) ?? (keyword ? `Produit sur « ${keyword} »` : null);
@@ -75,7 +77,8 @@ function AlertCard({ alert }: { alert: AlertItem }) {
           </div>
         </div>
         <div className="flex flex-wrap gap-2">
-          {host && (
+          {/* Le Radar ne relève que les vitrines Chariow : pour une autre boutique, ce bouton ne mènerait nulle part. */}
+          {host && surRadar && (
             <Button asChild size="sm" variant="secondary">
               <Link to={`/app/radar?boutique=${encodeURIComponent(host)}`}>
                 <Radar />

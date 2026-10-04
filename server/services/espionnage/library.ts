@@ -73,6 +73,12 @@ export async function collectorPlan(now = new Date()) {
     queries: discoveryQueries(),
     countries: env.SPY_COLLECT_COUNTRIES,
     maxPerQuery: env.SPY_COLLECT_MAX_PER_QUERY,
+    /*
+      Boutiques des autres plateformes (Maketou, Shopify). Cherchées seulement dans les pays
+      visés : « myshopify » tous pays confondus ramènerait le monde entier. Plafond plus bas,
+      pour que le mur reste celui de ces marchés et que ses aperçus tiennent dans le stockage.
+    */
+    extra: { queries: env.SPY_COLLECT_EXTRA_QUERIES, countries: env.SPY_COLLECT_EXTRA_COUNTRIES, maxPerQuery: env.SPY_COLLECT_EXTRA_MAX },
     toVerify: anciennes.map((row) => row.externalId),
   };
 }
