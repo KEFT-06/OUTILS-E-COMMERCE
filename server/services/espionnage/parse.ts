@@ -81,11 +81,23 @@ export type MetaAd = z.infer<typeof metaAdSchema>;
 /** Hôte de vitrine de la plateforme, avec son sous-domaine, quelle que soit l'extension. */
 const STOREFRONT_HOST = /\b([a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?)\.mychariow\.[a-z]{2,12}\b/i;
 
+/**
+ * Coupe un texte sans jamais laisser une moitié d'emoji.
+ *
+ * Un emoji occupe deux unités de texte ; coupé entre les deux, il laisse un caractère orphelin
+ * que la base refuse dans une colonne JSON (« low surrogate must follow a high surrogate »). Une
+ * seule annonce ainsi coupée faisait échouer l'enregistrement de tout son lot — constaté le
+ * 04/10/2026 sur une vraie collecte, où les textes publicitaires sont pleins d'emojis.
+ */
+export function clip(text: string, max: number): string {
+  return text.slice(0, max).replace(/[\uD800-\uDBFF](?![\uDC00-\uDFFF])|(?<![\uD800-\uDBFF])[\uDC00-\uDFFF]/g, '');
+}
+
 /** Texte court et propre, ou null ; les gabarits non remplis de Meta (« {{product.name}} ») sont écartés. */
 const shortText = (value: string | null | undefined, max: number): string | null => {
   const text = value?.replace(/\s+/g, ' ').trim();
   if (!text || /^\{\{.*\}\}$/.test(text)) return null;
-  return text.slice(0, max);
+  return clip(text, max) || null;
 };
 /** Sous-domaines techniques : ce ne sont pas des boutiques. */
 const NOT_A_STORE = new Set(['www', 'api', 'api-edge', 'app', 'cdn', 'images', 'assets', 'static']);
@@ -147,9 +159,9 @@ export function readAnyMetaAd(raw: unknown, now: Date): MetaAdFields | null {
     // « .shop » et « .com » désignent la même boutique : une seule forme, celle que le radar surveille.
     storeHost: chariow,
     landingUrl: landingUrl.startsWith('http') ? landingUrl.slice(0, 2_000) : null,
-    title: snap.title?.replace(/\s+/g, ' ').trim().slice(0, 300) || null,
-    bodyText: snap.body?.text?.trim().slice(0, 4_000) || null,
-    advertiser: (snap.pageName ?? ad.pageName)?.trim().slice(0, 200) || null,
+    title: clip(snap.title?.replace(/\s+/g, ' ').trim() ?? '', 300) || null,
+    bodyText: clip(snap.body?.text?.trim() ?? '', 4_000) || null,
+    advertiser: clip((snap.pageName ?? ad.pageName)?.trim() ?? '', 200) || null,
     mediaUrl: media.url?.slice(0, 2_000) ?? null,
     mediaKind: media.kind,
     // Fichier d'origine, pour le téléchargement : la vidéo elle-même, ou l'image en pleine définition.
