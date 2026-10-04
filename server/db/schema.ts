@@ -533,8 +533,14 @@ export const ebookJobs = pgTable(
      * Sert aussi de pause après un refus passager du fournisseur.
      */
     leaseUntil: moment('lease_until'),
-    /** Dernière fois qu'une section a été enregistrée : sans avancée trop longtemps, on renonce. */
+    /** Dernière fois qu'une section a été enregistrée. */
     progressAt: moment('progress_at'),
+    /**
+     * Tranches refusées d'affilée par le service de rédaction, remises à zéro à chaque section
+     * enregistrée. C'est ce compte — et non le temps écoulé — qui fait renoncer : un écran éteint
+     * une heure n'est pas une panne, vingt refus de suite en sont une.
+     */
+    stalls: integer('stalls').notNull().default(0),
     createdAt: createdAt(),
     updatedAt: moment('updated_at').notNull().defaultNow(),
     completedAt: moment('completed_at'),

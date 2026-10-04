@@ -9,6 +9,7 @@ import { purgeStaleThumbnails, storeMissingAvatars, storeMissingThumbnails } fro
 import { sweepSessions } from '@server/services/auth/sessions';
 import { archivePendingVideos, purgeExpiredVideos } from '@server/services/creatives/archive';
 import { purgeStaleVideoUploads } from '@server/services/writing/videoUpload';
+import { continueEbookInBackground, resumeEbookJobs } from '@server/services/writing/ebookJobs';
 import { sweepPendingGenerations } from '@server/services/generations/sweeper';
 import { sweepDueWatches } from '@server/services/radar/sweeper';
 import { z } from 'zod';
@@ -174,6 +175,12 @@ cronRouter.get(
     if (!env.CRON_SECRET) throw new AppError(503, 'Le déclencheur périodique n’est pas configuré sur ce serveur.', 'CRON_NOT_CONFIGURED');
     if (!secretIsValid(req)) throw new AppError(401, 'Déclencheur refusé.', 'CRON_DENIED');
 
+    // Rédactions restées en chemin (relance non partie) : elles repartent, sans attendre leur auteur.
+    const redactions = await resumeEbookJobs().catch((error: unknown) => {
+      console.warn('[cron] reprise des rédactions :', error instanceof Error ? error.message : error);
+      return null;
+    });
+
     const index = await indexDiscoveredStores(230_000).catch((error: unknown) => {
       console.warn('[cron] index du marché :', error instanceof Error ? error.message : error);
       return null;
@@ -182,7 +189,24 @@ cronRouter.get(
       console.warn('[cron] alertes :', error instanceof Error ? error.message : error);
       return null;
     });
-    res.json({ index, alertes });
+    res.json({ redactions, index, alertes });
+  }),
+);
+
+/**
+ * Tranche suivante d'une rédaction longue, demandée par le site lui-même à la fin de la
+ * précédente. C'est ce qui fait avancer un ebook écran éteint : la réponse part tout de suite,
+ * et la tranche s'écrit ensuite, dans le temps accordé à cette requête.
+ */
+cronRouter.post(
+  '/redaction',
+  asyncRoute(async (req, res) => {
+    if (!env.CRON_SECRET) throw new AppError(503, 'Le déclencheur périodique n’est pas configuré sur ce serveur.', 'CRON_NOT_CONFIGURED');
+    if (!secretIsValid(req)) throw new AppError(401, 'Déclencheur refusé.', 'CRON_DENIED');
+    const parsed = z.object({ jobId: z.string().uuid() }).safeParse(req.body);
+    if (!parsed.success) throw new AppError(400, 'Rédaction inconnue.', 'EBOOK_JOB_NOT_FOUND');
+    continueEbookInBackground(parsed.data.jobId);
+    res.status(202).json({ accepted: true });
   }),
 );
 

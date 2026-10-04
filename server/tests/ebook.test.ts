@@ -19,6 +19,8 @@ import { closeTestApp, createTestApp } from './support/helpers';
  *  - le texte rendu suit l'ordre du plan, chapitre par chapitre.
  */
 
+const SECRET = 'secret-du-planificateur-de-test';
+
 /** Consignes reçues par le faux service, pour vérifier le découpage réel. */
 const prompts: string[] = [];
 
@@ -69,7 +71,7 @@ let app: Express;
 
 before(async () => {
   await new Promise<void>((resolve) => fakeWriter.listen(0, '127.0.0.1', resolve));
-  app = await createTestApp({ GEMINI_API_URL: `http://127.0.0.1:${(fakeWriter.address() as AddressInfo).port}` });
+  app = await createTestApp({ GEMINI_API_URL: `http://127.0.0.1:${(fakeWriter.address() as AddressInfo).port}`, CRON_SECRET: SECRET });
 });
 
 after(async () => {
@@ -293,5 +295,136 @@ describe('Rédaction d’un ebook long', () => {
       );
     }
     assert.equal(start - (await balance(agent)), 4, 'facturé une seule fois, rien de rendu');
+  });
+
+  /*
+    Vu par un client le 04/10/2026, au téléphone : « La rédaction a été interrompue trop
+    longtemps. Relancez-la : vos points ont été rendus. » L'écran s'était éteint ; au retour,
+    l'ouvrage à moitié écrit était jeté. Une absence n'est pas une panne.
+  */
+  it('reprend où elle en était quand l’auteur revient après des heures, au lieu d’abandonner', async () => {
+    const { agent, userId } = await signInWithPlan(app, 'autrice-absente@exemple.com', 'pro');
+    const start = await balance(agent);
+    const { getDb } = await import('@server/db/client');
+    const { ebookJobs } = await import('@server/db/schema');
+    const { eq } = await import('drizzle-orm');
+
+    // Une rédaction commencée il y a trois heures, plan fait, une section écrite, puis plus rien.
+    const troisHeures = new Date(Date.now() - 3 * 3_600_000);
+    const sections = CHAPTERS.flatMap((chapter, rang) => chapter.sections.map((title) => ({ chapterIndex: rang + 1, chapterTitle: chapter.title, title })));
+    const [job] = await getDb()
+      .insert(ebookJobs)
+      .values({
+        userId,
+        kind: 'ebook',
+        productId: 'produit-absent',
+        title: REQUEST.title,
+        market: 'SN',
+        status: 'writing',
+        targetPages: 20,
+        request: REQUEST as unknown as Record<string, unknown>,
+        outline: {
+          kind: 'ebook',
+          title: REQUEST.title,
+          throughLine: 'Monter un poulailler propre en trente jours.',
+          chapters: CHAPTERS.map((chapter, rang) => ({ index: rang + 1, title: chapter.title, purpose: chapter.purpose })),
+          sections: sections.map((section, rang) => ({ ...section, index: rang + 1, angle: `Angle de ${section.title}`, beats: ['Un point'], targetWords: 400 })),
+          targetWords: 1_600,
+        } as unknown as Record<string, unknown>,
+        sections: [{ index: 1, content: 'Texte de Lire le terrain.', gist: 'Le terrain.', words: 4 }] as unknown as Record<string, unknown>[],
+        sectionsDone: 1,
+        sectionsTotal: 4,
+        wordsWritten: 4,
+        creditsCharged: 0,
+        createdAt: troisHeures,
+        updatedAt: troisHeures,
+        progressAt: troisHeures,
+      })
+      .returning();
+    prompts.length = 0;
+
+    const retour = (await agent.get(`/api/writing/ebook/${job!.id}`).expect(200)).body.job as { status: string; error: unknown };
+    assert.equal(retour.status, 'writing', 'trois heures d’absence ne font pas échouer la rédaction');
+    assert.equal(retour.error, null);
+
+    await waitForCompletion(agent, job!.id);
+    const ecrites = prompts.filter((prompt) => prompt.includes('Tu rédiges une section'));
+    assert.equal(ecrites.length, 3, 'seules les trois sections manquantes sont écrites');
+    assert.ok(!ecrites.some((prompt) => prompt.includes('— Lire le terrain\n')), 'la section déjà écrite n’est pas refaite');
+    const [fini] = await getDb().select().from(ebookJobs).where(eq(ebookJobs.id, job!.id));
+    assert.equal(fini!.refunded, false);
+    assert.equal(await balance(agent), start, 'aucun point rendu ni repris : la rédaction a simplement abouti');
+  });
+
+  it('renonce et rembourse seulement après une vingtaine de refus d’affilée du service de rédaction', async () => {
+    const { agent } = await signInWithPlan(app, 'autrice-panne@exemple.com', 'pro');
+    const start = await balance(agent);
+    const { getDb } = await import('@server/db/client');
+    const { ebookJobs } = await import('@server/db/schema');
+    const { eq } = await import('drizzle-orm');
+    saturation = 6;
+
+    const launch = await agent.post('/api/writing/ebook').send(REQUEST).expect(202);
+    const jobId = (launch.body as { job: { id: string } }).job.id;
+    type Job = { status: string; error: { code: string; message: string } | null; notice: unknown };
+    let job = launch.body.job as Job;
+    for (let attempt = 0; attempt < 150 && !job.notice; attempt += 1) {
+      await new Promise((resolve) => setTimeout(resolve, 100));
+      job = (await agent.get(`/api/writing/ebook/${jobId}`).expect(200)).body.job as Job;
+    }
+    const [enPause] = await getDb().select().from(ebookJobs).where(eq(ebookJobs.id, jobId));
+    assert.equal(enPause!.stalls, 1, 'un refus compté, la rédaction reste en cours');
+    assert.equal(job.status, 'writing');
+
+    // Dix-neuf refus de plus, sans une seule section enregistrée entre-temps : c'est une vraie panne.
+    await getDb().update(ebookJobs).set({ stalls: 20, leaseUntil: new Date(Date.now() - 1_000) }).where(eq(ebookJobs.id, jobId));
+    const abandon = (await agent.get(`/api/writing/ebook/${jobId}`).expect(200)).body.job as Job;
+    assert.equal(abandon.status, 'failed');
+    assert.equal(abandon.error?.code, 'EBOOK_STALLED');
+    assert.match(abandon.error?.message ?? '', /points ont été rendus/);
+    assert.doesNotMatch(abandon.error?.message ?? '', /interrompue|Relancez/, 'plus de reproche d’interruption');
+    assert.equal(await balance(agent), start, 'points rendus');
+    saturation = 0;
+  });
+
+  it('écrit la tranche suivante à la demande du site lui-même, sans aucun navigateur', async () => {
+    const request = (await import('supertest')).default;
+    const { userId } = await signInWithPlan(app, 'autrice-ecran-eteint@exemple.com', 'pro');
+    const { getDb } = await import('@server/db/client');
+    const { ebookJobs } = await import('@server/db/schema');
+    const { eq } = await import('drizzle-orm');
+
+    const [job] = await getDb()
+      .insert(ebookJobs)
+      .values({
+        userId,
+        kind: 'ebook',
+        productId: 'produit-ecran-eteint',
+        title: REQUEST.title,
+        market: 'SN',
+        status: 'queued',
+        targetPages: 20,
+        request: REQUEST as unknown as Record<string, unknown>,
+        creditsCharged: 0,
+        progressAt: new Date(),
+      })
+      .returning();
+
+    // Sans le secret du planificateur, personne ne peut faire tourner une rédaction.
+    await request(app).post('/api/cron/redaction').send({ jobId: job!.id }).expect(401);
+    await request(app).post('/api/cron/redaction').set('Authorization', 'Bearer mauvais-secret-de-seize-car').send({ jobId: job!.id }).expect(401);
+    await request(app).post('/api/cron/redaction').set('Authorization', `Bearer ${SECRET}`).send({ jobId: 'pas-un-identifiant' }).expect(400);
+
+    const accepte = await request(app).post('/api/cron/redaction').set('Authorization', `Bearer ${SECRET}`).send({ jobId: job!.id }).expect(202);
+    assert.equal(accepte.body.accepted, true, 'la réponse part tout de suite ; la tranche s’écrit ensuite');
+
+    // Aucun suivi d'écran : on ne lit que la base.
+    let etat = job!;
+    for (let attempt = 0; attempt < 100 && etat.status !== 'completed'; attempt += 1) {
+      await new Promise((resolve) => setTimeout(resolve, 100));
+      [etat] = (await getDb().select().from(ebookJobs).where(eq(ebookJobs.id, job!.id))) as [typeof etat];
+    }
+    assert.equal(etat.status, 'completed', 'la rédaction aboutit sans qu’aucun écran ne la suive');
+    assert.equal(etat.sectionsDone, 4);
   });
 });

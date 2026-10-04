@@ -562,6 +562,7 @@ const schema = z.object({
    * sinon n'importe qui pourrait déclencher des relevés chez des tiers et des dépenses de collecte.
    */
   CRON_SECRET: z.string().min(16).optional(),
+
 });
 
 const cleaned = cleanedEnv(process.env);
@@ -578,6 +579,8 @@ if (!parsed.success) {
 
 export const env = parsed.data;
 export const isProd = env.NODE_ENV === 'production';
+/** Hébergement sans serveur : rien ne tourne entre deux requêtes, un travail long se relance par une requête. */
+export const isServerless = Boolean(process.env.VERCEL);
 export const listenHost = env.HOST || (isProd ? '0.0.0.0' : '127.0.0.1');
 
 /** Vrai si la clé du fournisseur est présente. Aucune route ne doit la lire directement. */

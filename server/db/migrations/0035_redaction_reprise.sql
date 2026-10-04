@@ -1,0 +1,1 @@
+ALTER TABLE "ebook_jobs" ADD COLUMN "stalls" integer DEFAULT 0 NOT NULL;

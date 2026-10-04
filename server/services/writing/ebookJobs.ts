@@ -1,8 +1,8 @@
-import { and, eq, inArray, isNull, lt, or } from 'drizzle-orm';
+import { and, eq, inArray, isNull, lt, or, sql } from 'drizzle-orm';
 import { z } from 'zod';
 import { getDb } from '@server/db/client';
 import { ebookJobs } from '@server/db/schema';
-import { providers } from '@server/env';
+import { env, isServerless, providers } from '@server/env';
 import { AppError, countrySchema, providerUnavailable } from '@server/middleware';
 import type { RequestAuth } from '@server/middleware/auth';
 import { debitCredits, refundDebit } from '@server/services/accounts';
@@ -18,8 +18,13 @@ import { runInBackground } from '@server/shared/backgroundWork';
  *
  * Pourquoi des tranches : un ouvrage de deux cents pages demande des dizaines d'appels au
  * service de rédaction, bien au-delà du temps accordé à une seule requête. Chaque passage
- * écrit donc ce qu'il peut dans son budget, enregistre, et rend la main. Le suivi du
- * navigateur rappelle le travail, qui repart exactement où il s'était arrêté.
+ * écrit donc ce qu'il peut dans son budget, enregistre, et rend la main.
+ *
+ * LA RÉDACTION AVANCE SANS L'ÉCRAN. Chaque tranche lance elle-même la suivante. Elle dépendait
+ * du suivi du navigateur : un téléphone verrouillé, un onglet quitté, et plus rien n'avançait —
+ * au retour, vingt minutes plus tard, l'ouvrage à moitié écrit était jeté avec « La rédaction a
+ * été interrompue trop longtemps » (vu par un client le 04/10/2026). Désormais une absence n'est
+ * jamais une raison d'abandonner : au retour, la rédaction a continué, ou reprend où elle en était.
  *
  * Rien n'est jamais réécrit : les sections déjà rédigées sont gardées en base. Une coupure,
  * un redémarrage ou un changement d'instance ne coûte que la section en cours.
@@ -60,11 +65,22 @@ const TRANSIENT_PAUSE_MS = 45_000;
 /** Pannes qui se règlent en attendant : saturation, débit, délai, indisponibilité. */
 const TRANSIENT = /_(OVERLOADED|RATE_LIMITED|TIMEOUT|UNAVAILABLE)$/;
 
-/** Sans aucune section enregistrée pendant ce temps, la rédaction est abandonnée et remboursée. */
-const STALL_MS = 20 * 60_000;
+/**
+ * Tranches refusées d'affilée par le service de rédaction avant de renoncer et de rembourser :
+ * une vingtaine de minutes d'essais réels. Le temps écoulé, lui, ne fait jamais renoncer.
+ */
+const MAX_STALLS = 20;
 
-/** Au-delà, une rédaction restée « en cours » est abandonnée et remboursée. */
-const JOB_DEADLINE_MS = 90 * 60_000;
+/** Attente au plus, dans une tranche enchaînée, que la pause de la précédente se termine. */
+const PAUSE_WAIT_MS = 60_000;
+
+const stalledError = () =>
+  new AppError(503, 'La rédaction n’a pas pu avancer malgré plusieurs essais : vos points ont été rendus.', 'EBOOK_STALLED');
+
+/** Le service de rédaction refuse depuis trop d'essais : continuer ne ferait qu'occuper le compte. */
+const isStuck = (job: Pick<JobRow, 'stalls'>) => job.stalls >= MAX_STALLS;
+
+const sleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms).unref());
 
 type JobRow = typeof ebookJobs.$inferSelect;
 
@@ -184,11 +200,10 @@ async function claimSlice(jobId: string): Promise<boolean> {
  * Écrit ce qui tient dans le budget, puis rend la main. S'il reste des sections, le suivi
  * rappellera une tranche de plus.
  */
-async function runSlice(jobId: string): Promise<void> {
-  if (running.has(jobId)) return;
+async function runSlice(jobId: string, started = Date.now()): Promise<boolean> {
+  if (running.has(jobId)) return false;
   running.add(jobId);
   const db = getDb();
-  const started = Date.now();
   const until = started + SLICE_BUDGET_MS;
   const hardStop = started + SLICE_HARD_STOP_MS;
   let claimed = false;
@@ -196,9 +211,9 @@ async function runSlice(jobId: string): Promise<void> {
 
   try {
     claimed = await claimSlice(jobId);
-    if (!claimed) return;
+    if (!claimed) return false;
     const [job] = await db.select().from(ebookJobs).where(eq(ebookJobs.id, jobId)).limit(1);
-    if (!job || !ACTIVE.includes(job.status as EbookJobStatus)) return;
+    if (!job || !ACTIVE.includes(job.status as EbookJobStatus)) return true;
 
     const request = job.request as unknown as EbookRequest;
 
@@ -233,12 +248,13 @@ async function runSlice(jobId: string): Promise<void> {
           status: 'writing',
           errorCode: null,
           errorMessage: null,
+          stalls: 0,
           progressAt: new Date(),
           updatedAt: new Date(),
         })
         .where(and(eq(ebookJobs.id, jobId), inArray(ebookJobs.status, ACTIVE)))
         .returning();
-      if (!stillRunning) return;
+      if (!stillRunning) return true;
     }
 
     // ---- Rédaction : lot par lot, tant que le budget de la tranche le permet.
@@ -290,6 +306,7 @@ async function runSlice(jobId: string): Promise<void> {
             wordsWritten,
             errorCode: null,
             errorMessage: null,
+            stalls: 0,
             progressAt: new Date(),
             updatedAt: new Date(),
           })
@@ -298,7 +315,7 @@ async function runSlice(jobId: string): Promise<void> {
 
         // Plus rien à mettre à jour : l'utilisateur a renoncé pendant ce lot. Poursuivre
         // ferait payer au propriétaire des appels dont personne ne verra jamais le texte.
-        if (!saved) return;
+        if (!saved) return true;
       }
       if (failure) throw failure.reason;
     }
@@ -316,7 +333,7 @@ async function runSlice(jobId: string): Promise<void> {
         Refus passager : la rédaction marque une pause au lieu d'échouer. Les sections écrites
         restent acquises ; le suivi relance après la pause. Faire échouer ici jetait tout un
         ouvrage déjà à moitié rédigé pour une saturation de quelques secondes chez Google.
-        Le filet reste en place : sans section enregistrée pendant vingt minutes, on renonce.
+        Le filet reste en place : après une vingtaine de refus d'affilée, on renonce.
       */
       pausedUntil = new Date(Date.now() + TRANSIENT_PAUSE_MS);
       console.warn(`[ebook] ${jobId} en pause ${TRANSIENT_PAUSE_MS / 1000} s (${error.code})`);
@@ -324,6 +341,7 @@ async function runSlice(jobId: string): Promise<void> {
         .update(ebookJobs)
         .set({
           leaseUntil: pausedUntil,
+          stalls: sql`${ebookJobs.stalls} + 1`,
           errorCode: error.code,
           // Ton neutre : l'auteur n'a rien à faire, et « saturé » lui faisait croire à une panne (29/09/2026).
           errorMessage: 'Courte pause entre deux sections : la rédaction reprend d’elle-même dans un instant. Rien de ce qui est écrit n’est perdu.',
@@ -345,6 +363,64 @@ async function runSlice(jobId: string): Promise<void> {
         .catch((failure: unknown) => console.error('[ebook] réservation non libérée', failure));
     }
   }
+  return claimed;
+}
+
+/**
+ * Demande la tranche suivante sans attendre le navigateur.
+ *
+ * En hébergement sans serveur, une fonction ne survit pas à sa requête : la suite part par une
+ * requête au site lui-même, protégée par le secret du planificateur, qui répond tout de suite
+ * et travaille ensuite. Sur un serveur classique, le processus reste vivant : la suite part
+ * d'ici. Si la relance échoue, rien n'est perdu — le suivi de l'écran ou le retour de l'auteur
+ * reprendra la rédaction où elle en est.
+ */
+async function chainNext(jobId: string): Promise<void> {
+  // Les tests font avancer les tranches eux-mêmes, une à une, pour en observer chaque état.
+  if (env.NODE_ENV === 'test') return;
+  if (!isServerless) {
+    setTimeout(() => void continueEbook(jobId, { waitForPause: true }), 1_000).unref();
+    return;
+  }
+  if (!env.CRON_SECRET) return;
+  try {
+    const response = await fetch(`${env.APP_URL.replace(/\/+$/, '')}/api/cron/redaction`, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${env.CRON_SECRET}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ jobId }),
+      signal: AbortSignal.timeout(15_000),
+    });
+    if (!response.ok) console.warn(`[ebook] relance de ${jobId} refusée (${response.status})`);
+  } catch (error) {
+    console.warn(`[ebook] relance de ${jobId} non partie :`, error instanceof Error ? error.message : error);
+  }
+}
+
+/**
+ * Une tranche, puis la suivante tant qu'il reste des sections à écrire.
+ *
+ * `waitForPause` : la tranche précédente s'est mise en pause après un refus passager ; une
+ * tranche enchaînée attend la fin de cette pause au lieu de repartir bredouille. Le suivi de
+ * l'écran, lui, n'attend pas : il repassera.
+ */
+export async function continueEbook(jobId: string, options: { waitForPause?: boolean } = {}): Promise<void> {
+  const started = Date.now();
+  if (options.waitForPause) {
+    const [waiting] = await getDb().select({ leaseUntil: ebookJobs.leaseUntil }).from(ebookJobs).where(eq(ebookJobs.id, jobId)).limit(1);
+    const wait = (waiting?.leaseUntil?.getTime() ?? 0) - Date.now();
+    if (wait > 0 && wait <= PAUSE_WAIT_MS) await sleep(wait + 500);
+  }
+
+  // Une tranche que cette instance n'a pas obtenue est tenue par une autre, qui enchaînera elle-même.
+  if (!(await runSlice(jobId, started))) return;
+
+  const [job] = await getDb().select().from(ebookJobs).where(eq(ebookJobs.id, jobId)).limit(1);
+  if (!job || !ACTIVE.includes(job.status as EbookJobStatus)) return;
+  if (isStuck(job)) {
+    await failJob(job.id, stalledError());
+    return;
+  }
+  await chainNext(jobId);
 }
 
 /** Les trois sections suivantes encore à écrire : de quoi ne pas empiéter sur elles. */
@@ -416,15 +492,16 @@ export async function startEbook(auth: RequestAuth, request: EbookRequest): Prom
     throw error;
   }
 
-  runInBackground(() => runSlice(job!.id), `ebook ${job!.id}`);
+  runInBackground(() => continueEbook(job!.id), `ebook ${job!.id}`);
   return { job: viewOf(job!), created: true };
 }
 
 const jobIdSchema = z.string().uuid();
 
 /**
- * État d'une rédaction. C'est aussi ce suivi qui relance la tranche suivante : sans
- * processus de fond permanent, c'est le navigateur qui fait avancer le travail.
+ * État d'une rédaction. Le suivi relance aussi le travail s'il s'est arrêté en chemin (relance
+ * non partie, instance coupée) : un auteur qui revient après une heure retrouve sa rédaction
+ * terminée, ou la voit reprendre où elle en était — jamais abandonnée pour son absence.
  */
 export async function getEbookJob(auth: RequestAuth, jobId: string | undefined): Promise<EbookJobView> {
   const parsed = jobIdSchema.safeParse(jobId);
@@ -437,15 +514,12 @@ export async function getEbookJob(auth: RequestAuth, jobId: string | undefined):
   if (!job) throw new AppError(404, 'Rédaction introuvable sur votre compte.', 'EBOOK_JOB_NOT_FOUND');
 
   if (ACTIVE.includes(job.status as EbookJobStatus) && !running.has(job.id)) {
-    // Rédactions lancées avant la colonne : leur dernier enregistrement fait foi.
-    const lastProgress = (job.progressAt ?? job.updatedAt).getTime();
-    if (Date.now() - job.createdAt.getTime() > JOB_DEADLINE_MS || Date.now() - lastProgress > STALL_MS) {
-      await failJob(job.id, new AppError(504, 'La rédaction a été interrompue trop longtemps. Relancez-la : vos points ont été rendus.', 'EBOOK_INTERRUPTED'));
+    if (isStuck(job)) {
+      await failJob(job.id, stalledError());
       const [failed] = await getDb().select().from(ebookJobs).where(eq(ebookJobs.id, job.id)).limit(1);
       return viewOf(failed ?? job);
-    } else {
-      runInBackground(() => runSlice(job.id), `tranche d’ebook ${job.id}`);
     }
+    runInBackground(() => continueEbook(job.id), `tranche d’ebook ${job.id}`);
   }
   return viewOf(job);
 }
@@ -522,18 +596,21 @@ export async function getEbookResult(
   };
 }
 
-/** Au démarrage d'un serveur classique : reprend les rédactions laissées en plan. */
+/**
+ * Reprend les rédactions laissées en chemin : au démarrage d'un serveur classique, et au réveil
+ * quotidien en hébergement sans serveur. Une rédaction n'est jamais abandonnée pour son âge.
+ */
 export async function resumeEbookJobs(): Promise<number> {
-  const db = getDb();
-  const stale = await db
-    .select()
-    .from(ebookJobs)
-    .where(and(inArray(ebookJobs.status, ACTIVE), lt(ebookJobs.createdAt, new Date(Date.now() - JOB_DEADLINE_MS))));
-  for (const job of stale) {
-    await failJob(job.id, new AppError(504, 'La rédaction a été interrompue trop longtemps. Relancez-la : vos points ont été rendus.', 'EBOOK_INTERRUPTED'));
+  const active = await getDb().select().from(ebookJobs).where(inArray(ebookJobs.status, ACTIVE));
+  for (const job of active) {
+    if (isStuck(job)) await failJob(job.id, stalledError());
+    else if (isServerless) await chainNext(job.id);
+    else void continueEbook(job.id);
   }
-
-  const active = await db.select().from(ebookJobs).where(inArray(ebookJobs.status, ACTIVE));
-  for (const job of active) void runSlice(job.id);
   return active.length;
+}
+
+/** Tranche demandée par le site lui-même (enchaînement) : répond tout de suite, travaille ensuite. */
+export function continueEbookInBackground(jobId: string): void {
+  runInBackground(() => continueEbook(jobId, { waitForPause: true }), `tranche enchaînée d’ebook ${jobId}`);
 }
