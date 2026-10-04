@@ -53,18 +53,13 @@ export function ComplianceBlockDialog({ verdict, open, onOpenChange }: Complianc
             <AlertTitle>Vérification impossible</AlertTitle>
             <AlertDescription>
               <p>{verdict.unavailableReason}</p>
-              <p>
-                L’export reste bloqué tant que le contrôle n’a pas pu s’exécuter : autoriser un téléchargement sans verdict
-                reviendrait à n’avoir aucun contrôle.
-              </p>
             </AlertDescription>
           </Alert>
         ) : (
           <div className="space-y-4">
             <ComplianceFindingsList findings={verdict.findings} />
             <p className="border-t pt-3 text-xs text-muted-foreground">
-              Table de règles v{verdict.rulesVersion}. Corrigez les formulations signalées dans le rapport, puis relancez
-              l’export.
+              Corrigez les formulations signalées, puis relancez l’export.
             </p>
           </div>
         )}

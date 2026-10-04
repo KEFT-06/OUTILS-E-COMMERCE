@@ -110,8 +110,7 @@ export function StoryPreviewPanel({ story, onIllustrate, onRewrite, busy, coutIl
       <CardHeader>
         <CardTitle>Relisez avant d’illustrer</CardTitle>
         <CardDescription>
-          Le texte est écrit et vous appartient déjà. L’illustration de chaque page {coutIllustration === null ? 'se facture à part' : `coûte ${coutIllustration} points`} : c’est
-          l’étape à ne lancer qu’une fois l’histoire juste.
+          Corrigez le texte si besoin, puis lancez l’illustration{coutIllustration === null ? '' : ` (${coutIllustration} points)`}.
         </CardDescription>
       </CardHeader>
 

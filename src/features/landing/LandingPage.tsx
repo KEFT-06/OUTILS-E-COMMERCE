@@ -92,12 +92,12 @@ const FAQ = [
   {
     question: 'Smart Creator publie-t-il mes produits sur les marketplaces ?',
     answer:
-      'Non. L’API de Chariow permet de lire votre catalogue et vos ventes, pas de créer un produit. Vous publiez sur la marketplace à partir de l’export du studio, puis Smart Creator suit vos ventes.',
+      'Non. Vous publiez sur la marketplace à partir de l’export du studio, puis Smart Creator suit vos ventes.',
   },
   {
     question: 'Les analyses de marché sont-elles en temps réel ?',
     answer:
-      'Chaque analyse est lancée au moment où vous la demandez : une recherche web sur la niche et le marché, puis un rapport rédigé à partir de ces seules pages, citées une à une. Aucun rapport d’exemple n’est fabriqué.',
+      'Oui : chaque analyse est faite au moment où vous la demandez, à partir de pages web citées une à une.',
   },
   {
     question: 'Mes publicités seront-elles acceptées par Meta ou TikTok ?',
@@ -107,7 +107,7 @@ const FAQ = [
   {
     question: 'Où sont stockées mes données ?',
     answer:
-      'Votre compte, votre solde de points et vos paiements sont enregistrés sur nos serveurs, dans une base protégée : mot de passe haché, jamais stocké en clair, et clés API chiffrées. Vos rapports et vos brouillons de travail sont enregistrés sur votre compte, et vous pouvez en télécharger une copie ou tout supprimer depuis Mon compte. La politique de confidentialité détaille ce qui est transmis aux services tiers.',
+      'Sur votre compte, dans une base protégée. Vous pouvez en télécharger une copie ou tout supprimer depuis Mon compte.',
     link: { to: '/confidentialite', label: 'Politique de confidentialité' },
   },
   {

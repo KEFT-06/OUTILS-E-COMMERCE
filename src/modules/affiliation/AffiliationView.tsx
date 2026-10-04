@@ -154,9 +154,7 @@ export function AffiliationView() {
         <Info />
         <AlertTitle>Les commissions restent gérées par Chariow</AlertTitle>
         <AlertDescription>
-          Chariow calcule les commissions et publie le total gagné par chaque affilié. Le lien de parrainage d’un affilié
-          se récupère dans son espace Chariow : son format n’est pas documenté publiquement, Smart Creator ne le fabrique
-          donc pas. Les liens UTM le complètent pour la mesure.
+          Chaque affilié récupère son lien de parrainage dans son espace Chariow.
         </AlertDescription>
       </Alert>
 
@@ -253,10 +251,6 @@ export function AffiliationView() {
                   rows={2}
                   placeholder="Codes séparés par une virgule ou un retour à la ligne, ex. CREATOR123, PARTNER2025"
                 />
-                <FieldDescription>
-                  La source reçoit le code de l’affilié et le support la valeur « affiliate ». Les valeurs sont mises en
-                  minuscules, sans accents ni espaces : Google Analytics distingue « Facebook » de « facebook ».
-                </FieldDescription>
               </Field>
 
               {affiliateLinks.length > 0 && (

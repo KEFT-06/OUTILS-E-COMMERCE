@@ -3,7 +3,6 @@ import { Globe2 } from 'lucide-react';
 import { apiRequest } from '@/shared/lib/api';
 import { formatDateFr } from '@/shared/lib/formatDate';
 import { useMoney } from '@/shared/lib/money';
-import { Badge } from '@/shared/ui/badge';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/shared/ui/card';
 
 /**
@@ -107,26 +106,19 @@ export function MarketBenchmarkPanel({ niche }: { niche: string }) {
           <p className="text-sm text-muted-foreground">
             Ventes médianes :{' '}
             <strong className="text-foreground">{mesure.medianSales.toLocaleString('fr-FR')}</strong> — sur les{' '}
-            {mesure.salesKnownCount} produits qui publient leur compteur. Les autres le masquent.
+            {mesure.salesKnownCount} produits.
           </p>
         )}
 
         <div className="space-y-2">
-          <div className="flex flex-wrap items-center gap-2">
-            <Badge variant="outline">Compté, pas estimé</Badge>
-            <span className="text-xs text-muted-foreground">
-              Marché international, montant converti dans votre devise. Sert à savoir si un concept se vend et
-              combien d’offres existent déjà.
-            </span>
-          </div>
+          <p className="text-xs text-muted-foreground">Marché international, montants dans votre devise.</p>
           {/*
             L'avertissement le plus important de l'écran. Mesuré : prix médian 199,99 $ sur
             Gumroad contre 4 000 à 12 000 XAF chez les vendeurs africains. Sans cette phrase,
             un créateur fixerait son prix dix fois trop haut.
           */}
           <p className="text-xs text-amber-600 dark:text-amber-500">
-            Ne recopiez pas ce prix : il vient d’un marché en devise forte. Pour savoir à quel prix vendre chez vous,
-            fiez-vous aux boutiques que votre radar surveille.
+            Prix d’un marché international : pour fixer le vôtre, regardez la concurrence locale dans le Radar.
           </p>
         </div>
       </CardContent>

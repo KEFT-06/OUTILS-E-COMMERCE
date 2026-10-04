@@ -76,8 +76,7 @@ export function ProductExpertEditor({ product, hasDraft, writeFailed, onSave, on
     <div className="space-y-5 rounded-xl border border-primary/25 bg-accent/30 p-5">
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <p className="text-sm leading-relaxed text-muted-foreground">
-          Vos retouches sont enregistrées comme un brouillon, à côté de la version d’origine. Les exports utilisent la
-          version affichée.
+          Vos retouches sont enregistrées automatiquement.
         </p>
         <div className="flex shrink-0 flex-wrap gap-2">
           {hasDraft && (

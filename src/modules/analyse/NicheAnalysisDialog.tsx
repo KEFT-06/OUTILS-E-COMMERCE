@@ -62,8 +62,7 @@ export function NicheAnalysisDialog() {
         <DialogHeader>
           <DialogTitle>Analyser une niche</DialogTitle>
           <DialogDescription>
-            Smart Creator cherche des sources sur la niche, puis rédige un rapport : chaque fait de marché renvoie à ses
-            sources, et les recommandations sont signalées comme telles. Le coût en points s’affiche avant le lancement.
+            Une étude du marché, puis un rapport dont chaque fait cite sa source.
           </DialogDescription>
         </DialogHeader>
 

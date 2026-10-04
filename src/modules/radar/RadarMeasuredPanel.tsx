@@ -7,7 +7,6 @@ import { useCachedState } from '@/shared/lib/apiCache';
 import { formatRelativeFr } from '@/shared/lib/formatDate';
 import { useMoney } from '@/shared/lib/money';
 import type { RadarMeasurements } from '@/shared/types/radar';
-import { Badge } from '@/shared/ui/badge';
 import { Button } from '@/shared/ui/button';
 import { Card, CardAction, CardContent, CardDescription, CardHeader, CardTitle } from '@/shared/ui/card';
 
@@ -60,8 +59,7 @@ export function RadarMeasuredPanel() {
         <CardDescription>
           Compté sur {data.stores} boutique{data.stores > 1 ? 's' : ''} surveillée{data.stores > 1 ? 's' : ''} depuis{' '}
           {data.observedDays} jour{data.observedDays > 1 ? 's' : ''}
-          {data.lastSweptAt ? `, dernier relevé ${formatRelativeFr(data.lastSweptAt)}` : ''}. Ces chiffres ne sont pas
-          estimés : ils sont relevés.
+          {data.lastSweptAt ? ` · relevé ${formatRelativeFr(data.lastSweptAt)}` : ''}
         </CardDescription>
         <CardAction>
           <Button asChild variant="outline" size="sm">
@@ -107,13 +105,6 @@ export function RadarMeasuredPanel() {
           </p>
         )}
 
-        <div className="flex flex-wrap items-center gap-2">
-          <Badge variant="outline">Relevé, pas estimé</Badge>
-          <span className="text-xs text-muted-foreground">
-            Les ventes comptées sont celles réalisées depuis la mise sous surveillance. Ce que les boutiques avaient vendu
-            avant n’est pas compté : le radar ne l’a pas vu.
-          </span>
-        </div>
       </CardContent>
     </Card>
   );

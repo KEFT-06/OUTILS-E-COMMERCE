@@ -61,7 +61,7 @@ storybookRouter.post(
       briefText(brief),
       'Le brief contient des formulations non conformes : corrigez-les avant de lancer l’écriture.',
     );
-    if (!providers.gemini) throw providerUnavailable('rédaction par IA');
+    if (!providers.gemini) throw providerUnavailable('rédaction automatique');
 
     const { result } = await runBilledGeneration({
       auth: req.auth!,
@@ -102,7 +102,7 @@ storybookRouter.post(
       'Le brief contient des formulations non conformes : corrigez-les avant de lancer la génération.',
     );
 
-    if (!providers.gemini) throw providerUnavailable('rédaction par IA');
+    if (!providers.gemini) throw providerUnavailable('rédaction automatique');
     if (!providers.gamma) throw providerUnavailable('mise en page illustrée');
 
     /*

@@ -142,7 +142,7 @@ export function DigitalProductsView({ report, onSelectProductForAd, onAnalyzeNic
     toast.success('Produit supprimé');
   };
 
-  const videoReason = providers && !providers.text ? 'La rédaction par IA n’est pas configurée sur le serveur.' : undefined;
+  const videoReason = providers && !providers.text ? 'La rédaction automatique est momentanément indisponible.' : undefined;
 
   const createActions = (
     <>
@@ -451,7 +451,7 @@ export function DigitalProductsView({ report, onSelectProductForAd, onAnalyzeNic
                     <p className="font-medium">Fourchettes de prix indisponibles</p>
                     {pricingError && (
                       <p className="mt-1 text-xs text-muted-foreground">
-                        {pricingError} Le simulateur reste inactif : une échelle de prix inventée serait pire que rien.
+                        {pricingError}
                       </p>
                     )}
                   </div>
@@ -544,8 +544,7 @@ export function DigitalProductsView({ report, onSelectProductForAd, onAnalyzeNic
                 {estimatedProfit.toLocaleString('fr-FR')} {currency}
               </p>
               <p className="text-xs leading-relaxed text-foreground/80">
-                Ventes × (prix − coût d’acquisition). Les frais de marketplace, les taxes et les remboursements ne sont pas
-                déduits.
+                Avant frais de plateforme et taxes.
               </p>
             </div>
 

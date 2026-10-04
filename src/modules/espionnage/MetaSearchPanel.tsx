@@ -306,9 +306,6 @@ export function MetaSearchPanel() {
                 : quota.limit === 0
                   ? "Votre palier consulte les recherches déjà faites ; les nouvelles s’ouvrent à partir du palier Plus"
                   : `${Math.max(0, quota.limit - quota.used)} recherche${quota.limit - quota.used > 1 ? "s" : ""} nouvelle${quota.limit - quota.used > 1 ? "s" : ""} restante${quota.limit - quota.used > 1 ? "s" : ""} ce mois-ci`}
-              {
-                " · une recherche déjà faite depuis moins de 24 h s’affiche tout de suite et ne compte pas."
-              }
             </span>
           )}
         </div>
@@ -345,10 +342,9 @@ export function MetaSearchPanel() {
 
       {apercu && !apercu.configured && (
         <Alert>
-          <AlertTitle>Recherche pas encore activée</AlertTitle>
+          <AlertTitle>Recherche indisponible</AlertTitle>
           <AlertDescription>
-            La collecte publicitaire n’est pas configurée sur ce serveur :
-            l’administrateur doit la brancher.
+            La recherche de publicités est momentanément indisponible.
           </AlertDescription>
         </Alert>
       )}

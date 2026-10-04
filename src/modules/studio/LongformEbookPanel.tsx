@@ -177,10 +177,6 @@ export function LongformEbookPanel({ product, market, onWritten }: LongformEbook
         <BookOpen className="mt-0.5 size-5 shrink-0 text-muted-foreground" aria-hidden />
         <div className="space-y-1">
           <h3 className="font-medium">Rédiger l’ebook complet</h3>
-          <p className="text-sm text-muted-foreground">
-            Un plan détaillé est bâti d’abord, puis chaque section est rédigée séparément. C’est ce qui permet d’aller
-            bien au-delà de quelques pages sans que le texte se répète.
-          </p>
         </div>
       </div>
 
@@ -200,7 +196,7 @@ export function LongformEbookPanel({ product, market, onWritten }: LongformEbook
                 </>
               )}
               <br />
-              {job.notice ? job.notice.message : 'Vous pouvez quitter cet écran : la rédaction continue sur le serveur.'}
+              {job.notice ? job.notice.message : 'Vous pouvez quitter cet écran : la rédaction continue.'}
             </AlertDescription>
           </Alert>
           <Progress value={progress} aria-label="Avancement de la rédaction" />

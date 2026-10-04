@@ -382,8 +382,7 @@ function CreditsCard({ account }: { account: Account }) {
         <p className="text-sm text-muted-foreground">
           {credits.unlimited
             ? 'Votre palier ne décompte aucun point.'
-            : `Quota rechargé le ${formatDateFr(credits.cycleEndsAt)} ; les points bonus n’expirent pas.`}{' '}
-          Le coût de chaque action s’affiche avant validation, et une génération qui échoue vous rend ses points.
+            : `Quota rechargé le ${formatDateFr(credits.cycleEndsAt)} ; les points bonus n’expirent pas.`}
         </p>
         <Separator />
         <p className="text-center text-xs text-muted-foreground">
@@ -506,13 +505,11 @@ function PlansCard({ account }: { account: Account }) {
           <h2>Paliers d’abonnement</h2>
         </CardTitle>
         <CardDescription>
-          Prix en {catalog?.currency ?? account.currency}, selon votre pays. Chaque forfait fixe vos points, vos niches
-          enregistrées et vos méthodes publicitaires.
-          {online && ' Paiement sécurisé par carte bancaire sur la page de Stripe : Smart Creator ne voit jamais votre carte.'}
+          Prix en {catalog?.currency ?? account.currency}.{online && ' Paiement sécurisé par carte bancaire.'}
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-4">
-        {providers?.paymentMode === 'test' && (
+        {providers?.paymentMode === 'test' && account.isStaff && (
           <Alert variant="info">
             <FlaskConical />
             <AlertTitle>Paiement en mode test</AlertTitle>
@@ -1346,7 +1343,7 @@ function StoreConnection({ provider, state }: { provider: 'shopify' | 'woocommer
               </Field>
             );
           })}
-          <FieldDescription>{form.help} Vérifiées auprès du service, chiffrées, puis jamais réaffichées, même à vous.</FieldDescription>
+          <FieldDescription>{form.help}</FieldDescription>
           <div className="flex flex-wrap gap-2">
             <Button type="submit" disabled={busy || !complete}>
               {busy && <Spinner />}
@@ -1465,8 +1462,7 @@ function ConnectionsCard({ account }: { account: Account }) {
                   placeholder="sk_…"
                 />
                 <FieldDescription>
-                  À créer dans app.chariow.com → Paramètres → Clés API. Elle est vérifiée auprès de Chariow, chiffrée puis stockée : elle
-                  ne sera plus jamais affichée, même à vous.
+                  À créer dans app.chariow.com → Paramètres → Clés API.
                 </FieldDescription>
               </Field>
               <div className="flex flex-wrap gap-2">
@@ -1671,8 +1667,7 @@ function PersonalDataCard({ account }: { account: Account }) {
           <div className="space-y-1">
             <p className="font-medium">Télécharger mes données</p>
             <p className="text-sm text-muted-foreground">
-              Profil, connexions, points, contenus et paiements, dans un fichier JSON. Mot de passe, codes et clés API n’y
-              figurent pas.
+              Profil, points, contenus et paiements, dans un fichier.
             </p>
           </div>
           <Button variant="outline" className="shrink-0" onClick={() => void download()} disabled={downloading}>
@@ -1768,7 +1763,7 @@ export function AccountView({ onSelectSavedNiche }: AccountViewProps) {
         <Alert variant="warning">
           <TriangleAlert />
           <AlertTitle>Choisissez votre pays</AlertTitle>
-          <AlertDescription>Il fixe la devise de tous vos montants. En attendant, ils suivent le pays deviné d’après votre fuseau horaire.</AlertDescription>
+          <AlertDescription>Il fixe la devise de tous vos montants.</AlertDescription>
         </Alert>
       )}
       <ProfileCard account={account} />

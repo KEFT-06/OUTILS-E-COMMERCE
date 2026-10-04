@@ -79,8 +79,8 @@ export function VideoToProductDialog({
           <DialogHeader>
             <DialogTitle>Créer un produit depuis une vidéo</DialogTitle>
             <DialogDescription>
-              L’IA regarde votre vidéo et en tire un produit structuré : promesse, public, modules et aimant à prospects.
-              Elle n’ajoute ni chiffre ni promesse que la vidéo ne contient pas. Utilisez une vidéo dont vous avez les droits.
+              Votre vidéo devient un produit structuré : promesse, public, modules et aimant à prospects. Utilisez une vidéo
+              dont vous avez les droits.
             </DialogDescription>
           </DialogHeader>
 

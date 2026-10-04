@@ -124,8 +124,7 @@ export function PerformanceBenchmarkPanel() {
           Où vous vous situez
         </CardTitle>
         <CardDescription>
-          Niche « {data.group.niche} ». Vos chiffres, rapportés à ceux des autres vendeurs de la même niche — la seule
-          comparaison qu’aucune page publique ne peut vous donner.
+          Vos chiffres comparés à ceux des autres vendeurs de la niche « {data.group.niche} ».
         </CardDescription>
       </CardHeader>
 
@@ -133,13 +132,8 @@ export function PerformanceBenchmarkPanel() {
         {!data.optedIn ? (
           <>
             <p className="text-sm leading-relaxed">
-              Le repère se calcule entre vendeurs consentants. Vous versez trois chiffres — ventes du mois, nombre de
-              produits, ventes par produit — et vous recevez la médiane de votre niche. Aucun nom de produit, aucun
-              client, aucune commande ne quitte votre compte.
-            </p>
-            <p className="text-sm text-muted-foreground">
-              Rien n’est publié en dessous de {data.minSellers} vendeurs : dans une niche étroite, une médiane calculée
-              sur deux vendeurs les désignerait. Vous pouvez vous retirer à tout moment — vos relevés sont alors effacés.
+              Partagez trois chiffres (ventes du mois, nombre de produits, ventes par produit) et recevez la médiane de votre
+              niche. Aucun nom de produit ni de client n’est partagé, et vous pouvez vous retirer à tout moment.
             </p>
             <Button onClick={() => void basculer(true)} disabled={busy}>
               {busy ? <Spinner /> : <Users />}
@@ -161,9 +155,7 @@ export function PerformanceBenchmarkPanel() {
               </div>
             ) : (
               <p className="text-sm text-muted-foreground">
-                Vos chiffres seront relevés au prochain passage, cette nuit. Ils viennent de votre boutique Chariow :
-                sans clé branchée dans <span className="font-medium">Mon compte → Connexions</span>, il n’y a rien à
-                relever.
+                Reliez votre boutique dans <span className="font-medium">Mon compte → Connexions</span> pour voir vos chiffres ici.
               </p>
             )}
 
@@ -182,18 +174,11 @@ export function PerformanceBenchmarkPanel() {
                   </Badge>
                 </div>
                 <Progress value={(data.sellers / data.minSellers) * 100} aria-label="Vendeurs réunis dans votre niche" />
-                <p className="text-xs text-muted-foreground">
-                  Vos relevés s’accumulent dès maintenant : le jour où le groupe est complet, le repère aura déjà de la
-                  profondeur au lieu de partir de zéro.
-                </p>
               </div>
             )}
 
             {publie && (
-              <p className="text-sm text-muted-foreground">
-                Médiane calculée sur {data.sellers} vendeurs de votre niche, sur les 90 derniers jours. Un vendeur compte
-                pour un, quel que soit son nombre de relevés : un gros vendeur ne déplace pas le repère.
-              </p>
+              <p className="text-sm text-muted-foreground">Médiane de {data.sellers} vendeurs de votre niche, sur 90 jours.</p>
             )}
 
             <Button variant="ghost" size="sm" onClick={() => void basculer(false)} disabled={busy}>

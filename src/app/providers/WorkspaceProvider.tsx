@@ -291,7 +291,7 @@ export const WorkspaceProvider: React.FC<{ children: React.ReactNode }> = ({ chi
           // Coupure passagère : l'analyse continue sur le serveur, le suivi réessaie.
           failures += 1;
           if (failures === 5) {
-            toast.loading('Analyse en cours', { id: toastId, description: 'Connexion instable : le suivi réessaie, l’analyse continue sur le serveur.' });
+            toast.loading('Analyse en cours', { id: toastId, description: 'Connexion instable : l’analyse continue.' });
           }
         });
       // En attente, la sonde ralentit : c'est elle qui relance, mais le rendez-vous est loin.

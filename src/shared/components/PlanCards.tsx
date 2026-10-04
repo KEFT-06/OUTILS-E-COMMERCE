@@ -154,7 +154,6 @@ export function PlanCards({
   renderAction?: (plan: PlanDefinition, isCurrent: boolean) => ReactNode;
   className?: string;
 }) {
-  const converted = catalog?.plans.some((plan) => plan.price?.converted) ?? false;
 
   return (
     <div className={cn('space-y-4', className)}>
@@ -174,13 +173,6 @@ export function PlanCards({
               </li>
             ))}
       </ul>
-      {catalog && (
-        <p className="text-xs leading-relaxed text-muted-foreground">
-          {catalog.pricing.status ? `${catalog.pricing.status} ` : ''}
-          {converted &&
-            `Montants en ${catalog.currency} convertis au taux du ${new Date(catalog.pricing.ratesUpdatedAt).toLocaleDateString('fr-FR')} (ExchangeRate-API), arrondis.`}
-        </p>
-      )}
     </div>
   );
 }

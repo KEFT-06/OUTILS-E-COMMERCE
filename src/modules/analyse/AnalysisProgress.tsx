@@ -18,9 +18,9 @@ import { Spinner } from '@/shared/ui/spinner';
  */
 
 const STEPS = [
-  { title: 'Étude de marché sur le web', detail: 'Les pages publiées sur la niche sont cherchées et lues : comptez 1 à 3 minutes.' },
-  { title: 'Rédaction du rapport', detail: 'Le rapport est rédigé à partir des seules sources citées par l’étude.' },
-  { title: 'Vérification et enregistrement', detail: 'Tout fait sans source existante est écarté avant l’enregistrement.' },
+  { title: 'Étude de marché sur le web', detail: '1 à 3 minutes.' },
+  { title: 'Rédaction du rapport', detail: 'À partir des sources de l’étude.' },
+  { title: 'Vérification et enregistrement', detail: 'Chaque fait est contrôlé.' },
 ] as const;
 
 function activeStep(job: AnalysisJob): number {
@@ -64,8 +64,8 @@ export function AnalysisProgress() {
           {analysisJob.market && <Badge variant="outline">{countryName(analysisJob.market)}</Badge>}
         </div>
         <CardDescription className="tabular-nums">
-          Lancée il y a {elapsedLabel(analysisJob.createdAt, now)}. Vous pouvez quitter cette page : l’analyse continue sur le serveur et le
-          rapport s’ouvrira dès qu’il sera prêt.
+          Lancée il y a {elapsedLabel(analysisJob.createdAt, now)}. Vous pouvez quitter cette page : le rapport s’ouvrira dès qu’il
+          sera prêt.
         </CardDescription>
       </CardHeader>
       <CardContent>

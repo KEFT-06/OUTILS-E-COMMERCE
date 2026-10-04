@@ -183,8 +183,7 @@ export function WrittenReportPanel({ reportId, nicheName }: WrittenReportPanelPr
           Rédiger le rapport
         </CardTitle>
         <CardDescription>
-          Le rapport complet de cette analyse, à la longueur de votre choix : un plan adapté à la niche, sans les taux de la
-          fiche, et en annexe la bibliographie des sites consultés.
+          Le rapport complet de cette analyse, à la longueur de votre choix, avec ses sources en annexe.
         </CardDescription>
       </CardHeader>
 

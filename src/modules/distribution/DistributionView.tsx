@@ -75,8 +75,7 @@ export function DistributionView() {
         <Info />
         <AlertTitle>La publication d’un produit se fait sur la marketplace</AlertTitle>
         <AlertDescription>
-          L’API de Chariow permet de lire le catalogue et les ventes, pas de créer un produit. Créez-le sur Chariow à
-          partir de votre export du Studio : Smart Creator en suivra ensuite les ventes.
+          Créez votre produit sur Chariow à partir de l’export du Studio : ses ventes seront suivies ici.
         </AlertDescription>
       </Alert>
 

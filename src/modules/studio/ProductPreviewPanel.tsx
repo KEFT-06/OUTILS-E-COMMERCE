@@ -209,8 +209,7 @@ export function ProductPreviewPanel({ product, market, onSave, onFindings }: Pro
       <CardHeader>
         <CardTitle>Aperçu du produit</CardTitle>
         <CardDescription>
-          Le document tel qu’il sera exporté. Corrigez à la main, ou demandez une retouche à l’IA : rien n’est
-          enregistré tant que vous ne validez pas.
+          Le document tel qu’il sera exporté. Corrigez à la main, ou demandez une retouche.
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-6">
@@ -229,7 +228,7 @@ export function ProductPreviewPanel({ product, market, onSave, onFindings }: Pro
 
           {brouillon.length === 0 ? (
             <p className="py-6 text-center text-sm text-muted-foreground">
-              Ce produit n’a pas encore de plan. Lancez le mode Génératif : l’IA compose la structure et la rédige.
+              Ce produit n’a pas encore de plan. Lancez le mode Génératif pour le composer et le rédiger.
             </p>
           ) : (
             brouillon.map((module, index) => (

@@ -360,7 +360,7 @@ function upcomingOf(outline: Outline, current: OutlineSection, done: Set<number>
 /* -------------------------------------------------------------------------- */
 
 export async function startEbook(auth: RequestAuth, request: EbookRequest): Promise<{ job: EbookJobView; created: boolean }> {
-  if (!providers.gemini) throw providerUnavailable('rédaction par IA');
+  if (!providers.gemini) throw providerUnavailable('rédaction automatique');
   // Un service déjà relevé en panne : on refuse maintenant, avant tout débit, plutôt que
   // de laisser l'auteur attendre une rédaction qui échouera.
   ensureReady(['writing', 'database']);

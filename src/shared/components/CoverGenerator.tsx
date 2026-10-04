@@ -195,9 +195,6 @@ export function CoverGenerator({
             </Button>
           )}
         </div>
-        <p className="text-xs leading-relaxed text-muted-foreground">
-          Image sans texte : le titre est posé par la mise en page, dans la langue de chaque export. Elle reste sur votre compte.
-        </p>
         {error && (
           <Alert variant="danger">
             <AlertDescription>{error}</AlertDescription>

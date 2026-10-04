@@ -160,7 +160,7 @@ const productResponseSchema = z.object({
 });
 
 export async function writeProduct(auth: RequestAuth, request: ProductWritingRequest) {
-  if (!providers.gemini) throw providerUnavailable('rédaction par IA');
+  if (!providers.gemini) throw providerUnavailable('rédaction automatique');
 
   const { result } = await runBilledGeneration({
     auth,
@@ -344,7 +344,7 @@ const launchKitResponseSchema = z.object({
 });
 
 export async function writeLaunchKit(auth: RequestAuth, request: LaunchKitWritingRequest) {
-  if (!providers.gemini) throw providerUnavailable('rédaction par IA');
+  if (!providers.gemini) throw providerUnavailable('rédaction automatique');
 
   let config: LaunchKitConfig;
   try {
@@ -478,7 +478,7 @@ const REVISION_RESPONSE_SCHEMA = {
 };
 
 export async function reviseProduct(auth: RequestAuth, request: ProductRevisionRequest) {
-  if (!providers.gemini) throw providerUnavailable('rédaction par IA');
+  if (!providers.gemini) throw providerUnavailable('rédaction automatique');
 
   const { result } = await runBilledGeneration({
     auth,

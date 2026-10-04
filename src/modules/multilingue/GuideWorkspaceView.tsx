@@ -319,8 +319,7 @@ export function GuideWorkspaceView() {
         <Alert variant="warning">
           <AlertTitle>Traduction indisponible pour l’instant</AlertTitle>
           <AlertDescription>
-            Le service de traduction n’est pas encore configuré sur le serveur. Vous pouvez écrire le guide et préparer sa couverture ; la
-            traduction s’ouvrira dès sa mise en service.
+            Vous pouvez déjà écrire le guide et préparer sa couverture.
           </AlertDescription>
         </Alert>
       )}

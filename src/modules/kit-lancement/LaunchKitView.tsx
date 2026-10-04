@@ -268,8 +268,7 @@ export function LaunchKitView({ products, market }: { products: DigitalProductId
         <Alert variant="info">
           <Info />
           <AlertDescription>
-            La rédaction automatique n’est pas encore disponible : le kit vous guide et contrôle vos textes, sans les
-            écrire. Le pré-remplissage reprend uniquement les données de votre produit.
+            La rédaction automatique est momentanément indisponible : vous pouvez écrire vos textes ici.
           </AlertDescription>
         </Alert>
       )}
@@ -281,8 +280,7 @@ export function LaunchKitView({ products, market }: { products: DigitalProductId
           <DialogHeader>
             <DialogTitle>Remplacer vos textes ?</DialogTitle>
             <DialogDescription>
-              Les variantes et les scripts rédigés automatiquement remplacent ceux que vous avez déjà saisis pour ce produit. Les
-              boutons choisis par marché sont gardés.
+              Les nouveaux textes remplacent ceux que vous avez saisis pour ce produit.
             </DialogDescription>
           </DialogHeader>
           <DialogFooter className="gap-2 sm:gap-2">
@@ -618,15 +616,10 @@ export function LaunchKitView({ products, market }: { products: DigitalProductId
             <Alert variant="warning">
               <AlertTriangle />
               <AlertDescription>
-                Le kit n’a pas pu être enregistré sur votre compte (connexion interrompue ?). Réessayez dans un instant ; en
-                cas de doute, exportez-le avant de fermer l’onglet.
+                Le kit n’a pas pu être enregistré. Exportez-le avant de fermer cette page.
               </AlertDescription>
             </Alert>
           )}
-          <p className="text-xs leading-relaxed text-muted-foreground">
-            Tous les textes et scripts passent le vérificateur de conformité avant le téléchargement. Vos saisies sont
-            enregistrées sur votre compte.
-          </p>
         </CardContent>
       </Card>
 

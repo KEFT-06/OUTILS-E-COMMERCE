@@ -16,7 +16,7 @@ import { roundPrice } from '@server/shared/currency';
 
 export const FEATURES = {
   niche_analysis: 'Analyse stratégique',
-  ai_writing: 'Rédaction par IA',
+  ai_writing: 'Rédaction automatique',
   image_generation: 'Visuels publicitaires',
   video_generation: 'Vidéos publicitaires',
   storybook_generation: 'Storybook illustré',

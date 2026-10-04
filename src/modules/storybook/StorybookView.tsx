@@ -242,17 +242,8 @@ export function StorybookView() {
       <PageHeader
         eyebrow="Créer"
         title="Storybook illustré"
-        description="Des contes illustrés ancrés dans le pays de vos lecteurs : le texte est rédigé, mis en page et illustré page par page, vous téléchargez le PDF."
+        description="Des contes illustrés ancrés dans le pays de vos lecteurs, à télécharger en PDF."
       />
-
-      <Alert variant="warning">
-        <AlertTriangle />
-        <AlertTitle>Cohérence du personnage non garantie</AlertTitle>
-        <AlertDescription>
-          La mise en page ne permet pas de fixer l’apparence d’un personnage d’une illustration à l’autre : Smart Creator transmet la même
-          fiche du personnage pour chaque page, sans pouvoir l’imposer. Vérifiez chaque page avant de publier.
-        </AlertDescription>
-      </Alert>
 
       <Card>
         <CardHeader>
@@ -355,10 +346,6 @@ export function StorybookView() {
                   maxLength={1000}
                   placeholder="prénoms, lieux, plats, fêtes, proverbes que vous connaissez et souhaitez voir figurer"
                 />
-                <FieldDescription>
-                  La rédaction n’utilise comme références culturelles précises que ces éléments, et
-                  d’éviter caricatures et stéréotypes. Rien n’est inventé à votre place.
-                </FieldDescription>
               </Field>
 
               <Field className="sm:col-span-2">
@@ -374,10 +361,7 @@ export function StorybookView() {
             </div>
 
             <div className="flex flex-col gap-3 border-t pt-4 sm:flex-row sm:items-center sm:justify-between">
-              <p className="text-xs leading-relaxed text-muted-foreground">
-                Le brief passe le vérificateur de conformité avant l’envoi. L’écriture se paie seule : vous lisez
-                l’histoire, vous la corrigez, et vous ne payez l’illustration que si elle vous convient.
-              </p>
+              <p className="text-xs leading-relaxed text-muted-foreground">Vous relisez l’histoire avant de lancer son illustration.</p>
               <Button type="submit" disabled={!canSubmit || isWriting} className="shrink-0">
                 {isWriting ? <Spinner /> : <Sparkles />}
                 {isWriting ? 'Écriture en cours…' : 'Écrire le conte'}

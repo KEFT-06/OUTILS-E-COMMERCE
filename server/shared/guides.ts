@@ -31,7 +31,7 @@ export type ReviewLevel = 'A' | 'B' | 'C';
 export const REVIEW_LEVELS: Record<ReviewLevel, { name: string; short: string; description: string; exportNotice: string }> = {
   C: {
     name: 'Niveau C',
-    short: 'Traduit par IA, contrôlé',
+    short: 'Traduction automatique, contrôlée',
     description:
       'Traduction automatique, puis contrôles automatiques : aucune section oubliée, chiffres, prix, liens et noms de marque conservés.',
     exportNotice: 'Traduction automatique contrôlée, pas encore relue par un humain.',

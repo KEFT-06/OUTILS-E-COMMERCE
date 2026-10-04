@@ -441,10 +441,6 @@ export function ProductPageBuilderView({ products }: { products: DigitalProductI
                 </Alert>
               )}
 
-              <p className="text-xs leading-relaxed text-muted-foreground">
-                Chaque export passe la conformité sur les deux variantes et inclut la mention légale. Le fichier ne contient
-                aucun script ; ses images sont chargées depuis vos liens https.
-              </p>
             </CardContent>
           </Card>
         </div>

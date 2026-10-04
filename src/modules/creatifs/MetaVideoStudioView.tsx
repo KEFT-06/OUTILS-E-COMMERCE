@@ -160,10 +160,6 @@ export function MetaVideoStudioView({ campaigns, provenance }: MetaVideoStudioVi
           <h2 id="scripts-video-title" className="font-display text-xl font-extrabold tracking-tight sm:text-2xl">
             Scripts vidéo
           </h2>
-          <p className="max-w-2xl text-sm text-muted-foreground">
-            Storyboards construits sur les méthodes AIDA (attention, intérêt, désir, action) et PAS (problème, agitation,
-            solution).
-          </p>
           <ChartProvenance provenance={provenance} className="mt-1" />
         </div>
         <div className="inline-flex shrink-0 self-start rounded-lg border bg-muted/50 p-1" role="group" aria-label="Méthode">
@@ -431,9 +427,6 @@ export function MetaVideoStudioView({ campaigns, provenance }: MetaVideoStudioVi
                   <ShieldCheck className="size-4 text-brand-green-text" aria-hidden="true" />
                   Points de conformité du script
                 </CardTitle>
-                <CardDescription>
-                  Vérifiés dans le texte du script. La validation finale appartient à la modération de Meta.
-                </CardDescription>
               </CardHeader>
               <CardContent>
                 <ul className="space-y-2">

@@ -73,7 +73,7 @@ export function ProductStudioPanel({ baseProduct, report, initialExpertOpen = fa
   const [writtenPages, setWrittenPages] = useState<number | null>(null);
 
   const textReady = providers?.text ?? false;
-  const generativeReason = providers && !textReady ? 'La rédaction par IA n’est pas configurée sur le serveur.' : null;
+  const generativeReason = providers && !textReady ? 'La rédaction automatique est momentanément indisponible.' : null;
 
   const handleExport = async (format: ProductExportFormat) => {
     setExporting(format);
@@ -183,11 +183,11 @@ export function ProductStudioPanel({ baseProduct, report, initialExpertOpen = fa
             <ul className="space-y-0.5 text-xs leading-relaxed text-muted-foreground">
               <li>
                 <span className="font-medium text-foreground/80">Génératif</span> :{' '}
-                {generativeReason ?? 'l’IA rédige chaque module à partir du titre, de la promesse et du sommaire, en brouillon à relire.'}
+                {generativeReason ?? 'chaque module est rédigé à partir du titre, de la promesse et du sommaire.'}
               </li>
               <li>
-                <span className="font-medium text-foreground/80">Aperçu</span> : le document tel qu’il sera exporté, corrigeable à la
-                main ou par une consigne à l’IA.
+                <span className="font-medium text-foreground/80">Aperçu</span> : le document tel qu’il sera exporté, à corriger à la main
+                ou par une consigne.
               </li>
               <li>
                 <span className="font-medium text-foreground/80">Vidéo → Produit</span> : bouton « Depuis une vidéo », en haut du
@@ -208,11 +208,6 @@ export function ProductStudioPanel({ baseProduct, report, initialExpertOpen = fa
             </Button>
           </div>
         </div>
-
-        <p className="text-xs leading-relaxed text-muted-foreground">
-          Chaque export passe la conformité publicitaire et le contrôle d’originalité, avec un sommaire cliquable et la
-          liste des sources. Une couverture générée ouvre le document.
-        </p>
 
         <WritingFindings findings={findings} />
 
@@ -307,23 +302,17 @@ export function ProductStudioPanel({ baseProduct, report, initialExpertOpen = fa
                 */}
                 {product.tableOfContents.length === 0 ? (
                   <>
-                    « {product.title} » n’a pas encore de plan. L’IA en compose un de 5 à 8 modules à partir du titre et
-                    de la promesse, puis rédige chaque module. Le tout arrive dans votre brouillon, que vous relisez et
-                    modifiez avant l’export.
+                    Le plan de « {product.title} » (5 à 8 modules) est composé puis rédigé. Vous relisez et modifiez tout
+                    avant l’export.
                   </>
                 ) : (
                   <>
-                    L’IA rédige les {product.tableOfContents.length} modules de « {product.title} » à partir du titre, de
-                    la promesse et de vos notes. Le texte actuel des modules est remplacé dans votre brouillon ; la
-                    version d’origine reste disponible.
+                    Les {product.tableOfContents.length} modules de « {product.title} » sont rédigés à partir du titre, de la
+                    promesse et de vos notes. Le texte actuel des modules est remplacé.
                   </>
                 )}
               </DialogDescription>
             </DialogHeader>
-            <p className="text-sm text-muted-foreground">
-              Aucun chiffre, témoignage ou promesse de gain n’est demandé à l’IA ; les données locales à ajouter sont
-              marquées « [à compléter] ». Le coût en points s’affiche à l’étape suivante.
-            </p>
             <DialogFooter className="gap-2 sm:gap-2">
               <DialogClose asChild>
                 <Button variant="outline">Annuler</Button>

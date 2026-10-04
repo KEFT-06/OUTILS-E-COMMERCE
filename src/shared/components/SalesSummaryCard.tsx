@@ -140,8 +140,7 @@ export function SalesSummaryCard() {
               }}
             />
             <p className="text-xs leading-relaxed text-muted-foreground">
-              Du {formatDateFr(summary.from)} au {formatDateFr(summary.to)} · ventes payées (statuts « completed » et
-              « settled »). Une ligne par devise : des devises différentes ne s’additionnent pas.
+              Du {formatDateFr(summary.from)} au {formatDateFr(summary.to)} · ventes payées
             </p>
           </div>
         ))

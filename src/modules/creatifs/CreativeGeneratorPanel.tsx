@@ -56,7 +56,7 @@ const ATTESTATIONS = [
 ];
 
 const PROGRESS_LABELS: Partial<Record<CreativeStatus['status'], string>> = {
-  queued: 'En file d’attente chez le fournisseur…',
+  queued: 'En file d’attente…',
   in_progress: 'Génération en cours…',
 };
 
@@ -188,7 +188,7 @@ export function CreativeGeneratorPanel({ onVisualCreated }: { onVisualCreated?: 
       }
       if (Date.now() > deadline) {
         throw new ApiError(
-          "La génération dépasse le délai d'attente : suivi abandonné sur cet écran. Si elle échoue chez le fournisseur, vos points vous seront rendus automatiquement.",
+          "La génération prend plus de temps que prévu : retrouvez-la dans vos créations. Si elle échoue, vos points vous seront rendus.",
         );
       }
       await wait(POLL_INTERVAL_MS);
@@ -551,8 +551,7 @@ export function CreativeGeneratorPanel({ onVisualCreated }: { onVisualCreated?: 
 
           <div className="flex flex-col gap-3 border-t pt-4 sm:flex-row sm:items-center sm:justify-between">
             <p className="text-xs leading-relaxed text-muted-foreground">
-              Le brief passe le vérificateur de conformité avant l’envoi. Le coût en points s’affiche avant validation ;
-              restez sur cet écran pendant la génération.
+              Restez sur cet écran pendant la génération.
               {!awarenessLevel && (
                 <span className="mt-1 block text-warning">Choisissez le niveau de conscience du prospect pour continuer.</span>
               )}
@@ -645,9 +644,6 @@ export function CreativeGeneratorPanel({ onVisualCreated }: { onVisualCreated?: 
                           placeholder="Ce qui se passe ensuite : action, geste, réplique…"
                           disabled={isExtending}
                         />
-                        <FieldDescription>
-                          Une voix ne se prolonge bien que si elle est présente dans la dernière seconde de l’étape précédente.
-                        </FieldDescription>
                       </Field>
                       <Button type="button" onClick={() => void prolonger()} disabled={isExtending || sceneSuivante.trim().length < 3}>
                         {isExtending ? <Spinner /> : <Clapperboard />}
@@ -669,8 +665,7 @@ export function CreativeGeneratorPanel({ onVisualCreated }: { onVisualCreated?: 
                 Contrôle avant téléchargement
               </h3>
               <p className="text-sm leading-relaxed text-muted-foreground">
-                Le texte de votre brief a passé la conformité. Le contenu généré, lui, ne peut pas être relu
-                automatiquement : regardez-le, puis confirmez chaque point.
+                Regardez le résultat, puis confirmez chaque point.
               </p>
 
               <ul className="space-y-2.5">

@@ -284,7 +284,7 @@ export function CockpitDashboard({ report, onNavigateToModule, onOpenBilling }: 
           </CardContent>
         </Card>
 
-        <Card className="lg:col-span-7">
+        <Card className={account?.isStaff ? 'lg:col-span-7' : 'lg:col-span-12'}>
           <CardHeader>
             <CardTitle>Par où commencer</CardTitle>
             <CardDescription>Le parcours conseillé, de la lecture du marché au lancement.</CardDescription>
@@ -309,6 +309,7 @@ export function CockpitDashboard({ report, onNavigateToModule, onOpenBilling }: 
           </CardContent>
         </Card>
 
+        {account?.isStaff && (
         <Card className="lg:col-span-5">
           <CardHeader>
             <CardTitle>Services connectés</CardTitle>
@@ -344,14 +345,9 @@ export function CockpitDashboard({ report, onNavigateToModule, onOpenBilling }: 
                 ))}
               </ul>
             )}
-            {providers && connectedCount < serviceEntries.length && (
-              <p className="mt-4 text-xs leading-relaxed text-muted-foreground">
-                Les fonctions qui dépendent d’un service non configuré l’indiquent à l’écran au lieu d’afficher un résultat
-                inventé.
-              </p>
-            )}
           </CardContent>
         </Card>
+        )}
       </div>
     </div>
   );

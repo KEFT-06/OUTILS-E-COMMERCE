@@ -30,7 +30,7 @@ const SERVICES_OF: Record<Capability, string[]> = {
 };
 
 const LABEL_OF: Record<Capability, string> = {
-  writing: 'la rédaction par IA',
+  writing: 'la rédaction automatique',
   webSearch: 'l’étude de marché sur le web',
   images: 'la création d’images',
   video: 'la création de vidéos',

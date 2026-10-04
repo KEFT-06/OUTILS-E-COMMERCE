@@ -101,7 +101,7 @@ export async function generateJson<T>(input: {
   onModel?: (model: string) => void;
 }): Promise<T> {
   const apiKey = env.GEMINI_API_KEY;
-  if (!apiKey) throw providerUnavailable('rédaction par IA');
+  if (!apiKey) throw providerUnavailable('rédaction automatique');
   const { service } = input;
   const body = JSON.stringify({
     contents: [{ role: 'user', parts: [...(input.media ? [input.media] : []), { text: input.prompt }] }],
