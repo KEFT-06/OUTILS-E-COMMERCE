@@ -13,6 +13,7 @@ import {
   DropdownMenuTrigger,
 } from '@/shared/ui/dropdown-menu';
 import { Progress } from '@/shared/ui/progress';
+import { useAlertsUnread } from '@/shared/stores/useAlertsUnread';
 import { useRadarUnread } from '@/shared/stores/useRadarUnread';
 import {
   Sidebar,
@@ -36,6 +37,7 @@ export function AppSidebar() {
   const navigate = useNavigate();
   const { isMobile, setOpenMobile } = useSidebar();
   const radarUnread = useRadarUnread();
+  const alertsUnread = useAlertsUnread();
 
   const closeOnMobile = () => {
     if (isMobile) setOpenMobile(false);
@@ -89,6 +91,11 @@ export function AppSidebar() {
                       {entry.id === 'radar' && radarUnread > 0 && (
                         <SidebarMenuBadge className="bg-brand-green-text text-white">
                           {radarUnread > 99 ? '99+' : radarUnread}
+                        </SidebarMenuBadge>
+                      )}
+                      {entry.id === 'alertes' && alertsUnread > 0 && (
+                        <SidebarMenuBadge className="bg-brand-green-text text-white">
+                          {alertsUnread > 99 ? '99+' : alertsUnread}
                         </SidebarMenuBadge>
                       )}
                     </SidebarMenuItem>

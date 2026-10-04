@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
+import { useLocation } from 'react-router-dom';
 import { toast } from 'sonner';
 import {
   BookOpen,
@@ -81,7 +82,9 @@ export function DigitalProductsView({ report, onSelectProductForAd, onAnalyzeNic
   const providers = useProviders();
 
   const products = useMemo(() => [...(report?.digitalProducts ?? []), ...custom.products], [report, custom.products]);
-  const [selectedId, setSelectedId] = useState<string | null>(null);
+  // Produit créé depuis une alerte (« Créer un produit similaire ») : il s'ouvre directement.
+  const demande = (useLocation().state as { produit?: unknown } | null)?.produit;
+  const [selectedId, setSelectedId] = useState<string | null>(typeof demande === 'string' ? demande : null);
   const [justCreatedId, setJustCreatedId] = useState<string | null>(null);
   const baseProduct = products.find((candidate) => candidate.id === selectedId) ?? products[0];
   const selectedProduct = baseProduct ? drafts.effective(baseProduct) : undefined;

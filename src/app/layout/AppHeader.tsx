@@ -1,9 +1,10 @@
 import { useEffect } from 'react';
-import { useLocation } from 'react-router-dom';
-import { Download, Moon, MoreHorizontal, Search, Sparkles, Sun } from 'lucide-react';
+import { Link, useLocation } from 'react-router-dom';
+import { Bell, Download, Moon, MoreHorizontal, Search, Sparkles, Sun } from 'lucide-react';
 import { ACCOUNT_PATH, MODULE_GROUPS, findAdminSection, findModule } from '@/app/navigation';
 import { usePreferences } from '@/app/providers/PreferencesContext';
 import { AppBackButton } from '@/shared/components/BackButton';
+import { useAlertsUnread } from '@/shared/stores/useAlertsUnread';
 import { useWorkspace } from '@/app/providers/WorkspaceProvider';
 import {
   Breadcrumb,
@@ -63,6 +64,7 @@ export function AppHeader() {
   const { pathname } = useLocation();
   const rapportUtileIci = RAPPORT_UTILE.some((route) => pathname === route || pathname.startsWith(`${route}/`));
   const { theme, toggleTheme } = usePreferences();
+  const alertsUnread = useAlertsUnread();
   const {
     reports,
     currentReport,
@@ -159,8 +161,20 @@ export function AppHeader() {
             <Kbd>K</Kbd>
           </KbdGroup>
         </Button>
-        <Button variant="ghost" size="icon" className="lg:hidden" onClick={() => setCommandOpen(true)} aria-label="Rechercher">
+        <Button variant="ghost" size="icon" className="max-[400px]:hidden lg:hidden" onClick={() => setCommandOpen(true)} aria-label="Rechercher">
           <Search />
+        </Button>
+
+        {/* Cloche des alertes : ce qui est arrivé depuis la dernière ouverture du fil. */}
+        <Button asChild variant="ghost" size="icon" className="relative">
+          <Link to="/app/alertes" aria-label={alertsUnread > 0 ? `Alertes : ${alertsUnread} nouvelle${alertsUnread > 1 ? 's' : ''}` : 'Alertes'}>
+            <Bell />
+            {alertsUnread > 0 && (
+              <span className="absolute -top-0.5 -right-0.5 min-w-4 rounded-full bg-brand-green-text px-1 text-[10px] leading-4 font-semibold text-white">
+                {alertsUnread > 9 ? '9+' : alertsUnread}
+              </span>
+            )}
+          </Link>
         </Button>
 
         <Button size="sm" onClick={() => setAnalysisDialogOpen(true)} disabled={isAnalyzing}>

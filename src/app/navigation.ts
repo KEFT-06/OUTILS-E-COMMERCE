@@ -2,6 +2,7 @@ import type { LucideIcon } from 'lucide-react';
 import {
   PlugZap,
   Banknote,
+  Bell,
   BookOpen,
   Clapperboard,
   Compass,
@@ -43,6 +44,7 @@ export type ModuleId =
   | 'niches'
   | 'radar'
   | 'espionnage'
+  | 'alertes'
   | 'analyse'
   | 'dossier-pdf'
   | 'studio'
@@ -112,6 +114,15 @@ export const MODULES: readonly ModuleEntry[] = [
     label: { fr: 'Espionnage', en: 'Ad spy' },
     description: { fr: 'Les publicités qui tournent chez les autres', en: 'Ads running at others' },
     icon: Eye,
+    ready: true,
+  },
+  {
+    id: 'alertes',
+    path: '/app/alertes',
+    group: 'voir',
+    label: { fr: 'Alertes', en: 'Alerts' },
+    description: { fr: 'Produits qui décollent, concurrents qui bougent', en: 'Rising products, competitor moves' },
+    icon: Bell,
     ready: true,
   },
   {

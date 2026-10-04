@@ -60,6 +60,7 @@ const MultilinguePage = lazyPage(modulePages, 'MultilinguePage');
 const NichesPage = lazyPage(modulePages, 'NichesPage');
 const RadarPage = lazyPage(modulePages, 'RadarPage');
 const EspionnagePage = lazyPage(modulePages, 'EspionnagePage');
+const AlertesPage = lazyPage(modulePages, 'AlertesPage');
 const PagesProduitsPage = lazyPage(modulePages, 'PagesProduitsPage');
 const StorybookPage = lazyPage(modulePages, 'StorybookPage');
 const StudioPage = lazyPage(modulePages, 'StudioPage');
@@ -111,6 +112,7 @@ export default function App() {
                   <Route path="niches" element={<NichesPage />} />
                   <Route path="radar" element={<RadarPage />} />
                   <Route path="espionnage" element={<EspionnagePage />} />
+                  <Route path="alertes" element={<AlertesPage />} />
                   <Route path="analyse" element={<AnalysePage />} />
                   <Route path="dossier-pdf" element={<DossierPdfPage />} />
                   <Route path="studio" element={<StudioPage />} />
