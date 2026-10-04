@@ -510,10 +510,6 @@ export function DigitalProductsView({ report, onSelectProductForAd, onAnalyzeNic
                     </div>
                   </div>
 
-                  {pricing.valuesStatus && <p className="text-xs leading-relaxed text-warning">{pricing.valuesStatus}</p>}
-                  <p className="text-xs text-muted-foreground">
-                    Fourchettes v{pricing.version} · mises à jour le {pricing.updatedAt}
-                  </p>
                 </>
               )}
             </div>

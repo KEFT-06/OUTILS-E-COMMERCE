@@ -1,4 +1,4 @@
-import { AlertTriangle, ArrowRight, Info, Wallet, Zap } from 'lucide-react';
+import { AlertTriangle, ArrowRight, Wallet, Zap } from 'lucide-react';
 import { useMoney } from '@/shared/lib/money';
 import { cn } from '@/shared/lib/utils';
 import type { CreditQuote } from '@/shared/types/credits';
@@ -119,13 +119,6 @@ export function CreditSimulatorDialog({ quote, unavailableReason, open, onConfir
               </Alert>
             )}
 
-            {quote.pointValueStatus && (
-              <p className="flex items-start gap-1.5 text-xs leading-relaxed text-muted-foreground">
-                <Info className="mt-0.5 size-3.5 shrink-0" aria-hidden="true" />
-                {quote.pointValueStatus}
-              </p>
-            )}
-
             <DialogFooter className="gap-2 sm:gap-2">
               <Button variant="outline" onClick={onCancel}>
                 Annuler
@@ -135,7 +128,6 @@ export function CreditSimulatorDialog({ quote, unavailableReason, open, onConfir
               </Button>
             </DialogFooter>
 
-            <p className="text-center text-xs text-muted-foreground">Grille tarifaire v{quote.tableVersion}</p>
           </>
         )}
       </DialogContent>

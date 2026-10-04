@@ -114,13 +114,6 @@ export function CampaignBlueprintsView() {
 
       {config && (
         <>
-          {config.valuesStatus && (
-            <Alert variant="warning">
-              <AlertTriangle />
-              <AlertDescription>{config.valuesStatus}</AlertDescription>
-            </Alert>
-          )}
-
           <Card className="py-5">
             <CardContent className="grid gap-4 sm:grid-cols-4">
               <fieldset className="space-y-2 sm:col-span-4">
@@ -281,7 +274,6 @@ export function CampaignBlueprintsView() {
             </Card>
           ))}
 
-          <p className="text-xs text-muted-foreground">Table des structures v{config.version}.</p>
         </>
       )}
     </div>

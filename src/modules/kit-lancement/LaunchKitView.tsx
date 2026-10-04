@@ -307,13 +307,6 @@ export function LaunchKitView({ products, market }: { products: DigitalProductId
         </Alert>
       )}
 
-      {config?.valuesStatus && (
-        <Alert variant="warning">
-          <AlertTriangle />
-          <AlertDescription>{config.valuesStatus}</AlertDescription>
-        </Alert>
-      )}
-
       <Card className="py-5">
         <CardContent>
           <fieldset className="space-y-2">
