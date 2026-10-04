@@ -39,15 +39,31 @@ const ESSAI = option('essai', false) === true || !SECRET;
 const NAVIGATEUR = String(option('navigateur', process.env.COLLECTE_NAVIGATEUR ?? (process.platform === 'win32' ? 'msedge' : 'chromium')));
 const LOT = 40;
 
-/** Demande au site, avec le secret du planificateur. */
+/**
+ * Demande au site, avec le secret du planificateur. Trois essais : sur une connexion instable,
+ * un lot d'annonces ou la clôture du passage se perdait à la première coupure (passage du
+ * 04/10/2026 : la clôture n'est jamais arrivée, les alertes n'ont pas été recalculées).
+ */
 async function site(path, init = {}) {
-  const response = await fetch(`${SITE}${path}`, {
-    ...init,
-    headers: { Authorization: `Bearer ${SECRET}`, ...(init.body ? { 'Content-Type': 'application/json' } : {}) },
-    signal: AbortSignal.timeout(60_000),
-  });
-  if (!response.ok) throw new Error(`${path} a répondu ${response.status}`);
-  return response.json();
+  let failure;
+  for (let attempt = 1; attempt <= 3; attempt += 1) {
+    try {
+      const response = await fetch(`${SITE}${path}`, {
+        ...init,
+        headers: { Authorization: `Bearer ${SECRET}`, ...(init.body ? { 'Content-Type': 'application/json' } : {}) },
+        signal: AbortSignal.timeout(60_000),
+      });
+      // Un refus du site (secret, lot illisible) ne se réessaie pas : il se répéterait à l'identique.
+      if (response.status >= 400 && response.status < 500) throw Object.assign(new Error(`${path} a répondu ${response.status}`), { definitive: true });
+      if (!response.ok) throw new Error(`${path} a répondu ${response.status}`);
+      return await response.json();
+    } catch (error) {
+      failure = error;
+      if (error.definitive || attempt === 3) break;
+      await new Promise((resolve) => setTimeout(resolve, attempt * 5_000));
+    }
+  }
+  throw failure;
 }
 
 /** Plan du passage : celui du site quand on a son secret, sinon un plan d'essai. */
@@ -238,6 +254,16 @@ const crawler = new PlaywrightCrawler({
       stalled = found.size === before ? stalled + 1 : 0;
     }
     const ads = [...found.values()].slice(0, max).map(slim);
+    /*
+      Une recherche revenue vide est refaite une fois, en fin de passage. Le 04/10/2026, sur une
+      connexion instable, « mychariow » tous pays confondus est revenu à zéro annonce alors
+      qu'il en rend des centaines : une page chargée à moitié ne se distingue pas d'une page vide.
+    */
+    if (ads.length === 0 && !request.userData.second) {
+      await crawler.addRequests([{ url: request.url, uniqueKey: `${request.uniqueKey}:bis`, userData: { ...request.userData, found: undefined, second: true } }]);
+      log.info(`« ${query} » · ${country} : rien lu, recherche remise en fin de passage.`);
+      return;
+    }
     ads.forEach(noteDestination);
     totals.lues += ads.length;
     log.info(`« ${query} » · ${country} : ${ads.length} annonce(s) lue(s).`);
