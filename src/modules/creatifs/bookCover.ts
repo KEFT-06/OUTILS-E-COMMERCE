@@ -14,6 +14,8 @@ export interface BookCoverText {
   author?: string;
 }
 
+/** Largeur minimale de la couverture composée, en pixels. */
+const MIN_WIDTH = 1600;
 /** Hauteur d'une page de la série A pour une largeur de 1. */
 const PAGE_RATIO = Math.SQRT2;
 const FONT_STACK = '"Outfit Variable", "Plus Jakarta Sans Variable", ui-sans-serif, system-ui, sans-serif';
@@ -58,7 +60,8 @@ export async function composeBookCover(image: HTMLImageElement, text: BookCoverT
   // La police du site peut ne pas être encore chargée : sans elle, le canevas écrirait en police de secours.
   await document.fonts?.load(font(800, 64)).catch(() => undefined);
 
-  const width = image.naturalWidth;
+  // Au moins 1 600 px de large : le titre reste net sur une fiche produit comme à l'impression.
+  const width = Math.max(image.naturalWidth, MIN_WIDTH);
   const height = Math.round(width * PAGE_RATIO);
   const canvas = document.createElement('canvas');
   canvas.width = width;
