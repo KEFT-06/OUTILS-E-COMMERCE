@@ -28,6 +28,22 @@ function cleanedEnv(source: NodeJS.ProcessEnv): NodeJS.ProcessEnv {
 }
 
 /**
+ * Code de validation d'un moteur de recherche (Google Search Console, Bing Webmaster Tools).
+ *
+ * Les deux outils donnent à copier une balise entière — « <meta name="google-site-verification"
+ * content="…" /> » — ou un enregistrement « google-site-verification=… ». C'est ce que colle
+ * naturellement le propriétaire du site : le code en est donc extrait, au lieu d'être refusé.
+ */
+const verificationCode = z
+  .preprocess((value) => {
+    if (typeof value !== 'string') return value;
+    const fromTag = /content\s*=\s*["']?([A-Za-z0-9_-]+)/i.exec(value)?.[1];
+    const fromRecord = /^(?:google-site-verification|msvalidate\.01)\s*[=:]\s*["']?([A-Za-z0-9_-]+)/i.exec(value)?.[1];
+    return fromTag ?? fromRecord ?? value;
+  }, z.string().regex(/^[A-Za-z0-9_-]{10,100}$/))
+  .optional();
+
+/**
  * Les hébergeurs annoncent la production par leur propre variable. Si NODE_ENV a été
  * créée vide, la retirer ferait retomber sur « development » : le serveur relâcherait
  * alors ses garde-fous de production sur un site public.
@@ -574,8 +590,8 @@ const schema = z.object({
    * (Webmaster Tools → « Balise meta », la valeur de « content »). Posés sur l'accueil, ils
    * prouvent que le site appartient à celui qui le déclare.
    */
-  GOOGLE_SITE_VERIFICATION: z.string().regex(/^[A-Za-z0-9_-]{10,100}$/).optional(),
-  BING_SITE_VERIFICATION: z.string().regex(/^[A-Za-z0-9_-]{10,100}$/).optional(),
+  GOOGLE_SITE_VERIFICATION: verificationCode,
+  BING_SITE_VERIFICATION: verificationCode,
   /**
    * Déclaration des pages aux moteurs (IndexNow). L'adresse du service ; « off » : aucune
    * déclaration. La clé est facultative : sans elle, le site en tire une de ses secrets, stable
@@ -586,7 +602,36 @@ const schema = z.object({
 });
 
 const cleaned = cleanedEnv(process.env);
-const parsed = schema.safeParse({ NODE_ENV: hostedEnvironment(process.env), ...cleaned });
+const submitted: Record<string, unknown> = { NODE_ENV: hostedEnvironment(process.env), ...cleaned };
+let parsed = schema.safeParse(submitted);
+
+/**
+ * Réglages facultatifs écartés parce que leur valeur n'a pas la forme attendue (noms seuls,
+ * jamais les valeurs).
+ *
+ * Un réglage FACULTATIF mal rempli éteint sa fonction, comme s'il était absent ; il n'empêche
+ * plus le site de démarrer. Du 04 au 06/10/2026, une seule valeur mal collée chez l'hébergeur a
+ * fait refuser tous les déploiements pendant deux jours sans que personne le voie : la
+ * production restait sur une ancienne version, et chaque correction publiée n'arrivait jamais.
+ * Un réglage obligatoire, ou doté d'une valeur par défaut, reste refusé : là, une valeur fausse
+ * changerait le comportement du site sans qu'on l'ait voulu.
+ */
+export const ignoredSettings: string[] = [];
+
+if (!parsed.success) {
+  const faulty = [...new Set(parsed.error.issues.map((issue) => String(issue.path[0])))];
+  const optional = faulty.filter((name) => (schema.shape as Record<string, z.ZodTypeAny>)[name] instanceof z.ZodOptional);
+  if (optional.length > 0) {
+    for (const name of optional) delete submitted[name];
+    const retried = schema.safeParse(submitted);
+    if (retried.success) {
+      ignoredSettings.push(...optional);
+      console.warn(`\n⚠️  Réglage(s) facultatif(s) ignoré(s), valeur au mauvais format : ${optional.join(', ')}.`);
+      console.warn('   La fonction correspondante reste éteinte jusqu’à correction ; le site démarre normalement.\n');
+    }
+    parsed = retried.success ? retried : parsed;
+  }
+}
 
 if (!parsed.success) {
   console.error('\n❌ Configuration d’environnement invalide :\n');

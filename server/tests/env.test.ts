@@ -102,12 +102,39 @@ describe('Configuration au démarrage', () => {
     assert.equal(result.nodeEnv, 'test');
   });
 
+  it('lit le code de validation d’un moteur tel qu’il est donné à copier : balise entière ou enregistrement', async () => {
+    const result = await readEnv({
+      GOOGLE_SITE_VERIFICATION: '<meta name="google-site-verification" content="AbC-123_defGHIjklMNOpqrSTUvwxYZ0123456789ab" />',
+      BING_SITE_VERIFICATION: 'msvalidate.01=0123456789ABCDEF0123456789ABCDEF',
+    });
+    assert.equal(result.googleVerification, 'AbC-123_defGHIjklMNOpqrSTUvwxYZ0123456789ab');
+    assert.equal(result.bingVerification, '0123456789ABCDEF0123456789ABCDEF');
+    assert.deepEqual(result.ignoredSettings, []);
+  });
+
+  it('écarte un réglage facultatif mal rempli au lieu de refuser de démarrer, et le nomme', async () => {
+    // Du 04 au 06/10/2026 : une valeur mal collée chez l'hébergeur a fait refuser tous les déploiements.
+    const result = await readEnv({ CLOUDFLARE_ACCOUNT_ID: 'pas-un-identifiant', GOOGLE_SITE_VERIFICATION: 'google1234.html ???' });
+    assert.equal(result.cloudflareAccount, null, 'la fonction reste éteinte, comme si le réglage était absent');
+    assert.equal(result.googleVerification, null);
+    assert.deepEqual(result.ignoredSettings.sort(), ['CLOUDFLARE_ACCOUNT_ID', 'GOOGLE_SITE_VERIFICATION']);
+  });
+
   it('refuse toujours de démarrer sur une valeur renseignée mais invalide', async () => {
     await assert.rejects(
       () => readEnv({ PORT: 'abc' }),
       (error: { code?: number; stderr?: string }) => {
         assert.equal(error.code, 1, 'le processus sort en échec');
         assert.match(error.stderr ?? '', /PORT/, 'et nomme la variable fautive');
+        return true;
+      },
+    );
+    // Un réglage facultatif fautif n'excuse pas le reste : le refus tient, et nomme les deux.
+    await assert.rejects(
+      () => readEnv({ PORT: 'abc', CLOUDFLARE_ACCOUNT_ID: 'pas-un-identifiant' }),
+      (error: { code?: number; stderr?: string }) => {
+        assert.equal(error.code, 1);
+        assert.match(error.stderr ?? '', /PORT/);
         return true;
       },
     );
