@@ -23,7 +23,7 @@ export function BookProse({ text, className }: { text: string; className?: strin
         }
         if (block.type === 'h3') {
           return (
-            <h5 key={index} className="pt-1.5 text-base font-semibold first:pt-0">
+            <h5 key={index} className="pt-1.5 text-base font-bold first:pt-0">
               {block.text}
             </h5>
           );

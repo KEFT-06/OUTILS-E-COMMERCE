@@ -143,6 +143,8 @@ export function normalizeBookText(raw: string): string {
       return line.replace(/\*\*|__|`/g, '').replace(/[ \t]+$/g, '');
     })
     .join('\n')
+    // L'apostrophe droite du clavier devient celle de l'imprimerie, entre deux lettres seulement.
+    .replace(/(\p{L})'(?=\p{L})/gu, '$1’')
     .replace(/\n{3,}/g, '\n\n')
     .trim();
 }
@@ -157,4 +159,4 @@ export function sectionTitles(blocks: readonly BookBlock[]): string[] {
  * ou retouché.
  */
 export const BOOK_FORMAT_RULE =
-  'Mise en forme d’un livre publié : des paragraphes de 3 à 5 phrases, séparés par une ligne vide ; un sous-titre par idée nouvelle, seul sur sa ligne et précédé de « ### » — jamais de titre au milieu d’un paragraphe ; chaque énumération en liste, un élément par ligne précédé de « - » ; les étapes d’une procédure numérotées « 1. », « 2. », une par ligne. Aucun autre signe de mise en forme (ni gras, ni italique, ni tableau). Un français soigné d’un bout à l’autre : aucun mot anglais, aucune phrase sans verbe, aucune répétition de syllabe. Dans un modèle que le LECTEUR remplira lui-même (message type, fiche), note le champ entre parenthèses — (prénom), (lieu de la rencontre) — et jamais entre crochets.';
+  'Mise en forme d’un livre publié : des paragraphes de 3 à 5 phrases, séparés par une ligne vide ; un sous-titre par idée nouvelle, seul sur sa ligne et précédé de « ### » — jamais de titre au milieu d’un paragraphe ; chaque énumération en liste, un élément par ligne précédé de « - » ; les étapes d’une procédure numérotées « 1. », « 2. », une par ligne. Ni gras, ni italique, ni tableau : pas d’astérisque, pas de tiret bas. L’écriture reste celle d’un livre imprimé, ponctuation complète : apostrophes (l’animateur, d’abord, qu’il), accents, guillemets « », nombres en chiffres (90 minutes, 8 à 15 personnes). Un français soigné d’un bout à l’autre : aucun mot anglais, aucune phrase sans verbe, aucune répétition de syllabe. Dans un modèle que le LECTEUR remplira lui-même (message type, fiche), note le champ entre parenthèses — (prénom), (lieu de la rencontre) — et jamais entre crochets.';

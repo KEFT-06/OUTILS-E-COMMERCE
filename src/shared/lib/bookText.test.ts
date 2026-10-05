@@ -84,5 +84,11 @@ describe('Texte d’ouvrage', () => {
     const propre = normalizeBookText('**Fixer une structure horaire**\n\n\n\nLe **temps** est compté.   \n# Titre trop gros\n#### Détail');
     assert.equal(propre, '### Fixer une structure horaire\n\nLe temps est compté.\n## Titre trop gros\n### Détail');
     assert.match(BOOK_FORMAT_RULE, /jamais de titre au milieu d’un paragraphe/);
+    // Vu sur une vraie rédaction (06/10/2026) : « aucun autre signe de mise en forme » faisait
+    // disparaître les apostrophes (« l animateur ») et écrire les nombres en lettres.
+    assert.match(BOOK_FORMAT_RULE, /apostrophes \(l’animateur/);
+    assert.match(BOOK_FORMAT_RULE, /nombres en chiffres/);
+    assert.doesNotMatch(BOOK_FORMAT_RULE, /aucun autre signe/i);
+    assert.equal(normalizeBookText("L'animateur n'a qu'une heure : 'plan B' reste tel quel."), "L’animateur n’a qu’une heure : 'plan B' reste tel quel.");
   });
 });

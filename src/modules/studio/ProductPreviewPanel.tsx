@@ -237,7 +237,7 @@ export function ProductPreviewPanel({ product, market, onSave, onFindings, onExp
         </div>
 
         <article className="mx-auto max-w-3xl space-y-8 rounded-xl border bg-card p-5 shadow-sm sm:p-10">
-          <header className="space-y-3 border-b pb-8 text-center">
+          <header className="space-y-3 text-center">
             <p className="text-xs font-bold tracking-[0.18em] text-brand-green-text uppercase">{product.typeName}</p>
             <h2 className="font-display text-3xl font-extrabold tracking-tight text-balance sm:text-4xl">{product.title}</h2>
             {product.subtitle && <p className="mx-auto max-w-xl text-muted-foreground text-balance">{product.subtitle}</p>}
