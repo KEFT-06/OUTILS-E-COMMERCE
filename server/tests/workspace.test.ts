@@ -69,4 +69,52 @@ describe('Brouillons de l’espace de travail', () => {
     const beyondParser = await agent.put('/api/workspace/custom_products').send({ data: ['x'.repeat(6_000_000)] }).expect(413);
     assert.equal(beyondParser.body.error.code, 'PAYLOAD_TOO_LARGE');
   });
+
+  it('conserve le catalogue personnel des niches : niches ajoutées et catalogues créés', async () => {
+    const { agent } = await signUp(app, { name: 'Awa Catalogue', email: 'catalogue-niches@exemple.com' });
+    assert.equal((await agent.get('/api/workspace/niche_catalog').expect(200)).body.data, null);
+
+    const catalogue = {
+      catalogs: [{ id: 'perso-1', label: 'Études bibliques' }],
+      niches: [
+        { name: 'Animer un groupe d’étude biblique', catalogId: 'perso-1' },
+        { name: 'Élevage d’escargots à petite échelle', catalogId: 'agriculture' },
+      ],
+    };
+    await agent.put('/api/workspace/niche_catalog').send({ data: catalogue }).expect(200);
+    assert.deepEqual((await agent.get('/api/workspace/niche_catalog').expect(200)).body.data, catalogue);
+
+    // Une liste à la place de l'objet attendu est refusée, et le catalogue enregistré reste intact.
+    await agent.put('/api/workspace/niche_catalog').send({ data: [] }).expect(400);
+    assert.deepEqual((await agent.get('/api/workspace/niche_catalog').expect(200)).body.data, catalogue);
+
+    const { agent: other } = await signUp(app, { name: 'Autre Catalogue', email: 'autre-catalogue@exemple.com' });
+    assert.equal((await other.get('/api/workspace/niche_catalog').expect(200)).body.data, null, 'le catalogue d’un compte ne se voit pas d’un autre');
+  });
+});
+
+describe('Historique des niches analysées', () => {
+  it('efface tout l’historique du compte, et celui-là seulement', async () => {
+    const { getDb } = await import('@server/db/client');
+    const { reports } = await import('@server/db/schema');
+    const { agent, account } = await signUp(app, { name: 'Awa Historique', email: 'historique@exemple.com' });
+    const { agent: other, account: otherAccount } = await signUp(app, { name: 'Autre Historique', email: 'autre-historique@exemple.com' });
+    await getDb()
+      .insert(reports)
+      .values([
+        { userId: account.id, query: 'poulets', nicheName: 'Élevage de poulets en ville', market: 'CM', report: {} },
+        { userId: account.id, query: 'diabète', nicheName: 'Gestion du diabète', market: 'CI', report: {} },
+        { userId: otherAccount.id, query: 'savon', nicheName: 'Savon artisanal', market: 'SN', report: {} },
+      ]);
+    assert.equal((await agent.get('/api/reports').expect(200)).body.reports.length, 2);
+
+    const effacement = await agent.delete('/api/reports').expect(200);
+    assert.deepEqual(effacement.body, { deleted: 2 });
+    assert.deepEqual((await agent.get('/api/reports').expect(200)).body.reports, []);
+    assert.equal((await other.get('/api/reports').expect(200)).body.reports.length, 1, 'l’historique d’un autre compte n’est pas touché');
+
+    // Rien à effacer : la demande aboutit quand même. Sans session : refusée.
+    assert.deepEqual((await agent.delete('/api/reports').expect(200)).body, { deleted: 0 });
+    await request(app).delete('/api/reports').expect(401);
+  });
 });

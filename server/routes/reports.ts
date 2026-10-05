@@ -2,7 +2,7 @@ import { Router } from 'express';
 import { z } from 'zod';
 import { asyncRoute, validateBody } from '@server/middleware';
 import { requireAuth, requireFeature } from '@server/middleware/auth';
-import { deleteReport, getReport, listReports, todayLabel } from '@server/services/analysis';
+import { deleteAllReports, deleteReport, getReport, listReports, todayLabel } from '@server/services/analysis';
 import { REPORT_PAGES, getReportDocument, startReportDocument } from '@server/services/analysis/document';
 
 const documentRequestSchema = z.object({
@@ -50,6 +50,14 @@ reportsRouter.post(
     const { pages } = req.body as z.infer<typeof documentRequestSchema>;
     const { document, created } = await startReportDocument(req.auth!, req.params.reportId, todayLabel(new Date()), pages);
     res.status(created ? 202 : 200).json({ document });
+  }),
+);
+
+/** Efface tout l'historique des niches analysées : les rapports du compte connecté, et eux seuls. */
+reportsRouter.delete(
+  '/',
+  asyncRoute(async (req, res) => {
+    res.json({ deleted: await deleteAllReports(req.auth!) });
   }),
 );
 

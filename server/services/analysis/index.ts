@@ -511,6 +511,12 @@ export async function getReport(auth: RequestAuth, reportId: string | undefined)
   return row.report as unknown as MarketAnalysisReport;
 }
 
+/** Efface tout l'historique des niches analysées du compte, et rend le nombre de rapports supprimés. */
+export async function deleteAllReports(auth: RequestAuth): Promise<number> {
+  const deleted = await getDb().delete(reports).where(eq(reports.userId, auth.account.user.id)).returning({ id: reports.id });
+  return deleted.length;
+}
+
 export async function deleteReport(auth: RequestAuth, reportId: string | undefined): Promise<void> {
   const parsed = reportIdSchema.safeParse(reportId);
   if (!parsed.success) throw reportNotFound();

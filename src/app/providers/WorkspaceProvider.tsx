@@ -24,6 +24,8 @@ interface WorkspaceContextType {
   isLoadingReport: boolean;
   selectReport: (id: string) => void;
   deleteReport: (id: string) => Promise<void>;
+  /** Efface tout l'historique des niches analysées du compte. */
+  deleteAllReports: () => Promise<void>;
   isAnalyzing: boolean;
   /** Analyse en cours du compte (étude puis rédaction), suivie jusqu'à son terme. */
   analysisJob: AnalysisJob | null;
@@ -200,6 +202,19 @@ export const WorkspaceProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     [accountId, currentReport?.id, openReport, reports],
   );
 
+  const deleteAllReports = useCallback(async () => {
+    try {
+      await apiRequest('/api/reports', { method: 'DELETE' });
+    } catch (error) {
+      toast.error('L’historique n’a pas pu être effacé', { description: toApiError(error, 'Relancez la suppression.').message });
+      return;
+    }
+    setReports([]);
+    setCurrentReport(null);
+    if (accountId) rememberActiveReport(accountId, null);
+    toast.success('Historique effacé');
+  }, [accountId]);
+
   /**
    * Analyse d'une nouvelle niche, derrière la porte de crédits : le coût s'affiche avant le
    * lancement, les points sont rendus par le serveur si l'analyse échoue. Le serveur répond
@@ -339,6 +354,7 @@ export const WorkspaceProvider: React.FC<{ children: React.ReactNode }> = ({ chi
       isLoadingReport,
       selectReport,
       deleteReport,
+      deleteAllReports,
       isAnalyzing: analysisJob !== null,
       analysisJob,
       analyzeNiche,
@@ -356,6 +372,7 @@ export const WorkspaceProvider: React.FC<{ children: React.ReactNode }> = ({ chi
       isLoadingReport,
       selectReport,
       deleteReport,
+      deleteAllReports,
       analysisJob,
       analyzeNiche,
       cancelAnalysis,
