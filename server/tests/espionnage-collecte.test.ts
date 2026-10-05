@@ -22,6 +22,8 @@ import { closeTestApp, createAdmin, createTestApp } from './support/helpers';
 
 const JOUR = 86_400;
 const IMAGE = Buffer.from('ffd8ffe000104a46494600', 'hex');
+/** Peu importe le contenu : le relais passe des octets, il ne lit pas la vidéo. */
+const VIDEO = Buffer.from('000000186674797069736f6d0000020069736f6d69736f32', 'hex');
 const CLE = 'sb_secret_cle_de_test_0000000000';
 
 let base = '';
@@ -104,6 +106,26 @@ const faux = createServer((req, res) => {
     if (req.method === 'GET' && url.pathname.startsWith('/images/')) {
       res.writeHead(200, { 'content-type': 'image/jpeg', 'content-length': String(IMAGE.length) });
       res.end(IMAGE);
+      return;
+    }
+
+    // ——— Faux serveur vidéo de Meta : sert des morceaux, et refuse une adresse périmée ———
+    if (req.method === 'GET' && url.pathname === '/videos/perimee.mp4') return json(403, { error: 'URL signature expired' });
+    if (req.method === 'GET' && url.pathname.startsWith('/videos/')) {
+      const morceau = /^bytes=(\d+)-(\d*)$/.exec(String(req.headers.range ?? ''));
+      if (!morceau) {
+        res.writeHead(200, { 'content-type': 'video/mp4', 'content-length': String(VIDEO.length), 'accept-ranges': 'bytes' });
+        res.end(VIDEO);
+        return;
+      }
+      const debut = Number(morceau[1]);
+      const fin = morceau[2] ? Number(morceau[2]) : VIDEO.length - 1;
+      res.writeHead(206, {
+        'content-type': 'video/mp4',
+        'content-length': String(fin - debut + 1),
+        'content-range': `bytes ${debut}-${fin}/${VIDEO.length}`,
+      });
+      res.end(VIDEO.subarray(debut, fin + 1));
       return;
     }
 
@@ -261,5 +283,56 @@ describe('Mur d’espionnage — collecte', () => {
     const { purged } = await purgeStaleThumbnails();
     assert.equal(purged, 1);
     await request(app).get(avecApercu.thumbnailUrl!).expect(404);
+  });
+
+  it('donne une vidéo à lire sur le mur : son adresse chez Meta, et un relais qui sert les morceaux demandés', async () => {
+    const { getDb } = await import('@server/db/client');
+    const { spiedAds } = await import('@server/db/schema');
+    const { inArray } = await import('drizzle-orm');
+    const commun = { landingUrl: 'https://boutique-video.mychariow.com/p/offre', title: 'Clip du mur', variants: 1, platforms: ['FACEBOOK'], active: true, mediaKind: 'video' };
+    const chezMeta = 'https://video.fdla1-1.fna.fbcdn.net/v/t42.1790-2/clip.mp4?oh=abc&oe=123';
+    const legere = 'https://video.fdla1-1.fna.fbcdn.net/v/t42.1790-2/clip-leger.mp4?oh=abc&oe=123';
+    const lignes = await getDb()
+      .insert(spiedAds)
+      .values([
+        { ...commun, externalId: 'video-lisible', storeHost: 'boutique-video.mychariow.com', downloadUrl: `${base}/videos/clip.mp4` },
+        { ...commun, externalId: 'video-perimee', storeHost: 'boutique-video.mychariow.com', downloadUrl: `${base}/videos/perimee.mp4` },
+        { ...commun, externalId: 'video-meta', storeHost: 'autre-boutique.myshopify.com', downloadUrl: chezMeta },
+        { ...commun, externalId: 'video-legere', storeHost: 'autre-boutique.myshopify.com', downloadUrl: chezMeta, playUrl: legere },
+      ])
+      .returning({ id: spiedAds.id, externalId: spiedAds.externalId });
+    const idDe = (externalId: string) => lignes.find((ligne) => ligne.externalId === externalId)!.id;
+
+    try {
+      const { agent } = await signInWithPlan(app, 'collecte-video@exemple.test', 'pro');
+      // Le mur ne donne à lire qu'une adresse servie par Meta — celle d'une boutique tierce comprise.
+      const mur = (await agent.get(`/api/espionnage?search=${encodeURIComponent('Clip du mur')}`).expect(200)).body as { ads: (Ad & { videoUrl: string | null })[] };
+      assert.equal(mur.ads.find((ad) => ad.externalId === 'video-meta')?.videoUrl, chezMeta);
+      // La définition légère passe devant : c'est elle qui démarre vite sur une connexion mobile.
+      assert.equal(mur.ads.find((ad) => ad.externalId === 'video-legere')?.videoUrl, legere);
+      assert.equal(mur.ads.find((ad) => ad.externalId === 'video-lisible')?.videoUrl, null);
+
+      // Le relais : la vidéo entière, puis un morceau — sans quoi on ne peut ni avancer, ni lire sur iPhone.
+      const entiere = await agent.get(`/api/espionnage/ads/${idDe('video-lisible')}/video`).buffer(true).expect(200);
+      assert.deepEqual(Buffer.from(entiere.body as Buffer), VIDEO);
+      assert.equal(entiere.headers['content-type'], 'video/mp4');
+      assert.equal(entiere.headers['accept-ranges'], 'bytes');
+      const morceau = await agent
+        .get(`/api/espionnage/ads/${idDe('video-lisible')}/video`)
+        .set('Range', 'bytes=4-9')
+        .buffer(true)
+        .expect(206);
+      assert.deepEqual(Buffer.from(morceau.body as Buffer), Buffer.from(VIDEO.subarray(4, 10)));
+      assert.equal(morceau.headers['content-range'], `bytes 4-9/${VIDEO.length}`);
+
+      // Adresse périmée chez Meta : le lecteur est prévenu, il renverra à la bibliothèque.
+      const perimee = await agent.get(`/api/espionnage/ads/${idDe('video-perimee')}/video`).expect(410);
+      assert.equal((perimee.body as { error: { code: string } }).error.code, 'SPY_MEDIA_EXPIRED');
+      // Le relais est réservé aux comptes connectés.
+      const { default: request } = await import('supertest');
+      await request(app).get(`/api/espionnage/ads/${idDe('video-lisible')}/video`).expect(401);
+    } finally {
+      await getDb().delete(spiedAds).where(inArray(spiedAds.id, lignes.map((ligne) => ligne.id)));
+    }
   });
 });

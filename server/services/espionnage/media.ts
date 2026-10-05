@@ -1,3 +1,4 @@
+import { once } from 'node:events';
 import type { Response as ExpressResponse } from 'express';
 import { and, desc, eq, isNotNull, isNull, lt } from 'drizzle-orm';
 import { getDb } from '@server/db/client';
@@ -181,6 +182,82 @@ const DOWNLOAD_TYPES: Record<string, string> = { ...IMAGE_TYPES, 'video/mp4': 'm
 /** Les vidéos de Meta sont servies par les mêmes hôtes que les images, plus son réseau vidéo. */
 const META_MEDIA_HOST = /(^|\.)(fbcdn\.net|cdninstagram\.com|fbsbx\.com)$/i;
 const DOWNLOAD_TIMEOUT_VIDEO_MS = 120_000;
+
+/** Vrai si l'adresse est celle d'un fichier servi par Meta : la seule qu'on donne à lire ou qu'on relaie. */
+export function isMetaMediaUrl(raw: string | null): raw is string {
+  if (!raw) return false;
+  try {
+    const url = new URL(raw);
+    return url.protocol === 'https:' && META_MEDIA_HOST.test(url.hostname);
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Relais de lecture d'une vidéo publicitaire, pour le lecteur du mur.
+ *
+ * Le lecteur lit d'abord la vidéo chez Meta, directement, comme le fait sa bibliothèque
+ * publicitaire ; ce relais ne sert que si le navigateur n'y parvient pas (réseau qui filtre les
+ * serveurs de Meta). Rien n'est conservé chez nous. Les demandes partielles (Range) sont
+ * transmises telles quelles : sans elles, on ne peut ni avancer dans la vidéo, ni la lire sur
+ * iPhone.
+ */
+export async function sendAdVideo(adId: string | undefined, range: string | undefined, res: ExpressResponse): Promise<void> {
+  const gone = new AppError(410, 'Cette vidéo n’est plus en ligne.', 'SPY_MEDIA_EXPIRED');
+  if (!adId || !/^[0-9a-f-]{36}$/.test(adId)) throw new AppError(404, 'Publicité introuvable.', 'SPY_AD_NOT_FOUND');
+  const [row] = await getDb()
+    .select({ playUrl: spiedAds.playUrl, downloadUrl: spiedAds.downloadUrl, mediaKind: spiedAds.mediaKind })
+    .from(spiedAds)
+    .where(eq(spiedAds.id, adId))
+    .limit(1);
+  if (!row) throw new AppError(404, 'Publicité introuvable.', 'SPY_AD_NOT_FOUND');
+  const adresse = row.playUrl ?? row.downloadUrl;
+  if (row.mediaKind !== 'video' || !adresse) throw gone;
+
+  // Le lecteur abandonne souvent une demande pour en ouvrir une autre : on lâche alors Meta aussi.
+  const abort = new AbortController();
+  res.on('close', () => abort.abort());
+  const timer = setTimeout(() => abort.abort(), DOWNLOAD_TIMEOUT_VIDEO_MS);
+  try {
+    let response: Response;
+    try {
+      const url = await assertPublicUrl(adresse, 'L’adresse de la vidéo');
+      const local = !isProd && url.hostname === '127.0.0.1';
+      if (!local && !META_MEDIA_HOST.test(url.hostname)) throw gone;
+      response = await fetch(url, { headers: range && /^bytes=\d*-\d*$/.test(range) ? { Range: range } : {}, signal: abort.signal });
+    } catch {
+      throw gone;
+    }
+    const type = (response.headers.get('content-type') ?? '').split(';')[0]!.trim().toLowerCase();
+    if ((response.status !== 200 && response.status !== 206) || !response.body || !type.startsWith('video/')) {
+      await response.body?.cancel().catch(() => undefined);
+      throw gone;
+    }
+    res.status(response.status);
+    res.setHeader('Content-Type', type);
+    for (const header of ['content-length', 'content-range']) {
+      const value = response.headers.get(header);
+      if (value) res.setHeader(header, value);
+    }
+    res.setHeader('Accept-Ranges', 'bytes');
+    res.setHeader('Cache-Control', 'private, max-age=600');
+    res.setHeader('X-Content-Type-Options', 'nosniff');
+    try {
+      const reader = response.body.getReader();
+      for (let chunk = await reader.read(); !chunk.done; chunk = await reader.read()) {
+        // Lecteur en pause : on attend qu'il redemande, au lieu d'empiler la vidéo en mémoire.
+        if (!res.write(Buffer.from(chunk.value))) await once(res, 'drain', { signal: abort.signal });
+      }
+      res.end();
+    } catch {
+      // Lecteur fermé ou flux coupé en route : la réponse est déjà partie, il n'y a rien à dire.
+      res.destroy();
+    }
+  } finally {
+    clearTimeout(timer);
+  }
+}
 
 /**
  * Remet le fichier d'origine d'une publicité : la vidéo, ou l'image en pleine définition.

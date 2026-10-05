@@ -150,6 +150,8 @@ export interface SpiedAd {
   lastSeenAt: string;
   /** Aperçu conservé sur le serveur : il ne périme pas. null : seule l'adresse de Meta. */
   thumbnailUrl: string | null;
+  /** Adresse de la vidéo chez Meta, lue sur place. null ou absent : pas une vidéo, ou adresse inconnue. */
+  videoUrl?: string | null;
   pageId: string | null;
   pageUrl: string | null;
   /** Photo de profil de l'annonceur (notre copie, ou l'adresse de Meta qui expire). */

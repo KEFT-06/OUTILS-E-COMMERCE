@@ -92,7 +92,7 @@ export const VIDEO_PROMPT = [
   '- type : ebook, template, masterclass, bundle ou micro_tool, selon ce qui convient le mieux à ce contenu.',
   '- targetAudience, transformationPromise : le public visé par la vidéo et la transformation réaliste qu’elle permet.',
   '- summary : ce que contient la vidéo, en 2 ou 3 phrases.',
-  '- modules : 3 à 10 modules dans l’ordre de la vidéo ; pour chacun, un titre et ce que la vidéo enseigne sur ce point (150 à 400 mots, paragraphes courts, listes commençant par « - »).',
+  '- modules : 3 à 10 modules dans l’ordre de la vidéo ; pour chacun, un titre et ce que la vidéo enseigne sur ce point (150 à 400 mots ; paragraphes de 3 à 5 phrases séparés par une ligne vide, un sous-titre par idée précédé de « ### », listes commençant par « - », étapes numérotées « 1. »).',
   '- leadMagnet : un aimant à prospects gratuit tiré de la vidéo (titre, format, accroche).',
 ].join('\n');
 

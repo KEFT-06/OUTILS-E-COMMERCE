@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { BookOpen, Download } from 'lucide-react';
 import { countryName } from '@server/shared/countries';
 import { NoDataState } from '@/shared/components/NoDataState';
+import { ZoomableImage } from '@/shared/components/ZoomableImage';
 import { apiRequest } from '@/shared/lib/api';
 import { useCachedState } from '@/shared/lib/apiCache';
 import { toApiError } from '@/shared/lib/apiError';
@@ -127,11 +128,11 @@ export function StorybookLibrary({ version }: { version: number }) {
                           className="flex flex-col gap-3 rounded-lg border bg-muted/30 p-3 text-sm sm:flex-row"
                         >
                           {entry.pictures.includes(index + 1) && (
-                            <img
+                            <ZoomableImage
                               src={storybookPicturePath(entry.id, index + 1)}
                               alt={`Illustration de la page ${index + 1}`}
-                              loading="lazy"
-                              className="aspect-[4/3] w-full shrink-0 rounded-md border object-cover sm:w-44"
+                              className="w-full shrink-0 rounded-md border sm:w-44"
+                              imageClassName="aspect-[4/3] w-full object-cover"
                             />
                           )}
                           <div className="min-w-0">

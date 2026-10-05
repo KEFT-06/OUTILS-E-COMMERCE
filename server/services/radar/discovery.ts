@@ -498,6 +498,7 @@ export async function ingestDiscoveryItems(items: unknown[], now = new Date(), c
           mediaUrl: sql`excluded.media_url`,
           mediaKind: sql`excluded.media_kind`,
           downloadUrl: sql`coalesce(excluded.download_url, ${spiedAds.downloadUrl})`,
+          playUrl: sql`coalesce(excluded.play_url, ${spiedAds.playUrl})`,
           // Les pays s'ajoutent d'une collecte à l'autre, sans doublon.
           countries: sql`(select coalesce(jsonb_agg(distinct pays), '[]'::jsonb) from jsonb_array_elements_text(${spiedAds.countries} || excluded.countries) as pays)`,
           startedAt: sql`excluded.started_at`,

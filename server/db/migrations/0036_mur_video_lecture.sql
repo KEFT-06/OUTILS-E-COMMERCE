@@ -1,0 +1,1 @@
+ALTER TABLE "spied_ads" ADD COLUMN "play_url" text;

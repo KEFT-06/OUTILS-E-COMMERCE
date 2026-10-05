@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { toast } from 'sonner';
-import { AlertTriangle, Eye, FileDown, FileText, PenSquare, Sparkles } from 'lucide-react';
+import { AlertTriangle, BookOpen, FileDown, FileText, PenSquare, Sparkles } from 'lucide-react';
 import { useCreditGate } from '@/app/providers/CreditGateProvider';
 import { LongformEbookPanel } from '@/modules/studio/LongformEbookPanel';
 import { ProductExpertEditor } from '@/modules/studio/ProductExpertEditor';
@@ -38,8 +38,9 @@ import { Spinner } from '@/shared/ui/spinner';
 /**
  * Barre de production du Studio : modes de création et exports contrôlés.
  *
- * Mode Génératif : l'IA rédige le contenu de chaque module ; le résultat devient
- * un brouillon à relire dans le mode Expert, jamais une version définitive.
+ * Mode Génératif : le contenu de chaque module est rédigé, puis l'ouvrage s'ouvre dans
+ * « Voir l'ebook » — on le lit composé comme un livre, on le corrige et on le télécharge au même
+ * endroit. Le mode Expert reste pour retravailler le plan lui-même (titres, ordre des modules).
  * Le mode Vidéo → Produit crée un nouveau produit : il se lance depuis l'en-tête du Studio.
  */
 interface ProductStudioPanelProps {
@@ -67,6 +68,8 @@ export function ProductStudioPanel({ baseProduct, report, initialExpertOpen = fa
   const [cover, setCover] = useState<CoverView | null>(null);
   const [generateOpen, setGenerateOpen] = useState(false);
   const [isPreviewOpen, setIsPreviewOpen] = useState(false);
+  /** Vrai quand l'ouvrage vient d'être rédigé : la vue s'ouvre et vient à l'écran d'elle-même. */
+  const [justWritten, setJustWritten] = useState(false);
   const [isWriting, setIsWriting] = useState(false);
   const [findings, setFindings] = useState<WritingFinding[]>([]);
   /** Pages du dernier ebook long rédigé : sert à proposer de l'allonger. */
@@ -75,11 +78,12 @@ export function ProductStudioPanel({ baseProduct, report, initialExpertOpen = fa
   const textReady = providers?.text ?? false;
   const generativeReason = providers && !textReady ? 'La rédaction automatique est momentanément indisponible.' : null;
 
-  const handleExport = async (format: ProductExportFormat) => {
+  /** `version` : l'ouvrage tel qu'il est à l'écran dans « Voir l'ebook », corrections en attente comprises. */
+  const handleExport = async (format: ProductExportFormat, version: DigitalProductIdea = product) => {
     setExporting(format);
     setExportError(null);
     try {
-      await exportProduct(product, report, hasDraft, format, cover?.status === 'ready' ? cover.id : null);
+      await exportProduct(version, report, format, cover?.status === 'ready' ? cover.id : null);
     } catch (error) {
       if (error instanceof ProductExportBlockedError) {
         setBlockedVerdict(error.verdict);
@@ -125,12 +129,15 @@ export function ProductStudioPanel({ baseProduct, report, initialExpertOpen = fa
       });
       setFindings(result.findings);
       setEditorRevision((revision) => revision + 1);
-      setIsExpertOpen(true);
-      toast.success('Contenu rédigé', {
+      // L'ouvrage s'ouvre pour être LU : c'est là qu'on le corrige et qu'on le télécharge.
+      setIsExpertOpen(false);
+      setIsPreviewOpen(true);
+      setJustWritten(true);
+      toast.success('Votre ebook est prêt', {
         description:
           result.missing > 0
-            ? `${result.missing} module(s) n’ont pas été rédigés et gardent leur texte. Relisez le brouillon avant l’export.`
-            : 'Le brouillon est ouvert dans le mode Expert : relisez-le avant l’export.',
+            ? `${result.missing} module(s) n’ont pas été rédigés et gardent leur texte. Lisez-le ci-dessous, corrigez-le, puis téléchargez-le.`
+            : 'Lisez-le ci-dessous, corrigez ce qui doit l’être, puis téléchargez-le.',
       });
     } catch (error) {
       toast.error('La rédaction n’a pas abouti', { description: toApiError(error, 'Réessayez dans un moment.').message });
@@ -173,11 +180,14 @@ export function ProductStudioPanel({ baseProduct, report, initialExpertOpen = fa
               <Button
                 variant={isPreviewOpen ? 'secondary' : 'outline'}
                 size="sm"
-                onClick={() => setIsPreviewOpen((open) => !open)}
+                onClick={() => {
+                  setJustWritten(false);
+                  setIsPreviewOpen((open) => !open);
+                }}
                 aria-expanded={isPreviewOpen}
               >
-                <Eye />
-                Aperçu
+                <BookOpen />
+                Voir l’ebook
               </Button>
             </div>
             <ul className="space-y-0.5 text-xs leading-relaxed text-muted-foreground">
@@ -186,8 +196,8 @@ export function ProductStudioPanel({ baseProduct, report, initialExpertOpen = fa
                 {generativeReason ?? 'chaque module est rédigé à partir du titre, de la promesse et du sommaire.'}
               </li>
               <li>
-                <span className="font-medium text-foreground/80">Aperçu</span> : le document tel qu’il sera exporté, à corriger à la main
-                ou par une consigne.
+                <span className="font-medium text-foreground/80">Voir l’ebook</span> : l’ouvrage composé comme un livre, à lire, corriger
+                et télécharger au même endroit.
               </li>
               <li>
                 <span className="font-medium text-foreground/80">Vidéo → Produit</span> : bouton « Depuis une vidéo », en haut du
@@ -248,7 +258,9 @@ export function ProductStudioPanel({ baseProduct, report, initialExpertOpen = fa
               });
               setFindings([]);
               setEditorRevision((revision) => revision + 1);
-              setIsExpertOpen(true);
+              setIsExpertOpen(false);
+              setIsPreviewOpen(true);
+              setJustWritten(true);
               setWrittenPages(pages);
             }}
           />
@@ -275,6 +287,9 @@ export function ProductStudioPanel({ baseProduct, report, initialExpertOpen = fa
               toast.success('Modifications enregistrées', { description: 'Elles partiront dans le prochain export.' });
             }}
             onFindings={setFindings}
+            onExport={(format, version) => void handleExport(format, version)}
+            exporting={exporting}
+            scrollIntoView={justWritten}
           />
         )}
 

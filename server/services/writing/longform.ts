@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import { generateJson } from '@server/services/ai/gemini';
 import type { Outline, OutlineSection } from '@server/services/writing/outline';
+import { BOOK_FORMAT_RULE, normalizeBookText } from '@server/shared/bookText';
 import { countryName } from '@server/shared/countries';
 
 /**
@@ -128,7 +129,7 @@ export function sectionPrompt(input: {
       : '2. N’invente aucun chiffre (prix, revenus, statistiques, rendements), aucun témoignage, aucune étude, aucune citation, aucun nom de personne ou de marque réelle. Si une donnée locale manque, écris « [à compléter : …] ».',
     '3. Aucune promesse de gain, de résultat garanti ou de délai miraculeux ; aucun conseil médical, juridique ou financier présenté comme certain.',
     '4. Ne répète pas le titre de la section, n’annonce pas ce que tu vas dire, ne conclus pas par un résumé de ce que tu viens de dire.',
-    '5. Paragraphes courts, listes commençant par « - », sous-titres en clair si utile, sans Markdown gras ni dièse.',
+    `5. ${BOOK_FORMAT_RULE}`,
     '6. « gist » : une phrase disant ce que cette section a apporté, qui servira à ne pas la répéter plus loin.',
     '7. Réponds uniquement en JSON, selon le schéma.',
   ]
@@ -153,7 +154,8 @@ export async function writeSection(input: Parameters<typeof sectionPrompt>[0] & 
     timeoutMs: Math.min(TIMEOUT_MS, input.timeoutMs ?? TIMEOUT_MS),
   });
 
-  const content = clean(response.content, SECTION_CONTENT_MAX);
+  // Remis au propre avant d'être gardé : un titre mis en gras devient un sous-titre, les signes parasites partent.
+  const content = normalizeBookText(clean(response.content, SECTION_CONTENT_MAX));
   return {
     index: input.section.index,
     content,

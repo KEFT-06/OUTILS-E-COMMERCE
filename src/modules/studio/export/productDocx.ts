@@ -7,62 +7,93 @@ import {
   HeadingLevel,
   ImageRun,
   InternalHyperlink,
+  LineRuleType,
   Packer,
   PageBreak,
   PageNumber,
   Paragraph,
   TextRun,
 } from 'docx';
+import type { BookBlock } from '@server/shared/bookText';
 import { triggerDownload } from '@/shared/lib/download';
 import { toFileSlug } from '@/shared/lib/pdfText';
 import {
-  BIBLIOGRAPHY_ANCHOR,
-  BIBLIOGRAPHY_TITLE,
-  CONTROLS_ANCHOR,
-  CONTROLS_TITLE,
-  DEMONSTRATION_BIBLIOGRAPHY_NOTICE,
-  DEMONSTRATION_COVER_NOTICE,
-  EDITED_VERSION_NOTICE,
-  EMPTY_BIBLIOGRAPHY_NOTICE,
   EMPTY_CHAPTER_NOTICE,
   ProductDocument,
-  ProductExportStamp,
-  describeCheckDate,
-  describeCompliance,
-  describeOriginality,
+  SOURCE_ANCHOR,
+  SOURCE_TITLE,
+  chapterHeading,
+  sectionAnchor,
   tableOfContents,
 } from '@/modules/studio/export/productDocument';
 
 /**
- * Rendu DOCX d'un produit — feuille de route 3.3.
+ * Rendu DOCX d'un ouvrage — même modèle et mêmes règles de composition que le PDF : page de
+ * titre, sommaire à deux niveaux, un chapitre par page, trois niveaux de titres en gras, corps
+ * de 11,5 points à interligne d'une fois et demie, listes en retrait.
  *
- * Même modèle et mêmes phrases que le PDF. Le sommaire est une liste de liens
- * internes vers des signets posés sur chaque titre : il est cliquable dès
- * l'ouverture. Une table des matières automatique de Word, elle, reste vide tant
- * que l'utilisateur n'a pas demandé la mise à jour des champs — elle se présente
- * comme un sommaire sans en être un.
+ * Le sommaire est une liste de liens internes vers des signets posés sur chaque titre : il est
+ * cliquable dès l'ouverture. Une table des matières automatique de Word, elle, reste vide tant
+ * que l'utilisateur n'a pas demandé la mise à jour des champs.
  */
 
-const LINK_COLOR = '4F46E5';
+const LINK_COLOR = '166534';
+const INK = '1E293B';
+const TITLE_INK = '0F172A';
+/** Corps du texte, en demi-points : 11,5 points. */
+const BODY_SIZE = 23;
+/** Interligne d'une fois et demie (240 = simple). */
+const BODY_SPACING = { line: 360, lineRule: LineRuleType.AUTO } as const;
 
-function linkRun(text: string): TextRun {
-  return new TextRun({ text, color: LINK_COLOR, underline: {} });
+/** Un retour à la ligne simple, dans un paragraphe, reste un retour à la ligne. */
+function runs(text: string, options: { bold?: boolean; italics?: boolean; color?: string; size?: number } = {}): TextRun[] {
+  return text
+    .split('\n')
+    .map((part, index) => new TextRun({ text: part, break: index > 0 ? 1 : undefined, size: BODY_SIZE, color: INK, ...options }));
 }
 
-function heading(anchor: string, title: string): Paragraph {
-  return new Paragraph({
-    heading: HeadingLevel.HEADING_1,
-    children: [new Bookmark({ id: anchor, children: [new TextRun(title)] })],
-  });
+function body(text: string, options: { italics?: boolean; color?: string } = {}): Paragraph {
+  return new Paragraph({ spacing: { ...BODY_SPACING, after: 180 }, children: runs(text, options) });
 }
 
-function body(
-  text: string,
-  options: { italics?: boolean; color?: string; size?: number } = {},
-): Paragraph {
-  return new Paragraph({
-    spacing: { after: 160 },
-    children: [new TextRun({ text, italics: options.italics, color: options.color, size: options.size })],
+function blockParagraphs(blocks: BookBlock[], chapterAnchor: string): Paragraph[] {
+  let section = 0;
+  return blocks.flatMap((block) => {
+    if (block.type === 'h2') {
+      const anchor = sectionAnchor(chapterAnchor, section);
+      section += 1;
+      return [
+        new Paragraph({
+          heading: HeadingLevel.HEADING_2,
+          keepNext: true,
+          spacing: { before: 320, after: 140 },
+          children: [new Bookmark({ id: anchor, children: [new TextRun({ text: block.text, bold: true, size: 28, color: TITLE_INK })] })],
+        }),
+      ];
+    }
+    if (block.type === 'h3') {
+      return [
+        new Paragraph({
+          heading: HeadingLevel.HEADING_3,
+          keepNext: true,
+          spacing: { before: 220, after: 100 },
+          children: [new TextRun({ text: block.text, bold: true, size: 24, color: TITLE_INK })],
+        }),
+      ];
+    }
+    if (block.type === 'p') return [body(block.text)];
+    return block.items.map(
+      (item, index) =>
+        new Paragraph({
+          spacing: { ...BODY_SPACING, after: 80 },
+          indent: { left: 440, hanging: 440 },
+          children: [
+            new TextRun({ text: block.type === 'ol' ? `${index + 1}.\t` : '•\t', bold: block.type === 'ol', size: BODY_SIZE, color: block.type === 'ol' ? TITLE_INK : LINK_COLOR }),
+            ...runs(item),
+          ],
+          tabStops: [{ type: 'left', position: 440 }],
+        }),
+    );
   });
 }
 
@@ -73,132 +104,130 @@ export interface ProductDocxCover {
 }
 
 /** Construit le document sans le télécharger : séparé pour pouvoir être vérifié hors navigateur. */
-export function buildProductDOCX(
-  productDocument: ProductDocument,
-  stamp: ProductExportStamp,
-  coverImage: ProductDocxCover | null = null,
-): Document {
-  const notices = [
-    ...(productDocument.containsDemonstrationData ? [DEMONSTRATION_COVER_NOTICE] : []),
-    ...(productDocument.isEditedVersion ? [EDITED_VERSION_NOTICE] : []),
-  ];
+export function buildProductDOCX(productDocument: ProductDocument, coverImage: ProductDocxCover | null = null): Document {
+  const pageBreak = () => new Paragraph({ children: [new PageBreak()] });
 
-  const cover = [
+  const titlePage = [
     ...(coverImage
       ? [
           new Paragraph({
             alignment: AlignmentType.CENTER,
             children: [new ImageRun({ type: coverImage.type, data: coverImage.data, transformation: { width: 420, height: 747 } })],
           }),
-          new Paragraph({ children: [new PageBreak()] }),
+          pageBreak(),
         ]
       : []),
     new Paragraph({
-      children: [
-        new TextRun({ text: productDocument.typeName.toUpperCase(), bold: true, color: LINK_COLOR, size: 18 }),
-      ],
+      alignment: AlignmentType.CENTER,
+      spacing: { before: 3200, after: 240 },
+      children: [new TextRun({ text: productDocument.typeName.toUpperCase(), bold: true, color: LINK_COLOR, size: 19, characterSpacing: 30 })],
     }),
-    new Paragraph({ heading: HeadingLevel.TITLE, children: [new TextRun(productDocument.title)] }),
+    new Paragraph({
+      heading: HeadingLevel.TITLE,
+      alignment: AlignmentType.CENTER,
+      children: [new TextRun({ text: productDocument.title, bold: true, size: 56, color: TITLE_INK })],
+    }),
     ...(productDocument.subtitle
-      ? [new Paragraph({ children: [new TextRun({ text: productDocument.subtitle, color: '64748B', size: 26 })] })]
+      ? [
+          new Paragraph({
+            alignment: AlignmentType.CENTER,
+            spacing: { before: 240 },
+            children: [new TextRun({ text: productDocument.subtitle, color: '64748B', size: 28 })],
+          }),
+        ]
       : []),
-    ...notices.map((notice) => body(notice, { italics: true, color: 'B45309', size: 18 })),
-    new Paragraph({ heading: HeadingLevel.HEADING_1, children: [new TextRun('Sommaire')] }),
+    pageBreak(),
+  ];
+
+  const contents = [
+    new Paragraph({ spacing: { after: 240 }, children: [new TextRun({ text: 'Sommaire', bold: true, size: 40, color: TITLE_INK })] }),
     ...tableOfContents(productDocument).map(
       (entry) =>
         new Paragraph({
-          spacing: { after: 80 },
-          children: [new InternalHyperlink({ anchor: entry.anchor, children: [linkRun(entry.title)] })],
-        }),
-    ),
-    new Paragraph({ children: [new PageBreak()] }),
-  ];
-
-  const chapters = productDocument.chapters.flatMap((chapter) => [
-    heading(chapter.anchor, chapter.title),
-    ...(chapter.paragraphs.length === 0
-      ? [body(EMPTY_CHAPTER_NOTICE, { italics: true, color: '94A3B8' })]
-      : chapter.paragraphs.map((text) => body(text))),
-  ]);
-
-  const bibliography = [
-    heading(BIBLIOGRAPHY_ANCHOR, BIBLIOGRAPHY_TITLE),
-    ...(productDocument.containsDemonstrationData
-      ? [body(DEMONSTRATION_BIBLIOGRAPHY_NOTICE, { italics: true, color: 'B45309', size: 18 })]
-      : []),
-    ...(productDocument.bibliography.length === 0
-      ? [body(EMPTY_BIBLIOGRAPHY_NOTICE, { italics: true, color: '64748B' })]
-      : []),
-    ...productDocument.bibliography.map(
-      (entry, index) =>
-        new Paragraph({
-          spacing: { after: 120 },
+          spacing: { before: entry.level === 1 ? 160 : 0, after: 60 },
+          indent: { left: entry.level === 1 ? 0 : 340 },
           children: [
-            new TextRun({
-              text: `[${index + 1}] ${entry.kind} — ${entry.label}${entry.detail ? ` · ${entry.detail}` : ''}`,
-              size: 20,
+            new InternalHyperlink({
+              anchor: entry.anchor,
+              children: [new TextRun({ text: entry.title, bold: entry.level === 1, size: entry.level === 1 ? 23 : 20, color: entry.level === 1 ? TITLE_INK : INK })],
             }),
-            ...(entry.url
-              ? [new TextRun({ break: 1 }), new ExternalHyperlink({ link: entry.url, children: [linkRun(entry.url)] })]
-              : []),
           ],
         }),
     ),
   ];
 
-  const controls = [
-    heading(CONTROLS_ANCHOR, CONTROLS_TITLE),
-    body(describeCompliance(stamp)),
-    body(describeOriginality(stamp.originality)),
-    body(describeCheckDate(stamp), { color: '64748B', size: 18 }),
+  /** Ouverture de chapitre : toujours en haut d'une page. */
+  const chapterOpening = (anchor: string, label: string, title: string) => [
+    new Paragraph({
+      pageBreakBefore: true,
+      spacing: { after: 100 },
+      children: label ? [new TextRun({ text: label.toUpperCase(), bold: true, color: LINK_COLOR, size: 19, characterSpacing: 30 })] : [],
+    }),
+    new Paragraph({
+      heading: HeadingLevel.HEADING_1,
+      keepNext: true,
+      spacing: { after: 320 },
+      border: { bottom: { color: 'E2E8F0', size: 6, space: 8, style: 'single' } },
+      children: [new Bookmark({ id: anchor, children: [new TextRun({ text: title, bold: true, size: 40, color: TITLE_INK })] })],
+    }),
   ];
 
-  // Mention légale en pied de page : répétée sur chaque page, comme dans le PDF (CdC §9.4).
+  const chapters = productDocument.chapters.flatMap((chapter) => [
+    ...chapterOpening(chapter.anchor, chapter.label, chapter.title),
+    ...(chapter.blocks.length === 0 ? [body(EMPTY_CHAPTER_NOTICE, { italics: true, color: '94A3B8' })] : blockParagraphs(chapter.blocks, chapter.anchor)),
+  ]);
+
+  const source =
+    productDocument.bibliography.length > 0
+      ? [
+          ...chapterOpening(SOURCE_ANCHOR, '', SOURCE_TITLE),
+          ...productDocument.bibliography.map(
+            (entry) =>
+              new Paragraph({
+                spacing: { ...BODY_SPACING, after: 160 },
+                children: [
+                  ...runs(`${entry.kind} : ${entry.label}${entry.detail ? ` · ${entry.detail}` : ''}`),
+                  ...(entry.url
+                    ? [new TextRun({ break: 1 }), new ExternalHyperlink({ link: entry.url, children: [new TextRun({ text: entry.url, color: LINK_COLOR, underline: {}, size: 19 })] })]
+                    : []),
+                ],
+              }),
+          ),
+        ]
+      : [];
+
+  // Pied de page : le titre de l'ouvrage et le numéro de page — le livre est celui de son auteur.
   const footer = new Footer({
     children: [
       new Paragraph({
         alignment: AlignmentType.CENTER,
-        children: [new TextRun({ text: stamp.disclaimer, italics: true, size: 14, color: '78828F' })],
-      }),
-      new Paragraph({
-        alignment: AlignmentType.CENTER,
         children: [
-          new TextRun({
-            children: ['Page ', PageNumber.CURRENT, ' sur ', PageNumber.TOTAL_PAGES],
-            size: 15,
-            color: '94A3B8',
-          }),
+          new TextRun({ text: `${productDocument.title} · `, size: 16, color: '94A3B8' }),
+          new TextRun({ children: [PageNumber.CURRENT], size: 16, color: '94A3B8' }),
         ],
       }),
     ],
   });
 
   return new Document({
-    creator: 'Smart Creator',
     title: productDocument.title,
-    description: 'Export de produit digital — Smart Creator',
+    description: chapterHeading({ label: productDocument.typeName, title: productDocument.title }),
+    styles: { default: { document: { run: { font: 'Calibri', size: BODY_SIZE } } } },
     sections: [
       {
+        properties: { page: { margin: { top: 1470, bottom: 1360, left: 1470, right: 1470 } } },
         footers: { default: footer },
-        children: [...cover, ...chapters, ...bibliography, ...controls],
+        children: [...titlePage, ...contents, ...chapters, ...source],
       },
     ],
   });
 }
 
-export async function buildProductDOCXBlob(
-  productDocument: ProductDocument,
-  stamp: ProductExportStamp,
-  coverImage: ProductDocxCover | null = null,
-): Promise<Blob> {
-  return Packer.toBlob(buildProductDOCX(productDocument, stamp, coverImage));
+export async function buildProductDOCXBlob(productDocument: ProductDocument, coverImage: ProductDocxCover | null = null): Promise<Blob> {
+  return Packer.toBlob(buildProductDOCX(productDocument, coverImage));
 }
 
-export async function renderProductDOCX(
-  productDocument: ProductDocument,
-  stamp: ProductExportStamp,
-  coverImage: ProductDocxCover | null = null,
-): Promise<void> {
-  const blob = await buildProductDOCXBlob(productDocument, stamp, coverImage);
+export async function renderProductDOCX(productDocument: ProductDocument, coverImage: ProductDocxCover | null = null): Promise<void> {
+  const blob = await buildProductDOCXBlob(productDocument, coverImage);
   triggerDownload(blob, `${toFileSlug(productDocument.title, 'produit')}.docx`);
 }

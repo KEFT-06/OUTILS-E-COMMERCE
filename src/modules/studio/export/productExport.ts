@@ -1,9 +1,7 @@
 import { checkSectionsCompliance } from '@/shared/lib/complianceGate';
 import { coversApi } from '@/shared/lib/covers';
-import { fetchRequiredDisclaimer } from '@/shared/lib/legal';
 import {
   ProductDocument,
-  ProductExportStamp,
   buildProductDocument,
   documentComplianceSections,
   documentPlainText,
@@ -20,6 +18,9 @@ import { OriginalityVerdict } from '@/shared/types/originality';
  * Deux contrôles, un seul chemin : la conformité publicitaire (veto du Lot 1),
  * puis l'originalité (blocage sous le seuil). Comme pour le rapport, c'est le seul
  * point d'entrée exposé : un bouton d'export ne peut pas « oublier » un contrôle.
+ *
+ * Les contrôles décident de l'export ; ils ne s'impriment plus dans l'ouvrage. Le livre est
+ * celui du client : son lecteur n'a pas à y lire la version d'une table de règles.
  */
 
 export type ProductExportFormat = 'pdf' | 'docx';
@@ -100,46 +101,28 @@ export async function exportProduct(
   product: DigitalProductIdea,
   /** null : produit créé hors analyse. */
   report: MarketAnalysisReport | null,
-  isEditedVersion: boolean,
   format: ProductExportFormat,
   /** Couverture générée prête, placée en première page. */
   coverId: string | null = null,
 ): Promise<ProductExportVerdict> {
-  const productDocument = buildProductDocument(product, report, isEditedVersion);
+  const productDocument = buildProductDocument(product, report);
   const verdict = await checkProductExport(productDocument);
-  const originality = verdict.originality;
 
-  if (!verdict.exportAllowed || !originality) {
+  if (!verdict.exportAllowed || !verdict.originality) {
     throw new ProductExportBlockedError(verdict);
   }
-
-  const stamp: ProductExportStamp = {
-    complianceRulesVersion: verdict.compliance.rulesVersion,
-    complianceWarnings: verdict.compliance.findings.filter((f) => f.severity === 'warn').length,
-    originality:
-      originality.measurable && originality.originalityPercent !== null
-        ? {
-            measured: true,
-            percent: originality.originalityPercent,
-            threshold: originality.threshold,
-            referencesCompared: originality.referencesCompared,
-          }
-        : { measured: false, reason: originality.unmeasurableReason ?? 'mesure impossible.' },
-    checkedAt: verdict.compliance.checkedAt,
-    disclaimer: verdict.compliance.requiredDisclaimer || (await fetchRequiredDisclaimer()),
-  };
 
   // Une couverture illisible ne prive pas de l'export : le document part sans elle.
   const image = coverId ? await coversApi.image(coverId).catch(() => null) : null;
 
   if (format === 'pdf') {
     const pdfFormat = image ? ({ 'image/png': 'PNG', 'image/jpeg': 'JPEG', 'image/webp': 'WEBP' } as const)[image.mimeType as 'image/png'] : undefined;
-    renderProductPDF(productDocument, stamp, image && pdfFormat ? { dataUrl: image.dataUrl, format: pdfFormat } : null);
+    renderProductPDF(productDocument, image && pdfFormat ? { dataUrl: image.dataUrl, format: pdfFormat } : null);
   } else {
     // Chargé à la demande : la bibliothèque DOCX est lourde et ne sert qu'à cet export.
     const { renderProductDOCX } = await import('@/modules/studio/export/productDocx');
     const docxType = image?.mimeType === 'image/png' ? 'png' : image?.mimeType === 'image/jpeg' ? 'jpg' : null;
-    await renderProductDOCX(productDocument, stamp, image && docxType ? { type: docxType, data: image.bytes } : null);
+    await renderProductDOCX(productDocument, image && docxType ? { type: docxType, data: image.bytes } : null);
   }
 
   recordExport('ebook', format);

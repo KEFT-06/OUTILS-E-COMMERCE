@@ -53,7 +53,7 @@ const PLATEFORMES: Record<string, { Icone: LucideIcon; nom: string }> = {
   THREADS: { Icone: AtSign, nom: 'Threads' },
 };
 
-function Plateformes({ noms }: { noms: string[] }) {
+function Plateformes({ noms, enClair = false }: { noms: string[]; enClair?: boolean }) {
   if (noms.length === 0) return null;
   return (
     <span className="flex flex-wrap items-center gap-2">
@@ -63,6 +63,14 @@ function Plateformes({ noms }: { noms: string[] }) {
           return (
             <span key={nom} className="rounded bg-muted px-1.5 py-0.5 text-[10px] font-medium uppercase">
               {nom}
+            </span>
+          );
+        }
+        if (enClair) {
+          return (
+            <span key={nom} className="inline-flex items-center gap-1 font-medium">
+              <connue.Icone className="size-4 text-foreground/80" aria-hidden="true" />
+              {connue.nom}
             </span>
           );
         }
@@ -115,15 +123,40 @@ const CTA_FR: Record<string, string> = {
 };
 const ctaFr = (cta: string | null) => (cta ? (CTA_FR[cta.trim().toLowerCase()] ?? cta) : null);
 
-/** Visuel entier, centré sur fond gris, comme chez Meta ; l'aperçu conservé d'abord (il ne périme pas). */
-function AdMedia({ ad }: { ad: LibraryAd }) {
+/**
+ * Visuel entier, centré sur fond gris, comme chez Meta ; l'aperçu conservé d'abord (il ne périme pas).
+ *
+ * Une vidéo se lit sur place, d'un clic, quelle que soit la boutique derrière l'annonce : c'est
+ * en l'écoutant qu'on comprend son accroche. Elle est lue chez Meta directement, comme dans sa
+ * bibliothèque publicitaire ; si le navigateur n'y parvient pas, le relais du site prend la suite.
+ * Quand l'annonce a été retirée, son fichier n'existe plus nulle part : l'écran le dit et renvoie
+ * à la bibliothèque.
+ */
+function AdMedia({ ad, grand = false }: { ad: LibraryAd; grand?: boolean }) {
   const [cassee, setCassee] = useState(false);
+  /** Rang de la source essayée ; null : la vidéo n'a pas été lancée. */
+  const [lecture, setLecture] = useState<number | null>(null);
   const source = ad.thumbnailUrl ?? ad.mediaUrl;
+  const sources = ad.videoUrl ? [ad.videoUrl, `/api/espionnage/ads/${ad.id}/video`] : [];
+  const bibliotheque = `https://www.facebook.com/ads/library/?id=${encodeURIComponent(ad.externalId)}`;
+  const enLecture = lecture !== null && lecture < sources.length;
+  const bouton = 'flex size-16 items-center justify-center rounded-full bg-black/45 text-white backdrop-blur-sm transition group-hover:scale-105 group-hover:bg-black/60';
   return (
     // Cadre de hauteur fixe : un visuel très haut repoussait ou masquait le texte de l'annonce
     // (signalé le 29/09/2026). L'image reste entière (object-contain), centrée sur fond gris.
-    <div className="relative flex h-56 items-center justify-center overflow-hidden bg-muted sm:h-64">
-      {source && !cassee ? (
+    <div className={cn('relative flex items-center justify-center overflow-hidden bg-muted', grand ? 'h-72 sm:h-96' : 'h-56 sm:h-64')}>
+      {enLecture ? (
+        <video
+          key={lecture}
+          src={sources[lecture]}
+          poster={source ?? undefined}
+          controls
+          autoPlay
+          playsInline
+          className="h-full w-full bg-black object-contain"
+          onError={() => setLecture((rang) => (rang === null ? null : rang + 1))}
+        />
+      ) : source && !cassee ? (
         <img
           src={source}
           alt={ad.title ?? 'Visuel de l’annonce'}
@@ -138,13 +171,34 @@ function AdMedia({ ad }: { ad: LibraryAd }) {
           <span className="text-xs">Aperçu pas encore disponible</span>
         </div>
       )}
-      {ad.mediaKind === 'video' && (
-        <span className="pointer-events-none absolute inset-0 flex items-center justify-center" aria-label="Vidéo">
-          <span className="flex size-16 items-center justify-center rounded-full bg-black/45 text-white backdrop-blur-sm">
-            <Play className="size-7 translate-x-0.5 fill-current" aria-hidden="true" />
-          </span>
-        </span>
-      )}
+      {ad.mediaKind === 'video' &&
+        !enLecture &&
+        (lecture !== null ? (
+          <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 bg-black/65 p-5 text-center text-sm text-white">
+            <p>Cette vidéo n’est plus en ligne : l’annonce a été retirée ou remplacée.</p>
+            <a href={bibliotheque} target="_blank" rel="noreferrer noopener" className="font-semibold underline underline-offset-2">
+              Ouvrir l’annonce dans la bibliothèque Meta
+            </a>
+          </div>
+        ) : sources.length > 0 ? (
+          <button type="button" className="group absolute inset-0 flex cursor-pointer items-center justify-center" aria-label="Lire la vidéo" onClick={() => setLecture(0)}>
+            <span className={bouton}>
+              <Play className="size-7 translate-x-0.5 fill-current" aria-hidden="true" />
+            </span>
+          </button>
+        ) : (
+          <a
+            href={bibliotheque}
+            target="_blank"
+            rel="noreferrer noopener"
+            className="group absolute inset-0 flex items-center justify-center"
+            aria-label="Voir la vidéo dans la bibliothèque Meta"
+          >
+            <span className={bouton}>
+              <Play className="size-7 translate-x-0.5 fill-current" aria-hidden="true" />
+            </span>
+          </a>
+        ))}
     </div>
   );
 }
@@ -243,18 +297,19 @@ function Pastilles({ ad }: { ad: LibraryAd }) {
 }
 
 /** Pays où l'annonce a été vue en diffusion. Rien n'est affiché quand aucun pays n'a été relevé. */
-function Pays({ codes }: { codes: string[] }) {
+function Pays({ codes, tous = false }: { codes: string[]; tous?: boolean }) {
   if (codes.length === 0) return null;
+  const montres = tous ? codes : codes.slice(0, 6);
   return (
     <p className="flex flex-wrap items-center gap-x-2 gap-y-1">
       Diffusée en
-      {codes.slice(0, 6).map((code) => (
+      {montres.map((code) => (
         <span key={code} className="inline-flex items-center gap-1 font-medium">
           <CountryFlag code={code} />
           {countryName(code)}
         </span>
       ))}
-      {codes.length > 6 && <span className="text-muted-foreground">+{codes.length - 6}</span>}
+      {codes.length > montres.length && <span className="text-muted-foreground">+{codes.length - montres.length}</span>}
     </p>
   );
 }
@@ -462,10 +517,24 @@ export function AdDetailsDialog({
             </p>
             <div className="grid gap-4 sm:grid-cols-2">
               <div className="overflow-hidden rounded-lg border">
-                <AdMedia ad={ad} />
+                <AdMedia ad={ad} grand />
                 <LinkBar ad={ad} />
               </div>
               <div className="space-y-3 text-sm">
+                {/* Où l'annonce tourne : les pays où elle a été trouvée en diffusion, et les réseaux qui la montrent. */}
+                <div className="space-y-2 rounded-lg border bg-muted/30 p-3">
+                  <p className="font-semibold">Où cette publicité est diffusée</p>
+                  {(ad.countries ?? []).length > 0 ? (
+                    <Pays codes={ad.countries ?? []} tous />
+                  ) : (
+                    <p className="text-muted-foreground">Pays de diffusion non relevé pour cette annonce.</p>
+                  )}
+                  {ad.platforms.length > 0 && (
+                    <p className="flex flex-wrap items-center gap-2">
+                      Sur <Plateformes noms={ad.platforms} enClair />
+                    </p>
+                  )}
+                </div>
                 {ad.bodyText && <p className="leading-relaxed whitespace-pre-line">{ad.bodyText}</p>}
                 <p className="text-xs text-muted-foreground">
                   {ad.storeHost ? (

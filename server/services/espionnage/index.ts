@@ -4,7 +4,7 @@ import { containsIgnoringAccents } from '@server/db/search';
 import { spiedAds } from '@server/db/schema';
 import { providers } from '@server/env';
 import { harvestCollectionRuns, lastDiscoveryAt, pendingCollectionRuns } from '@server/services/radar/discovery';
-import { storeMissingAvatars, storeMissingThumbnails } from '@server/services/espionnage/media';
+import { isMetaMediaUrl, storeMissingAvatars, storeMissingThumbnails } from '@server/services/espionnage/media';
 import { runInBackground } from '@server/shared/backgroundWork';
 import { STOREFRONTS, type Storefront } from '@server/shared/storefronts';
 
@@ -38,6 +38,8 @@ export interface SpiedAdView {
   mediaKind: string | null;
   /** Le fichier d'origine (vidéo ou image) peut être téléchargé. */
   downloadable: boolean;
+  /** Adresse de la vidéo chez Meta, pour la lire sur le mur. null : pas une vidéo, ou adresse inconnue. */
+  videoUrl: string | null;
   /** Pays où une collecte a vu cette annonce en diffusion (ISO). Vide : inconnu. */
   countries: string[];
   startedAt: string | null;
@@ -166,6 +168,8 @@ function viewOf(row: typeof spiedAds.$inferSelect, now: Date): SpiedAdView {
     mediaUrl: row.mediaUrl,
     mediaKind: row.mediaKind,
     downloadable: Boolean(row.downloadUrl ?? row.mediaUrl ?? row.thumbnailPath),
+    // La définition légère d'abord ; l'adresse d'origine pour les annonces relevées avant qu'on la garde.
+    videoUrl: row.mediaKind === 'video' ? ([row.playUrl, row.downloadUrl].find(isMetaMediaUrl) ?? null) : null,
     countries: row.countries,
     startedAt: row.startedAt?.toISOString() ?? null,
     runningDays: runningDays(row.startedAt, row.lastSeenAt),

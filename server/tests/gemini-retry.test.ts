@@ -117,6 +117,24 @@ describe('Gemini — nouvelles tentatives', () => {
     // Le cas vu en production : un ebook de seize sections épuisait les limites des deux versions récentes.
     script = Array.from({ length: 4 }, () => ({ status: 429, body: { error: { status: 'RESOURCE_EXHAUSTED' } } }));
     assert.deepEqual(await ask(), { ok: 'oui' });
-    assert.deepEqual(models, ['gemini-3.6-flash', 'gemini-3.6-flash', 'gemini-3.5-flash', 'gemini-3.5-flash', 'gemini-2.5-flash']);
+    assert.deepEqual(models, ['gemini-3.6-flash', 'gemini-3.6-flash', 'gemini-3.5-flash', 'gemini-3.5-flash', 'gemini-3.1-flash-lite']);
+  });
+
+  it('écarte un modèle retiré par Google et écrit avec le suivant, sans rendre d’erreur', async () => {
+    // Vu le 05/10/2026 : un modèle encore listé répondait 404 à chaque appel, et la rédaction échouait.
+    const { resetRetiredModels } = await import('@server/services/ai/gemini');
+    try {
+      script = [{ status: 404, body: { error: { status: 'NOT_FOUND', message: 'This model models/gemini-3.6-flash is no longer available to new users.' } } }];
+      models.length = 0;
+      assert.deepEqual(await ask(), { ok: 'oui' });
+      assert.deepEqual(models, ['gemini-3.6-flash', 'gemini-3.5-flash'], 'le modèle suivant prend la suite, tout de suite');
+
+      // Les demandes suivantes ne perdent plus un appel sur le modèle retiré.
+      models.length = 0;
+      assert.deepEqual(await ask(), { ok: 'oui' });
+      assert.deepEqual(models, ['gemini-3.5-flash']);
+    } finally {
+      resetRetiredModels();
+    }
   });
 });

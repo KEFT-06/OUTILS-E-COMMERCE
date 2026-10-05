@@ -61,7 +61,7 @@ export function LongformEbookPanel({ product, market, onWritten }: LongformEbook
         const result = await ebookApi.result(finished.id);
         onWritten(result.chapters, result.pages);
         toast.success('Ebook rédigé', {
-          description: `${result.pages} pages environ, ${result.chapters.length} chapitres. Relisez le brouillon avant l’export.`,
+          description: `${result.pages} pages environ, ${result.chapters.length} chapitres. Lisez-le ci-dessous, corrigez-le, puis téléchargez-le.`,
         });
       } catch (error) {
         toast.error('Le texte rédigé n’a pas pu être récupéré', { description: toApiError(error, 'Réessayez dans un moment.').message });

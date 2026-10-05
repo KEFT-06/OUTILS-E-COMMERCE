@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { Download, Images } from 'lucide-react';
 import { NoDataState } from '@/shared/components/NoDataState';
+import { ZoomableImage } from '@/shared/components/ZoomableImage';
 import { apiRequest } from '@/shared/lib/api';
 import { cacheEpoch, lastKnown, remember } from '@/shared/lib/apiCache';
 import { toApiError } from '@/shared/lib/apiError';
@@ -104,11 +105,12 @@ export function MyVisualsPanel({ version }: { version: number }) {
             <ul className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4">
               {visuals.map((visual) => (
                 <li key={visual.requestId} className="overflow-hidden rounded-lg border bg-muted/30">
-                  <img
+                  <ZoomableImage
                     src={fileUrl(visual.requestId)}
                     alt={visual.prompt.slice(0, 140)}
-                    loading="lazy"
-                    className="aspect-square w-full bg-muted object-cover"
+                    className="w-full"
+                    imageClassName="aspect-square w-full bg-muted object-cover"
+                    downloadHref={fileUrl(visual.requestId, true)}
                   />
                   <div className="flex items-center justify-between gap-2 p-2">
                     <span className="min-w-0 text-xs text-muted-foreground">

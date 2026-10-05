@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { AlertTriangle, Clapperboard, Download, Image as ImageIcon, PenLine, ShieldCheck, Sparkles } from 'lucide-react';
+import { AlertTriangle, BookOpen, Clapperboard, Download, Image as ImageIcon, PenLine, ShieldCheck, Sparkles } from 'lucide-react';
 import { useCreditGate } from '@/app/providers/CreditGateProvider';
 import { ApiError, readApiError, toApiError } from '@/shared/lib/apiError';
 import { MAX_POLL_MISSES, lostTrackMessage, pollStatus } from '@/shared/lib/polling';
@@ -7,8 +7,10 @@ import { AWARENESS_OPTIONS } from '@/shared/lib/awareness';
 import { findAdFramework } from '@server/shared/adFrameworks';
 import { useAuth } from '@/features/auth/AuthContext';
 import { AdFrameworkPicker } from '@/modules/creatifs/AdFrameworkPicker';
+import { BookCoverPanel } from '@/modules/creatifs/BookCoverPanel';
 import { type Brouillon, CLE_BROUILLON, VIDEO_DURATIONS, VIDEO_FORMATS, type VideoDuration, lireBrouillon } from '@/modules/creatifs/briefDraft';
 import { CountryCombobox } from '@/shared/components/CountryCombobox';
+import { ZoomableImage } from '@/shared/components/ZoomableImage';
 import { guessCountryCode } from '@/shared/lib/geo';
 import { cn } from '@/shared/lib/utils';
 import type { AwarenessLevel, CreativeFormat, CreativeKind, CreativeStatus } from '@/shared/types/creatives';
@@ -84,6 +86,8 @@ export function CreativeGeneratorPanel({ onVisualCreated }: { onVisualCreated?: 
   const [initial] = useState(lireBrouillon);
 
   const [kind, setKind] = useState<CreativeKind>(initial.kind ?? 'visual');
+  /** Onglet « Livre » : une couverture n'est pas un créatif publicitaire, elle a son propre écran. */
+  const [bookMode, setBookMode] = useState(false);
   const [productName, setProductName] = useState(initial.productName ?? '');
   const [awarenessLevel, setAwarenessLevel] = useState<AwarenessLevel | null>(initial.awarenessLevel ?? null);
   const [format, setFormat] = useState<CreativeFormat>(initial.format ?? '9:16');
@@ -322,17 +326,22 @@ export function CreativeGeneratorPanel({ onVisualCreated }: { onVisualCreated?: 
   return (
     <Card>
       <CardHeader>
-        <CardTitle className="text-lg">Générer un visuel ou une vidéo</CardTitle>
+        <CardTitle className="text-lg">{bookMode ? 'Créer la couverture d’un livre' : 'Générer un visuel ou une vidéo'}</CardTitle>
         <CardDescription>
-          Une vidéo ou un visuel structuré par une méthode publicitaire, et orienté par le niveau de conscience de votre prospect.
+          {bookMode
+            ? 'Une illustration sur laquelle votre titre est posé proprement, prête à télécharger et à publier.'
+            : 'Une vidéo ou un visuel structuré par une méthode publicitaire, et orienté par le niveau de conscience de votre prospect.'}
         </CardDescription>
         <CardAction>
           <div className="inline-flex rounded-lg border bg-muted/50 p-1" role="group" aria-label="Type de créatif">
             <Button
               size="sm"
-              variant={kind === 'visual' ? 'secondary' : 'ghost'}
-              aria-pressed={kind === 'visual'}
-              onClick={() => setKind('visual')}
+              variant={!bookMode && kind === 'visual' ? 'secondary' : 'ghost'}
+              aria-pressed={!bookMode && kind === 'visual'}
+              onClick={() => {
+                setBookMode(false);
+                setKind('visual');
+              }}
               disabled={isGenerating}
             >
               <ImageIcon />
@@ -340,9 +349,10 @@ export function CreativeGeneratorPanel({ onVisualCreated }: { onVisualCreated?: 
             </Button>
             <Button
               size="sm"
-              variant={kind === 'video' ? 'secondary' : 'ghost'}
-              aria-pressed={kind === 'video'}
+              variant={!bookMode && kind === 'video' ? 'secondary' : 'ghost'}
+              aria-pressed={!bookMode && kind === 'video'}
               onClick={() => {
+                setBookMode(false);
                 setKind('video');
                 /*
                   Le carré disparaît de la liste en passant à la vidéo, mais un format déjà
@@ -357,11 +367,22 @@ export function CreativeGeneratorPanel({ onVisualCreated }: { onVisualCreated?: 
               <Clapperboard />
               Vidéo
             </Button>
+            <Button size="sm" variant={bookMode ? 'secondary' : 'ghost'} aria-pressed={bookMode} onClick={() => setBookMode(true)} disabled={isGenerating}>
+              <BookOpen />
+              Livre
+            </Button>
           </div>
         </CardAction>
       </CardHeader>
 
-      <CardContent className="space-y-5">
+      {bookMode && (
+        <CardContent>
+          <BookCoverPanel />
+        </CardContent>
+      )}
+
+      {/* Le brief reste monté sous l'onglet Livre : y revenir ne fait rien perdre. */}
+      <CardContent className={cn('space-y-5', bookMode && 'hidden')}>
         <form onSubmit={handleSubmit} className="space-y-5">
           <fieldset className="space-y-2">
             <legend className="mb-2 text-sm font-medium">Objectif {kind === 'video' ? 'de la vidéo' : 'du visuel'}</legend>
@@ -615,7 +636,7 @@ export function CreativeGeneratorPanel({ onVisualCreated }: { onVisualCreated?: 
                   // La clé change à chaque étape : le lecteur recharge la nouvelle version, entière.
                   <video key={result.requestId} src={fileUrl('inline')} controls className="max-h-96 w-full object-contain" />
                 ) : (
-                  <img src={fileUrl('inline')} alt="Créatif généré" className="max-h-96 w-full object-contain" />
+                  <ZoomableImage src={fileUrl('inline')} alt="Créatif généré" className="w-full" imageClassName="max-h-96 w-full object-contain" />
                 )}
               </div>
 

@@ -83,6 +83,8 @@ describe('Collecteur maison', () => {
     assert.equal(lue.storeHost, 'kpougeet.mychariow.com', 'boutique reconnue dans le lien, ramenée à sa forme en .com');
     assert.equal(lue.advertiser, 'TechNova 1');
     assert.equal(lue.mediaKind, 'video');
+    // À lire sur le mur : la définition légère, pas le fichier d'origine cinq à dix fois plus lourd.
+    assert.equal(lue.videoUrl, 'https://video-los4-1.xx.fbcdn.net/o1/v/t2/f2/m412/sd.mp4');
     assert.deepEqual(lue.countries, ['CM']);
     assert.equal(lue.downloadable, true);
     assert.equal(lue.variants, 3);

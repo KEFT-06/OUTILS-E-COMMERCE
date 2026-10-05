@@ -204,7 +204,7 @@ describe('Rédaction par l’IA', () => {
     assert.match(overloaded.body.error.message, /points ont été rendus/);
     assert.doesNotMatch(overloaded.body.error.message, /réessayez dans|surchargé|très demandé/i, 'aucun message ne demande d’attendre');
     // Trois modèles : le principal, le secours, puis le dernier recours d'une génération stable.
-    assert.deepEqual(models, ['gemini-3.6-flash', 'gemini-3.6-flash', 'gemini-3.5-flash', 'gemini-3.5-flash', 'gemini-2.5-flash', 'gemini-2.5-flash'], 'deux tentatives par modèle, pas davantage');
+    assert.deepEqual(models, ['gemini-3.6-flash', 'gemini-3.6-flash', 'gemini-3.5-flash', 'gemini-3.5-flash', 'gemini-3.1-flash-lite', 'gemini-3.1-flash-lite'], 'deux tentatives par modèle, pas davantage');
     assert.equal(await balance(agent), before, 'points rendus');
   });
 });

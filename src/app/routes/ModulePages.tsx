@@ -287,7 +287,7 @@ export function CreatifsPage() {
       <PageHeader
         eyebrow="Créer"
         title="Créatifs publicitaires"
-        description="Générez une vidéo ou un visuel publicitaire structuré par une méthode (AIDA, PAS…), puis travaillez les scripts vidéo de la niche analysée."
+        description="Générez une vidéo ou un visuel publicitaire structuré par une méthode (AIDA, PAS…), la couverture de votre livre, puis travaillez les scripts vidéo de la niche analysée."
       />
       <CreativeGeneratorPanel onVisualCreated={() => setVisualsVersion((version) => version + 1)} />
       <MyVisualsPanel version={visualsVersion} />

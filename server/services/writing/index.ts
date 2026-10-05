@@ -6,6 +6,7 @@ import { generateJson } from '@server/services/ai/gemini';
 import { ComplianceUnavailableError, checkText } from '@server/services/compliance';
 import { runBilledGeneration } from '@server/services/generations';
 import { LaunchKitUnavailableError, getLaunchKitConfig, type LaunchKitConfig } from '@server/services/launchKit';
+import { BOOK_FORMAT_RULE, normalizeBookText } from '@server/shared/bookText';
 import { countryName } from '@server/shared/countries';
 
 /**
@@ -127,7 +128,7 @@ export function productWritingPrompt(request: ProductWritingRequest): string {
       : '2. Numérote tes modules de 1 à N dans l’ordre de lecture, et donne à chacun un titre court qui annonce ce qu’il fait gagner.',
     '3. N’invente aucun chiffre (prix, revenus, statistiques, rendements), aucun témoignage, aucune étude, aucune citation, aucun nom de personne ou de marque réelle. Quand une donnée locale est nécessaire, écris « [à compléter : …] ».',
     '4. Aucune promesse de gain, de résultat garanti ou de délai miraculeux ; aucun conseil médical, juridique ou financier présenté comme certain.',
-    '5. Texte simple : paragraphes courts, listes commençant par « - », sans répéter le titre du module, sans Markdown gras.',
+    `5. ${BOOK_FORMAT_RULE} Ne répète pas le titre du module.`,
     product.modules.length > 0
       ? '6. Réponds uniquement en JSON : « modules », une entrée par module, avec son numéro (« index ») et son texte (« content »).'
       : '6. Réponds uniquement en JSON : « modules », une entrée par module, avec son numéro (« index »), son titre (« title ») et son texte (« content »).',
@@ -191,7 +192,7 @@ export async function writeProduct(auth: RequestAuth, request: ProductWritingReq
 
       const written = new Map<number, string>();
       for (const module of response.modules) {
-        const content = clean(module.content, MODULE_CONTENT_MAX);
+        const content = normalizeBookText(clean(module.content, MODULE_CONTENT_MAX));
         const borne = composeLePlan ? 16 : request.product.modules.length;
         if (Number.isInteger(module.index) && module.index >= 1 && module.index <= borne && content) {
           written.set(module.index, content);
@@ -464,7 +465,7 @@ export function productRevisionPrompt(request: ProductRevisionRequest): string {
     '2. Garde ce que la demande ne vise pas : ne réécris pas tout un passage pour corriger une phrase.',
     '3. N’invente aucun chiffre (prix, revenus, statistiques), aucun témoignage, aucune étude, aucune citation, aucun nom de personne ou de marque réelle. Une donnée locale manquante s’écrit « [à compléter : …] ».',
     '4. Aucune promesse de gain, de résultat garanti ou de délai miraculeux ; aucun conseil médical, juridique ou financier présenté comme certain.',
-    '5. Texte simple : paragraphes courts, listes commençant par « - », sans Markdown gras.',
+    `5. ${BOOK_FORMAT_RULE} Garde les titres et sous-titres du texte (« ## », « ### ») à leur place.`,
     '6. Réponds uniquement en JSON : « text », le texte réécrit.',
   ]
     .filter((entry) => entry !== '')
@@ -498,7 +499,7 @@ export async function reviseProduct(auth: RequestAuth, request: ProductRevisionR
         timeoutMs: TIMEOUT_MS,
       });
 
-      const text = clean(response.text, MODULE_CONTENT_MAX);
+      const text = normalizeBookText(clean(response.text, MODULE_CONTENT_MAX));
       // Le texte retouché passe le vérificateur comme tout texte rédigé : une retouche peut
       // réintroduire une promesse de gain que la première rédaction avait évitée.
       const findings = await findingsOf([{ label: request.sectionTitle || 'Texte retouché', text }]);

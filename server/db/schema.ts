@@ -1261,6 +1261,12 @@ export const spiedAds = pgTable(
      * Adresse signée qui expire en quelques jours : chaque collecte la rafraîchit. Jamais copié chez nous.
      */
     downloadUrl: text('download_url'),
+    /**
+     * Vidéo en définition légère, pour la LIRE sur le mur. La version d'origine pèse cinq à dix
+     * fois plus : sur une connexion mobile, elle ne démarrait pas avant quinze secondes (mesuré
+     * le 05/10/2026 sur une vidéo de 24 Mo). Même adresse signée et périssable que la précédente.
+     */
+    playUrl: text('play_url'),
     /** Pays (ISO) des collectes qui ont vu cette annonce en diffusion. Vide : collecte tous pays confondus. */
     countries: jsonb('countries').$type<string[]>().notNull().default(sql`'[]'::jsonb`),
     /** Début de diffusion annoncé par Meta : la seule ancienneté qui ne demande aucune observation. */

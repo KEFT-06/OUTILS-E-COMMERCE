@@ -580,7 +580,8 @@ export async function getEbookResult(
       .filter((section) => section.chapterIndex === chapter.index)
       .map((section) => {
         const text = written.find((entry) => entry.index === section.index)?.content;
-        return text ? `${section.title}\n\n${text}` : null;
+        // « ## » : le titre de section est rendu en gras, en tête de sa partie — plus une ligne perdue dans le texte.
+        return text ? `## ${section.title}\n\n${text}` : null;
       })
       .filter((part): part is string => part !== null)
       .join('\n\n');

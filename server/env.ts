@@ -110,16 +110,21 @@ const schema = z.object({
     .default('gemini-3.5-flash')
     .transform((model) => (model === 'off' ? null : model)),
   /**
-   * Dernier recours quand le principal et le secours refusent encore : une génération stable,
+   * Dernier recours quand le principal et le secours refusent encore : une autre génération,
    * servie par une autre flotte, aux limites par minute bien plus larges que les versions
-   * récentes. Présent dans la liste des modèles de la clé au 29/09/2026. « off » : aucun.
+   * récentes. « off » : aucun.
+   *
+   * Figurer dans la liste des modèles ne suffit pas : « gemini-2.5-flash » y était encore le
+   * 05/10/2026 et répondait pourtant 404, « no longer available to new users », à chaque appel —
+   * le dernier recours faisait donc échouer la rédaction au moment précis où il devait la sauver.
+   * Celui-ci a été appelé pour de bon ce jour-là, et a répondu.
    */
   /** Vagues de parties au plus par passage d'un rapport long ; 0 : seul le temps compte. Sert aux tests. */
   REPORT_SLICE_WAVES: z.coerce.number().int().min(0).default(0),
   GEMINI_LAST_RESORT_MODEL: z
     .string()
     .regex(/^[\w.-]+$/)
-    .default('gemini-2.5-flash')
+    .default('gemini-3.1-flash-lite')
     .transform((model) => (model === 'off' ? null : model)),
   /**
    * Étude de marché des analyses de niche : Perplexity cherche et lit le web (Agent API, repli

@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { ImageIcon, RefreshCw, Sparkles, Trash2 } from 'lucide-react';
 import { useCreditGate } from '@/app/providers/CreditGateProvider';
+import { ZoomableImage } from '@/shared/components/ZoomableImage';
 import { type CoverView, coversApi } from '@/shared/lib/covers';
 import { toApiError } from '@/shared/lib/apiError';
 import { cn } from '@/shared/lib/utils';
@@ -36,6 +37,7 @@ export function CoverGenerator({
   subtitle,
   onChange,
   className,
+  hidePreview = false,
 }: {
   subject: 'guide' | 'product';
   subjectId: string;
@@ -43,6 +45,8 @@ export function CoverGenerator({
   subtitle?: string;
   onChange?: (cover: CoverView | null) => void;
   className?: string;
+  /** L'écran montre déjà la couverture composée (onglet Livre) : la vignette ferait doublon. */
+  hidePreview?: boolean;
 }) {
   const { runWithCredits } = useCreditGate();
   const [cover, setCover] = useState<CoverView | null>(null);
@@ -136,11 +140,19 @@ export function CoverGenerator({
   return (
     <div className={cn('flex flex-col gap-4 sm:flex-row', className)}>
       <div
-        className="relative flex aspect-[9/16] w-32 shrink-0 items-center justify-center overflow-hidden rounded-lg border bg-muted sm:w-36"
+        className={cn(
+          'relative flex aspect-[9/16] w-32 shrink-0 items-center justify-center overflow-hidden rounded-lg border bg-muted sm:w-36',
+          hidePreview && 'hidden',
+        )}
         aria-busy={pending || loading}
       >
         {ready ? (
-          <img src={coversApi.imageUrl(cover)} alt={`Couverture de « ${title} »`} className="size-full object-cover" />
+          <ZoomableImage
+            src={coversApi.imageUrl(cover)}
+            alt={`Couverture de « ${title} »`}
+            className="size-full"
+            imageClassName="size-full object-cover"
+          />
         ) : pending ? (
           <div className="flex flex-col items-center gap-2 p-2 text-center text-xs text-muted-foreground" role="status">
             <Spinner />

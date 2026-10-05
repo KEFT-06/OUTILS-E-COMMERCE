@@ -5,7 +5,7 @@ import { asyncRoute, routeLimiter, validateBody } from '@server/middleware';
 import { requireAuth } from '@server/middleware/auth';
 import { effectiveLimits } from '@server/services/accounts';
 import { listSpiedAds, refreshWall, refreshWallInBackground, spiedStores } from '@server/services/espionnage';
-import { sendAdDownload, sendAdThumbnail, sendPageAvatar } from '@server/services/espionnage/media';
+import { sendAdDownload, sendAdThumbnail, sendAdVideo, sendPageAvatar } from '@server/services/espionnage/media';
 import { STOREFRONTS } from '@server/shared/storefronts';
 import {
   type AdSearchRequest,
@@ -81,6 +81,16 @@ espionnageRouter.get(
   routeLimiter(10, 60),
   asyncRoute(async (req, res) => {
     await sendAdDownload(req.params.id, res);
+  }),
+);
+
+/** Relais de lecture d'une vidéo, pour le lecteur du mur quand il ne peut pas la lire chez Meta directement. */
+espionnageRouter.get(
+  '/ads/:id/video',
+  // Un lecteur vidéo envoie une demande par saut dans la vidéo : le plafond est large.
+  routeLimiter(10, 300),
+  asyncRoute(async (req, res) => {
+    await sendAdVideo(req.params.id, req.headers.range, res);
   }),
 );
 

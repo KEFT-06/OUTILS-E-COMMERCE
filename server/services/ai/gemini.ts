@@ -52,6 +52,20 @@ const RETRY_PLAN: readonly { tier: ModelTier; waitMs: number }[] = [
   { tier: 'lastResort', waitMs: 3_000 },
 ];
 
+/**
+ * Modèles que Google a retirés pour cette clé (réponse 404), retenus le temps du processus.
+ *
+ * Un modèle retiré n'est pas une demande refusée : la consigne est bonne, c'est l'adresse qui
+ * n'existe plus. On passe donc au modèle suivant au lieu de rendre une erreur au client, et on
+ * ne lui redemande plus rien — chaque appel perdu sur lui retardait toutes les rédactions.
+ */
+const retiredModels = new Set<string>();
+
+/** Oublie les modèles écartés. Sert aux tests, qui partagent le même processus. */
+export function resetRetiredModels(): void {
+  retiredModels.clear();
+}
+
 /** Refus passagers : débit dépassé, panne interne, surcharge, passerelle expirée. */
 const RETRYABLE_STATUS = new Set([429, 500, 502, 503, 504]);
 
@@ -114,7 +128,11 @@ export async function generateJson<T>(input: {
       ? env.GEMINI_LAST_RESORT_MODEL
       : null;
   const modelFor: Record<ModelTier, string | null> = { primary: env.GEMINI_MODEL, fallback: fallbackModel, lastResort: lastResortModel };
-  const attempts = RETRY_PLAN.filter((attempt) => modelFor[attempt.tier]);
+  const usable = (tier: ModelTier) => Boolean(modelFor[tier]) && !retiredModels.has(modelFor[tier]!);
+  // Si tous ont été retirés, on les redemande quand même : mieux vaut un refus exact que le silence.
+  const attempts = RETRY_PLAN.some((attempt) => usable(attempt.tier))
+    ? RETRY_PLAN.filter((attempt) => usable(attempt.tier))
+    : RETRY_PLAN.filter((attempt) => modelFor[attempt.tier]);
   const deadline = Date.now() + input.timeoutMs;
 
   /** Dernier refus passager, pour le message final si toutes les tentatives échouent. */
@@ -131,6 +149,8 @@ export async function generateJson<T>(input: {
 
   for (let index = 0; index < attempts.length + unreadable; index++) {
     const attempt = attempts[Math.min(index, attempts.length - 1)]!;
+    // Retiré pendant cette demande même : sa seconde tentative n'a plus lieu d'être.
+    if (retiredModels.has(modelFor[attempt.tier] ?? '') && attempts.some((other) => usable(other.tier))) continue;
     const waitMs = Math.max(attempt.waitMs, providerWaitMs);
     if (index > 0 && deadline - Date.now() - waitMs < MIN_ATTEMPT_MS) break;
     await sleep(waitMs);
@@ -177,6 +197,12 @@ export async function generateJson<T>(input: {
     }
 
     const failure = await readProviderError(response);
+    if (response.status === 404 && !retiredModels.has(model)) {
+      retiredModels.add(model);
+      console.error(`[${service.log}] modèle retiré chez Google, à remplacer dans la configuration : ${model} —`, failure.message);
+      // Le modèle suivant prend la suite ; s'il n'y en a plus, la boucle s'arrête d'elle-même.
+      continue;
+    }
     if (!RETRYABLE_STATUS.has(response.status)) {
       console.error(`[${service.log}] le fournisseur a répondu`, response.status, failure.message);
       if (response.status === 401 || response.status === 403) {
