@@ -19,7 +19,22 @@
  *   CRON_SECRET     secret du planificateur du site : sans lui, le collecteur ne fait qu'un essai
  *   COLLECTE_NAVIGATEUR  msedge (défaut sous Windows), chrome, ou chromium (après « npx playwright install chromium »)
  */
+import { existsSync, readFileSync } from 'node:fs';
 import { Configuration, PlaywrightCrawler, log } from '@crawlee/playwright';
+
+/*
+  Les réglages du fichier .env à la racine du dépôt, pour ceux que l'environnement ne donne pas
+  déjà. L'en-tête ci-dessus l'annonçait, mais rien ne le lisait : lancé tel quel, le collecteur ne
+  trouvait pas son secret et partait en « essai » sans rien verser — sans que celui qui l'avait
+  lancé le remarque (06/10/2026). Seuls les réglages du collecteur sont repris.
+*/
+const reglages = new URL('../.env', import.meta.url);
+if (existsSync(reglages)) {
+  for (const ligne of readFileSync(reglages, 'utf8').split(/\r?\n/)) {
+    const lu = /^(CRON_SECRET|COLLECTE_[A-Z_]+)\s*=\s*(.*)$/.exec(ligne.trim());
+    if (lu && !process.env[lu[1]]) process.env[lu[1]] = lu[2].replace(/^(["'])(.*)\1$/, '$2').trim();
+  }
+}
 
 // Sous Windows, Crawlee mesure la mémoire par PowerShell : certains terminaux ne l'ont pas dans leur chemin.
 if (process.platform === 'win32') {
