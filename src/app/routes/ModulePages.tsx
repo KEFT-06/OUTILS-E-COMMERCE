@@ -198,11 +198,16 @@ function RequireReport({
 }
 
 export function CockpitPage() {
-  const { currentReport } = useWorkspace();
+  const { currentReport, isLoadingReport } = useWorkspace();
   const goTo = useGoTo();
   const navigate = useNavigate();
   return (
-    <CockpitDashboard report={currentReport} onNavigateToModule={goTo} onOpenBilling={() => navigate(ACCOUNT_PATH)} />
+    <CockpitDashboard
+      report={currentReport}
+      reportPending={isLoadingReport}
+      onNavigateToModule={goTo}
+      onOpenBilling={() => navigate(ACCOUNT_PATH)}
+    />
   );
 }
 
@@ -280,7 +285,7 @@ export function StudioPage() {
 }
 
 export function CreatifsPage() {
-  const { currentReport } = useWorkspace();
+  const { currentReport, isLoadingReport } = useWorkspace();
   const [visualsVersion, setVisualsVersion] = useState(0);
   return (
     <div className="space-y-8">
@@ -291,10 +296,12 @@ export function CreatifsPage() {
       />
       <CreativeGeneratorPanel onVisualCreated={() => setVisualsVersion((version) => version + 1)} />
       <MyVisualsPanel version={visualsVersion} />
-      <MetaVideoStudioView
-        campaigns={currentReport?.adCampaigns ?? []}
-        provenance={currentReport?.dataProvenance?.adCampaigns}
-      />
+      {/* L'analyse n'est pas encore à l'écran : on ne dit pas qu'aucune niche n'a de campagne. */}
+      {isLoadingReport && !currentReport ? (
+        <Skeleton className="h-48 rounded-xl" />
+      ) : (
+        <MetaVideoStudioView campaigns={currentReport?.adCampaigns ?? []} provenance={currentReport?.dataProvenance?.adCampaigns} />
+      )}
     </div>
   );
 }

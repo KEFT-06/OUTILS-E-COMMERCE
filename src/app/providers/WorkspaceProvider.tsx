@@ -62,6 +62,38 @@ function rememberedActiveReport(accountId: string): string | null {
   }
 }
 
+/** Le rapport le plus récent que ce navigateur a déjà vu : sert à reconnaître une analyse arrivée pendant l'absence. */
+const newestSeenKey = (accountId: string) => `smartcreator_rapport_recent_${accountId}`;
+
+function rememberNewestReport(accountId: string, reportId: string) {
+  try {
+    localStorage.setItem(newestSeenKey(accountId), reportId);
+  } catch {
+    // Stockage bloqué : le dernier rapport ouvert servira de repère.
+  }
+}
+
+/**
+ * Rapport à ouvrir à l'arrivée. Le dernier que l'utilisateur avait ouvert — sauf si une analyse
+ * s'est terminée depuis sa dernière visite (écran fermé, autre appareil) : c'est alors elle qu'il
+ * vient chercher, et rouvrir l'ancienne lui faisait croire que la nouvelle n'avait pas abouti.
+ */
+function reportToOpen(accountId: string, list: ReportSummary[]): ReportSummary | undefined {
+  const newest = list[0];
+  if (!newest) return undefined;
+  let seen: string | null = null;
+  try {
+    seen = localStorage.getItem(newestSeenKey(accountId));
+  } catch {
+    seen = null;
+  }
+  if (seen && seen !== newest.id && list.some((entry) => entry.id === seen)) return newest;
+  return list.find((entry) => entry.id === rememberedActiveReport(accountId)) ?? newest;
+}
+
+/** Attente avant un nouvel essai de chargement : 2 s, 4 s, 8 s… jusqu'à 30 s. */
+const retryDelay = (attempt: number) => Math.min(30_000, 2_000 * 2 ** attempt);
+
 const summaryOf = (report: MarketAnalysisReport): ReportSummary => ({
   id: report.id,
   query: report.query,
@@ -71,6 +103,9 @@ const summaryOf = (report: MarketAnalysisReport): ReportSummary => ({
 });
 
 const fetchReport = (id: string) => apiRequest<{ report: MarketAnalysisReport }>(`/api/reports/${encodeURIComponent(id)}`);
+
+/** Un rapport supprimé ou étranger au compte : insister ne servirait à rien. */
+const isGone = (error: unknown) => toApiError(error, '').status === 404;
 
 /** Cadence du suivi d'une analyse : l'étude dure une à plusieurs minutes. */
 const JOB_POLL_MS = 3_000;
@@ -110,37 +145,88 @@ export const WorkspaceProvider: React.FC<{ children: React.ReactNode }> = ({ chi
 
   const [reports, setReports] = useState<ReportSummary[]>([]);
   const [currentReport, setCurrentReport] = useState<MarketAnalysisReport | null>(null);
-  const [isLoadingReport, setIsLoadingReport] = useState(true);
+  /** La liste des rapports du compte a été lue : on SAIT s'il y en a. */
+  const [reportsKnown, setReportsKnown] = useState(false);
+  /** Un rapport est en cours d'ouverture, à la demande de l'utilisateur. */
+  const [isOpeningReport, setIsOpeningReport] = useState(false);
+  /*
+    « En chargement » tant qu'un rapport est attendu et pas encore là : liste pas encore lue, ou
+    rapports présents sur le compte mais aucun ouvert. Les écrans n'affirment donc « aucune niche
+    analysée » que lorsque c'est établi. Un seul chargement manqué — connexion instable — laissait
+    tous les modules dire qu'on n'avait rien analysé, alors que l'analyse était sur le compte
+    (signalé par le propriétaire le 06/10/2026).
+  */
+  const isLoadingReport = !reportsKnown || isOpeningReport || (reports.length > 0 && currentReport === null);
   const [analysisJob, setAnalysisJob] = useState<AnalysisJob | null>(null);
   const [isExportingPdf, setIsExportingPdf] = useState(false);
   const [analysisDialogOpen, setAnalysisDialogOpen] = useState(false);
   const [commandOpen, setCommandOpen] = useState(false);
   const [blockedVerdict, setBlockedVerdict] = useState<ReportComplianceVerdict | null>(null);
 
+  // Rapports du compte, à l'arrivée. Un chargement manqué est repris de lui-même, jusqu'à aboutir.
   useEffect(() => {
     if (!accountId) return;
     let cancelled = false;
-    setIsLoadingReport(true);
-    (async () => {
-      const { reports: list } = await apiRequest<{ reports: ReportSummary[] }>('/api/reports');
-      if (cancelled) return;
-      setReports(list);
-      const remembered = rememberedActiveReport(accountId);
-      const target = list.find((entry) => entry.id === remembered) ?? list[0];
-      if (!target) return;
-      const { report } = await fetchReport(target.id);
-      if (!cancelled) setCurrentReport(report);
-    })()
-      .catch((error: unknown) => {
-        if (!cancelled) toast.error('Vos rapports n’ont pas pu être chargés', { description: toApiError(error, 'Réessayez dans un moment.').message });
-      })
-      .finally(() => {
-        if (!cancelled) setIsLoadingReport(false);
-      });
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    setReportsKnown(false);
+    setReports([]);
+    setCurrentReport(null);
+
+    const load = async (attempt: number) => {
+      try {
+        const { reports: list } = await apiRequest<{ reports: ReportSummary[] }>('/api/reports');
+        if (cancelled) return;
+        setReports(list);
+        setReportsKnown(true);
+      } catch {
+        if (cancelled) return;
+        // Connexion instable : rien n'est affirmé à l'écran, et le chargement repart tout seul.
+        timer = setTimeout(() => void load(attempt + 1), retryDelay(attempt));
+      }
+    };
+    void load(0);
+
     return () => {
       cancelled = true;
+      clearTimeout(timer);
     };
   }, [accountId]);
+
+  /*
+    Des rapports sur le compte, aucun d'ouvert, et l'utilisateur n'en ouvre pas un lui-même :
+    l'écran ouvre celui qu'il attend, et recommence tant que ce n'est pas fait. C'est le seul
+    endroit qui s'en charge — à l'arrivée, après une suppression, après un chargement manqué.
+  */
+  const [autoOpenAttempt, setAutoOpenAttempt] = useState(0);
+  useEffect(() => {
+    if (!accountId || !reportsKnown || reports.length === 0 || currentReport !== null || isOpeningReport) return;
+    const target = reportToOpen(accountId, reports);
+    if (!target) return;
+    let cancelled = false;
+    const timer = setTimeout(
+      () => {
+        fetchReport(target.id)
+          .then(({ report }) => {
+            if (cancelled) return;
+            setCurrentReport(report);
+            setAutoOpenAttempt(0);
+            rememberActiveReport(accountId, report.id);
+            rememberNewestReport(accountId, reports[0]!.id);
+          })
+          .catch((error: unknown) => {
+            if (cancelled) return;
+            // Supprimé depuis un autre appareil : on l'oublie, le suivant sera ouvert à sa place.
+            if (isGone(error)) setReports((previous) => previous.filter((entry) => entry.id !== target.id));
+            else setAutoOpenAttempt((attempt) => attempt + 1);
+          });
+      },
+      autoOpenAttempt === 0 ? 0 : retryDelay(autoOpenAttempt - 1),
+    );
+    return () => {
+      cancelled = true;
+      clearTimeout(timer);
+    };
+  }, [accountId, reportsKnown, reports, currentReport, isOpeningReport, autoOpenAttempt]);
 
   // Analyse lancée avant un rechargement de la page : le suivi reprend.
   useEffect(() => {
@@ -160,15 +246,24 @@ export const WorkspaceProvider: React.FC<{ children: React.ReactNode }> = ({ chi
 
   const openReport = useCallback(
     async (id: string) => {
-      setIsLoadingReport(true);
+      setIsOpeningReport(true);
       try {
-        const { report } = await fetchReport(id);
-        setCurrentReport(report);
-        if (accountId) rememberActiveReport(accountId, report.id);
+        // Trois essais avant de le dire : une coupure d'une seconde ne doit pas se voir.
+        for (let attempt = 0; ; attempt += 1) {
+          try {
+            const { report } = await fetchReport(id);
+            setCurrentReport(report);
+            if (accountId) rememberActiveReport(accountId, report.id);
+            return;
+          } catch (error) {
+            if (attempt >= 2 || isGone(error)) throw error;
+            await new Promise((resolve) => setTimeout(resolve, retryDelay(attempt)));
+          }
+        }
       } catch (error) {
-        toast.error('Le rapport n’a pas pu être ouvert', { description: toApiError(error, 'Réessayez dans un moment.').message });
+        toast.error('Le rapport n’a pas pu être ouvert', { description: toApiError(error, 'Votre connexion semble instable.').message });
       } finally {
-        setIsLoadingReport(false);
+        setIsOpeningReport(false);
       }
     },
     [accountId],
@@ -274,18 +369,33 @@ export const WorkspaceProvider: React.FC<{ children: React.ReactNode }> = ({ chi
 
     let cancelled = false;
     let failures = 0;
+    /** Un passage du suivi est en cours : le suivant attend, pour ne pas charger deux fois le rapport. */
+    let busy = false;
     const timer = setInterval(() => {
+      if (busy) return;
+      busy = true;
       apiRequest<{ job: AnalysisJob }>(`/api/analyze-niche/jobs/${encodeURIComponent(analysisJobId)}`)
         .then(async ({ job }) => {
           if (cancelled) return;
           failures = 0;
           if (job.status === 'completed' && job.reportId) {
+            /*
+              Le suivi ne s'arrête qu'une fois le rapport réellement chargé. Il s'arrêtait AVANT :
+              si ce dernier chargement échouait — le rapport pèse bien plus lourd qu'une sonde —,
+              plus rien ne le redemandait. L'analyse était terminée et payée, l'écran restait sur
+              « Analyse en cours », et tous les modules disaient qu'on n'avait rien analysé.
+            */
+            const { report } = await fetchReport(job.reportId);
+            if (cancelled) return;
             cancelled = true;
             clearInterval(timer);
-            const { report } = await fetchReport(job.reportId);
             setReports((previous) => [summaryOf(report), ...previous.filter((entry) => entry.id !== report.id)]);
+            setReportsKnown(true);
             setCurrentReport(report);
-            if (accountId) rememberActiveReport(accountId, report.id);
+            if (accountId) {
+              rememberActiveReport(accountId, report.id);
+              rememberNewestReport(accountId, report.id);
+            }
             setAnalysisJob(null);
             navigate(pathOf('analyse'));
             toast.success(`Analyse terminée pour « ${report.nicheName} »`, { id: toastId, description: undefined, duration: 6_000 });
@@ -308,6 +418,9 @@ export const WorkspaceProvider: React.FC<{ children: React.ReactNode }> = ({ chi
           if (failures === 5) {
             toast.loading('Analyse en cours', { id: toastId, description: 'Connexion instable : l’analyse continue.' });
           }
+        })
+        .finally(() => {
+          busy = false;
         });
       // En attente, la sonde ralentit : c'est elle qui relance, mais le rendez-vous est loin.
     }, analysisJobStatus === 'waiting' ? JOB_WAIT_POLL_MS : JOB_POLL_MS);

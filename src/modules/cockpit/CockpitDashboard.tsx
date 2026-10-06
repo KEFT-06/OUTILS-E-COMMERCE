@@ -19,8 +19,10 @@ import { SalesSummaryCard } from '@/shared/components/SalesSummaryCard';
 import { Skeleton } from '@/shared/ui/skeleton';
 
 interface CockpitDashboardProps {
-  /** null : aucune niche analysée pour l’instant. */
+  /** null : aucune niche analysée pour l’instant — ou pas encore chargée, voir `reportPending`. */
   report: MarketAnalysisReport | null;
+  /** L'analyse existe peut-être mais n'est pas encore à l'écran : on ne dit pas « aucune niche analysée ». */
+  reportPending?: boolean;
   onNavigateToModule: (module: ModuleId) => void;
   onOpenBilling: () => void;
 }
@@ -77,7 +79,7 @@ function useProviderStatus() {
   return { providers, failed };
 }
 
-export function CockpitDashboard({ report, onNavigateToModule, onOpenBilling }: CockpitDashboardProps) {
+export function CockpitDashboard({ report, reportPending = false, onNavigateToModule, onOpenBilling }: CockpitDashboardProps) {
   const { account } = useAuth();
   const { costTable } = useCreditGate();
   const { providers, failed } = useProviderStatus();
@@ -219,6 +221,8 @@ export function CockpitDashboard({ report, onNavigateToModule, onOpenBilling }: 
                 )}
               </div>
             </div>
+            ) : reportPending ? (
+              <Skeleton className="h-24 rounded-lg" />
             ) : (
               <NoDataState
                 icon={Target}
