@@ -29,6 +29,8 @@ const STYLES = [
 type Style = (typeof STYLES)[number]['value'];
 
 const POLL_MS = 5_000;
+/** Cadence du filet pendant une génération : assez lente pour ne rien coûter, assez vive pour ne pas faire attendre. */
+const WATCH_MS = 12_000;
 
 export function CoverGenerator({
   subject,
@@ -101,6 +103,27 @@ export function CoverGenerator({
   const generate = async () => {
     setBusy(true);
     setError(null);
+    const previousId = cover?.id ?? null;
+    let settled = false;
+    /*
+      Filet pour les connexions instables. La couverture se génère dans une seule demande d'une
+      trentaine de secondes : si la réponse se perd en route, l'image est prête et payée sur le
+      serveur, mais l'écran tournait sans fin (vu en production le 06/10/2026, sur une connexion
+      lente). On regarde donc, pendant l'attente, si une nouvelle couverture est arrivée.
+    */
+    const watcher = window.setInterval(() => {
+      if (settled) return;
+      void coversApi
+        .latest(subject, subjectId)
+        .then((found) => {
+          if (settled || !found || found.status !== 'ready' || found.id === previousId) return;
+          settled = true;
+          window.clearInterval(watcher);
+          apply(found);
+          setBusy(false);
+        })
+        .catch(() => undefined);
+    }, WATCH_MS);
     try {
       const created = await runWithCredits('cover_generation', () =>
         coversApi.create({
@@ -112,10 +135,12 @@ export function CoverGenerator({
           style,
         }),
       );
-      if (created) apply(created.status === 'failed' ? cover : created);
+      if (!settled && created) apply(created.status === 'failed' ? cover : created);
     } catch (caught) {
-      setError(toApiError(caught, 'La couverture n’a pas pu être lancée.').message);
+      if (!settled) setError(toApiError(caught, 'La couverture n’a pas pu être lancée.').message);
     } finally {
+      settled = true;
+      window.clearInterval(watcher);
       setBusy(false);
     }
   };
