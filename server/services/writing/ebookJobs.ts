@@ -1,4 +1,4 @@
-import { and, eq, inArray, isNull, lt, or, sql } from 'drizzle-orm';
+import { and, desc, eq, gt, inArray, isNull, lt, lte, or, sql } from 'drizzle-orm';
 import { z } from 'zod';
 import { getDb } from '@server/db/client';
 import { ebookJobs } from '@server/db/schema';
@@ -91,6 +91,12 @@ const TRANSIENT = /_(OVERLOADED|RATE_LIMITED|TIMEOUT|UNAVAILABLE)$/;
  * une vingtaine de minutes d'essais réels. Le temps écoulé, lui, ne fait jamais renoncer.
  */
 const MAX_STALLS = 20;
+
+/** Durée pendant laquelle un texte terminé, jamais versé au brouillon, reste proposé à son auteur. */
+const DELIVERY_WINDOW_MS = 14 * 86_400_000;
+
+/** Rédactions dont le texte revient au brouillon d'un produit (un dossier de marché suit son propre écran). */
+const DRAFT_KINDS: EbookJobKind[] = ['ebook', 'product'];
 
 /** Attente au plus, dans une tranche enchaînée, que la pause de la précédente se termine. */
 const PAUSE_WAIT_MS = 60_000;
@@ -527,8 +533,77 @@ export async function startEbook(auth: RequestAuth, request: EbookRequest): Prom
     throw error;
   }
 
+  // Une nouvelle rédaction remplace les précédentes : un ancien texte jamais versé ne doit plus revenir.
+  await db
+    .update(ebookJobs)
+    .set({ deliveredAt: new Date() })
+    .where(and(eq(ebookJobs.userId, userId), eq(ebookJobs.productId, request.productId), eq(ebookJobs.status, 'completed'), isNull(ebookJobs.deliveredAt)));
+
   runInBackground(() => continueEbook(job!.id), `ebook ${job!.id}`);
   return { job: viewOf(job!), created: true };
+}
+
+/**
+ * Rédaction à suivre pour ce produit : celle qui tourne, sinon la dernière terminée dont le texte
+ * n'a pas encore rejoint le brouillon.
+ *
+ * C'est ce second cas qui manquait. Une rédaction finie écran fermé — téléphone verrouillé,
+ * onglet quitté — n'était plus « en cours » au retour : l'écran ne trouvait rien à suivre, et le
+ * texte, écrit et payé, restait sur le serveur sans jamais s'afficher.
+ */
+export async function getPendingEbookJob(auth: RequestAuth, productId: string | undefined): Promise<EbookJobView | null> {
+  if (!productId || productId.length > 200) return null;
+  const userId = auth.account.user.id;
+  const db = getDb();
+  const [active] = await db
+    .select()
+    .from(ebookJobs)
+    .where(and(eq(ebookJobs.userId, userId), eq(ebookJobs.productId, productId), inArray(ebookJobs.status, ACTIVE)))
+    .limit(1);
+  if (active) return viewOf(active);
+
+  const [waiting] = await db
+    .select()
+    .from(ebookJobs)
+    .where(
+      and(
+        eq(ebookJobs.userId, userId),
+        eq(ebookJobs.productId, productId),
+        eq(ebookJobs.status, 'completed'),
+        inArray(ebookJobs.kind, DRAFT_KINDS),
+        isNull(ebookJobs.deliveredAt),
+        gt(ebookJobs.completedAt, new Date(Date.now() - DELIVERY_WINDOW_MS)),
+      ),
+    )
+    .orderBy(desc(ebookJobs.completedAt))
+    .limit(1);
+  return waiting ? viewOf(waiting) : null;
+}
+
+/** Le texte a rejoint le brouillon : cette rédaction, et les plus anciennes du même produit, ne seront plus proposées. */
+export async function markEbookDelivered(auth: RequestAuth, jobId: string | undefined): Promise<void> {
+  const parsed = jobIdSchema.safeParse(jobId);
+  if (!parsed.success) throw new AppError(404, 'Rédaction introuvable sur votre compte.', 'EBOOK_JOB_NOT_FOUND');
+  const userId = auth.account.user.id;
+  const db = getDb();
+  const [job] = await db
+    .select({ productId: ebookJobs.productId, completedAt: ebookJobs.completedAt })
+    .from(ebookJobs)
+    .where(and(eq(ebookJobs.id, parsed.data), eq(ebookJobs.userId, userId), eq(ebookJobs.status, 'completed')))
+    .limit(1);
+  if (!job) throw new AppError(404, 'Rédaction introuvable sur votre compte.', 'EBOOK_JOB_NOT_FOUND');
+  await db
+    .update(ebookJobs)
+    .set({ deliveredAt: new Date() })
+    .where(
+      and(
+        eq(ebookJobs.userId, userId),
+        eq(ebookJobs.productId, job.productId),
+        eq(ebookJobs.status, 'completed'),
+        isNull(ebookJobs.deliveredAt),
+        lte(ebookJobs.completedAt, job.completedAt ?? new Date()),
+      ),
+    );
 }
 
 const jobIdSchema = z.string().uuid();

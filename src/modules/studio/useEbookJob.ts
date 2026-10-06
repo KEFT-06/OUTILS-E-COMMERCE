@@ -10,7 +10,9 @@ import { type EbookJob, type EbookResult, type EbookStart, ebookApi } from '@/sh
  * Un seul suivi pour les deux rédactions du Studio — le contenu des modules (« Génératif ») et
  * l'ebook long : toutes deux s'écrivent par tranches sur le serveur, enregistrées à mesure.
  * Quitter l'écran n'interrompt rien ; au retour, le suivi reprend la rédaction en cours et
- * verse le texte au brouillon quand elle se termine.
+ * verse le texte au brouillon quand elle se termine — ou tout de suite, si elle s'est terminée
+ * pendant l'absence. Le serveur retient qu'un texte a été versé : il n'est jamais proposé deux
+ * fois, et jamais oublié.
  */
 
 /** Cadence du suivi. C'est aussi lui qui relance la tranche suivante côté serveur. */
@@ -34,6 +36,8 @@ export function useEbookJob({ productId, onWritten }: { productId: string; onWri
     collected.current = finished.id;
     try {
       deliver.current(await ebookApi.result(finished.id));
+      // Versé : le serveur peut l'oublier. Si cet accusé se perd, le texte sera reproposé — jamais perdu.
+      void ebookApi.delivered(finished.id).catch(() => undefined);
     } catch (error) {
       // Le texte est sur le compte : le suivi le reprendra au prochain passage sur cet écran.
       collected.current = null;
@@ -43,20 +47,23 @@ export function useEbookJob({ productId, onWritten }: { productId: string; onWri
     }
   }, []);
 
-  // Rédaction lancée avant un rechargement de la page, ou depuis un autre appareil : le suivi reprend tout seul.
+  // Rédaction lancée avant un rechargement de la page, ou depuis un autre appareil : le suivi
+  // reprend tout seul. Terminée pendant l'absence : son texte est versé au brouillon dès le retour.
   useEffect(() => {
     let cancelled = false;
     setJob(null);
     void ebookApi
-      .active()
-      .then(({ job: active }) => {
-        if (!cancelled && active && active.productId === productId) setJob(active);
+      .pending(productId)
+      .then(({ job: waiting }) => {
+        if (cancelled || !waiting) return;
+        if (waiting.status === 'completed') void collect(waiting);
+        else setJob(waiting);
       })
       .catch(() => undefined);
     return () => {
       cancelled = true;
     };
-  }, [productId]);
+  }, [productId, collect]);
 
   // Suivi : chaque passage affiche l'avancement et fait repartir le serveur sur la suite.
   const followedId = job && job.status !== 'completed' && job.status !== 'failed' ? job.id : null;

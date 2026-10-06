@@ -544,6 +544,13 @@ export const ebookJobs = pgTable(
     createdAt: createdAt(),
     updatedAt: moment('updated_at').notNull().defaultNow(),
     completedAt: moment('completed_at'),
+    /**
+     * Moment où le texte terminé a rejoint le brouillon de l'auteur. Vide : il l'attend encore.
+     * Une rédaction finie écran fermé n'était jamais versée — au retour, l'écran ne cherchait que
+     * les rédactions EN COURS, et le texte payé restait sur le serveur sans que l'auteur le voie
+     * (constaté en production le 06/10/2026).
+     */
+    deliveredAt: moment('delivered_at'),
   },
   (table) => [
     index('ebook_jobs_user_idx').on(table.userId, table.createdAt),

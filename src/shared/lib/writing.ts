@@ -97,6 +97,12 @@ export const ebookApi = {
 
   active: () => apiRequest<{ job: EbookJob | null }>('/api/writing/ebook/active'),
 
+  /** Rédaction à suivre pour ce produit : en cours, ou terminée pendant l'absence et pas encore versée au brouillon. */
+  pending: (productId: string) => apiRequest<{ job: EbookJob | null }>(`/api/writing/ebook/pending?productId=${encodeURIComponent(productId)}`),
+
+  /** Le texte a rejoint le brouillon : le serveur ne le proposera plus. */
+  delivered: (id: string) => apiRequest<void>(`/api/writing/ebook/${encodeURIComponent(id)}/delivered`, { method: 'POST' }),
+
   /** Le suivi renvoie l'avancement, et relance au passage la tranche suivante. */
   follow: (id: string) => apiRequest<{ job: EbookJob }>(`/api/writing/ebook/${encodeURIComponent(id)}`),
 

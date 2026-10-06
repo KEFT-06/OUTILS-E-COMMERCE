@@ -223,6 +223,43 @@ describe('Rédaction d’un ebook long', () => {
     assert.equal(await balance(agent), before);
   });
 
+  it('garde pour l’auteur le texte d’une rédaction finie en son absence, et ne le propose qu’une fois', async () => {
+    // Vu en production le 06/10/2026 : rédaction terminée écran fermé, texte écrit et payé, jamais affiché au retour.
+    const { agent } = await signInWithPlan(app, 'autrice-remise@exemple.com', 'pro');
+    const { agent: other } = await signInWithPlan(app, 'curieuse-remise@exemple.com', 'pro');
+    const pending = async (who: typeof agent, productId: string) =>
+      (await who.get('/api/writing/ebook/pending').query({ productId }).expect(200)).body.job as { id: string; status: string } | null;
+
+    const launch = await agent.post('/api/writing/ebook').send({ ...REQUEST, productId: 'produit-absence' }).expect(202);
+    const jobId = (launch.body as { job: { id: string } }).job.id;
+    assert.equal((await pending(agent, 'produit-absence'))?.id, jobId, 'en cours : c’est elle qu’on suit');
+    await waitForCompletion(agent, jobId);
+
+    // L'auteur n'était pas là : plus rien n'est « en cours », mais son texte l'attend.
+    assert.equal((await agent.get('/api/writing/ebook/active').expect(200)).body.job, null);
+    const waiting = await pending(agent, 'produit-absence');
+    assert.equal(waiting?.id, jobId);
+    assert.equal(waiting?.status, 'completed');
+    assert.equal(await pending(agent, 'un-autre-produit'), null, 'jamais proposé pour un autre produit');
+    assert.equal(await pending(other, 'produit-absence'), null, 'ni à un autre compte');
+    await other.post(`/api/writing/ebook/${jobId}/delivered`).expect(404);
+
+    // Versé au brouillon : il n'est plus proposé, et reste lisible.
+    await agent.post(`/api/writing/ebook/${jobId}/delivered`).expect(204);
+    assert.equal(await pending(agent, 'produit-absence'), null, 'un texte versé ne revient pas écraser le brouillon');
+    await agent.get(`/api/writing/ebook/${jobId}/result`).expect(200);
+
+    // Une nouvelle rédaction du même produit remplace un ancien texte jamais versé.
+    const first = await agent.post('/api/writing/ebook').send({ ...REQUEST, productId: 'produit-remplace' }).expect(202);
+    await waitForCompletion(agent, (first.body as { job: { id: string } }).job.id);
+    const second = await agent.post('/api/writing/ebook').send({ ...REQUEST, productId: 'produit-remplace' }).expect(202);
+    const secondId = (second.body as { job: { id: string } }).job.id;
+    await waitForCompletion(agent, secondId);
+    assert.equal((await pending(agent, 'produit-remplace'))?.id, secondId, 'seul le dernier texte attend');
+    await agent.post(`/api/writing/ebook/${secondId}/delivered`).expect(204);
+    assert.equal(await pending(agent, 'produit-remplace'), null, 'l’ancien, remplacé, ne ressort pas');
+  });
+
   it('développe une analyse en dossier, sur les seuls faits du rapport enregistré', async () => {
     const { agent, userId } = await signInWithPlan(app, 'analyste-dossier@exemple.com', 'pro');
     const reportId = await createStoredReport(userId);

@@ -27,6 +27,8 @@ import {
   getActiveEbookJob,
   getEbookJob,
   getEbookResult,
+  getPendingEbookJob,
+  markEbookDelivered,
   startEbook,
 } from '@server/services/writing/ebookJobs';
 import { type MarketReportRequest, marketReportRequestSchema, startMarketReport } from '@server/services/writing/marketReport';
@@ -105,11 +107,34 @@ writingRouter.get(
   }),
 );
 
+/**
+ * Rédaction à suivre pour un produit : en cours, ou terminée pendant l'absence de l'auteur et
+ * dont le texte attend encore de rejoindre son brouillon.
+ */
+writingRouter.get(
+  '/ebook/pending',
+  requireAuth,
+  asyncRoute(async (req, res) => {
+    const productId = typeof req.query.productId === 'string' ? req.query.productId : undefined;
+    res.json({ job: await getPendingEbookJob(req.auth!, productId) });
+  }),
+);
+
 writingRouter.get(
   '/ebook/:id',
   requireAuth,
   asyncRoute(async (req, res) => {
     res.json({ job: await getEbookJob(req.auth!, req.params.id) });
+  }),
+);
+
+/** Le texte a été versé au brouillon : il ne sera plus proposé. */
+writingRouter.post(
+  '/ebook/:id/delivered',
+  requireAuth,
+  asyncRoute(async (req, res) => {
+    await markEbookDelivered(req.auth!, req.params.id);
+    res.status(204).end();
   }),
 );
 
