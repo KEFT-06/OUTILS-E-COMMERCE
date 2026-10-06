@@ -195,7 +195,7 @@ export function NichesView() {
 
   const canSubmit = custom.trim().length >= 2 || (target === NEW && newCatalog.trim().length >= 2);
 
-  const addOwn = async (event: React.FormEvent) => {
+  const addOwn = (event: React.FormEvent) => {
     event.preventDefault();
     const name = custom.trim();
     const wantedCatalog = newCatalog.trim();
@@ -237,21 +237,20 @@ export function NichesView() {
     }
     own.addNiche(name, catalogId);
 
-    // Elle rejoint aussi les niches enregistrées, tant que le palier le permet.
-    let bookmarked = savedKeys.has(searchKey(name));
-    if (!bookmarked && !full) {
-      try {
-        await saveNiche(name);
-        bookmarked = true;
-      } catch {
-        // Le rangement au catalogue est fait ; le signet reste proposé sur la ligne de la niche.
-      }
-    }
-    toast.success('Niche ajoutée', { description: `Rangée dans « ${label} »${bookmarked ? ', et enregistrée dans vos niches' : ''}.` });
+    /*
+      La réponse est immédiate : la niche est rangée, l'écran le dit et la montre. Elle attendait
+      la fin de l'enregistrement du signet — en production, sur une connexion lente, « Ajouter »
+      semblait ne rien faire pendant plus de trente secondes (06/10/2026).
+    */
+    toast.success('Niche ajoutée', { description: `Rangée dans « ${label} ».` });
     setCustom('');
     setNewCatalog('');
     setTarget(AUTO);
     showCatalog(catalogId);
+
+    // Elle rejoint aussi les niches enregistrées, tant que le palier le permet — sans faire attendre.
+    // Si l'envoi échoue, le rangement reste fait et le signet reste proposé sur la ligne de la niche.
+    if (!savedKeys.has(searchKey(name)) && !full) void saveNiche(name).catch(() => undefined);
   };
 
   const confirmDeletion = async () => {
@@ -456,7 +455,7 @@ export function NichesView() {
             </CardDescription>
           </CardHeader>
           <CardContent>
-            <form onSubmit={(event) => void addOwn(event)} className="grid gap-3 lg:grid-cols-[minmax(0,1.3fr)_minmax(0,1fr)_auto] lg:items-start">
+            <form onSubmit={addOwn} className="grid gap-3 lg:grid-cols-[minmax(0,1.3fr)_minmax(0,1fr)_auto] lg:items-start">
               <Field>
                 <FieldLabel htmlFor="custom-niche">Niche</FieldLabel>
                 <Input
