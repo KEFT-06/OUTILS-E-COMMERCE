@@ -9,6 +9,7 @@ import { debitCredits, refundDebit } from '@server/services/accounts';
 import { getActionCost } from '@server/services/credits';
 import { EBOOK_PAGES_CEILING, WORDS_PER_PAGE } from '@server/services/plans';
 import { ensureReady } from '@server/services/preflight';
+import { type WritingFinding, findingsOf } from '@server/services/writing';
 import { BATCH_SIZE, type WrittenSection, writeSection } from '@server/services/writing/longform';
 import { type Outline, type OutlineSection, buildOutline } from '@server/services/writing/outline';
 import { runInBackground } from '@server/shared/backgroundWork';
@@ -29,6 +30,11 @@ import { runInBackground } from '@server/shared/backgroundWork';
  * Rien n'est jamais réécrit : les sections déjà rédigées sont gardées en base. Une coupure,
  * un redémarrage ou un changement d'instance ne coûte que la section en cours.
  *
+ * LE CONTENU D'UN PRODUIT PASSE PAR LE MÊME MOTEUR (« product »). Il était rédigé d'une seule
+ * demande, longue de plusieurs minutes : coupée ou refusée une fois, tout était perdu et l'écran
+ * répondait « Réessayez ». Ses modules sont maintenant écrits un par un, enregistrés à mesure, et
+ * repris d'eux-mêmes — au même prix qu'avant, la longueur étant déduite du nombre de modules.
+ *
  *  1. Lancement : points réservés d'après la longueur demandée, travail enregistré.
  *  2. Plan : chapitres et sections, avec l'angle de chacune (outline.ts).
  *  3. Rédaction : les sections partent par lots, avec le résumé de ce qui précède.
@@ -36,6 +42,21 @@ import { runInBackground } from '@server/shared/backgroundWork';
  */
 
 export type EbookJobStatus = 'queued' | 'outline' | 'writing' | 'completed' | 'failed';
+
+/** « product » : le contenu des modules d'un produit, à longueur et à prix fixes. */
+export type EbookJobKind = 'ebook' | 'market_report' | 'product';
+
+/** Au-delà, ce n'est plus un produit à prix fixe mais un ouvrage long, facturé à la page. */
+const PRODUCT_MAX_MODULES = 16;
+/** Modules d'un produit dont l'auteur n'a pas donné le plan. */
+const PRODUCT_FREE_MODULES = 6;
+
+/**
+ * Longueur d'un produit, en pages : environ 525 mots par module — ce que la rédaction d'une
+ * seule demande visait (350 à 700 mots) —, soit une section par module dans le plan.
+ */
+export const productPages = (modules: number): number =>
+  Math.min(60, Math.max(3, Math.round((modules > 0 ? modules : PRODUCT_FREE_MODULES) * 1.75)));
 
 const ACTIVE: EbookJobStatus[] = ['queued', 'outline', 'writing'];
 
@@ -86,7 +107,7 @@ type JobRow = typeof ebookJobs.$inferSelect;
 
 export interface EbookJobView {
   id: string;
-  kind: 'ebook' | 'market_report';
+  kind: EbookJobKind;
   title: string;
   productId: string;
   status: EbookJobStatus;
@@ -110,7 +131,7 @@ function viewOf(row: JobRow): EbookJobView {
   const problem = row.errorCode ? { code: row.errorCode, message: row.errorMessage ?? 'La rédaction a échoué.' } : null;
   return {
     id: row.id,
-    kind: row.kind as 'ebook' | 'market_report',
+    kind: row.kind as EbookJobKind,
     title: row.title,
     productId: row.productId,
     status: row.status as EbookJobStatus,
@@ -131,7 +152,7 @@ function viewOf(row: JobRow): EbookJobView {
 const running = new Set<string>();
 
 export const ebookRequestSchema = z.object({
-  kind: z.enum(['ebook', 'market_report']).default('ebook'),
+  kind: z.enum(['ebook', 'market_report', 'product']).default('ebook'),
   productId: z.string().min(1).max(200),
   title: z.string().trim().min(1).max(200),
   subtitle: z.string().trim().max(300).default(''),
@@ -161,7 +182,7 @@ export type EbookRequest = z.infer<typeof ebookRequestSchema>;
 async function failJob(jobId: string, error: unknown): Promise<void> {
   const known = error instanceof AppError;
   const code = known ? error.code : 'EBOOK_FAILED';
-  const message = known ? error.message : 'La rédaction a échoué sur le serveur. Réessayez : vos points ont été rendus.';
+  const message = known ? error.message : 'La rédaction n’a pas pu aboutir : vos points ont été rendus.';
   if (!known) console.error('[ebook] échec inattendu', error);
 
   await getDb().transaction(async (tx) => {
@@ -225,7 +246,9 @@ async function runSlice(jobId: string, started = Date.now()): Promise<boolean> {
         .set({ status: 'outline', updatedAt: new Date() })
         .where(and(eq(ebookJobs.id, jobId), inArray(ebookJobs.status, ACTIVE)));
       outline = await buildOutline({
-        kind: request.kind,
+        // Un produit s'écrit comme un ebook : mêmes consignes, seule la longueur est imposée.
+        kind: request.kind === 'product' ? 'ebook' : request.kind,
+        ...(request.kind === 'product' && request.chapters.length === 0 ? { freeChapters: PRODUCT_FREE_MODULES } : {}),
         title: request.title,
         subtitle: request.subtitle,
         typeName: request.typeName,
@@ -441,8 +464,20 @@ export async function startEbook(auth: RequestAuth, request: EbookRequest): Prom
   // de laisser l'auteur attendre une rédaction qui échouera.
   ensureReady(['writing', 'database']);
 
+  /*
+    Un produit : la longueur ne se choisit pas, elle suit le nombre de modules, et le prix reste
+    celui de la rédaction d'un produit. Le plafond de pages du palier, lui, borne les ouvrages
+    dont l'auteur CHOISIT la longueur : il ne s'applique pas ici.
+  */
+  const isProduct = request.kind === 'product';
+  if (isProduct && request.chapters.length > PRODUCT_MAX_MODULES) {
+    throw new AppError(400, `Un produit compte ${PRODUCT_MAX_MODULES} modules au plus. Aucun point n’a été retiré.`, 'PRODUCT_TOO_MANY_MODULES');
+  }
+  if (isProduct) request = { ...request, targetPages: productPages(request.chapters.length) };
+  const actionId = isProduct ? 'product_generation' : 'ebook_longform';
+
   const allowed = auth.account.plan.limits.ebookPages;
-  if (request.targetPages > allowed) {
+  if (!isProduct && request.targetPages > allowed) {
     throw new AppError(
       403,
       `Votre palier permet ${allowed} pages au plus par ebook. Choisissez une longueur inférieure, ou passez à un palier supérieur. Aucun point n’a été retiré.`,
@@ -461,8 +496,8 @@ export async function startEbook(auth: RequestAuth, request: EbookRequest): Prom
 
   const debit = await debitCredits({
     userId,
-    cost: await getActionCost('ebook_longform', request.targetPages),
-    actionId: 'ebook_longform',
+    cost: await getActionCost(actionId, isProduct ? 1 : request.targetPages),
+    actionId,
     unlimited: auth.account.plan.monthlyCredits === null,
   });
 
@@ -564,7 +599,17 @@ export async function getActiveEbookJob(auth: RequestAuth): Promise<EbookJobView
 export async function getEbookResult(
   auth: RequestAuth,
   jobId: string,
-): Promise<{ title: string; productId: string; chapters: { title: string; content: string }[]; words: number; pages: number }> {
+): Promise<{
+  kind: EbookJobKind;
+  title: string;
+  productId: string;
+  /** `index` : rang du chapitre dans le plan — celui du module de l'auteur, quand il en a donné. */
+  chapters: { index: number; title: string; content: string }[];
+  words: number;
+  pages: number;
+  /** Formulations relevées par le contrôle de conformité, chapitre par chapitre. */
+  findings: WritingFinding[];
+}> {
   const job = await getEbookJob(auth, jobId);
   if (job.status !== 'completed') {
     throw new AppError(409, 'La rédaction n’est pas terminée.', 'EBOOK_NOT_READY');
@@ -585,15 +630,18 @@ export async function getEbookResult(
       })
       .filter((part): part is string => part !== null)
       .join('\n\n');
-    return { title: chapter.title, content: body };
+    return { index: chapter.index, title: chapter.title, content: body };
   });
+  const ready = chapters.filter((chapter) => chapter.content.trim());
 
   return {
+    kind: job.kind,
     title: job.title,
     productId: job.productId,
-    chapters: chapters.filter((chapter) => chapter.content.trim()),
+    chapters: ready,
     words: job.wordsWritten,
     pages: job.pagesWritten,
+    findings: await findingsOf(ready.map((chapter) => ({ label: `Module ${chapter.index} — ${chapter.title}`, text: chapter.content }))),
   };
 }
 

@@ -1,13 +1,12 @@
 import { useState } from 'react';
 import { toast } from 'sonner';
 import { AlertTriangle, BookOpen, FileDown, FileText, PenSquare, Sparkles } from 'lucide-react';
-import { useCreditGate } from '@/app/providers/CreditGateProvider';
 import { LongformEbookPanel } from '@/modules/studio/LongformEbookPanel';
 import { ProductExpertEditor } from '@/modules/studio/ProductExpertEditor';
 import { ProductPreviewPanel } from '@/modules/studio/ProductPreviewPanel';
+import { useEbookJob } from '@/modules/studio/useEbookJob';
 import { CoverGenerator } from '@/shared/components/CoverGenerator';
 import { WritingFindings } from '@/shared/components/WritingFindings';
-import { toApiError } from '@/shared/lib/apiError';
 import type { CoverView } from '@/shared/lib/covers';
 import {
   ProductExportBlockedError,
@@ -17,7 +16,7 @@ import {
 } from '@/modules/studio/export/productExport';
 import { useProductDrafts } from '@/shared/stores/useProductDrafts';
 import { useProviders } from '@/shared/hooks/useProviders';
-import { type WritingFinding, writingApi } from '@/shared/lib/writing';
+import type { EbookResult, WritingFinding } from '@/shared/lib/writing';
 import type { DigitalProductIdea, MarketAnalysisReport } from '@/shared/types/analysis';
 import { Alert, AlertDescription, AlertTitle } from '@/shared/ui/alert';
 import { Badge } from '@/shared/ui/badge';
@@ -55,7 +54,6 @@ interface ProductStudioPanelProps {
 export function ProductStudioPanel({ baseProduct, report, initialExpertOpen = false }: ProductStudioPanelProps) {
   const drafts = useProductDrafts();
   const providers = useProviders();
-  const { runWithCredits } = useCreditGate();
   const product = drafts.effective(baseProduct);
   const hasDraft = drafts.hasDraft(baseProduct.id);
 
@@ -70,7 +68,6 @@ export function ProductStudioPanel({ baseProduct, report, initialExpertOpen = fa
   const [isPreviewOpen, setIsPreviewOpen] = useState(false);
   /** Vrai quand l'ouvrage vient d'être rédigé : la vue s'ouvre et vient à l'écran d'elle-même. */
   const [justWritten, setJustWritten] = useState(false);
-  const [isWriting, setIsWriting] = useState(false);
   const [findings, setFindings] = useState<WritingFinding[]>([]);
   /** Pages du dernier ebook long rédigé : sert à proposer de l'allonger. */
   const [writtenPages, setWrittenPages] = useState<number | null>(null);
@@ -95,55 +92,62 @@ export function ProductStudioPanel({ baseProduct, report, initialExpertOpen = fa
     }
   };
 
-  const generate = async () => {
-    setGenerateOpen(false);
-    setIsWriting(true);
-    try {
-      const result = await runWithCredits('product_generation', () =>
-        writingApi.product({
-          product: {
-            title: product.title,
-            subtitle: product.subtitle,
-            typeName: product.typeName,
-            targetAudience: product.targetAudience,
-            transformationPromise: product.transformationPromise,
-            modules: product.tableOfContents.map((module) => ({ title: module.title || `Module ${module.moduleNumber}`, details: module.details })),
-          },
-          market: report?.market ?? null,
-        }),
-      );
-      if (!result) return;
+  /**
+   * Le texte rédigé rejoint le brouillon, et l'ouvrage s'ouvre pour être LU : c'est là qu'on le
+   * corrige et qu'on le télécharge.
+   *
+   * Contenu d'un produit dont l'auteur avait un plan : on ne remplace que le contenu, module par
+   * module, et son sommaire reste le sien. Sinon — produit saisi sans plan, ou ebook long — le
+   * plan de l'ouvrage DEVIENT le sommaire, en gardant la numérotation attendue par l'éditeur et
+   * l'export.
+   */
+  const receive = (result: EbookResult) => {
+    const keepsPlan = result.kind === 'product' && product.tableOfContents.length > 0;
+    const contentOf = (position: number) => result.chapters.find((chapter) => chapter.index === position)?.content;
+    const missing = keepsPlan ? product.tableOfContents.filter((_, index) => !contentOf(index + 1)).length : 0;
+    drafts.saveDraft({
+      ...product,
+      tableOfContents: keepsPlan
+        ? product.tableOfContents.map((module, index) => ({ ...module, details: contentOf(index + 1) ?? module.details }))
+        : result.chapters.map((chapter, index) => ({ moduleNumber: index + 1, title: chapter.title, details: chapter.content })),
+    });
+    setFindings(result.findings);
+    setEditorRevision((revision) => revision + 1);
+    setIsExpertOpen(false);
+    setIsPreviewOpen(true);
+    setJustWritten(true);
+    setWrittenPages(result.kind === 'ebook' ? result.pages : null);
+    toast.success('Votre ebook est prêt', {
+      description:
+        missing > 0
+          ? `${missing} module(s) n’ont pas été rédigés et gardent leur texte. Lisez-le ci-dessous, corrigez-le, puis téléchargez-le.`
+          : `${result.pages} pages environ. Lisez-le ci-dessous, corrigez ce qui doit l’être, puis téléchargez-le.`,
+    });
+  };
 
-      /*
-        Deux cas. L'auteur avait un plan : on ne remplace que le contenu, son sommaire reste le
-        sien. L'auteur n'en avait pas — le cas d'un produit saisi à la main — et le plan composé
-        par l'IA DEVIENT le sommaire. Sans cette seconde branche, on recopiait un sommaire vide
-        et tout le travail rédigé disparaissait.
-      */
-      const composeLePlan = product.tableOfContents.length === 0;
-      drafts.saveDraft({
-        ...product,
-        tableOfContents: composeLePlan
-          ? result.modules.map((module, index) => ({ moduleNumber: index + 1, title: module.title, details: module.details }))
-          : product.tableOfContents.map((module, index) => ({ ...module, details: result.modules[index]?.details ?? module.details })),
-      });
-      setFindings(result.findings);
-      setEditorRevision((revision) => revision + 1);
-      // L'ouvrage s'ouvre pour être LU : c'est là qu'on le corrige et qu'on le télécharge.
-      setIsExpertOpen(false);
-      setIsPreviewOpen(true);
-      setJustWritten(true);
-      toast.success('Votre ebook est prêt', {
-        description:
-          result.missing > 0
-            ? `${result.missing} module(s) n’ont pas été rédigés et gardent leur texte. Lisez-le ci-dessous, corrigez-le, puis téléchargez-le.`
-            : 'Lisez-le ci-dessous, corrigez ce qui doit l’être, puis téléchargez-le.',
-      });
-    } catch (error) {
-      toast.error('La rédaction n’a pas abouti', { description: toApiError(error, 'Réessayez dans un moment.').message });
-    } finally {
-      setIsWriting(false);
-    }
+  const writing = useEbookJob({ productId: baseProduct.id, onWritten: receive });
+  const isWriting = writing.isRunning || writing.isStarting;
+
+  /**
+   * « Génératif » : le contenu de chaque module, écrit sur le serveur module par module et
+   * enregistré à mesure. Une coupure ne coûte plus rien : la rédaction reprend d'elle-même.
+   */
+  const generate = () => {
+    setGenerateOpen(false);
+    const chapters = product.tableOfContents.map((module) => ({ title: module.title || `Module ${module.moduleNumber}`, details: module.details }));
+    void writing.start('product_generation', {
+      kind: 'product',
+      productId: baseProduct.id,
+      title: product.title,
+      subtitle: product.subtitle,
+      typeName: product.typeName,
+      targetAudience: product.targetAudience,
+      transformationPromise: product.transformationPromise,
+      chapters,
+      market: report?.market ?? null,
+      // La longueur d'un produit est fixée par le serveur d'après ses modules : cette valeur n'est qu'indicative.
+      targetPages: Math.max(3, chapters.length * 2),
+    });
   };
 
   return (
@@ -242,28 +246,7 @@ export function ProductStudioPanel({ baseProduct, report, initialExpertOpen = fa
         )}
 
         {textReady && (
-          <LongformEbookPanel
-            product={product}
-            market={report?.market ?? null}
-            onWritten={(chapters, pages) => {
-              // Le plan de l'ouvrage fait foi : ses chapitres remplacent la table des matières
-              // du brouillon, en gardant la numérotation attendue par l'éditeur et l'export.
-              drafts.saveDraft({
-                ...product,
-                tableOfContents: chapters.map((chapter, index) => ({
-                  moduleNumber: index + 1,
-                  title: chapter.title,
-                  details: chapter.content,
-                })),
-              });
-              setFindings([]);
-              setEditorRevision((revision) => revision + 1);
-              setIsExpertOpen(false);
-              setIsPreviewOpen(true);
-              setJustWritten(true);
-              setWrittenPages(pages);
-            }}
-          />
+          <LongformEbookPanel product={product} market={report?.market ?? null} writing={writing} />
         )}
 
         {writtenPages !== null && (
@@ -317,8 +300,8 @@ export function ProductStudioPanel({ baseProduct, report, initialExpertOpen = fa
                 */}
                 {product.tableOfContents.length === 0 ? (
                   <>
-                    Le plan de « {product.title} » (5 à 8 modules) est composé puis rédigé. Vous relisez et modifiez tout
-                    avant l’export.
+                    Le plan de « {product.title} » (6 modules) est composé puis rédigé. Vous relisez et modifiez tout avant
+                    l’export.
                   </>
                 ) : (
                   <>
@@ -332,7 +315,7 @@ export function ProductStudioPanel({ baseProduct, report, initialExpertOpen = fa
               <DialogClose asChild>
                 <Button variant="outline">Annuler</Button>
               </DialogClose>
-              <Button onClick={() => void generate()}>
+              <Button onClick={generate}>
                 <Sparkles />
                 Continuer
               </Button>

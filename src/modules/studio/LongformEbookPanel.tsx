@@ -1,10 +1,8 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useState } from 'react';
 import { BookOpen, Loader2, X } from 'lucide-react';
-import { toast } from 'sonner';
 import { useAuth } from '@/features/auth/AuthContext';
-import { useCreditGate } from '@/app/providers/CreditGateProvider';
-import { toApiError } from '@/shared/lib/apiError';
-import { EBOOK_PAGES_CEILING, type EbookJob, ebookApi } from '@/shared/lib/writing';
+import type { EbookJobFollow } from '@/modules/studio/useEbookJob';
+import { EBOOK_PAGES_CEILING, type EbookJob } from '@/shared/lib/writing';
 import type { DigitalProductIdea } from '@/shared/types/analysis';
 import { Alert, AlertDescription } from '@/shared/ui/alert';
 import { Button } from '@/shared/ui/button';
@@ -21,16 +19,16 @@ import { Slider } from '@/shared/ui/slider';
  *
  * Le curseur s'arrête à la limite du palier : la demander plus haut serait refusée par le
  * serveur, autant ne pas la proposer.
+ *
+ * Le suivi lui-même vit dans le Studio (useEbookJob) : la rédaction du contenu d'un produit
+ * (« Génératif ») passe par le même moteur, et son avancement s'affiche ici aussi.
  */
-
-/** Cadence du suivi. C'est aussi lui qui relance la tranche suivante côté serveur. */
-const POLL_MS = 4_000;
 
 interface LongformEbookPanelProps {
   product: DigitalProductIdea;
   market: string | null;
-  /** Reçoit les chapitres rédigés, pour les verser au brouillon. */
-  onWritten: (chapters: { title: string; content: string }[], pages: number) => void;
+  /** Rédaction en cours pour ce produit, et les gestes pour la lancer ou y renoncer. */
+  writing: EbookJobFollow;
 }
 
 const STEP_LABELS: Record<EbookJob['status'], string> = {
@@ -41,146 +39,48 @@ const STEP_LABELS: Record<EbookJob['status'], string> = {
   failed: 'La rédaction n’a pas abouti.',
 };
 
-export function LongformEbookPanel({ product, market, onWritten }: LongformEbookPanelProps) {
+export function LongformEbookPanel({ product, market, writing }: LongformEbookPanelProps) {
   const { account } = useAuth();
-  const { runWithCredits } = useCreditGate();
+  const { job, isStarting, isRunning } = writing;
 
   const maxPages = Math.min(account?.limits.ebookPages ?? 15, EBOOK_PAGES_CEILING);
   const [targetPages, setTargetPages] = useState(() => Math.min(40, maxPages));
-  const [job, setJob] = useState<EbookJob | null>(null);
-  const [isStarting, setIsStarting] = useState(false);
 
-  // Évite de verser deux fois le même texte si deux suivis se croisent à la fin.
-  const collected = useRef<string | null>(null);
-
-  const collect = useCallback(
-    async (finished: EbookJob) => {
-      if (collected.current === finished.id) return;
-      collected.current = finished.id;
-      try {
-        const result = await ebookApi.result(finished.id);
-        onWritten(result.chapters, result.pages);
-        toast.success('Ebook rédigé', {
-          description: `${result.pages} pages environ, ${result.chapters.length} chapitres. Lisez-le ci-dessous, corrigez-le, puis téléchargez-le.`,
-        });
-      } catch (error) {
-        toast.error('Le texte rédigé n’a pas pu être récupéré', { description: toApiError(error, 'Réessayez dans un moment.').message });
-      } finally {
-        setJob(null);
-      }
-    },
-    [onWritten],
-  );
-
-  // Rédaction lancée avant un rechargement de la page : le suivi reprend tout seul.
-  useEffect(() => {
-    let cancelled = false;
-    void ebookApi
-      .active()
-      .then(({ job: active }) => {
-        if (!cancelled && active && active.productId === product.id) setJob(active);
-      })
-      .catch(() => undefined);
-    return () => {
-      cancelled = true;
-    };
-  }, [product.id]);
-
-  // Suivi : chaque passage affiche l'avancement et fait repartir le serveur sur la suite.
-  useEffect(() => {
-    if (!job || job.status === 'completed' || job.status === 'failed') return;
-    let cancelled = false;
-
-    const timer = setInterval(() => {
-      void ebookApi
-        .follow(job.id)
-        .then((response) => {
-          if (cancelled) return;
-          const next = response.job;
-          if (next.status === 'completed') {
-            clearInterval(timer);
-            void collect(next);
-            return;
-          }
-          if (next.status === 'failed') {
-            clearInterval(timer);
-            setJob(null);
-            toast.error('La rédaction n’a pas abouti', { description: next.error?.message ?? 'Réessayez dans un moment.', duration: 12_000 });
-            return;
-          }
-          setJob(next);
-        })
-        .catch(() => {
-          // Coupure passagère : la rédaction continue sur le serveur, le suivi réessaie.
-        });
-    }, POLL_MS);
-
-    return () => {
-      cancelled = true;
-      clearInterval(timer);
-    };
-  }, [job, collect]);
-
-  const start = async () => {
-    setIsStarting(true);
-    try {
-      const response = await runWithCredits('ebook_longform', () =>
-        ebookApi.start({
-          productId: product.id,
-          title: product.title,
-          subtitle: product.subtitle,
-          typeName: product.typeName,
-          targetAudience: product.targetAudience,
-          transformationPromise: product.transformationPromise,
-          chapters: product.tableOfContents.map((module) => ({
-            title: module.title || `Chapitre ${module.moduleNumber}`,
-            details: module.details,
-          })),
-          market,
-          targetPages,
-        }),
+  const start = () =>
+    writing.start(
+      'ebook_longform',
+      {
+        productId: product.id,
+        title: product.title,
+        subtitle: product.subtitle,
+        typeName: product.typeName,
+        targetAudience: product.targetAudience,
+        transformationPromise: product.transformationPromise,
+        chapters: product.tableOfContents.map((module) => ({
+          title: module.title || `Chapitre ${module.moduleNumber}`,
+          details: module.details,
+        })),
+        market,
         targetPages,
-      );
-      if (!response) return;
-      collected.current = null;
-      setJob(response.job);
-    } catch (error) {
-      toast.error('La rédaction n’a pas pu être lancée', { description: toApiError(error, 'Réessayez dans un moment.').message });
-    } finally {
-      setIsStarting(false);
-    }
-  };
+      },
+      targetPages,
+    );
 
-  /**
-   * Sortie de secours : une rédaction longue occupe le compte plusieurs minutes. Sans ce
-   * bouton, il fallait attendre la fin d'un texte dont on ne voulait plus. Points rendus.
-   */
-  const cancel = async () => {
-    if (!job) return;
-    try {
-      await ebookApi.cancel(job.id);
-      setJob(null);
-      toast.success('Rédaction annulée', { description: 'Vos points ont été rendus.' });
-    } catch (error) {
-      toast.error('L’annulation a échoué', { description: toApiError(error, 'Réessayez dans un moment.').message });
-    }
-  };
-
-  const isRunning = job !== null && job.status !== 'completed' && job.status !== 'failed';
   const progress = job && job.sectionsTotal > 0 ? Math.round((job.sectionsDone / job.sectionsTotal) * 100) : 0;
   // Un ouvrage long demande plusieurs minutes : le dire évite de croire à un blocage.
   const minutes = Math.max(2, Math.round((targetPages / 10) * 1.5));
+  const isProduct = job?.kind === 'product';
 
   return (
     <div className="space-y-4 rounded-lg border p-4">
       <div className="flex items-start gap-3">
         <BookOpen className="mt-0.5 size-5 shrink-0 text-muted-foreground" aria-hidden />
         <div className="space-y-1">
-          <h3 className="font-medium">Rédiger l’ebook complet</h3>
+          <h3 className="font-medium">{isRunning && isProduct ? 'Rédaction du contenu' : 'Rédiger l’ebook complet'}</h3>
         </div>
       </div>
 
-      {isRunning ? (
+      {isRunning && job ? (
         <div className="space-y-3">
           <Alert variant="info" role="status">
             <Loader2 className="size-4 animate-spin" aria-hidden />
@@ -201,8 +101,8 @@ export function LongformEbookPanel({ product, market, onWritten }: LongformEbook
           </Alert>
           <Progress value={progress} aria-label="Avancement de la rédaction" />
           <div className="flex flex-wrap items-center justify-between gap-3">
-            <p className="text-xs text-muted-foreground">Longueur mal choisie, ou titre à revoir ?</p>
-            <Button variant="outline" size="sm" onClick={() => void cancel()}>
+            <p className="text-xs text-muted-foreground">{isProduct ? 'Plan à revoir avant de rédiger ?' : 'Longueur mal choisie, ou titre à revoir ?'}</p>
+            <Button variant="outline" size="sm" onClick={() => void writing.cancel()}>
               <X />
               Annuler la rédaction
             </Button>

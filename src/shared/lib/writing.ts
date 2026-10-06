@@ -40,8 +40,8 @@ export const EBOOK_PAGES_CEILING = 250;
 /** Rédaction d'un ebook long, menée par tranches sur le serveur. */
 export interface EbookJob {
   id: string;
-  /** « ebook » : contenu d'un produit. « market_report » : dossier développant une analyse. */
-  kind: 'ebook' | 'market_report';
+  /** « ebook » : ouvrage long. « product » : contenu des modules d'un produit. « market_report » : dossier développant une analyse. */
+  kind: 'ebook' | 'market_report' | 'product';
   title: string;
   productId: string;
   status: 'queued' | 'outline' | 'writing' | 'completed' | 'failed';
@@ -59,11 +59,30 @@ export interface EbookJob {
 }
 
 export interface EbookResult {
+  kind: EbookJob['kind'];
   title: string;
   productId: string;
-  chapters: { title: string; content: string }[];
+  /** `index` : rang du chapitre dans le plan — celui du module de l'auteur, quand il en a donné. */
+  chapters: { index: number; title: string; content: string }[];
   words: number;
   pages: number;
+  /** Formulations relevées par le contrôle de conformité. */
+  findings: WritingFinding[];
+}
+
+/** Ce qu'il faut pour lancer une rédaction sur le serveur. */
+export interface EbookStart {
+  /** « product » : longueur et prix fixes, déduits du nombre de modules. */
+  kind?: 'ebook' | 'product';
+  productId: string;
+  title: string;
+  subtitle: string;
+  typeName: string;
+  targetAudience: string;
+  transformationPromise: string;
+  chapters: { title: string; details: string }[];
+  market: string | null;
+  targetPages: number;
 }
 
 /** Au-delà, un dossier de marché se répète : l'étude n'a pas plus de matière. */
@@ -74,17 +93,7 @@ export const ebookApi = {
   startMarketReport: (body: { reportId: string; targetPages: number }) =>
     apiRequest<{ job: EbookJob }>('/api/writing/market-report', { method: 'POST', body }),
 
-  start: (body: {
-    productId: string;
-    title: string;
-    subtitle: string;
-    typeName: string;
-    targetAudience: string;
-    transformationPromise: string;
-    chapters: { title: string; details: string }[];
-    market: string | null;
-    targetPages: number;
-  }) => apiRequest<{ job: EbookJob }>('/api/writing/ebook', { method: 'POST', body }),
+  start: (body: EbookStart) => apiRequest<{ job: EbookJob }>('/api/writing/ebook', { method: 'POST', body }),
 
   active: () => apiRequest<{ job: EbookJob | null }>('/api/writing/ebook/active'),
 

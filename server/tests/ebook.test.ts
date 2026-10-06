@@ -184,6 +184,45 @@ describe('Rédaction d’un ebook long', () => {
     assert.equal(start - (await balance(agent)), 4, 'le coût suit la longueur demandée');
   });
 
+  it('rédige le contenu d’un produit par le même moteur : prix fixe, longueur déduite des modules, plan de l’auteur gardé', async () => {
+    // Ce palier plafonne les ouvrages à 100 pages : le plafond borne une longueur CHOISIE, pas celle d'un produit.
+    const { agent } = await signInWithPlan(app, 'autrice-produit@exemple.com', 'pro');
+    const start = await balance(agent);
+    prompts.length = 0;
+
+    const launch = await agent.post('/api/writing/ebook').send({ ...REQUEST, kind: 'product', productId: 'produit-fixe', targetPages: 200 }).expect(202);
+    const job = (launch.body as { job: { id: string; kind: string; targetPages: number } }).job;
+    assert.equal(job.kind, 'product');
+    assert.equal(job.targetPages, 4, 'deux modules : la longueur vient du nombre de modules, pas de la demande');
+    assert.equal(start - (await balance(agent)), 4, 'le prix reste celui de la rédaction d’un produit, quelle que soit la longueur envoyée');
+
+    await waitForCompletion(agent, job.id);
+    // Écrit section par section, comme un ebook : une coupure ne coûte plus que la section en cours.
+    assert.equal(prompts.filter((prompt) => prompt.includes('Tu rédiges une section')).length, 4);
+    assert.ok(
+      prompts.find((prompt) => prompt.includes('tu construis la charpente'))!.includes('CHAPITRES IMPOSÉS PAR L’AUTEUR'),
+      'le plan de l’auteur est imposé au rédacteur',
+    );
+
+    const { body } = await agent.get(`/api/writing/ebook/${job.id}/result`).expect(200);
+    const result = body as { kind: string; productId: string; chapters: { index: number; title: string; content: string }[]; findings: unknown[] };
+    assert.equal(result.kind, 'product');
+    assert.equal(result.productId, 'produit-fixe');
+    // Le rang de chaque chapitre : c'est par lui que le texte retrouve le module de l'auteur.
+    assert.deepEqual(result.chapters.map((chapter) => chapter.index), [1, 2]);
+    assert.ok(result.chapters[1]!.content.includes('Texte de Les matériaux.'));
+    assert.ok(Array.isArray(result.findings), 'le contrôle de conformité accompagne le texte');
+
+    // Au-delà de seize modules, ce n'est plus un produit à prix fixe : refusé avant tout débit.
+    const before = await balance(agent);
+    const trop = await agent
+      .post('/api/writing/ebook')
+      .send({ ...REQUEST, kind: 'product', chapters: Array.from({ length: 17 }, (_, index) => ({ title: `Module ${index + 1}`, details: '' })) })
+      .expect(400);
+    assert.equal((trop.body as { error: { code: string } }).error.code, 'PRODUCT_TOO_MANY_MODULES');
+    assert.equal(await balance(agent), before);
+  });
+
   it('développe une analyse en dossier, sur les seuls faits du rapport enregistré', async () => {
     const { agent, userId } = await signInWithPlan(app, 'analyste-dossier@exemple.com', 'pro');
     const reportId = await createStoredReport(userId);

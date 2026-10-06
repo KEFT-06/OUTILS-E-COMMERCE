@@ -61,6 +61,8 @@ export interface OutlineRequest {
   transformationPromise: string;
   /** Chapitres voulus par l'auteur. Vide : le plan est proposé de bout en bout. */
   chapters: { title: string; details: string }[];
+  /** Nombre de chapitres d'un plan proposé de bout en bout ; absent : déduit de la longueur. */
+  freeChapters?: number;
   market: string | null;
   targetPages: number;
   /**
@@ -78,10 +80,14 @@ export interface OutlineRequest {
  * ebook n'a pas de progression, au-delà d'une trentaine la table des matières devient un
  * annuaire. Le nombre de sections suit les mots à écrire.
  */
-export function shapeOf(targetPages: number, authorChapters: number): { chapters: number; sections: number; targetWords: number } {
+export function shapeOf(
+  targetPages: number,
+  authorChapters: number,
+  freeChapters?: number,
+): { chapters: number; sections: number; targetWords: number } {
   const targetWords = targetPages * WORDS_PER_PAGE;
   const sections = Math.max(3, Math.round(targetWords / ((SECTION_WORDS.min + SECTION_WORDS.max) / 2)));
-  const chapters = authorChapters > 0 ? authorChapters : Math.min(30, Math.max(3, Math.round(sections / 3)));
+  const chapters = authorChapters > 0 ? authorChapters : (freeChapters ?? Math.min(30, Math.max(3, Math.round(sections / 3))));
   return { chapters, sections: Math.max(sections, chapters), targetWords };
 }
 
@@ -138,7 +144,7 @@ const outlineResponseSchema = z.object({
 });
 
 export function outlinePrompt(request: OutlineRequest): string {
-  const shape = shapeOf(request.targetPages, request.chapters.length);
+  const shape = shapeOf(request.targetPages, request.chapters.length, request.freeChapters);
   const isReport = request.kind === 'market_report';
 
   const authorPlan =
@@ -210,7 +216,7 @@ function withTargets(sections: Omit<OutlineSection, 'targetWords'>[], targetWord
 }
 
 export async function buildOutline(request: OutlineRequest): Promise<Outline> {
-  const shape = shapeOf(request.targetPages, request.chapters.length);
+  const shape = shapeOf(request.targetPages, request.chapters.length, request.freeChapters);
 
   const response = await generateJson({
     service: SERVICE,
