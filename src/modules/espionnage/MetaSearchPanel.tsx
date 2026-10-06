@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { Library, Loader2, Search, Store, X } from "lucide-react";
+import { BrandIcon } from "@/shared/components/BrandIcon";
+import { Loader2, Search, Store, X } from "lucide-react";
 import { toast } from "sonner";
 import { countryName } from "@server/shared/countries";
 import { followableOnRadar } from "@server/shared/storefronts";
@@ -241,10 +242,7 @@ export function MetaSearchPanel() {
     <div className="space-y-5">
       <div className="space-y-3 rounded-xl border bg-card p-4 sm:p-5">
         <div className="flex items-start gap-3">
-          <Library
-            className="mt-0.5 size-5 shrink-0 text-brand-green-text"
-            aria-hidden="true"
-          />
+          <BrandIcon brand="meta" decorative className="mt-0.5 size-5" />
           <div className="space-y-1">
             <h2 className="font-semibold">Bibliothèque publicitaire</h2>
             <p className="text-sm text-muted-foreground">

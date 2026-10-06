@@ -1,26 +1,20 @@
 import { useState } from 'react';
 import { Link } from 'react-router-dom';
 import {
-  AtSign,
   CheckCircle2,
   Download,
   ExternalLink,
   Eye,
-  Facebook,
   ImageOff,
   Info,
-  Instagram,
-  type LucideIcon,
-  MessageCircle,
-  MessagesSquare,
   MoreHorizontal,
   Play,
   Radar,
-  Radio,
   Store,
 } from 'lucide-react';
 import { countryName } from '@server/shared/countries';
-import { followableOnRadar } from '@server/shared/storefronts';
+import { followableOnRadar, storefrontOfHost } from '@server/shared/storefronts';
+import { type Brand, BrandIcon } from '@/shared/components/BrandIcon';
 import { CountryFlag } from '@/shared/components/CountryFlag';
 import { safeHttpUrl } from '@/shared/lib/safeUrl';
 import { cn } from '@/shared/lib/utils';
@@ -43,15 +37,22 @@ import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigge
  * comptes) : une annonce qui ne mène pas à la plateforme n'a pas de boutique à suivre.
  */
 
-/** Plateformes de diffusion, avec l'icône que Meta leur donne. Une plateforme inconnue reste affichée. */
-const PLATEFORMES: Record<string, { Icone: LucideIcon; nom: string }> = {
-  FACEBOOK: { Icone: Facebook, nom: 'Facebook' },
-  INSTAGRAM: { Icone: Instagram, nom: 'Instagram' },
-  AUDIENCE_NETWORK: { Icone: Radio, nom: 'Audience Network' },
-  MESSENGER: { Icone: MessageCircle, nom: 'Messenger' },
-  WHATSAPP: { Icone: MessagesSquare, nom: 'WhatsApp' },
-  THREADS: { Icone: AtSign, nom: 'Threads' },
+/** Plateformes de diffusion, chacune avec son logo, à ses couleurs. Une plateforme inconnue reste affichée. */
+const PLATEFORMES: Record<string, { marque: Brand; nom: string }> = {
+  FACEBOOK: { marque: 'facebook', nom: 'Facebook' },
+  INSTAGRAM: { marque: 'instagram', nom: 'Instagram' },
+  // Le réseau publicitaire de Meta hors de ses propres applications : il porte le logo de Meta.
+  AUDIENCE_NETWORK: { marque: 'meta', nom: 'Audience Network' },
+  MESSENGER: { marque: 'messenger', nom: 'Messenger' },
+  WHATSAPP: { marque: 'whatsapp', nom: 'WhatsApp' },
+  THREADS: { marque: 'threads', nom: 'Threads' },
 };
+
+/** Logo de la plateforme qui héberge la boutique ; l'icône de boutique quand elle n'est pas reconnue. */
+function StoreIcon({ host }: { host: string }) {
+  const plateforme = storefrontOfHost(host);
+  return plateforme ? <BrandIcon brand={plateforme} decorative /> : <Store />;
+}
 
 function Plateformes({ noms, enClair = false }: { noms: string[]; enClair?: boolean }) {
   if (noms.length === 0) return null;
@@ -69,12 +70,16 @@ function Plateformes({ noms, enClair = false }: { noms: string[]; enClair?: bool
         if (enClair) {
           return (
             <span key={nom} className="inline-flex items-center gap-1 font-medium">
-              <connue.Icone className="size-4 text-foreground/80" aria-hidden="true" />
+              <BrandIcon brand={connue.marque} decorative />
               {connue.nom}
             </span>
           );
         }
-        return <connue.Icone key={nom} className="size-4 text-foreground/80" aria-label={connue.nom} />;
+        return (
+          <span key={nom} role="img" aria-label={connue.nom} title={connue.nom} className="inline-flex">
+            <BrandIcon brand={connue.marque} decorative />
+          </span>
+        );
       })}
     </span>
   );
@@ -376,7 +381,7 @@ export function AdCard({
               )}
               <DropdownMenuItem asChild>
                 <a href={`https://www.facebook.com/ads/library/?id=${encodeURIComponent(ad.externalId)}`} target="_blank" rel="noreferrer noopener">
-                  <ExternalLink />
+                  <BrandIcon brand="meta" decorative />
                   Ouvrir dans la bibliothèque Meta
                 </a>
               </DropdownMenuItem>
@@ -436,7 +441,7 @@ export function AdCard({
             {ad.storeHost && !followableOnRadar(ad.storeHost) && (
               <Button asChild variant="outline" className="h-10 min-w-0 flex-1">
                 <a href={`https://${ad.storeHost}`} target="_blank" rel="noreferrer noopener">
-                  <Store />
+                  <StoreIcon host={ad.storeHost} />
                   <span className="truncate">Voir la boutique</span>
                 </a>
               </Button>
@@ -583,7 +588,7 @@ export function AdDetailsDialog({
               {ad.storeHost && !followableOnRadar(ad.storeHost) && (
                 <Button asChild size="sm" variant="outline">
                   <a href={`https://${ad.storeHost}`} target="_blank" rel="noreferrer noopener">
-                    <Store />
+                    <StoreIcon host={ad.storeHost} />
                     Voir la boutique
                   </a>
                 </Button>
@@ -602,6 +607,7 @@ export function AdDetailsDialog({
               </Button>
               <Button asChild size="sm" variant="ghost">
                 <a href={bibliotheque} target="_blank" rel="noreferrer noopener">
+                  <BrandIcon brand="meta" decorative />
                   Ouvrir dans la bibliothèque Meta
                   <ExternalLink />
                 </a>
@@ -609,6 +615,7 @@ export function AdDetailsDialog({
               {page && (
                 <Button asChild size="sm" variant="ghost">
                   <a href={page} target="_blank" rel="noreferrer noopener">
+                    <BrandIcon brand="facebook" decorative />
                     Page Facebook
                     <ExternalLink />
                   </a>

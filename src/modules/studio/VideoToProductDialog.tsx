@@ -1,5 +1,6 @@
 import { useState } from 'react';
-import { FileVideo, Link2, Video } from 'lucide-react';
+import { BrandIcon } from '@/shared/components/BrandIcon';
+import { FileVideo, Video } from 'lucide-react';
 import { useCreditGate } from '@/app/providers/CreditGateProvider';
 import { type ApiError, toApiError } from '@/shared/lib/apiError';
 import { VIDEO_FILE_MAX_BYTES, type VideoProductResult, writingApi } from '@/shared/lib/writing';
@@ -92,7 +93,7 @@ export function VideoToProductDialog({
             aria-label="Source de la vidéo"
           >
             <ToggleGroupItem value="link">
-              <Link2 />
+              <BrandIcon brand="youtube" decorative />
               Lien YouTube
             </ToggleGroupItem>
             <ToggleGroupItem value="file">

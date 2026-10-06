@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { BrandIcon } from '@/shared/components/BrandIcon';
 import { Link, useLocation, useNavigate, useSearchParams } from 'react-router-dom';
 import { Controller, useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
@@ -1303,7 +1304,10 @@ function StoreConnection({ provider, state }: { provider: 'shopify' | 'woocommer
     <div className="space-y-3 rounded-lg border p-4">
       <div className="flex flex-wrap items-center justify-between gap-2">
         <div>
-          <h3 className="font-semibold">{form.title}</h3>
+          <h3 className="flex items-center gap-2 font-semibold">
+            <BrandIcon brand={provider} decorative className="size-5" />
+            {form.title}
+          </h3>
           <p className="text-sm text-muted-foreground">{form.role}</p>
         </div>
         {state.connected ? <Badge variant="success">Connectée</Badge> : <Badge variant="outline">Non connectée</Badge>}
@@ -1425,7 +1429,10 @@ function ConnectionsCard({ account }: { account: Account }) {
         <div className="space-y-3 rounded-lg border p-4">
           <div className="flex flex-wrap items-center justify-between gap-2">
             <div>
-              <h3 className="font-semibold">Chariow</h3>
+              <h3 className="flex items-center gap-2 font-semibold">
+                <BrandIcon brand="chariow" decorative className="size-5" />
+                Chariow
+              </h3>
               <p className="text-sm text-muted-foreground">Catalogue, ventes et affiliation de votre boutique.</p>
             </div>
             {chariow.connected ? <Badge variant="success">Connectée</Badge> : <Badge variant="outline">Non connectée</Badge>}

@@ -1,4 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { BrandIcon } from '@/shared/components/BrandIcon';
+import { storefrontOfHost } from '@server/shared/storefronts';
 import { Link, useSearchParams } from 'react-router-dom';
 import { ArrowDownRight, ArrowUpRight, ListTree, Megaphone, Plus, RefreshCw, Store, Trash2, TrendingUp } from 'lucide-react';
 import { toast } from 'sonner';
@@ -108,7 +110,11 @@ function WatchCard({
     <Card>
       <CardHeader>
         <CardTitle className="flex min-w-0 items-center gap-2">
-          <Store className="size-4 shrink-0 text-muted-foreground" aria-hidden="true" />
+          {storefrontOfHost(host) ? (
+            <BrandIcon brand={storefrontOfHost(host)!} decorative />
+          ) : (
+            <Store className="size-4 shrink-0 text-muted-foreground" aria-hidden="true" />
+          )}
           <span className="truncate">{watch.label}</span>
         </CardTitle>
         <CardDescription>

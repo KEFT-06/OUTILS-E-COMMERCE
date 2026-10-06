@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { BrandIcon } from '@/shared/components/BrandIcon';
 import { Link } from 'react-router-dom';
 import { AlertTriangle, CheckCircle2, Info, PackageOpen, PackageSearch, XCircle } from 'lucide-react';
 import { ConnectChariowLink } from '@/shared/components/ConnectChariowLink';
@@ -100,7 +101,12 @@ export function DistributionView() {
           {marketplaces.map((marketplace) => (
             <Card key={marketplace.id} className="gap-4 py-5">
               <CardHeader className="px-5">
-                <CardTitle>{marketplace.label}</CardTitle>
+                <CardTitle className="flex items-center gap-2">
+                  {(marketplace.id === 'chariow' || marketplace.id === 'shopify' || marketplace.id === 'woocommerce' || marketplace.id === 'maketou') && (
+                    <BrandIcon brand={marketplace.id} decorative className="size-5" />
+                  )}
+                  {marketplace.label}
+                </CardTitle>
                 <CardAction>
                   <Badge variant={marketplace.available ? 'success' : 'secondary'}>
                     {marketplace.available ? 'Connectée' : 'Non disponible'}

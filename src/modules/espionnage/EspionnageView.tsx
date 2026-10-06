@@ -4,6 +4,7 @@ import { RefreshCw, Store } from "lucide-react";
 import { toast } from "sonner";
 import { countryName } from "@server/shared/countries";
 import { STOREFRONT_LABELS, type Storefront } from "@server/shared/storefronts";
+import { BrandIcon } from "@/shared/components/BrandIcon";
 import { AdCard, AdDetailsDialog } from "@/modules/espionnage/AdCard";
 import { MetaSearchPanel } from "@/modules/espionnage/MetaSearchPanel";
 import { PageHeader } from "@/shared/components/PageHeader";
@@ -363,6 +364,7 @@ export function EspionnageView() {
                       <SelectItem value="toutes">Toutes les plateformes</SelectItem>
                       {data.storefronts.map((entry) => (
                         <SelectItem key={entry.id} value={entry.id}>
+                          <BrandIcon brand={entry.id} decorative />
                           {STOREFRONT_LABELS[entry.id]} · {entry.ads.toLocaleString("fr-FR")}
                         </SelectItem>
                       ))}

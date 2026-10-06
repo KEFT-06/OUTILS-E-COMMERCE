@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState, type ComponentType } from 'react';
+import { BrandIcon } from '@/shared/components/BrandIcon';
 import { parseAmount } from '@/shared/lib/parseAmount';
 import { AlertTriangle, ExternalLink, Eye, Scissors, TrendingUp } from 'lucide-react';
 import { PageHeader } from '@/shared/components/PageHeader';
@@ -129,6 +130,7 @@ export function CampaignBlueprintsView() {
                       onClick={() => setPlatformId(candidate.id)}
                       className={cn(platformId === candidate.id && 'border-primary/40 text-brand-green-text')}
                     >
+                      {(candidate.id === 'meta' || candidate.id === 'tiktok') && <BrandIcon brand={candidate.id} decorative />}
                       {candidate.label}
                     </Button>
                   ))}
