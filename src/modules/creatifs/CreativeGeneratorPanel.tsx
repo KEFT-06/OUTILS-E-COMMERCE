@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
+import { useLocation } from 'react-router-dom';
 import { AlertTriangle, BookOpen, Clapperboard, Download, Image as ImageIcon, PenLine, ShieldCheck, Sparkles } from 'lucide-react';
 import { useCreditGate } from '@/app/providers/CreditGateProvider';
 import { ApiError, readApiError, toApiError } from '@/shared/lib/apiError';
@@ -7,6 +8,7 @@ import { AWARENESS_OPTIONS } from '@/shared/lib/awareness';
 import { findAdFramework } from '@server/shared/adFrameworks';
 import { useAuth } from '@/features/auth/AuthContext';
 import { AdFrameworkPicker } from '@/modules/creatifs/AdFrameworkPicker';
+import { type AdReference, readAdReference } from '@/modules/creatifs/adReference';
 import { CREATIVE_ATTESTATIONS } from '@/modules/creatifs/attestations';
 import { launchCreative } from '@/modules/creatifs/launchCreative';
 import { BookCoverPanel } from '@/modules/creatifs/BookCoverPanel';
@@ -86,7 +88,17 @@ export function CreativeGeneratorPanel({
   const extensionCost = costTable?.actions.find((action) => action.id === 'video_extension')?.cost ?? null;
 
   // Lu une seule fois, au montage : relire le stockage à chaque rendu coûterait pour rien.
-  const [initial] = useState(lireBrouillon);
+  const [brouillon] = useState(lireBrouillon);
+  /*
+    Arrivée depuis une publicité de l'Espionnage (« Créer ma vidéo à partir de cette publicité ») :
+    l'annonce reste sous les yeux pendant qu'on écrit son propre brief. On part de son angle, on ne
+    reprend ni son texte ni ses images — le brief reste à écrire, seul le produit est proposé.
+  */
+  const location = useLocation();
+  const [reference, setReference] = useState<AdReference | null>(() => readAdReference(location.state));
+  const [initial] = useState<Partial<Brouillon>>(() =>
+    reference ? { ...brouillon, kind: 'video', purpose: 'ad', productName: reference.titre || brouillon.productName || '' } : brouillon,
+  );
 
   const [kind, setKind] = useState<CreativeKind>(initial.kind ?? 'visual');
   /** Onglet « Livre » : une couverture n'est pas un créatif publicitaire, elle a son propre écran. */
@@ -385,6 +397,20 @@ export function CreativeGeneratorPanel({
 
       {/* Le brief reste monté sous l'onglet Livre : y revenir ne fait rien perdre. */}
       <CardContent className={cn('space-y-5', bookMode && 'hidden')}>
+        {reference && (
+          <Alert>
+            <Clapperboard />
+            <AlertTitle>Publicité de référence : {reference.annonceur}</AlertTitle>
+            <AlertDescription>
+              {reference.titre && <p className="font-medium text-foreground">{reference.titre}</p>}
+              {reference.texte && <p className="line-clamp-4 whitespace-pre-line">{reference.texte}</p>}
+              <p>Inspirez-vous de son angle pour décrire VOTRE scène : son texte et ses images restent les siens.</p>
+              <Button type="button" variant="link" className="h-auto p-0" onClick={() => setReference(null)}>
+                Retirer la référence
+              </Button>
+            </AlertDescription>
+          </Alert>
+        )}
         <form onSubmit={handleSubmit} className="space-y-5">
           <fieldset className="space-y-2">
             <legend className="mb-2 text-sm font-medium">Objectif {kind === 'video' ? 'de la vidéo' : 'du visuel'}</legend>

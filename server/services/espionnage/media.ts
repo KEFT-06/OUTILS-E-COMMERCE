@@ -260,6 +260,40 @@ export async function sendAdVideo(adId: string | undefined, range: string | unde
 }
 
 /**
+ * Ce que le téléchargement d'une publicité remettra : sa vidéo, une image, ou rien.
+ *
+ * Demandé par l'écran AVANT de lancer le téléchargement. Le fichier vit chez Meta, à une adresse
+ * signée qui expire : le lien direct ouvrait alors une page d'erreur, et une vidéo retirée
+ * arrivait sous la forme de son image d'aperçu sans que rien ne le dise.
+ */
+export async function adDownloadKind(adId: string | undefined): Promise<'video' | 'image' | null> {
+  if (!adId || !/^[0-9a-f-]{36}$/.test(adId)) return null;
+  const [row] = await getDb()
+    .select({ downloadUrl: spiedAds.downloadUrl, playUrl: spiedAds.playUrl, mediaUrl: spiedAds.mediaUrl, thumbnailPath: spiedAds.thumbnailPath })
+    .from(spiedAds)
+    .where(eq(spiedAds.id, adId))
+    .limit(1);
+  if (!row) return null;
+  for (const raw of [row.downloadUrl, row.playUrl, row.mediaUrl]) {
+    if (!raw) continue;
+    try {
+      const url = await assertPublicUrl(raw, 'L’adresse du visuel');
+      const local = !isProd && url.hostname === '127.0.0.1';
+      if (!local && !META_MEDIA_HOST.test(url.hostname)) continue;
+      // Un seul octet demandé : la réponse dit si l'adresse signée vit encore, sans rien rapatrier.
+      const response = await fetch(url, { headers: { Range: 'bytes=0-0' }, signal: AbortSignal.timeout(10_000) });
+      const type = (response.headers.get('content-type') ?? '').split(';')[0]!.trim().toLowerCase();
+      await response.body?.cancel().catch(() => undefined);
+      if (response.ok && DOWNLOAD_TYPES[type]) return type.startsWith('video/') ? 'video' : 'image';
+    } catch {
+      // Adresse expirée ou refusée : on essaie la suivante.
+    }
+  }
+  // L'aperçu gardé chez nous ne périme pas : c'est lui qui part quand Meta n'a plus rien.
+  return row.thumbnailPath && supabaseStorage() ? 'image' : null;
+}
+
+/**
  * Remet le fichier d'origine d'une publicité : la vidéo, ou l'image en pleine définition.
  *
  * Rien n'est conservé chez nous : le fichier est relayé depuis les serveurs de Meta, en flux,
@@ -270,14 +304,15 @@ export async function sendAdDownload(adId: string | undefined, res: ExpressRespo
   const notFound = new AppError(404, 'Publicité introuvable.', 'SPY_AD_NOT_FOUND');
   if (!adId || !/^[0-9a-f-]{36}$/.test(adId)) throw notFound;
   const [row] = await getDb()
-    .select({ externalId: spiedAds.externalId, downloadUrl: spiedAds.downloadUrl, mediaUrl: spiedAds.mediaUrl, thumbnailPath: spiedAds.thumbnailPath })
+    .select({ externalId: spiedAds.externalId, downloadUrl: spiedAds.downloadUrl, playUrl: spiedAds.playUrl, mediaUrl: spiedAds.mediaUrl, thumbnailPath: spiedAds.thumbnailPath })
     .from(spiedAds)
     .where(eq(spiedAds.id, adId))
     .limit(1);
   if (!row) throw notFound;
   const nom = `publicite-${row.externalId.replace(/[^\w-]/g, '')}`;
 
-  for (const raw of [row.downloadUrl, row.mediaUrl]) {
+  // La vidéo en pleine définition, puis celle de lecture, puis l'image : la première qui répond.
+  for (const raw of [row.downloadUrl, row.playUrl, row.mediaUrl]) {
     if (!raw) continue;
     try {
       const url = await assertPublicUrl(raw, 'L’adresse du visuel');

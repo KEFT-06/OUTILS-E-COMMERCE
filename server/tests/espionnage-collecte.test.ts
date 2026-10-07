@@ -328,6 +328,17 @@ describe('Mur d’espionnage — collecte', () => {
       // Adresse périmée chez Meta : le lecteur est prévenu, il renverra à la bibliothèque.
       const perimee = await agent.get(`/api/espionnage/ads/${idDe('video-perimee')}/video`).expect(410);
       assert.equal((perimee.body as { error: { code: string } }).error.code, 'SPY_MEDIA_EXPIRED');
+
+      // Télécharger : l'écran demande d'abord ce qui sera remis, pour ne jamais ouvrir une page d'erreur.
+      const pret = await agent.get(`/api/espionnage/ads/${idDe('video-lisible')}/download/check`).expect(200);
+      assert.deepEqual(pret.body, { available: true, kind: 'video' });
+      const fichier = await agent.get(`/api/espionnage/ads/${idDe('video-lisible')}/download`).buffer(true).expect(200);
+      assert.equal(fichier.headers['content-type'], 'video/mp4');
+      assert.match(String(fichier.headers['content-disposition']), /attachment; filename="publicite-video-lisible\.mp4"/);
+      assert.deepEqual(Buffer.from(fichier.body as Buffer), VIDEO);
+      // Fichier retiré chez Meta, aucun aperçu gardé : la réponse le dit, sans erreur.
+      const retire = await agent.get(`/api/espionnage/ads/${idDe('video-perimee')}/download/check`).expect(200);
+      assert.deepEqual(retire.body, { available: false, kind: null });
       // Le relais est réservé aux comptes connectés.
       const { default: request } = await import('supertest');
       await request(app).get(`/api/espionnage/ads/${idDe('video-lisible')}/video`).expect(401);

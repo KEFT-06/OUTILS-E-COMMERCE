@@ -5,7 +5,7 @@ import { asyncRoute, routeLimiter, validateBody } from '@server/middleware';
 import { requireAuth } from '@server/middleware/auth';
 import { effectiveLimits } from '@server/services/accounts';
 import { listSpiedAds, refreshWall, refreshWallInBackground, spiedStores } from '@server/services/espionnage';
-import { sendAdDownload, sendAdThumbnail, sendAdVideo, sendPageAvatar } from '@server/services/espionnage/media';
+import { adDownloadKind, sendAdDownload, sendAdThumbnail, sendAdVideo, sendPageAvatar } from '@server/services/espionnage/media';
 import { STOREFRONTS } from '@server/shared/storefronts';
 import {
   type AdSearchRequest,
@@ -72,6 +72,16 @@ espionnageRouter.get(
     const limite = effectiveLimits(req.auth!.account).spiedAdsVisible;
     res.json(await listSpiedAds(parsed.success ? parsed.data : {}, limite));
     refreshWallInBackground();
+  }),
+);
+
+/** Ce que le téléchargement remettra — vidéo, image, ou rien : l'écran le demande avant de télécharger. */
+espionnageRouter.get(
+  '/ads/:id/download/check',
+  routeLimiter(10, 120),
+  asyncRoute(async (req, res) => {
+    const kind = await adDownloadKind(req.params.id);
+    res.json({ available: kind !== null, kind });
   }),
 );
 

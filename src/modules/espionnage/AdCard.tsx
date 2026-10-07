@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { Link } from 'react-router-dom';
 import {
   CheckCircle2,
+  Clapperboard,
   Download,
   ExternalLink,
   Eye,
@@ -14,7 +15,10 @@ import {
 } from 'lucide-react';
 import { countryName } from '@server/shared/countries';
 import { followableOnRadar, storefrontOfHost } from '@server/shared/storefronts';
+import { toast } from 'sonner';
+import type { AdReference } from '@/modules/creatifs/adReference';
 import { type Brand, BrandIcon } from '@/shared/components/BrandIcon';
+import { apiRequest } from '@/shared/lib/api';
 import { CountryFlag } from '@/shared/components/CountryFlag';
 import { safeHttpUrl } from '@/shared/lib/safeUrl';
 import { cn } from '@/shared/lib/utils';
@@ -47,6 +51,55 @@ const PLATEFORMES: Record<string, { marque: Brand; nom: string }> = {
   WHATSAPP: { marque: 'whatsapp', nom: 'WhatsApp' },
   THREADS: { marque: 'threads', nom: 'Threads' },
 };
+
+const fichierDe = (ad: LibraryAd) => (ad.mediaKind === 'video' ? 'la vidéo' : 'l’image');
+
+/**
+ * Télécharge le fichier d'une publicité — sa vidéo, ou son image.
+ *
+ * Le fichier vit chez Meta, à une adresse qui expire quand l'annonce est retirée. Le lien direct
+ * ouvrait alors une page d'erreur : on demande d'abord s'il est encore en ligne, et l'écran le
+ * dit s'il ne l'est plus, avec le chemin vers l'annonce dans la bibliothèque.
+ */
+async function telecharger(ad: LibraryAd): Promise<void> {
+  const attente = toast.loading(`Préparation de ${fichierDe(ad)}…`);
+  try {
+    const { kind } = await apiRequest<{ available: boolean; kind: 'video' | 'image' | null }>(`/api/espionnage/ads/${ad.id}/download/check`);
+    if (kind === null) {
+      toast.info('Ce fichier n’est plus en ligne', {
+        id: attente,
+        description: 'L’annonce a été retirée ou remplacée depuis notre dernier relevé.',
+        action: {
+          label: 'Voir chez Meta',
+          onClick: () => window.open(`https://www.facebook.com/ads/library/?id=${encodeURIComponent(ad.externalId)}`, '_blank', 'noopener'),
+        },
+      });
+      return;
+    }
+    const lien = document.createElement('a');
+    lien.href = `/api/espionnage/ads/${ad.id}/download`;
+    lien.download = '';
+    document.body.appendChild(lien);
+    lien.click();
+    lien.remove();
+    // Une vidéo retirée par l'annonceur : il n'en reste que l'image d'aperçu, et l'écran le dit.
+    if (ad.mediaKind === 'video' && kind === 'image') {
+      toast.info('La vidéo n’est plus en ligne', { id: attente, description: 'L’annonceur l’a retirée : son image d’aperçu est téléchargée à la place.' });
+    } else toast.success('Téléchargement lancé', { id: attente });
+  } catch {
+    toast.error('Le téléchargement n’a pas pu démarrer', { id: attente, description: 'Votre connexion semble instable.' });
+  }
+}
+
+/** Ce qu'une publicité donne comme point de départ aux Créatifs : son annonceur, son titre, son texte. */
+const referenceDe = (ad: LibraryAd): { reference: AdReference } => ({
+  reference: {
+    annonceur: ad.advertiser ?? ad.storeHost ?? 'Annonceur',
+    titre: ad.title ?? '',
+    texte: (ad.bodyText ?? '').replace(/\{\{[^}]*\}\}/g, '').trim().slice(0, 900),
+    video: ad.mediaKind === 'video',
+  },
+});
 
 /** Logo de la plateforme qui héberge la boutique ; l'icône de boutique quand elle n'est pas reconnue. */
 function StoreIcon({ host }: { host: string }) {
@@ -364,13 +417,17 @@ export function AdCard({
                 </DropdownMenuItem>
               )}
               {ad.downloadable && (
-                <DropdownMenuItem asChild>
-                  <a href={`/api/espionnage/ads/${ad.id}/download`} download>
-                    <Download />
-                    Télécharger le visuel
-                  </a>
+                <DropdownMenuItem onSelect={() => void telecharger(ad)}>
+                  <Download />
+                  Télécharger {fichierDe(ad)}
                 </DropdownMenuItem>
               )}
+              <DropdownMenuItem asChild>
+                <Link to="/app/creatifs" state={referenceDe(ad)}>
+                  <Clapperboard />
+                  Créer ma vidéo à partir de cette publicité
+                </Link>
+              </DropdownMenuItem>
               {lien && (
                 <DropdownMenuItem asChild>
                   <a href={lien} target="_blank" rel="noreferrer noopener">
@@ -447,11 +504,15 @@ export function AdCard({
               </Button>
             )}
             {ad.downloadable && (
-              <Button asChild variant="outline" className={cn('h-10', !ad.storeHost && 'flex-1')}>
-                <a href={`/api/espionnage/ads/${ad.id}/download`} download aria-label="Télécharger le visuel de cette publicité">
-                  <Download />
-                  {!ad.storeHost && 'Télécharger le visuel'}
-                </a>
+              <Button
+                variant="outline"
+                className={cn('h-10', !ad.storeHost && 'flex-1')}
+                aria-label={`Télécharger ${fichierDe(ad)} de cette publicité`}
+                title={`Télécharger ${fichierDe(ad)}`}
+                onClick={() => void telecharger(ad)}
+              >
+                <Download />
+                {!ad.storeHost && `Télécharger ${fichierDe(ad)}`}
               </Button>
             )}
           </div>
@@ -594,13 +655,17 @@ export function AdDetailsDialog({
                 </Button>
               )}
               {ad.downloadable && (
-                <Button asChild size="sm" variant="outline">
-                  <a href={`/api/espionnage/ads/${ad.id}/download`} download>
-                    <Download />
-                    Télécharger le visuel
-                  </a>
+                <Button size="sm" variant="outline" onClick={() => void telecharger(ad)}>
+                  <Download />
+                  Télécharger {fichierDe(ad)}
                 </Button>
               )}
+              <Button asChild size="sm" variant="outline">
+                <Link to="/app/creatifs" state={referenceDe(ad)}>
+                  <Clapperboard />
+                  Créer ma vidéo à partir de cette publicité
+                </Link>
+              </Button>
               <Button size="sm" variant="outline" onClick={() => onShowAdvertiser(ad)}>
                 <Store />
                 Toutes les publicités de cet annonceur
