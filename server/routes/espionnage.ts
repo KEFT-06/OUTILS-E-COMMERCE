@@ -59,6 +59,8 @@ const filtersSchema = z.object({
   // « active » : ce que Meta déclarait en cours à la dernière collecte ; « arretee » : l'inverse.
   etat: z.enum(['active', 'arretee']).optional(),
   search: z.string().trim().max(120).optional(),
+  /** Clés du produit dans l'adresse d'une annonce — nom d'adresse, identifiant « prd_… » — séparées par une virgule. */
+  product: z.string().trim().regex(/^[A-Za-z0-9][A-Za-z0-9_-]{0,119}(,[A-Za-z0-9][A-Za-z0-9_-]{0,119})?$/).optional().catch(undefined),
   sort: z.enum(['oldest', 'newest', 'variants']).optional(),
   limit: z.coerce.number().int().min(1).max(200).optional(),
   batch: z.coerce.number().int().min(0).max(100_000).optional(),

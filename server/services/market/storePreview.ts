@@ -3,6 +3,7 @@ import { getDb } from '@server/db/client';
 import { discoveredStores, marketProducts, spiedAds, watches } from '@server/db/schema';
 import { AppError } from '@server/middleware';
 import { indexStoreCatalog, normalHost } from '@server/services/market';
+import { adsOfProduct, loadStoreAds, productUrl } from '@server/services/market/productAds';
 import { chariowStoreSource } from '@server/services/radar/sources/chariowStore';
 import { type Storefront, followableOnRadar, storefrontOfHost } from '@server/shared/storefronts';
 
@@ -32,6 +33,15 @@ export interface StorePreviewProduct {
   /** Mise en ligne constatée : le produit est apparu après notre premier relevé de la boutique. */
   launchedAt: string | null;
   endedAt: string | null;
+  slug: string | null;
+  /** Identifiant du produit chez la plateforme, « prd_… » : certaines publicités mènent à lui. */
+  externalId: string;
+  /** Page du produit sur sa vitrine. */
+  url: string;
+  /** Début de la plus ancienne publicité connue de CE produit sur Meta, et ses annonces. */
+  firstAdAt: string | null;
+  activeAds: number;
+  totalAds: number;
 }
 
 export interface StorePreviewView {
@@ -166,6 +176,7 @@ export async function storePreview(userId: string, rawHost: string): Promise<Sto
       .limit(8),
   ]);
 
+  const annonces = (await loadStoreAds([host])).get(host);
   const storeExternalId = rows[0]?.storeExternalId ?? known?.storeExternalId ?? null;
   const watch = mine.find((entry) => (storeExternalId && entry.externalId === storeExternalId) || (entry.url ? normalHost(entry.url) === host : false));
 
@@ -191,6 +202,12 @@ export async function storePreview(userId: string, rawHost: string): Promise<Sto
       firstSeenAt: row.firstSeenAt.toISOString(),
       launchedAt: iso(row.launchedAt),
       endedAt: iso(row.endedAt),
+      slug: row.slug,
+      externalId: row.externalId,
+      url: productUrl(host, row.slug),
+      firstAdAt: iso(adsOfProduct(annonces, row.slug, row.externalId).firstAdAt),
+      activeAds: adsOfProduct(annonces, row.slug, row.externalId).activeAds,
+      totalAds: adsOfProduct(annonces, row.slug, row.externalId).totalAds,
     })),
     liveItems: live.length,
     endedItems: rows.length - live.length,

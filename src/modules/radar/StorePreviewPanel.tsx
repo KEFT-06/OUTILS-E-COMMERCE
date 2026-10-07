@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { ExternalLink, Megaphone, Plus, Store, X } from 'lucide-react';
 import { ACCOUNT_PATH } from '@/app/navigation';
+import { FirstAdCell, ProductRowActions } from '@/modules/radar/ProductRowActions';
 import { dureeLisible, joursDepuis } from '@/modules/radar/radarText';
 import { SalesViewToggle, type SalesView } from '@/modules/radar/SalesViewToggle';
 import { categoryLabel } from '@/modules/radar/WatchItemsPanel';
@@ -224,6 +225,8 @@ export function StorePreviewPanel({
                       <TableHead className="text-right">Prix</TableHead>
                       <TableHead className="text-right">{vue === 'globale' ? 'Ventes' : 'Ventes depuis le suivi'}</TableHead>
                       <TableHead className="text-right">En ligne depuis</TableHead>
+                      <TableHead>1re publicité sur Meta</TableHead>
+                      <TableHead />
                     </TableRow>
                   </TableHeader>
                   <TableBody>
@@ -247,6 +250,12 @@ export function StorePreviewPanel({
                           </TableCell>
                           <TableCell className="text-right whitespace-nowrap">
                             {dureeLisible(joursDepuis(enLigneDepuis(product, data.ads.firstAdAt), product.endedAt ? new Date(product.endedAt).getTime() : Date.now()))}
+                          </TableCell>
+                          <TableCell>
+                            <FirstAdCell firstAdAt={product.firstAdAt} />
+                          </TableCell>
+                          <TableCell>
+                            <ProductRowActions name={product.name} host={host} slug={product.slug} externalId={product.externalId} url={product.url} productAds={product.totalAds} storeAds={data.ads.total} />
                           </TableCell>
                         </TableRow>
                       );

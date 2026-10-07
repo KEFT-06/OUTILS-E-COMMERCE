@@ -450,6 +450,62 @@ describe('Fiche d’une boutique — ouvrir sans surveiller', () => {
     assert.equal(tableau.body.watches.length, 1, 'ouvrir la fiche n’a rien mis sous surveillance');
   });
 
+  /*
+    Sur chaque ligne de produit : sa première publicité sur Meta, sa page, et ses annonces sur le
+    mur. Une publicité appartient au produit dont le nom est un segment ENTIER de son adresse :
+    « /guide-manioc » ne vaut pas « /guide-manioc-2 ».
+  */
+  it('rattache chaque publicité à SON produit : première date, page du produit, et mur filtré sur lui', async () => {
+    const { indexStoreCatalog } = await import('@server/services/market');
+    const { getDb } = await import('@server/db/client');
+    const { spiedAds } = await import('@server/db/schema');
+    const boutique = { externalId: 'store_lignes', host: 'lignes.mychariow.com', label: 'Boutique Lignes' };
+    const article = (externalId: string, name: string, slug: string) => ({ externalId, name, slug, kind: 'downloadable', priceValue: 3_000, currency: 'XAF', salesCount: 10 });
+    await indexStoreCatalog(boutique, [article('prd_m1', 'Guide du manioc', 'guide-manioc'), article('prd_m2', 'Guide du manioc, tome 2', 'guide-manioc-2'), article('prd_m3', 'Carnet de récolte', 'carnet-recolte')], jour(6));
+    const annonce = (externalId: string, landingUrl: string, startedAt: Date, active: boolean) => ({ externalId, storeHost: 'lignes.mychariow.com', landingUrl, advertiser: 'Boutique Lignes', startedAt, variants: 1, platforms: ['FACEBOOK'], active, lastSeenAt: jour(6) });
+    await getDb()
+      .insert(spiedAds)
+      .values([
+        annonce('lignes-1', 'https://lignes.mychariow.com/guide-manioc?utm_source=fb', jour(-30), true),
+        annonce('lignes-2', 'https://lignes.mychariow.store/GUIDE-MANIOC/', jour(-45), false),
+        annonce('lignes-3', 'https://lignes.mychariow.com/guide-manioc-2', jour(-5), true),
+        // Relevé sur de vraies annonces : certaines mènent au paiement du produit, par son identifiant.
+        annonce('lignes-4', 'https://lignes.mychariow.com/prd_m3/checkout', jour(-12), true),
+        // Un identifiant voisin d'une lettre ne doit pas être pris pour lui (le tiret bas n'est pas un joker).
+        annonce('lignes-5', 'https://lignes.mychariow.com/prdxm3/checkout', jour(-90), true),
+      ]);
+
+    const { agent } = await signInWithPlan(app, 'fiche-lignes@exemple.test', 'pro');
+    const { body } = await agent.get('/api/radar/store?host=lignes.mychariow.com').expect(200);
+    const de = (name: string) => body.products.find((entry: { name: string }) => entry.name === name);
+
+    assert.equal(de('Guide du manioc').url, 'https://lignes.mychariow.com/guide-manioc');
+    assert.equal(de('Guide du manioc').totalAds, 2, 'ses deux annonces, pas celle du tome 2');
+    assert.equal(de('Guide du manioc').activeAds, 1);
+    assert.equal(de('Guide du manioc').firstAdAt, jour(-45).toISOString(), 'la plus ancienne des siennes, même arrêtée');
+    assert.equal(de('Guide du manioc, tome 2').firstAdAt, jour(-5).toISOString());
+    // Promu par son identifiant seulement : l'annonce lui revient quand même.
+    assert.equal(de('Carnet de récolte').firstAdAt, jour(-12).toISOString(), 'l’annonce qui mène à « /prd_m3/checkout » est la sienne');
+    assert.equal(de('Carnet de récolte').totalAds, 1, 'et pas celle de « /prdxm3 »');
+
+    // Le mur, ouvert depuis la ligne du produit : ses annonces, et elles seules.
+    const mur = await agent.get('/api/espionnage?storeHost=lignes.mychariow.com&etat=active&product=guide-manioc,prd_m1').expect(200);
+    assert.deepEqual((mur.body.ads as { externalId: string }[]).map((ad) => ad.externalId), ['lignes-1']);
+    const tout = await agent.get('/api/espionnage?storeHost=lignes.mychariow.com&product=guide-manioc,prd_m1').expect(200);
+    assert.deepEqual((tout.body.ads as { externalId: string }[]).map((ad) => ad.externalId).sort(), ['lignes-1', 'lignes-2']);
+    assert.equal(tout.body.matching, 2);
+    const parIdentifiant = await agent.get('/api/espionnage?storeHost=lignes.mychariow.com&product=carnet-recolte,prd_m3').expect(200);
+    assert.deepEqual((parIdentifiant.body.ads as { externalId: string }[]).map((ad) => ad.externalId), ['lignes-4']);
+    // Un nom qui porterait un joker de recherche est écarté : le mur sert la boutique entière, sans erreur.
+    const joker = await agent.get('/api/espionnage?storeHost=lignes.mychariow.com&product=%25').expect(200);
+    assert.equal(joker.body.matching, 5);
+
+    // La concurrence d'une niche donne les mêmes repères, produit par produit.
+    const marche = await agent.get('/api/radar/market?niche=manioc').expect(200);
+    const tome2 = (marche.body.products as { name: string; url: string; productFirstAdAt: string | null; productAds: number }[]).find((entry) => entry.name === 'Guide du manioc, tome 2');
+    assert.deepEqual({ url: tome2?.url, premiere: tome2?.productFirstAdAt, annonces: tome2?.productAds }, { url: 'https://lignes.mychariow.com/guide-manioc-2', premiere: jour(-5).toISOString(), annonces: 1 });
+  });
+
   it('reconnaît une boutique que le compte surveille déjà, et répond même pour une boutique jamais relevée', async () => {
     const { indexStoreCatalog } = await import('@server/services/market');
     catalogue = [{ id: 'prd_suivi', name: 'Produit suivi', slug: 'suivi', prix: 1_000, ventes: 3 }];

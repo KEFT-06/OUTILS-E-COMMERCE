@@ -1,4 +1,4 @@
-import { and, asc, count, desc, eq, gte, isNotNull, lte, sql, type SQL } from 'drizzle-orm';
+import { and, asc, count, desc, eq, gte, isNotNull, lte, or, sql, type SQL } from 'drizzle-orm';
 import { getDb } from '@server/db/client';
 import { containsIgnoringAccents } from '@server/db/search';
 import { spiedAds } from '@server/db/schema';
@@ -93,6 +93,8 @@ export interface EspionnageFilters {
   etat?: 'active' | 'arretee';
   /** Recherche libre dans le titre, le texte et le nom de l'annonceur. */
   search?: string;
+  /** Annonces qui mènent à ce produit : son nom d'adresse et/ou son identifiant, séparés par une virgule. */
+  product?: string;
   sort?: 'oldest' | 'newest' | 'variants';
   limit?: number;
   /**
@@ -230,6 +232,17 @@ export async function listSpiedAds(
   }
   if (filters.storeHost) conditions.push(eq(spiedAds.storeHost, filters.storeHost));
   if (filters.pageId) conditions.push(eq(spiedAds.pageId, filters.pageId));
+  if (filters.product) {
+    // Même règle que le Radar : le nom du produit est un segment entier de l'adresse de destination.
+    const chemin = sql`rtrim(split_part(split_part(lower(${spiedAds.landingUrl}), '?', 1), '#', 1), '/')`;
+    const menent = filters.product
+      .split(',')
+      .slice(0, 2)
+      // Le tiret bas est un joker pour LIKE : il est échappé, « prd_1j8 » ne doit pas valoir « prdx1j8 ».
+      .map((cle) => `/${cle.toLowerCase().replace(/_/g, '\\_')}`)
+      .map((segment) => sql`(${chemin} like ${`%${segment}`} or ${chemin} like ${`%${segment}/%`})`);
+    conditions.push(or(...menent)!);
+  }
   if (filters.mediaKind) conditions.push(eq(spiedAds.mediaKind, filters.mediaKind));
   if (filters.country) conditions.push(sql`${spiedAds.countries} @> ${JSON.stringify([filters.country])}::jsonb`);
   if (filters.etat) conditions.push(eq(spiedAds.active, filters.etat === 'active'));

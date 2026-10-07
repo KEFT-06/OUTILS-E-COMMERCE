@@ -70,6 +70,13 @@ export interface WatchItemView {
   /** Début de la plus ancienne publicité connue pour ce produit. */
   firstAdAt: string | null;
   activeAds: number;
+  /** Publicités connues de ce produit, en cours ou arrêtées. */
+  totalAds: number;
+  slug: string | null;
+  /** Identifiant du produit chez la plateforme, « prd_… ». */
+  externalId: string;
+  /** Page du produit sur sa vitrine. */
+  url: string | null;
   firstSeenAt: string;
   lastSeenAt: string;
   /** null : encore en vente. */
@@ -233,6 +240,12 @@ export interface MarketProduct {
   firstSeenAt: string;
   firstAdAt: string | null;
   activeAds: number;
+  slug: string | null;
+  externalId: string;
+  url: string;
+  /** Début de la plus ancienne publicité connue de ce produit sur Meta, et le nombre de ses annonces. */
+  productFirstAdAt: string | null;
+  productAds: number;
 }
 
 export interface MarketSearch {
@@ -255,6 +268,13 @@ export interface StorePreviewProduct {
   firstSeenAt: string;
   launchedAt: string | null;
   endedAt: string | null;
+  slug: string | null;
+  externalId: string;
+  url: string;
+  /** Début de la plus ancienne publicité connue de ce produit sur Meta, et ses annonces. */
+  firstAdAt: string | null;
+  activeAds: number;
+  totalAds: number;
 }
 
 /** Fiche d'une boutique ouverte dans le Radar sans la surveiller : catalogue connu, ventes, publicités. */

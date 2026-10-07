@@ -4,6 +4,7 @@ import { sansAccents } from '@server/db/search';
 import { discoveredStores, marketProducts, marketSalesDaily, spiedAds } from '@server/db/schema';
 import { chariowStoreSource } from '@server/services/radar/sources/chariowStore';
 import type { RadarObservation } from '@server/services/radar/types';
+import { adsOfProduct, loadStoreAds, productUrl } from '@server/services/market/productAds';
 import { runInBackground } from '@server/shared/backgroundWork';
 
 /**
@@ -277,6 +278,13 @@ export interface MarketProductView {
   firstAdAt: string | null;
   /** Publicités de la boutique vues en cours au dernier contrôle. */
   activeAds: number;
+  slug: string | null;
+  externalId: string;
+  /** Page du produit sur sa vitrine. */
+  url: string;
+  /** Début de la plus ancienne publicité connue de CE produit sur Meta, et le nombre de ses annonces. */
+  productFirstAdAt: string | null;
+  productAds: number;
 }
 
 export interface MarketSearchView {
@@ -330,6 +338,7 @@ export async function searchMarketProducts(niche: string, limit = 60): Promise<M
           .where(inArray(spiedAds.storeHost, hosts))
           .groupBy(spiedAds.storeHost);
   const adsOf = new Map(ads.map((row) => [row.host, row]));
+  const annonces = await loadStoreAds(hosts);
 
   return {
     ...base,
@@ -349,6 +358,11 @@ export async function searchMarketProducts(niche: string, limit = 60): Promise<M
       firstSeenAt: row.firstSeenAt.toISOString(),
       firstAdAt: adsOf.get(row.storeHost)?.firstAdAt ? new Date(adsOf.get(row.storeHost)!.firstAdAt!).toISOString() : null,
       activeAds: Number(adsOf.get(row.storeHost)?.activeAds ?? 0),
+      slug: row.slug,
+      externalId: row.externalId,
+      url: productUrl(row.storeHost, row.slug),
+      productFirstAdAt: adsOfProduct(annonces.get(row.storeHost), row.slug, row.externalId).firstAdAt?.toISOString() ?? null,
+      productAds: adsOfProduct(annonces.get(row.storeHost), row.slug, row.externalId).totalAds,
     })),
   };
 }

@@ -2,6 +2,7 @@ import { and, count, desc, eq, gte, inArray, isNull, sql } from 'drizzle-orm';
 import { getDb, isUniqueViolation } from '@server/db/client';
 import { spiedAds, users, watchEvents, watchItems, watches, type WatchRow } from '@server/db/schema';
 import { AppError } from '@server/middleware';
+import { adsOfProduct, loadStoreAds, productUrl } from '@server/services/market/productAds';
 import { sourceFor } from '@server/services/radar/sources';
 import { sweepWatch, type SweepOutcome } from '@server/services/radar/sweep';
 
@@ -316,34 +317,18 @@ export async function watchItemsOf(userId: string, watchId: string) {
     .where(eq(watchItems.watchId, watchId))
     .orderBy(sql`${watchItems.salesCount} desc nulls last`);
 
-  /*
-    Première publicité connue de chaque produit. La vitrine ne publie aucune date de création :
-    la date de début d'une publicité, elle, est publiée par la régie et remonte bien avant notre
-    premier passage. C'est la seule borne d'ancienneté qui ne dépende pas de l'observation.
-  */
+  // Publicités de chaque produit : voir services/market/productAds.ts, la règle commune du Radar.
   const host = storeHostOf(watch.url);
-  const ads = host
-    ? await getDb()
-        .select({ landingUrl: spiedAds.landingUrl, startedAt: spiedAds.startedAt, active: spiedAds.active })
-        .from(spiedAds)
-        .where(eq(spiedAds.storeHost, host))
-    : [];
-  const adsOf = (slug: string | null) => {
-    if (!slug) return { firstAdAt: null as Date | null, activeAds: 0 };
-    // Le nom du produit doit être un segment entier de l'adresse : « /guide » ne vaut pas « /guide-2 ».
-    const segment = `/${slug.toLowerCase()}`;
-    const mene = (adresse: string) => {
-      const chemin = adresse.toLowerCase().split(/[?#]/)[0]!.replace(/\/+$/, '');
-      return chemin.endsWith(segment) || chemin.includes(`${segment}/`);
-    };
-    const siennes = ads.filter((ad) => mene(ad.landingUrl));
-    const debuts = siennes.flatMap((ad) => (ad.startedAt ? [ad.startedAt.getTime()] : []));
-    return { firstAdAt: debuts.length ? new Date(Math.min(...debuts)) : null, activeAds: siennes.filter((ad) => ad.active).length };
-  };
+  const ads = host ? (await loadStoreAds([host])).get(host) : undefined;
+  const adsOf = (slug: string | null, externalId: string) => adsOfProduct(ads, slug, externalId);
 
   return rows.map((row) => ({
     id: row.id,
     name: row.name,
+    /** De quoi ouvrir la page du produit, et retrouver ses annonces sur le mur. */
+    slug: row.slug,
+    externalId: row.externalId,
+    url: host ? productUrl(host, row.slug) : watch.url,
     kind: row.kind,
     category: row.category,
     price: row.priceValue,
@@ -351,8 +336,9 @@ export async function watchItemsOf(userId: string, watchId: string) {
     sales: row.salesCount,
     /** Ventes faites depuis le premier compte lu. null : la source ne publie pas le compte. */
     salesTracked: row.salesCount !== null && row.salesAtFirstSeen !== null ? Math.max(0, row.salesCount - row.salesAtFirstSeen) : null,
-    firstAdAt: adsOf(row.slug).firstAdAt?.toISOString() ?? null,
-    activeAds: adsOf(row.slug).activeAds,
+    firstAdAt: adsOf(row.slug, row.externalId).firstAdAt?.toISOString() ?? null,
+    activeAds: adsOf(row.slug, row.externalId).activeAds,
+    totalAds: adsOf(row.slug, row.externalId).totalAds,
     firstSeenAt: row.firstSeenAt.toISOString(),
     lastSeenAt: row.lastSeenAt.toISOString(),
     endedAt: row.endedAt?.toISOString() ?? null,

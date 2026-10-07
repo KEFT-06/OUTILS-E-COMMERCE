@@ -1,6 +1,7 @@
 import { useEffect, useMemo } from 'react';
 import { Link } from 'react-router-dom';
 import { ExternalLink, Megaphone, X } from 'lucide-react';
+import { FirstAdCell, ProductRowActions } from '@/modules/radar/ProductRowActions';
 import { dureeLisible, joursDepuis } from '@/modules/radar/radarText';
 import { SalesViewToggle, type SalesView } from '@/modules/radar/SalesViewToggle';
 import { categoryLabel } from '@/modules/radar/WatchItemsPanel';
@@ -98,6 +99,7 @@ export function NicheProductsPanel({
                   <TableHead className="text-right">Prix</TableHead>
                   <TableHead className="text-right">{vue === 'globale' ? 'Ventes' : 'Ventes depuis le suivi'}</TableHead>
                   <TableHead className="text-right">En ligne depuis</TableHead>
+                  <TableHead>1re publicité sur Meta</TableHead>
                   <TableHead />
                 </TableRow>
               </TableHeader>
@@ -137,10 +139,16 @@ export function NicheProductsPanel({
                         {nombre === null ? <span className="text-muted-foreground">non publiées</span> : nombre.toLocaleString('fr-FR')}
                       </TableCell>
                       <TableCell className="text-right whitespace-nowrap">{dureeLisible(joursDepuis(enLigneDepuis(product)))}</TableCell>
-                      <TableCell className="text-right">
-                        <Button asChild variant="outline" size="sm">
-                          <Link to={`/app/radar?boutique=${encodeURIComponent(product.storeHost)}`}>Ouvrir la boutique</Link>
-                        </Button>
+                      <TableCell>
+                        <FirstAdCell firstAdAt={product.productFirstAdAt} />
+                      </TableCell>
+                      <TableCell>
+                        <div className="flex flex-nowrap items-center justify-end gap-1.5">
+                          <ProductRowActions name={product.name} host={product.storeHost} slug={product.slug} externalId={product.externalId} url={product.url} productAds={product.productAds} storeAds={product.activeAds} />
+                          <Button asChild variant="ghost" size="sm">
+                            <Link to={`/app/radar?boutique=${encodeURIComponent(product.storeHost)}`}>Boutique</Link>
+                          </Button>
+                        </div>
                       </TableCell>
                     </TableRow>
                   );

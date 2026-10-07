@@ -91,6 +91,9 @@ export function EspionnageView() {
   // Arrivée depuis le Radar (« X publicités en cours ») : le mur s'ouvre sur cette boutique.
   const [searchParams] = useSearchParams();
   const boutique = searchParams.get("boutique");
+  // Arrivée depuis une ligne de produit du Radar (« Annonce ») : les annonces de CE produit.
+  const produitDemande = searchParams.get("produit");
+  const [produit, setProduit] = useState<string | null>(() => (boutique && produitDemande && /^[A-Za-z0-9][A-Za-z0-9_-]{0,119}(,[A-Za-z0-9][A-Za-z0-9_-]{0,119})?$/.test(produitDemande) ? produitDemande : null));
   // Aucune consigne d'administration sur cet écran, pas même pour un administrateur : la
   // collecte tourne seule, et l'écran d'un abonné ne doit rien montrer de la cuisine (29/09/2026).
   const [erreur, setErreur] = useState<string | null>(null);
@@ -127,11 +130,12 @@ export function EspionnageView() {
     if (etat !== "toutes") params.set("etat", etat);
     if (annonceur?.pageId) params.set("pageId", annonceur.pageId);
     else if (annonceur?.storeHost) params.set("storeHost", annonceur.storeHost);
+    if (produit && annonceur?.storeHost) params.set("product", produit);
     if (pays !== "tous") params.set("country", pays);
     if (plateforme !== "toutes") params.set("storefront", plateforme);
     if (serie > 0) params.set("batch", String(serie));
     return `/api/espionnage?${params.toString()}`;
-  }, [anciennete, format, etat, tri, annonceur, pays, plateforme, serie]);
+  }, [anciennete, format, etat, tri, annonceur, produit, pays, plateforme, serie]);
   // Le mur déjà vu avec ces réglages se réaffiche tout de suite, puis il est relu.
   const [data, setData] = useCachedState<EspionnageData>(adresse);
 
@@ -271,13 +275,21 @@ export function EspionnageView() {
             <div className="flex flex-wrap items-center gap-2 rounded-lg bg-accent/60 px-3 py-2 text-sm">
               <Store className="size-4 shrink-0" aria-hidden="true" />
               <span className="min-w-0 flex-1">
-                Toutes les annonces de{" "}
+                {produit ? "Les annonces de ce produit chez " : "Toutes les annonces de "}
                 <span className="font-semibold">{annonceur.nom}</span>
               </span>
+              {produit && (
+                <Button size="sm" variant="ghost" onClick={() => regler(setProduit)(null)}>
+                  Voir toutes ses annonces
+                </Button>
+              )}
               <Button
                 size="sm"
                 variant="ghost"
-                onClick={() => regler(setAnnonceur)(null)}
+                onClick={() => {
+                  setProduit(null);
+                  regler(setAnnonceur)(null);
+                }}
               >
                 Retirer ce filtre
               </Button>

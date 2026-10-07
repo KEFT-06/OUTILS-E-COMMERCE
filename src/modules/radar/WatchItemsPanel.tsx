@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { ArrowLeft, Megaphone } from 'lucide-react';
+import { FirstAdCell, ProductRowActions } from '@/modules/radar/ProductRowActions';
 import { dureeLisible, joursDepuis } from '@/modules/radar/radarText';
 import { SalesViewToggle, type SalesView } from '@/modules/radar/SalesViewToggle';
 import { apiRequest } from '@/shared/lib/api';
@@ -212,8 +213,10 @@ export function WatchItemsPanel({
                 <TableHead className="text-right">Prix</TableHead>
                 <TableHead className="text-right">{vue === 'globale' ? 'Ventes' : 'Ventes depuis le suivi'}</TableHead>
                 <TableHead className="text-right">En ligne depuis</TableHead>
+                <TableHead>1re publicité sur Meta</TableHead>
                 <TableHead>Publicités</TableHead>
                 <TableHead>État</TableHead>
+                <TableHead />
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -240,6 +243,9 @@ export function WatchItemsPanel({
                         {item.firstAdAt && item.firstAdAt < item.firstSeenAt ? '1re publicité le' : 'vu depuis le'} {formatDateFr(enLigneDepuis(item))}
                       </span>
                     </TableCell>
+                    <TableCell>
+                      <FirstAdCell firstAdAt={item.firstAdAt} />
+                    </TableCell>
                     <TableCell className="whitespace-nowrap">
                       {item.activeAds > 0 && host ? (
                         <Button asChild variant="ghost" size="sm" className="-ml-2 h-7 gap-1.5 px-2">
@@ -260,6 +266,9 @@ export function WatchItemsPanel({
                       ) : (
                         <Badge variant="secondary">En vente</Badge>
                       )}
+                    </TableCell>
+                    <TableCell>
+                      <ProductRowActions name={item.name} host={host} slug={item.slug} externalId={item.externalId} url={item.url} productAds={item.totalAds} storeAds={watch.activeAds} />
                     </TableCell>
                   </TableRow>
                 );
