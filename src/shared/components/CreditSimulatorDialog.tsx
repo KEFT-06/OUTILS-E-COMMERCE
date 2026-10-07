@@ -1,3 +1,4 @@
+import { useEffect, useState } from 'react';
 import { AlertTriangle, ArrowRight, Wallet, Zap } from 'lucide-react';
 import { useMoney } from '@/shared/lib/money';
 import { cn } from '@/shared/lib/utils';
@@ -30,7 +31,17 @@ interface CreditSimulatorDialogProps {
   onCancel: () => void;
 }
 
-export function CreditSimulatorDialog({ quote, unavailableReason, open, onConfirm, onCancel }: CreditSimulatorDialogProps) {
+export function CreditSimulatorDialog({ quote: liveQuote, unavailableReason, open, onConfirm, onCancel }: CreditSimulatorDialogProps) {
+  /*
+    Le devis est retiré dès la confirmation, alors que la fenêtre met un instant à se refermer :
+    elle affichait pendant ce temps « Grille tarifaire indisponible — coût inconnu », au moment même
+    où l'action venait d'être acceptée. Tant qu'elle se referme, elle garde le devis qu'elle montrait.
+  */
+  const [lastQuote, setLastQuote] = useState(liveQuote);
+  useEffect(() => {
+    if (liveQuote) setLastQuote(liveQuote);
+  }, [liveQuote]);
+  const quote = liveQuote ?? (open ? null : lastQuote);
   // Valeur du point convertie dans la devise du pays de l'utilisateur : elle s'affichait en FCFA pour tous.
   const money = useMoney();
   // Fermer la fenêtre équivaut à refuser : l'action ne part que sur « Confirmer ».
