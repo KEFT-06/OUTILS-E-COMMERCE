@@ -1,7 +1,7 @@
 import { Router, type RequestHandler } from 'express';
 import { z } from 'zod';
 import { providers } from '@server/env';
-import { AppError, aiLimiter, asyncRoute, providerUnavailable, validateBody } from '@server/middleware';
+import { AppError, aiLimiter, asyncRoute, providerUnavailable, routeLimiter, validateBody } from '@server/middleware';
 import { requireAuth, requireFeature, requirePermission } from '@server/middleware/auth';
 import {
   coverRequestSchema,
@@ -15,6 +15,7 @@ import {
 } from '@server/services/covers';
 import {
   addTranslations,
+  continueTranslation,
   cancelReview,
   claimReview,
   completeReview,
@@ -109,6 +110,15 @@ guidesRouter.post(
   asyncRoute(async (req, res) => {
     const { languages } = req.body as z.infer<typeof translationRequestSchema>;
     res.json(await addTranslations(req.auth!, req.params.guideId, languages));
+  }),
+);
+
+/** Tranche suivante d'une traduction en cours : demandée par l'écran, sans débit, jusqu'à ce qu'elle soit complète. */
+guidesRouter.post(
+  '/:guideId/translations/:language/continue',
+  routeLimiter(10, 120),
+  asyncRoute(async (req, res) => {
+    res.json({ guide: await continueTranslation(req.auth!, req.params.guideId, req.params.language) });
   }),
 );
 

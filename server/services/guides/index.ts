@@ -8,7 +8,7 @@ import { debitCredits, effectiveLimits, refundDebit } from '@server/services/acc
 import { deleteSubjectCovers, latestCover } from '@server/services/covers';
 import { getActionCost } from '@server/services/credits';
 import { runBilledGeneration } from '@server/services/generations';
-import { translateGuide } from '@server/services/guides/translator';
+import { translateSlice } from '@server/services/guides/translator';
 import {
   GUIDE_LIMITS,
   checkTranslation,
@@ -20,6 +20,7 @@ import {
   type TranslationCheck,
   type TranslationStatus,
 } from '@server/shared/guides';
+import { correctedLanguage } from '@server/shared/languageDetect';
 import { isLanguageCode, languageName } from '@server/shared/languages';
 
 /**
@@ -65,7 +66,7 @@ export const guideInputSchema = z
       ctx.addIssue({
         code: 'custom',
         path: ['sections'],
-        message: `Le guide dépasse ${GUIDE_LIMITS.totalMax.toLocaleString('fr-FR')} caractères : découpez-le en plusieurs guides.`,
+        message: 'Ce texte dépasse la taille d’un ouvrage de huit cents pages.',
       });
     }
   });
@@ -99,6 +100,7 @@ const translationNotFound = () => new AppError(404, 'Traduction introuvable.', '
 const iso = (date: Date | null) => date?.toISOString() ?? null;
 
 function reviewBusy(status: string): AppError {
+  if (status === 'translating') return new AppError(409, 'Cette traduction est encore en cours : elle s’ouvrira dès qu’elle sera complète.', 'TRANSLATION_IN_PROGRESS');
   return new AppError(
     409,
     status === 'in_review'
@@ -111,8 +113,56 @@ function reviewBusy(status: string): AppError {
 const hasErrors = () =>
   new AppError(422, 'Corrigez d’abord les erreurs signalées (section manquante ou vide, titre absent).', 'TRANSLATION_HAS_ERRORS');
 
+/**
+ * Sections telles qu'elles sont enregistrées. Une section trop longue — un chapitre collé d'un
+ * bloc — continue dans des sections « (suite) », coupées entre deux paragraphes : chaque lot de
+ * traduction reste à la portée du service, et rien n'est demandé à l'auteur.
+ */
 function cleanSections(sections: readonly GuideSection[]): GuideSection[] {
-  return sections.map((section) => ({ id: section.id.trim(), heading: section.heading.trim(), body: section.body.replace(/\s+$/, '') }));
+  const propres: GuideSection[] = [];
+  for (const section of sections) {
+    const id = section.id.trim();
+    const heading = section.heading.trim();
+    let reste = section.body.replace(/\s+$/, '');
+    let rang = 1;
+    while (reste.length > GUIDE_LIMITS.sectionMax) {
+      const borne = GUIDE_LIMITS.sectionMax;
+      const coupe = Math.max(reste.lastIndexOf('\n\n', borne), reste.lastIndexOf('\n', borne), reste.lastIndexOf('. ', borne) + 1);
+      const at = coupe > borne / 2 ? coupe : borne;
+      propres.push({ id: rang === 1 ? id : `${id}~${rang}`.slice(0, 64), heading: rang === 1 ? heading : suiteDe(heading), body: reste.slice(0, at).replace(/\s+$/, '') });
+      reste = reste.slice(at).replace(/^\s+/, '');
+      rang += 1;
+    }
+    propres.push({ id: rang === 1 ? id : `${id}~${rang}`.slice(0, 64), heading: rang === 1 ? heading : suiteDe(heading), body: reste });
+  }
+  return propres;
+}
+
+const suiteDe = (heading: string) => (heading ? `${heading} (suite)`.slice(0, GUIDE_LIMITS.headingMax) : '');
+
+/** Le texte d'un guide, pour en reconnaître la langue. */
+const texteDe = (guide: { title: string; sections: readonly GuideSection[] }) =>
+  [guide.title, ...guide.sections.flatMap((section) => [section.heading, section.body])].join('\n').slice(0, 14_000);
+
+/**
+ * La langue d'origine d'un guide est celle de son TEXTE. Elle était celle que l'auteur choisissait
+ * dans une liste, et il y mettait souvent la langue qu'il voulait obtenir : un ouvrage français
+ * enregistré « anglais » ne pouvait plus être traduit en anglais (« Langue du guide »). Un guide
+ * dont la déclaration contredit le texte est corrigé — sauf s'il possède déjà une traduction dans
+ * la langue reconnue, qu'on n'écrase pas.
+ */
+async function withTrueLanguage(guide: GuideRow): Promise<GuideRow> {
+  const vraie = correctedLanguage(guide.sourceLanguage, texteDe(guide));
+  if (!vraie) return guide;
+  const db = getDb();
+  const [clash] = await db
+    .select({ id: guideTranslations.id })
+    .from(guideTranslations)
+    .where(and(eq(guideTranslations.guideId, guide.id), eq(guideTranslations.language, vraie)))
+    .limit(1);
+  if (clash) return guide;
+  const [corrige] = await db.update(guides).set({ sourceLanguage: vraie }).where(eq(guides.id, guide.id)).returning();
+  return corrige ?? guide;
 }
 
 /** Sections traduites dans l'ordre du guide : une section non envoyée garde sa version précédente. */
@@ -134,7 +184,7 @@ export async function ownedGuide(auth: RequestAuth, guideId: string | undefined)
     .where(and(eq(guides.id, parsed.data), eq(guides.userId, auth.account.user.id)))
     .limit(1);
   if (!row) throw guideNotFound();
-  return row;
+  return withTrueLanguage(row);
 }
 
 async function ownedTranslation(guide: GuideRow, language: string | undefined): Promise<TranslationRow> {
@@ -148,7 +198,20 @@ async function ownedTranslation(guide: GuideRow, language: string | undefined): 
   return row;
 }
 
-function serializeTranslation(row: TranslationRow, guide: Pick<GuideRow, 'revision'>) {
+const aDuTexte = (section: GuideSection) => Boolean(section.heading.trim() || section.body.trim());
+
+/** Sections du guide qui attendent encore leur traduction. */
+function pendingSections(source: readonly GuideSection[], translated: readonly GuideSection[]): GuideSection[] {
+  const faites = new Map(translated.map((section) => [section.id, section]));
+  return source.filter((section) => aDuTexte(section) && !aDuTexte(faites.get(section.id) ?? { id: section.id, heading: '', body: '' }));
+}
+
+function progressOf(source: readonly GuideSection[], translated: readonly GuideSection[]): { done: number; total: number } {
+  const total = source.filter(aDuTexte).length;
+  return { done: total - pendingSections(source, translated).length, total };
+}
+
+function serializeTranslation(row: TranslationRow, guide: Pick<GuideRow, 'revision' | 'sections'>) {
   return {
     id: row.id,
     language: row.language,
@@ -157,6 +220,8 @@ function serializeTranslation(row: TranslationRow, guide: Pick<GuideRow, 'revisi
     checks: row.checks as TranslationCheck[],
     level: reviewLevelOf(row),
     status: row.status as TranslationStatus,
+    /** Traduction en cours : sections déjà traduites sur celles à traduire. */
+    progress: row.status === 'translating' ? progressOf(guide.sections, row.sections) : null,
     /** Le guide a changé depuis cette traduction. */
     outdated: row.sourceRevision < guide.revision,
     words: wordCount(row.sections),
@@ -200,7 +265,9 @@ async function guideView(auth: RequestAuth, guide: GuideRow) {
 
 export async function listGuides(auth: RequestAuth) {
   const db = getDb();
-  const rows = await db.select().from(guides).where(eq(guides.userId, auth.account.user.id)).orderBy(desc(guides.updatedAt));
+  const lus = await db.select().from(guides).where(eq(guides.userId, auth.account.user.id)).orderBy(desc(guides.updatedAt));
+  // La liste dit la vraie langue de chaque guide, sans attendre qu'on l'ouvre.
+  const rows = await Promise.all(lus.map(withTrueLanguage));
   const translations =
     rows.length === 0
       ? []
@@ -257,7 +324,8 @@ export async function createGuide(auth: RequestAuth, input: GuideInput) {
     .values({
       userId: auth.account.user.id,
       title: input.title,
-      sourceLanguage: input.sourceLanguage,
+      // La langue du texte l'emporte sur celle de la liste quand elles se contredisent nettement.
+      sourceLanguage: correctedLanguage(input.sourceLanguage, texteDe(input)) ?? input.sourceLanguage,
       sections: cleanSections(input.sections),
       terms: [...new Set(input.terms)],
     })
@@ -327,23 +395,36 @@ export async function deleteGuide(auth: RequestAuth, guideId: string | undefined
 /*  Traductions                                                                */
 /* -------------------------------------------------------------------------- */
 
-async function translateInto(auth: RequestAuth, guide: GuideRow, language: string, existing: TranslationRow | null): Promise<void> {
-  const { result } = await runBilledGeneration({
+/** Temps de traduction accordé à une requête : l'hébergeur coupe à 300 s, il faut finir avant et enregistrer. */
+const SLICE_BUDGET_MS = 200_000;
+
+/**
+ * Première tranche d'une traduction, facturée : si rien n'aboutit, les points sont rendus et rien
+ * n'est enregistré. Un guide court est complet d'emblée ; un guide long reste « en cours » et
+ * l'écran demande les tranches suivantes (`continueTranslation`), sans nouveau débit.
+ */
+async function translateInto(auth: RequestAuth, guide: GuideRow, language: string, existing: TranslationRow | null, budgetMs = SLICE_BUDGET_MS): Promise<void> {
+  const { result: slice } = await runBilledGeneration({
     auth,
     actionId: 'guide_translation',
     kind: 'guide_translation',
     provider: 'gemini',
     run: () =>
-      translateGuide({ title: guide.title, sections: guide.sections, from: guide.sourceLanguage, to: language, terms: guide.terms }),
+      translateSlice({ title: guide.title, withTitle: true, sections: guide.sections, from: guide.sourceLanguage, to: language, terms: guide.terms, budgetMs }),
     describe: () => ({ providerRef: null, state: 'completed' as const, fileFormat: null }),
   });
+  const result = {
+    title: slice.title,
+    sections: guide.sections.map((section) => slice.sections.get(section.id) ?? { id: section.id, heading: '', body: '' }),
+  };
 
   const values = {
     title: result.title,
     sections: result.sections,
-    checks: checkTranslation(guide, result, { language, terms: guide.terms }),
+    // Les contrôles portent sur une traduction complète : sur une tranche, ils signaleraient tout ce qui reste à venir.
+    checks: slice.complete ? checkTranslation(guide, result, { language, terms: guide.terms }) : [],
     sourceRevision: guide.revision,
-    status: 'ready',
+    status: slice.complete ? 'ready' : 'translating',
     authorValidatedAt: null,
     reviewRequestedAt: null,
     reviewNote: null,
@@ -395,10 +476,15 @@ export async function addTranslations(auth: RequestAuth, guideId: string | undef
   const failures: { language: string; code: string; message: string }[] = [];
   let firstError: AppError | null = null;
   let created = 0;
+  // Plusieurs langues dans une même demande se partagent le temps de la requête.
+  const deadline = Date.now() + SLICE_BUDGET_MS;
 
   for (const language of toCreate) {
+    const reste = deadline - Date.now();
+    // Plus le temps d'en commencer une autre : elle n'est pas lancée, donc pas débitée ; l'écran la redemande.
+    if (created > 0 && reste < 40_000) break;
     try {
-      await translateInto(auth, guide, language, null);
+      await translateInto(auth, guide, language, null, Math.max(40_000, reste));
       created += 1;
     } catch (error) {
       if (!(error instanceof AppError)) throw error;
@@ -410,6 +496,57 @@ export async function addTranslations(auth: RequestAuth, guideId: string | undef
 
   if (created === 0 && firstError) throw firstError;
   return { guide: await guideView(auth, guide), failures };
+}
+
+/**
+ * Tranche suivante d'une traduction en cours. Sans débit : la traduction a été payée à son
+ * lancement. Un refus passager du service ne perd rien — la traduction reste « en cours », avec
+ * ce qui est déjà traduit, et la demande suivante reprend là.
+ */
+export async function continueTranslation(auth: RequestAuth, guideId: string | undefined, language: string | undefined) {
+  const guide = await ownedGuide(auth, guideId);
+  const row = await ownedTranslation(guide, language);
+  if (row.status !== 'translating') return guideView(auth, guide);
+
+  const restantes = pendingSections(guide.sections, row.sections);
+  let title = row.title;
+  let sections = row.sections as GuideSection[];
+  if (restantes.length > 0 || !title.trim()) {
+    try {
+      const slice = await translateSlice({
+        title: guide.title,
+        withTitle: !title.trim(),
+        sections: restantes.length > 0 ? restantes : guide.sections.filter(aDuTexte).slice(0, 1),
+        from: guide.sourceLanguage,
+        to: row.language,
+        terms: guide.terms,
+        budgetMs: SLICE_BUDGET_MS,
+      });
+      title = title.trim() || slice.title;
+      const faites = new Map(sections.map((section) => [section.id, section]));
+      sections = guide.sections.map((section) => {
+        const nouvelle = restantes.some((pending) => pending.id === section.id) ? slice.sections.get(section.id) : undefined;
+        return nouvelle ?? faites.get(section.id) ?? { id: section.id, heading: '', body: '' };
+      });
+    } catch (error) {
+      if (!(error instanceof AppError)) throw error;
+      console.warn('[traduction] tranche non aboutie, reprise à la prochaine demande :', error.code ?? error.message);
+      return guideView(auth, guide);
+    }
+  }
+
+  const complete = pendingSections(guide.sections, sections).length === 0;
+  await getDb()
+    .update(guideTranslations)
+    .set({
+      title,
+      sections,
+      checks: complete ? checkTranslation(guide, { title, sections }, { language: row.language, terms: guide.terms }) : [],
+      status: complete ? 'ready' : 'translating',
+      updatedAt: new Date(),
+    })
+    .where(eq(guideTranslations.id, row.id));
+  return guideView(auth, guide);
 }
 
 export async function retranslate(auth: RequestAuth, guideId: string | undefined, language: string | undefined) {

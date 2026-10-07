@@ -14,6 +14,8 @@ export interface GuideTranslation {
   checks: TranslationCheck[];
   level: ReviewLevel;
   status: TranslationStatus;
+  /** Traduction en cours : sections déjà traduites sur celles à traduire. */
+  progress: { done: number; total: number } | null;
   /** Le guide a changé depuis cette traduction. */
   outdated: boolean;
   words: number;
@@ -103,6 +105,9 @@ export const guidesApi = {
   remove: (guideId: string) => apiRequest<void>(guidePath(guideId), { method: 'DELETE' }),
   translate: (guideId: string, languages: string[]) =>
     apiRequest<{ guide: Guide; failures: TranslationFailure[] }>(guidePath(guideId, '/translations'), { method: 'POST', body: { languages } }),
+  /** Tranche suivante d'une traduction en cours : sans débit, jusqu'à ce qu'elle soit complète. */
+  continueTranslation: (guideId: string, language: string) =>
+    apiRequest<{ guide: Guide }>(translationPath(guideId, language, '/continue'), { method: 'POST' }).then(guideOf),
   retranslate: (guideId: string, language: string) =>
     apiRequest<{ guide: Guide }>(translationPath(guideId, language, '/retranslate'), { method: 'POST' }).then(guideOf),
   editTranslation: (guideId: string, language: string, input: { title: string; sections: GuideSection[] }) =>

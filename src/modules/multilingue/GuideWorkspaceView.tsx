@@ -1,8 +1,8 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import { toast } from 'sonner';
 import { ArrowLeft, ChevronDown, PenLine, Plus, Save, Trash2 } from 'lucide-react';
-import { wordCount, type GuideSection } from '@server/shared/guides';
+import { GUIDE_LIMITS, wordCount, type GuideSection } from '@server/shared/guides';
 import { findLanguage, languageName } from '@server/shared/languages';
 import { ACCOUNT_PATH } from '@/app/navigation';
 import { useCreditGate } from '@/app/providers/CreditGateProvider';
@@ -149,7 +149,7 @@ function SourceEditor({ value, onChange, translatedLanguages }: { value: SourceD
               value={section.body}
               onChange={(event) => update(index, { body: event.target.value })}
               rows={Math.min(14, Math.max(3, Math.ceil(section.body.length / 80)))}
-              maxLength={20_000}
+              maxLength={GUIDE_LIMITS.bodyMax}
               dir={direction}
             />
           </li>
@@ -160,7 +160,7 @@ function SourceEditor({ value, onChange, translatedLanguages }: { value: SourceD
         variant="outline"
         size="sm"
         onClick={() => onChange({ ...value, sections: [...value.sections, { id: crypto.randomUUID().slice(0, 12), heading: '', body: '' }] })}
-        disabled={value.sections.length >= 60}
+        disabled={value.sections.length >= GUIDE_LIMITS.sectionsMax}
       >
         <Plus />
         Ajouter une section
@@ -199,6 +199,44 @@ export function GuideWorkspaceView() {
       cancelled = true;
     };
   }, [guideId]);
+
+  /*
+    Un guide long se traduit par tranches : tant qu'une traduction est « en cours », l'écran
+    demande la tranche suivante de lui-même — y compris en revenant sur la page le lendemain.
+    Rien à faire pour l'auteur, et la longueur du guide n'est plus son affaire.
+  */
+  const enCours = guide?.translations.find((translation) => translation.status === 'translating') ?? null;
+  const langueEnCours = enCours?.language ?? null;
+  const avancement = enCours?.progress?.done ?? 0;
+  const surPlace = useRef(0);
+  const [relance, setRelance] = useState(0);
+  useEffect(() => {
+    if (!guide || !langueEnCours) return;
+    let cancelled = false;
+    // Une tranche sans progrès (service encombré) : on espace les demandes au lieu d'insister.
+    const attente = surPlace.current === 0 ? 600 : Math.min(60_000, 8_000 * surPlace.current);
+    const timer = setTimeout(() => {
+      guidesApi
+        .continueTranslation(guide.id, langueEnCours)
+        .then((next) => {
+          if (cancelled) return;
+          const suite = next.translations.find((translation) => translation.language === langueEnCours);
+          surPlace.current = suite?.status === 'translating' && (suite.progress?.done ?? 0) <= avancement ? surPlace.current + 1 : 0;
+          if (suite?.status === 'ready') toast.success(`${languageName(langueEnCours)} : traduction prête`, { description: 'Relisez-la avant de l’exporter.' });
+          setGuide(next);
+        })
+        .catch(() => {
+          if (cancelled) return;
+          surPlace.current += 1;
+          setRelance((count) => count + 1);
+        });
+    }, attente);
+    return () => {
+      cancelled = true;
+      clearTimeout(timer);
+    };
+    // `guide` change à chaque tranche reçue : c'est ce qui enchaîne la suivante.
+  }, [guide, langueEnCours, avancement, relance]);
 
   const backLink = (
     <Button variant="ghost" size="sm" asChild className="-ml-2">
@@ -243,14 +281,27 @@ export function GuideWorkspaceView() {
   const insufficient = !unlimited && total > balance;
   const translationsUnavailable = providers?.text === false;
 
+  /*
+    Une langue par demande : chacune dispose du temps entier d'une requête. Envoyées ensemble,
+    trois langues d'un long guide se partageaient cinq minutes, et la dernière n'aboutissait pas.
+  */
   const translate = async () => {
     setTranslating(true);
     try {
-      const { guide: next, failures } = await guidesApi.translate(guide.id, selected);
-      setGuide(next);
-      const done = selected.length - failures.length;
-      if (done > 0) toast.success(done > 1 ? `${done} traductions prêtes` : 'Traduction prête', { description: 'Relisez-les avant de les exporter.' });
-      failures.forEach((failure) => toast.error(`${languageName(failure.language)} : pas de traduction`, { description: failure.message }));
+      let pretes = 0;
+      let lancees = 0;
+      for (const language of selected) {
+        const { guide: next, failures } = await guidesApi.translate(guide.id, [language]);
+        setGuide(next);
+        failures.forEach((failure) => toast.error(`${languageName(failure.language)} : pas de traduction`, { description: failure.message }));
+        // Solde épuisé ou service indisponible : inutile de demander les langues suivantes.
+        if (failures.some((failure) => ['INSUFFICIENT_CREDITS', 'TRANSLATION_ACCESS_DENIED', 'PROVIDER_NOT_CONFIGURED'].includes(failure.code))) break;
+        const obtenue = next.translations.find((translation) => translation.language === language);
+        if (obtenue?.status === 'translating') lancees += 1;
+        else if (obtenue) pretes += 1;
+      }
+      if (pretes > 0) toast.success(pretes > 1 ? `${pretes} traductions prêtes` : 'Traduction prête', { description: 'Relisez-les avant de les exporter.' });
+      if (lancees > 0) toast.info(lancees > 1 ? `${lancees} traductions en cours` : 'Traduction en cours', { description: 'Ce guide est long : la suite arrive d’elle-même, vous pouvez quitter cet écran.' });
       setPickerOpen(false);
       setSelected([]);
     } catch (caught) {
@@ -370,7 +421,7 @@ export function GuideWorkspaceView() {
                           {translating && (
                             <span className="mt-1 flex items-center gap-2 text-muted-foreground">
                               <Spinner />
-                              Traduction en cours, comptez environ une minute par langue…
+                              Traduction en cours…
                             </span>
                           )}
                         </>
@@ -418,15 +469,33 @@ export function GuideWorkspaceView() {
                             {errors > 0 && <Badge variant="danger">{errors} erreur{errors > 1 ? 's' : ''}</Badge>}
                             {warnings > 0 && <Badge variant="outline">{warnings} à vérifier</Badge>}
                           </div>
+                          {translation.status === 'translating' && translation.progress && (
+                            <div className="space-y-1" role="status">
+                              <div className="h-1.5 overflow-hidden rounded-full bg-muted">
+                                <div
+                                  className="h-full rounded-full bg-brand-green transition-all"
+                                  style={{ width: `${Math.round((translation.progress.done / Math.max(1, translation.progress.total)) * 100)}%` }}
+                                />
+                              </div>
+                              <p className="text-xs text-muted-foreground tabular-nums">
+                                {translation.progress.done} section{translation.progress.done > 1 ? 's' : ''} traduite{translation.progress.done > 1 ? 's' : ''} sur{' '}
+                                {translation.progress.total} · la suite arrive d’elle-même
+                              </p>
+                            </div>
+                          )}
                         </div>
                         <div className="flex flex-wrap items-center gap-2">
-                          <Button size="sm" asChild>
-                            <Link to={`/app/multilingue/${guide.id}/${translation.language}`}>
-                              <PenLine />
-                              Relire
-                            </Link>
-                          </Button>
-                          <ExportMenu guide={guide} language={translation.language} />
+                          {translation.status !== 'translating' && (
+                            <>
+                              <Button size="sm" asChild>
+                                <Link to={`/app/multilingue/${guide.id}/${translation.language}`}>
+                                  <PenLine />
+                                  Relire
+                                </Link>
+                              </Button>
+                              <ExportMenu guide={guide} language={translation.language} />
+                            </>
+                          )}
                           <ConfirmDialog
                             trigger={
                               <Button

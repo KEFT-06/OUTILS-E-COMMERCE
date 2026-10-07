@@ -13,11 +13,20 @@ export interface GuideSection {
 
 export const GUIDE_LIMITS = {
   titleMax: 200,
-  sectionsMax: 60,
+  /** Sections reçues au plus. Une section trop longue est redécoupée à l'enregistrement (voir sectionMax). */
+  sectionsMax: 600,
   headingMax: 300,
-  bodyMax: 20_000,
-  /** Taille totale d'un guide, en caractères (environ 20 000 mots). */
-  totalMax: 120_000,
+  /** Texte accepté pour UNE section reçue : un chapitre collé d'un bloc tient dedans. */
+  bodyMax: 300_000,
+  /** Taille d'une section enregistrée : au-delà, elle continue dans une section « (suite) ». */
+  sectionMax: 10_000,
+  /**
+   * Taille totale d'un guide, en caractères : un ouvrage de huit cents pages. Ce plafond protège
+   * la base, il n'est pas une règle d'usage — un ebook de 250 pages en pèse le tiers. L'ancien
+   * plafond de 120 000 caractères refusait les ouvrages du Studio (« découpez-le en plusieurs
+   * guides ») : la traduction se fait maintenant par tranches, quelle que soit la longueur.
+   */
+  totalMax: 1_500_000,
   /** Guides par compte. */
   guidesMax: 200,
 } as const;
@@ -51,7 +60,8 @@ export const REVIEW_LEVELS: Record<ReviewLevel, { name: string; short: string; d
   },
 };
 
-export type TranslationStatus = 'ready' | 'review_requested' | 'in_review';
+/** translating : traduction en cours, par tranches — l'écran demande la suite de lui-même. */
+export type TranslationStatus = 'translating' | 'ready' | 'review_requested' | 'in_review';
 
 export interface TranslationCheck {
   severity: 'error' | 'warning';

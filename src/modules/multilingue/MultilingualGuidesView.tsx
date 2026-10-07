@@ -1,7 +1,8 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useLocation, useNavigate, useSearchParams } from 'react-router-dom';
 import { BookOpen, FilePlus2, ImageIcon, Languages } from 'lucide-react';
-import { REVIEW_LEVELS, parseGuideText, wordCount, type GuideSection, type ReviewLevel } from '@server/shared/guides';
+import { GUIDE_LIMITS, REVIEW_LEVELS, parseGuideText, wordCount, type GuideSection, type ReviewLevel } from '@server/shared/guides';
+import { detectLanguage } from '@server/shared/languageDetect';
 import { LANGUAGE_RANKING_SOURCE, TOP_LANGUAGES, languageName } from '@server/shared/languages';
 import { useWorkspace } from '@/app/providers/WorkspaceProvider';
 import { useAuth } from '@/features/auth/AuthContext';
@@ -92,6 +93,20 @@ function CreateGuideDialog({
 
   const product = products.find((candidate) => candidate.id === productId);
   const preview = mode === 'text' ? parseGuideText(text, () => '') : product ? productSections(product) : [];
+
+  /*
+    La langue d'origine se LIT dans le texte. Elle se choisissait dans une liste, et qui venait
+    traduire y mettait la langue qu'il voulait obtenir : un ouvrage français enregistré « anglais »
+    ne pouvait plus être traduit en anglais. La liste reste, pour corriger — elle ne décide plus.
+  */
+  const [languageTouched, setLanguageTouched] = useState(false);
+  const reconnue = useMemo(() => {
+    const source = mode === 'text' ? text : product ? productSections(product).map((section) => `${section.heading}\n${section.body}`).join('\n') : '';
+    return detectLanguage(source)?.code ?? null;
+  }, [mode, text, product]);
+  useEffect(() => {
+    if (reconnue && !languageTouched) setLanguage(reconnue);
+  }, [reconnue, languageTouched]);
   const effectiveTitle = (mode === 'product' && !title.trim() ? (product?.title ?? '') : title).trim();
 
   const submit = async (event: React.FormEvent) => {
@@ -161,8 +176,20 @@ function CreateGuideDialog({
               />
             </div>
             <div className="space-y-1.5">
-              <Label htmlFor="guide-language">Langue du texte</Label>
-              <LanguageSelect id="guide-language" value={language} onChange={setLanguage} />
+              <Label htmlFor="guide-language">Langue d’origine du texte</Label>
+              <LanguageSelect
+                id="guide-language"
+                value={language}
+                onChange={(code) => {
+                  setLanguageTouched(true);
+                  setLanguage(code);
+                }}
+              />
+              <p className="text-xs text-muted-foreground">
+                {reconnue && !languageTouched
+                  ? `Reconnue dans votre texte : ${languageName(reconnue).toLowerCase()}. Les langues de traduction se choisissent à l’étape suivante.`
+                  : 'La langue dans laquelle le texte est écrit. Les langues de traduction se choisissent à l’étape suivante.'}
+              </p>
             </div>
           </div>
 
@@ -174,7 +201,7 @@ function CreateGuideDialog({
                 value={text}
                 onChange={(event) => setText(event.target.value)}
                 rows={12}
-                maxLength={120_000}
+                maxLength={GUIDE_LIMITS.totalMax}
                 placeholder={'# Budget\nPrévoir le budget de 50 poussins…\n\n# Alimentation\nDeux repas par jour…'}
               />
               <p className="text-xs text-muted-foreground">

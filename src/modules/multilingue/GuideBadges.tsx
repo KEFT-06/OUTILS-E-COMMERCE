@@ -22,6 +22,7 @@ export function LevelBadge({ level, compact = false }: { level: ReviewLevel; com
 }
 
 export function StatusBadge({ status }: { status: TranslationStatus }) {
+  if (status === 'translating') return <Badge variant="info">Traduction en cours</Badge>;
   if (status === 'review_requested') return <Badge variant="warning">Relecture demandée</Badge>;
   if (status === 'in_review') return <Badge variant="info">En relecture</Badge>;
   return null;

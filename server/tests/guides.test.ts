@@ -12,6 +12,8 @@ import { STRONG_PASSWORD, closeTestApp, createAdmin, createTestApp } from './sup
  */
 
 const geminiCalls: { key: string | undefined; prompt: string }[] = [];
+/** Tout lot de traduction dont le texte contient cette marque est refusé par le faux service. */
+let lotRefuse: string | null = null;
 const imageCalls: { model: string; prompt: string; aspectRatio: string | undefined; modalities: string[] }[] = [];
 
 /** Faux traducteur : préfixe chaque texte par la langue visée, sans toucher chiffres ni liens. */
@@ -56,6 +58,8 @@ const fakeProviders = createServer((req, res) => {
       const prompt = (body.contents as { parts: { text: string }[] }[])[0]!.parts[0]!.text;
       geminiCalls.push({ key, prompt });
       if (key !== 'cle-gemini-de-test') return send(403, { error: { message: 'clé refusée' } });
+      // Lot refusé net par le service (refus non passager) : sert à simuler une traduction interrompue en route.
+      if (lotRefuse && prompt.includes(lotRefuse)) return send(400, { error: { status: 'INVALID_ARGUMENT', message: 'lot refusé pour le test' } });
       return send(200, { candidates: [{ content: { parts: [{ text: JSON.stringify(fakeTranslation(prompt)) }] } }] });
     }
 
@@ -260,5 +264,113 @@ describe('Guides multilingues', () => {
         ['Soins', 'Vacciner'],
       ],
     );
+  });
+});
+
+/*
+  Deux défauts signalés par le propriétaire le 07/10/2026, sur l'écran des guides :
+    · un ouvrage français était annoncé « anglais » — la langue venait d'une liste, où l'on mettait
+      celle qu'on voulait obtenir — et l'anglais lui était alors refusé comme langue de traduction ;
+    · un ouvrage du Studio était refusé d'avance : « le guide dépasse 120 000 caractères,
+      découpez-le en plusieurs guides ».
+*/
+describe('Guides multilingues — la langue se lit dans le texte, et la longueur n’est plus un refus', () => {
+  const PARAGRAPHE =
+    'Quand on commence un petit élevage en ville, il faut d’abord choisir un endroit propre et à l’abri du vent. Les poussins ont besoin de chaleur, d’eau fraîche et d’une nourriture adaptée à leur âge. Ce chapitre explique pas à pas ce que vous devez préparer avant leur arrivée, et les erreurs que la plupart des débutants font la première semaine.';
+  const longTexte = (caracteres: number) => Array.from({ length: Math.ceil(caracteres / (PARAGRAPHE.length + 2)) }, () => PARAGRAPHE).join('\n\n');
+
+  it('enregistre un texte français comme français, même déclaré « anglais », et corrige un guide déjà mal classé', async () => {
+    const agent = await author('auteure-langue@exemple.com', 'pro');
+    const francais = { title: 'Réussir son premier élevage', terms: [], sections: [{ id: 's1', heading: 'Avant de commencer', body: PARAGRAPHE }] };
+
+    // À la création : la liste disait « anglais », le texte dit « français ».
+    const cree = await agent.post('/api/guides').send({ ...francais, sourceLanguage: 'en' }).expect(201);
+    assert.equal(cree.body.guide.sourceLanguage, 'fr');
+    // L'anglais redevient donc une langue de traduction possible.
+    const traduit = await agent.post(`/api/guides/${cree.body.guide.id}/translations`).send({ languages: ['en'] }).expect(200);
+    assert.equal(translationOf(traduit.body, 'en').status, 'ready');
+
+    // Un guide enregistré avant la correction : il est remis à sa vraie langue dès qu'on le lit.
+    const { getDb } = await import('@server/db/client');
+    const { guides, users } = await import('@server/db/schema');
+    const { eq } = await import('drizzle-orm');
+    const [compte] = await getDb().select({ id: users.id }).from(users).where(eq(users.email, 'auteure-langue@exemple.com'));
+    const [ancien] = await getDb()
+      .insert(guides)
+      .values({ userId: compte!.id, title: 'Guide ancien', sourceLanguage: 'en', sections: francais.sections, terms: [] })
+      .returning();
+    const liste = await agent.get('/api/guides').expect(200);
+    assert.equal((liste.body.guides as { id: string; sourceLanguage: string }[]).find((guide) => guide.id === ancien!.id)?.sourceLanguage, 'fr', 'la liste dit déjà la vraie langue');
+    assert.equal((await agent.get(`/api/guides/${ancien!.id}`).expect(200)).body.guide.sourceLanguage, 'fr');
+
+    // Un texte trop court pour se prononcer garde la langue déclarée.
+    const court = await agent.post('/api/guides').send({ title: 'Budget', sourceLanguage: 'en', terms: [], sections: [{ id: 's1', heading: 'Budget', body: 'Prévoir 50 poussins.' }] }).expect(201);
+    assert.equal(court.body.guide.sourceLanguage, 'en');
+  });
+
+  it('accepte un ouvrage long sans rien demander à son auteur, et redécoupe de lui-même un chapitre collé d’un bloc', async () => {
+    const agent = await author('auteure-longue@exemple.com', 'pro');
+    // 300 000 caractères : deux fois et demie l'ancien plafond.
+    const sections = Array.from({ length: 12 }, (_, rang) => ({ id: `c${rang + 1}`, heading: `Chapitre ${rang + 1}`, body: longTexte(25_000) }));
+    const cree = await agent.post('/api/guides').send({ title: 'Le grand guide de l’élevage', sourceLanguage: 'fr', terms: [], sections }).expect(201);
+    const enregistrees = cree.body.guide.sections as { id: string; heading: string; body: string }[];
+
+    assert.ok(enregistrees.length > 12, 'chaque chapitre de 25 000 caractères continue dans des sections « (suite) »');
+    assert.ok(enregistrees.every((section) => section.body.length <= 10_000));
+    assert.deepEqual(enregistrees.slice(0, 3).map((section) => section.heading), ['Chapitre 1', 'Chapitre 1 (suite)', 'Chapitre 1 (suite)']);
+    assert.equal(new Set(enregistrees.map((section) => section.id)).size, enregistrees.length, 'identifiants distincts');
+    const avant = sections.map((section) => section.body).join(' ').replace(/\s+/g, ' ');
+    const apres = enregistrees.map((section) => section.body).join(' ').replace(/\s+/g, ' ');
+    assert.equal(apres, avant, 'aucun mot perdu en redécoupant');
+  });
+
+  it('traduit un guide long par tranches : ce qui n’a pas abouti reprend sans nouveau débit, et rien n’est facturé si rien n’aboutit', async () => {
+    const agent = await author('auteure-tranches@exemple.com', 'pro');
+    const solde = async () => (await agent.get('/api/auth/me').expect(200)).body.account.credits.total as number;
+    // Neuf sections de 5 000 caractères : cinq lots de deux, traduits quatre à la fois.
+    const sections = Array.from({ length: 9 }, (_, rang) => ({ id: `s${rang + 1}`, heading: `Partie ${rang + 1}`, body: `${rang === 8 ? 'MARQUE-DU-DERNIER-LOT ' : ''}${longTexte(4_800)}` }));
+    const cree = await agent.post('/api/guides').send({ title: 'Guide en neuf parties', sourceLanguage: 'fr', terms: [], sections }).expect(201);
+    const guideId = cree.body.guide.id as string;
+    const avant = await solde();
+
+    // Le dernier lot est refusé : la tranche rend ce qu'elle a, la traduction reste « en cours ».
+    lotRefuse = 'MARQUE-DU-DERNIER-LOT';
+    const premiere = await agent.post(`/api/guides/${guideId}/translations`).send({ languages: ['en'] }).expect(200);
+    const enCours = translationOf(premiere.body, 'en') as Translation & { progress: { done: number; total: number } | null; sections: { id: string; body: string }[] };
+    assert.equal(enCours.status, 'translating');
+    assert.deepEqual(enCours.progress, { done: 8, total: 9 });
+    assert.deepEqual(enCours.checks, [], 'les contrôles attendent la traduction complète : ils signaleraient tout ce qui reste à venir');
+    assert.equal(await solde(), avant - 2, 'la traduction est payée une fois, à son lancement');
+
+    // Tant qu'elle est en cours, on ne la modifie ni ne la valide.
+    const occupe = await agent.post(`/api/guides/${guideId}/translations/en/validate`).expect(409);
+    assert.equal(occupe.body.error.code, 'TRANSLATION_IN_PROGRESS');
+    // Le service refuse encore : la demande suivante ne perd rien de ce qui est fait.
+    const encore = await agent.post(`/api/guides/${guideId}/translations/en/continue`).expect(200);
+    assert.deepEqual(translationOf(encore.body, 'en').status, 'translating');
+
+    // Le service répond de nouveau : la tranche suivante termine, sans nouveau débit.
+    lotRefuse = null;
+    const suite = await agent.post(`/api/guides/${guideId}/translations/en/continue`).expect(200);
+    const prete = translationOf(suite.body, 'en') as Translation & { progress: unknown; sections: { id: string; body: string }[] };
+    assert.equal(prete.status, 'ready');
+    assert.equal(prete.progress, null);
+    assert.ok(prete.sections.every((section) => section.body.startsWith('[EN] ')), 'les neuf sections sont traduites');
+    assert.match(prete.sections[0]!.body, /^\[EN\] Quand on commence/, 'les huit premières n’ont pas été retraduites pour autant');
+    assert.equal(await solde(), avant - 2);
+    // Une traduction prête n'a plus rien à continuer : la demande ne change rien.
+    assert.equal(translationOf((await agent.post(`/api/guides/${guideId}/translations/en/continue`).expect(200)).body, 'en').status, 'ready');
+
+    // Rien n'aboutit du tout : le refus remonte, les points sont rendus, aucune traduction n'est créée.
+    lotRefuse = 'Quand on commence';
+    try {
+      const refuse = await agent.post(`/api/guides/${guideId}/translations`).send({ languages: ['es'] });
+      assert.ok(refuse.status >= 400, `refus attendu, reçu ${refuse.status}`);
+      assert.equal(await solde(), avant - 2, 'points rendus');
+      const guide = (await agent.get(`/api/guides/${guideId}`).expect(200)).body.guide as { translations: { language: string }[] };
+      assert.deepEqual(guide.translations.map((translation) => translation.language), ['en']);
+    } finally {
+      lotRefuse = null;
+    }
   });
 });
