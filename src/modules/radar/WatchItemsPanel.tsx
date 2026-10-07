@@ -41,6 +41,13 @@ const SEUILS: { value: string; label: string }[] = [
 /** Catégories de la plateforme, dites en français ; une catégorie inconnue est simplement mise en forme. */
 const CATEGORIES: Record<string, string> = {
   health_and_wellness: 'Santé et bien-être',
+  // Relevées sur de vraies vitrines le 07/10/2026 : elles s'affichaient en anglais.
+  education_and_learning: 'Éducation et formation',
+  personal_development: 'Développement personnel',
+  creative_arts: 'Arts et création',
+  business_and_finance: 'Business et finance',
+  literature_and_publishing: 'Littérature et édition',
+  miscellaneous: 'Divers',
   business_and_money: 'Business et argent',
   education: 'Éducation',
   self_improvement: 'Développement personnel',

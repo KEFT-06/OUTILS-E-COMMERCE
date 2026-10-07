@@ -281,3 +281,91 @@ describe('Alertes', () => {
     assert.equal(await detectAlerts(now), 0);
   });
 });
+
+/*
+  « Ouvrir dans le Radar » mettait la boutique sous surveillance pour pouvoir la montrer. Palier
+  plein, l'ajout était refusé (403) : on quittait une publicité pour arriver sur une erreur.
+  La fiche se lit maintenant sans rien ajouter au compte, et ne dépend d'aucun quota.
+*/
+describe('Fiche d’une boutique — ouvrir sans surveiller', () => {
+  const produit = (externalId: string, name: string, salesCount: number) => ({ externalId, name, kind: 'downloadable', priceValue: 5_000, currency: 'XAF', salesCount });
+  const jour = (n: number) => new Date(Date.UTC(2026, 3, 1 + n, 3));
+
+  it('montre catalogue, ventes et publicités à un palier plein, sans rien ajouter ni refuser', async () => {
+    const { indexStoreCatalog } = await import('@server/services/market');
+    const { getDb } = await import('@server/db/client');
+    const { spiedAds } = await import('@server/db/schema');
+    const boutique = { externalId: 'store_fiche', host: 'fiche.mychariow.com', label: 'Boutique Fiche' };
+    await indexStoreCatalog(boutique, [produit('prd_manioc', 'Guide du manioc', 40), produit('prd_potager', 'Plan potager', 12)], jour(0));
+    // Deux jours plus tard : un produit a vendu, l'autre a quitté la vitrine.
+    await indexStoreCatalog(boutique, [produit('prd_manioc', 'Guide du manioc', 55)], jour(2));
+    const annonce = (externalId: string, mediaKind: string, active: boolean) => ({
+      externalId,
+      storeHost: 'fiche.mychariow.com',
+      landingUrl: 'https://fiche.mychariow.com/p/guide',
+      advertiser: 'Boutique Fiche',
+      mediaKind,
+      startedAt: jour(-20),
+      variants: 1,
+      platforms: ['FACEBOOK'],
+      active,
+      lastSeenAt: jour(2),
+    });
+    await getDb().insert(spiedAds).values([annonce('fiche-ad-1', 'video', true), annonce('fiche-ad-2', 'image', true), annonce('fiche-ad-3', 'image', false)]);
+
+    // Palier gratuit, sa seule surveillance déjà prise par une autre boutique.
+    catalogue = [{ id: 'prd_autre', name: 'Autre boutique', slug: 'autre', prix: 1_000, ventes: 3 }];
+    const { agent } = await signInWithPlan(app, 'fiche-palier-plein@exemple.test', 'free');
+    await agent.post('/api/radar/watches').send({ target: base }).expect(201);
+
+    // L'adresse arrive en « .shop » depuis une publicité : c'est la même boutique.
+    const { body } = await agent.get('/api/radar/store?host=fiche.mychariow.shop').expect(200);
+    assert.equal(body.host, 'fiche.mychariow.com');
+    assert.equal(body.label, 'Boutique Fiche');
+    assert.equal(body.followable, true);
+    assert.equal(body.watchId, null, 'la boutique n’est pas surveillée par ce compte');
+    assert.equal(body.limit, 1, 'le palier est connu de l’écran : il dit le quota sans appel refusé');
+    assert.equal(body.liveItems, 1);
+    assert.equal(body.endedItems, 1);
+    assert.equal(body.totalSales, 55, 'les ventes des produits encore en vente');
+    const manioc = body.products.find((entry: { name: string }) => entry.name === 'Guide du manioc');
+    assert.equal(manioc.sales, 55);
+    assert.equal(manioc.salesTracked, 15, 'ce qui s’est vendu depuis notre premier relevé');
+    assert.equal(body.products[0].name, 'Guide du manioc', 'les produits en vente passent avant les arrêtés');
+    assert.ok(body.products[1].endedAt, 'le produit retiré reste lisible, daté de son arrêt');
+    assert.deepEqual({ active: body.ads.active, total: body.ads.total, videos: body.ads.videos }, { active: 2, total: 3, videos: 1 });
+    // Ce qu'elle pousse en publicité : une offre, portée par trois annonces dont deux en cours.
+    assert.deepEqual(body.advertised, [{ title: 'Offre sans titre', url: 'https://fiche.mychariow.com/p/guide', ads: 3, active: 2 }]);
+    assert.equal(body.unreachable, false);
+
+    const tableau = await agent.get('/api/radar').expect(200);
+    assert.equal(tableau.body.watches.length, 1, 'ouvrir la fiche n’a rien mis sous surveillance');
+  });
+
+  it('reconnaît une boutique que le compte surveille déjà, et répond même pour une boutique jamais relevée', async () => {
+    const { indexStoreCatalog } = await import('@server/services/market');
+    catalogue = [{ id: 'prd_suivi', name: 'Produit suivi', slug: 'suivi', prix: 1_000, ventes: 3 }];
+    const { agent } = await signInWithPlan(app, 'fiche-deja-suivie@exemple.test', 'pro');
+    const ajout = await agent.post('/api/radar/watches').send({ target: base }).expect(201);
+    // La même boutique, connue de l'index sous son adresse publique.
+    await indexStoreCatalog({ externalId: BOUTIQUE, host: 'vitrine-nouvelle.mychariow.com', label: 'Vitrine nouvelle' }, [produit('prd_suivi', 'Produit suivi', 3)], jour(4));
+
+    const suivie = await agent.get('/api/radar/store?host=vitrine-nouvelle.mychariow.com').expect(200);
+    assert.equal(suivie.body.watchId, ajout.body.watch.id, 'l’écran ouvrira son catalogue suivi, avec son historique');
+
+    // Jamais relevée, et injoignable sous test : la fiche répond quand même, vide, sans erreur.
+    const inconnue = await agent.get('/api/radar/store?host=jamais-vue.mychariow.com').expect(200);
+    assert.equal(inconnue.body.products.length, 0);
+    assert.equal(inconnue.body.pending, false);
+    assert.equal(inconnue.body.unreachable, true, 'l’écran dit que la vitrine ne répond pas, au lieu d’un catalogue « vide »');
+    assert.equal(inconnue.body.ads.total, 0);
+    assert.deepEqual(inconnue.body.advertised, []);
+
+    // Une boutique d'une autre plateforme : pas de catalogue relevé, mais pas de refus non plus.
+    const ailleurs = await agent.get('/api/radar/store?host=boutique.mymaketou.shop').expect(200);
+    assert.equal(ailleurs.body.followable, false);
+    assert.equal(ailleurs.body.storefront, 'maketou');
+
+    await agent.get('/api/radar/store?host=pas%20une%20adresse').expect(400);
+  });
+});

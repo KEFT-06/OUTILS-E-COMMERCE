@@ -27,6 +27,7 @@ import { PerformanceBenchmarkPanel } from '@/modules/radar/PerformanceBenchmarkP
 import { NicheProductsPanel } from '@/modules/radar/NicheProductsPanel';
 import { dureeLisible, eventText, joursDepuis } from '@/modules/radar/radarText';
 import { SalesViewToggle, type SalesView } from '@/modules/radar/SalesViewToggle';
+import { StorePreviewPanel } from '@/modules/radar/StorePreviewPanel';
 import { WatchItemsPanel } from '@/modules/radar/WatchItemsPanel';
 
 /**
@@ -172,11 +173,13 @@ function WatchCard({
           <p className="text-xs text-amber-600 dark:text-amber-500">Chiffres du dernier relevé : actualisez cette boutique.</p>
         )}
         {watch.activeAds > 0 && host && (
-          <Button asChild variant="ghost" size="sm" className="-ml-2 h-8 gap-1.5 px-2 text-brand-green-text">
+          <Button asChild variant="ghost" size="sm" className="-ml-2 h-auto min-h-8 gap-1.5 px-2 py-1 text-left whitespace-normal text-brand-green-text">
             <Link to={`/app/espionnage?boutique=${encodeURIComponent(host)}`}>
-              <Megaphone className="size-4" />
-              {watch.activeAds} publicité{watch.activeAds > 1 ? 's' : ''} en cours
-              {watch.adsCheckedAt ? ` · contrôlé ${formatRelativeFr(watch.adsCheckedAt)}` : ''}
+              <Megaphone className="size-4 shrink-0" />
+              <span>
+                {watch.activeAds} publicité{watch.activeAds > 1 ? 's' : ''} en cours
+                {watch.adsCheckedAt ? ` · contrôlé ${formatRelativeFr(watch.adsCheckedAt)}` : ''}
+              </span>
             </Link>
           </Button>
         )}
@@ -199,6 +202,14 @@ function WatchCard({
 }
 
 const VUE_VENTES = 'sc.radar.vueVentes';
+
+/** Hôte d'une boutique sous sa forme de référence : sans protocole ni chemin, vitrine Chariow en .com. */
+const hoteNormal = (value: string) =>
+  value
+    .toLowerCase()
+    .replace(/^https?:\/\//, '')
+    .replace(/\/.*$/, '')
+    .replace(/\.mychariow\.[a-z]{2,12}$/, '.mychariow.com');
 
 export function RadarView() {
   const [data, setData] = useCachedState<RadarDashboard>('/api/radar');
@@ -234,7 +245,8 @@ export function RadarView() {
   /** Boutique demandée par un autre écran (« Ouvrir dans le Radar ») et niche à comparer. */
   const boutiqueDemandee = params.get('boutique');
   const niche = params.get('niche');
-  const demandeTraitee = useRef<string | null>(null);
+  /** Où s'ouvre la boutique demandée : l'écran y descend, au lieu de laisser en haut de page. */
+  const zoneBoutique = useRef<HTMLDivElement | null>(null);
 
   const load = useCallback(async () => {
     try {
@@ -263,9 +275,10 @@ export function RadarView() {
   /** Met une cible sous surveillance, qu'elle vienne du champ ou de la liste des repérées. */
   const watchTarget = useCallback(
     async (cible: string) => {
-      await apiRequest('/api/radar/watches', { method: 'POST', body: { target: cible } });
+      const { watch } = await apiRequest<{ watch: WatchSummary }>('/api/radar/watches', { method: 'POST', body: { target: cible } });
       toast.success('Boutique sous surveillance. Le radar repassera chaque jour.');
       await load();
+      return watch;
     },
     [load],
   );
@@ -330,38 +343,60 @@ export function RadarView() {
     }
   }
 
+  const fermerBoutique = useCallback(() => {
+    params.delete('boutique');
+    setParams(params, { replace: true });
+  }, [params, setParams]);
+
   /*
-    Arrivée depuis une publicité (« Ouvrir dans le Radar ») : la boutique s'ouvre si elle est déjà
-    surveillée ; sinon elle est mise sous surveillance, puis ouverte. Une seule fois par demande.
+    Arrivée depuis une publicité, une alerte ou une niche (« Ouvrir dans le Radar »).
+
+    Déjà surveillée : son catalogue suivi s'ouvre. Sinon sa fiche s'ouvre en lecture — on ne met
+    PLUS la boutique sous surveillance pour la montrer. Cet ajout d'office était refusé dès que le
+    palier était plein (403), et l'on restait devant une erreur, sans la boutique.
   */
+  const hoteDemande = boutiqueDemandee ? hoteNormal(boutiqueDemandee) : null;
+  const dejaSurveillee = hoteDemande && data ? (data.watches.find((watch) => hoteNormal(watch.url ?? '') === hoteDemande) ?? null) : null;
   useEffect(() => {
-    if (!boutiqueDemandee || !data || demandeTraitee.current === boutiqueDemandee) return;
-    demandeTraitee.current = boutiqueDemandee;
-    const host = boutiqueDemandee.toLowerCase();
-    const trouver = (watches: WatchSummary[]) => watches.find((watch) => (watch.url ?? '').toLowerCase().includes(host.replace(/\.mychariow\.(com|shop)$/, '.mychariow.')));
-    const effacer = () => {
-      params.delete('boutique');
-      setParams(params, { replace: true });
-    };
-    const deja = trouver(data.watches);
-    if (deja) {
-      setOuverteId(deja.id);
-      effacer();
-      return;
-    }
-    void (async () => {
+    if (!dejaSurveillee) return;
+    setOuverteId(dejaSurveillee.id);
+    fermerBoutique();
+  }, [dejaSurveillee, fermerBoutique]);
+
+  /** Fiche en lecture : seulement quand la liste des surveillances est connue, pour ne pas clignoter. */
+  const apercu = hoteDemande && data && !dejaSurveillee ? hoteDemande : null;
+
+  // On arrive SUR la boutique : l'écran y descend dès qu'elle s'ouvre, fiche ou catalogue suivi.
+  const boutiqueVisible = apercu ?? ouverteId;
+  useEffect(() => {
+    if (!boutiqueVisible) return;
+    const cadre = window.requestAnimationFrame(() => zoneBoutique.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }));
+    return () => window.cancelAnimationFrame(cadre);
+  }, [boutiqueVisible]);
+
+  const ouvrirSurveillance = useCallback(
+    (id: string) => {
+      setOuverteId(id);
+      fermerBoutique();
+    },
+    [fermerBoutique],
+  );
+
+  /** « Surveiller cette boutique », depuis sa fiche : l'ajout, puis son catalogue suivi. */
+  const surveillerDepuisFiche = useCallback(
+    async (host: string) => {
       try {
-        const { watch } = await apiRequest<{ watch: WatchSummary }>('/api/radar/watches', { method: 'POST', body: { target: host } });
-        toast.success('Boutique ajoutée à votre radar.');
-        await load();
-        setOuverteId(watch.id);
+        const watch = await watchTarget(host);
+        ouvrirSurveillance(watch.id);
       } catch (caught) {
-        toast.error(toApiError(caught, 'Cette boutique n’a pas pu être ouverte dans le radar.').message);
-      } finally {
-        effacer();
+        const erreur = toApiError(caught, 'Cette boutique n’a pas pu être mise sous surveillance.');
+        // Palier plein entre-temps : la fiche le dit d'elle-même une fois la liste rechargée.
+        if (erreur.code === 'WATCH_LIMIT_REACHED') await load();
+        else toast.error(erreur.message);
       }
-    })();
-  }, [boutiqueDemandee, data, load, params, setParams]);
+    },
+    [load, ouvrirSurveillance, watchTarget],
+  );
 
   const quotaAtteint =
     data !== null && data.limit !== null && data.watches.filter((watch) => watch.active).length >= data.limit;
@@ -383,7 +418,26 @@ export function RadarView() {
         </Alert>
       )}
 
-      {sansAcces ? (
+      {/*
+        La boutique qu'on vient ouvrir passe AVANT tout le reste : « Ouvrir dans le Radar » laissait
+        en haut de la page, la boutique plus bas, à chercher (propriétaire, 07/10/2026).
+      */}
+      <div ref={zoneBoutique} className="scroll-mt-20 space-y-6 empty:hidden">
+        {apercu && (
+          <StorePreviewPanel
+            host={apercu}
+            vue={vue}
+            onVue={setVue}
+            quotaAtteint={quotaAtteint}
+            onWatch={surveillerDepuisFiche}
+            onAlreadyWatched={ouvrirSurveillance}
+            onClose={fermerBoutique}
+          />
+        )}
+        {ouverte && !apercu && <WatchItemsPanel watch={ouverte} onBack={() => setOuverteId(null)} vue={vue} onVue={setVue} />}
+      </div>
+
+      {sansAcces && !apercu ? (
         <Empty className="border border-dashed py-12">
           <EmptyHeader>
             <EmptyTitle>Le radar n’est pas inclus dans votre palier</EmptyTitle>
@@ -392,7 +446,7 @@ export function RadarView() {
             </EmptyDescription>
           </EmptyHeader>
         </Empty>
-      ) : (
+      ) : sansAcces ? null : (
         <Card>
           <CardHeader>
             <CardTitle>Surveiller une boutique</CardTitle>
@@ -460,15 +514,15 @@ export function RadarView() {
         />
       )}
 
-      {ouverte && <WatchItemsPanel watch={ouverte} onBack={() => setOuverteId(null)} vue={vue} onVue={setVue} />}
-
       {data && data.watches.length > 0 && (
         <>
           <div className="flex flex-wrap items-center justify-between gap-3">
             <h2 className="font-display text-lg font-bold tracking-tight">Boutiques surveillées</h2>
             <SalesViewToggle value={vue} onChange={setVue} />
           </div>
-          <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
+          {/* grid-cols-1 explicite : sans lui, sur téléphone, la colonne prend la largeur de son contenu
+              le plus long et toute la page défile de côté (mesuré : 104 px à 360 px de large). */}
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-3">
             {data.watches.map((watch) => (
               <WatchCard
                 key={watch.id}

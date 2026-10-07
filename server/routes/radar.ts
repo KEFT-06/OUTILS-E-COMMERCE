@@ -2,6 +2,7 @@ import { Router } from 'express';
 import { z } from 'zod';
 import { providers } from '@server/env';
 import { indexMarketInBackground, searchMarketProducts } from '@server/services/market';
+import { storePreview } from '@server/services/market/storePreview';
 import { AppError, asyncRoute, routeLimiter, validateBody } from '@server/middleware';
 import { requireAuth, requirePermission } from '@server/middleware/auth';
 import { effectiveLimits } from '@server/services/accounts';
@@ -201,6 +202,21 @@ radarRouter.post(
   routeLimiter(60, 3),
   asyncRoute(async (_req, res) => {
     res.json({ outcome: await runDiscovery() });
+  }),
+);
+
+/**
+ * Fiche d'une boutique, en lecture seule : ce que montre « Ouvrir dans le Radar ». Elle n'ajoute
+ * rien au compte et ne dépend d'aucun quota — regarder une boutique n'est pas la surveiller.
+ */
+radarRouter.get(
+  '/store',
+  routeLimiter(1, 40),
+  asyncRoute(async (req, res) => {
+    const host = typeof req.query.host === 'string' ? req.query.host.slice(0, 200) : '';
+    if (host.trim().length < 4) throw new AppError(400, 'Indiquez la boutique à ouvrir.', 'STORE_HOST_INVALID');
+    const auth = req.auth!;
+    res.json({ ...(await storePreview(auth.account.user.id, host)), limit: effectiveLimits(auth.account).watchedStores });
   }),
 );
 
