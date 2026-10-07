@@ -7,6 +7,8 @@ import { AWARENESS_OPTIONS } from '@/shared/lib/awareness';
 import { findAdFramework } from '@server/shared/adFrameworks';
 import { useAuth } from '@/features/auth/AuthContext';
 import { AdFrameworkPicker } from '@/modules/creatifs/AdFrameworkPicker';
+import { CREATIVE_ATTESTATIONS } from '@/modules/creatifs/attestations';
+import { launchCreative } from '@/modules/creatifs/launchCreative';
 import { BookCoverPanel } from '@/modules/creatifs/BookCoverPanel';
 import { type Brouillon, CLE_BROUILLON, VIDEO_DURATIONS, VIDEO_FORMATS, type VideoDuration, lireBrouillon } from '@/modules/creatifs/briefDraft';
 import { CountryCombobox } from '@/shared/components/CountryCombobox';
@@ -50,12 +52,7 @@ const FORMAT_OPTIONS: { value: CreativeFormat; label: string }[] = [
 
 
 /** Contrôles que l'auteur atteste avoir faits en regardant le fichier généré. */
-const ATTESTATIONS = [
-  "Il n'affiche aucune promesse de gain chiffrée ni garantie de résultat.",
-  'Il ne met en scène ni avant/après trompeur, ni témoignage inventé.',
-  'Tout texte visible est lisible, exact et conforme à mon brief.',
-  'Il ne montre ni logo de marque tierce, ni personne réelle identifiable sans son accord.',
-];
+const ATTESTATIONS = CREATIVE_ATTESTATIONS;
 
 const PROGRESS_LABELS: Partial<Record<CreativeStatus['status'], string>> = {
   queued: 'En file d’attente…',
@@ -77,8 +74,14 @@ function retentionNotice(result: { mediaType: 'image' | 'video'; retentionDays?:
     : `Fichier téléchargeable pendant ${duree}${jusquau} : téléchargez-le pour le garder.`;
 }
 
-/** `onVisualCreated` : un visuel vient d'être enregistré — « Mes visuels » se recharge. */
-export function CreativeGeneratorPanel({ onVisualCreated }: { onVisualCreated?: () => void } = {}) {
+/**
+ * `onVisualCreated` : un visuel vient d'être enregistré — « Mes visuels » se recharge.
+ * `onVideoChanged` : une vidéo vient d'être lancée ou de se terminer — « Mes vidéos » se recharge.
+ */
+export function CreativeGeneratorPanel({
+  onVisualCreated,
+  onVideoChanged,
+}: { onVisualCreated?: () => void; onVideoChanged?: () => void } = {}) {
   const { runWithCredits, costTable } = useCreditGate();
   const extensionCost = costTable?.actions.find((action) => action.id === 'video_extension')?.cost ?? null;
 
@@ -202,7 +205,7 @@ export function CreativeGeneratorPanel({ onVisualCreated }: { onVisualCreated?: 
       const polled = await pollStatus<CreativeStatus>(`/api/creatives/requests/${encodeURIComponent(status.requestId)}`, 'Le suivi a échoué');
       if (!polled) {
         misses += 1;
-        if (misses >= MAX_POLL_MISSES) throw new ApiError(lostTrackMessage('dans « Mes visuels »'));
+        if (misses >= MAX_POLL_MISSES) throw new ApiError(lostTrackMessage(generationKind === 'video' ? 'dans « Mes vidéos »' : 'dans « Mes visuels »'));
         continue;
       }
       misses = 0;
@@ -295,17 +298,16 @@ export function CreativeGeneratorPanel({ onVisualCreated }: { onVisualCreated?: 
         setProgress('queued');
 
         try {
-          const submitted = await fetch(`/api/creatives/${generationKind === 'visual' ? 'visuals' : 'videos'}`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(body),
-          });
-          if (!submitted.ok) throw await readApiError(submitted, `La demande a échoué (${submitted.status}).`);
-
-          const status = await suivre((await submitted.json()) as CreativeStatus, generationKind);
+          // Le lancement aboutit même si la réponse se perd : le créatif arrivé sur le compte fait foi.
+          const launched = await launchCreative(generationKind, body);
+          // La vidéo est lancée : elle figure dès maintenant dans « Mes vidéos », quoi qu'il arrive à cet écran.
+          if (generationKind === 'video') onVideoChanged?.();
+          const status = await suivre(launched, generationKind);
           setResult(resultOf(status));
-          if (status.mediaType === 'image' && status.retentionDays === null) onVisualCreated?.();
         } finally {
+          // Quelle que soit l'issue vue d'ici, les listes sont relues : ce que le serveur a produit doit s'y voir.
+          if (generationKind === 'video') onVideoChanged?.();
+          else onVisualCreated?.();
           if (!unmountedRef.current) {
             setIsGenerating(false);
             setProgress(null);
@@ -572,7 +574,9 @@ export function CreativeGeneratorPanel({ onVisualCreated }: { onVisualCreated?: 
 
           <div className="flex flex-col gap-3 border-t pt-4 sm:flex-row sm:items-center sm:justify-between">
             <p className="text-xs leading-relaxed text-muted-foreground">
-              Restez sur cet écran pendant la génération.
+              {kind === 'video'
+                ? 'Vous pouvez quitter cet écran pendant le rendu : la vidéo vous attendra dans « Mes vidéos ».'
+                : 'Votre visuel sera gardé dans « Mes visuels ».'}
               {!awarenessLevel && (
                 <span className="mt-1 block text-warning">Choisissez le niveau de conscience du prospect pour continuer.</span>
               )}

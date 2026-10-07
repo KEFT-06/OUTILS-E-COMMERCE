@@ -44,6 +44,20 @@ export function MyVisualsPanel({ version }: { version: number }) {
   const [loadingMore, setLoadingMore] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  // Retour sur l'onglet, ou sur la fenêtre : la liste est relue, un visuel créé entre-temps s'y voit.
+  const [wake, setWake] = useState(0);
+  useEffect(() => {
+    const reread = () => {
+      if (document.visibilityState === 'visible') setWake((count) => count + 1);
+    };
+    document.addEventListener('visibilitychange', reread);
+    window.addEventListener('focus', reread);
+    return () => {
+      document.removeEventListener('visibilitychange', reread);
+      window.removeEventListener('focus', reread);
+    };
+  }, []);
+
   // Première page, rechargée à chaque nouveau visuel.
   useEffect(() => {
     let cancelled = false;
@@ -63,7 +77,7 @@ export function MyVisualsPanel({ version }: { version: number }) {
     return () => {
       cancelled = true;
     };
-  }, [version]);
+  }, [version, wake]);
 
   const loadMore = async () => {
     setLoadingMore(true);

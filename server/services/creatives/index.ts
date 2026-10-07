@@ -286,6 +286,8 @@ export interface CreativeStatus {
   message?: string;
   /** Jours pendant lesquels le fichier reste récupérable ; null : sans limite. Ajouté par la route. */
   retentionDays?: number | null;
+  /** Échec dû au fournisseur : le serveur peut relancer la demande. Ne sort jamais vers le client. */
+  retryable?: boolean;
 }
 
 /**
@@ -323,7 +325,12 @@ function falToClientStatus(generation: { requestId: string; status: FalQueueStat
 /** Veo ne connaît que trois états ; la file de rendu n'expose pas d'étape intermédiaire. */
 function veoToClientStatus(generation: VeoGeneration): CreativeStatus {
   if (generation.status === 'failed') {
-    return { requestId: generation.requestId, status: 'failed', ...(generation.error ? { message: generation.error } : {}) };
+    return {
+      requestId: generation.requestId,
+      status: 'failed',
+      ...(generation.error ? { message: generation.error } : {}),
+      ...(generation.retryable ? { retryable: true } : {}),
+    };
   }
   return {
     requestId: generation.requestId,
@@ -332,7 +339,8 @@ function veoToClientStatus(generation: VeoGeneration): CreativeStatus {
   };
 }
 
-export async function submitVideo(brief: VideoBrief): Promise<CreativeStatus> {
+/** `safe` : réglages les plus sûrs (720p), pour la dernière relance d'un rendu que le fournisseur a fait échouer. */
+export async function submitVideo(brief: VideoBrief, options: { safe?: boolean } = {}): Promise<CreativeStatus> {
   const input = buildVideoInput(brief);
   return veoToClientStatus(
     await submitVeoGeneration({
@@ -342,6 +350,7 @@ export async function submitVideo(brief: VideoBrief): Promise<CreativeStatus> {
       // Une vidéo longue part d'un plan de 8 s : c'est la base que Google prolonge.
       durationSeconds: brief.extendable ? 8 : input.durationSeconds,
       extendable: brief.extendable,
+      ...(options.safe ? { resolution: '720p' } : {}),
     }),
   );
 }

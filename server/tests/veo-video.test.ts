@@ -36,6 +36,11 @@ const telechargements: (string | undefined)[] = [];
 
 const MP4 = Buffer.from('00000018667479706d703432', 'hex');
 
+/** Rendus que le faux Google fait échouer de son côté, par identifiant d'opération. */
+const pannes = new Set<string>();
+const MESSAGE_GOOGLE =
+  'Video generation failed due to an internal server issue. Please try again in a few minutes. If the problem persists, please contact Gemini API support.';
+
 const fauxGoogle = createServer((req, res) => {
   const chunks: Buffer[] = [];
   req.on('data', (c: Buffer) => chunks.push(c));
@@ -84,6 +89,11 @@ const fauxGoogle = createServer((req, res) => {
     // Suivi : GET /v1beta/models/{modèle}/operations/{id}
     const suivi = new RegExp(`^/v1beta/models/${MODELE}/operations/(op-\\d{4})$`).exec(url.pathname);
     if (req.method === 'GET' && suivi) {
+      // Rendu que Google a fait échouer de son côté : le message est celui vu à l'écran d'un client le 06/10/2026.
+      if (pannes.has(suivi[1]!)) {
+        envoyer(200, { name: `models/${MODELE}/operations/${suivi[1]!}`, done: true, error: { code: 13, message: MESSAGE_GOOGLE } });
+        return;
+      }
       if (mode !== 'termine') {
         envoyer(200, { name: `models/${MODELE}/operations/${suivi[1]!}`, done: false });
         return;
@@ -202,6 +212,73 @@ describe('Rendu vidéo par Veo', () => {
 
     const { agent: intrus } = await signInWithPlan(app, 'veo-intrus@exemple.test', 'pro');
     await intrus.get(`/api/creatives/requests/${requestId}/file`).expect(404);
+  });
+
+  it('relance de lui-même un rendu que le fournisseur a fait échouer, sans débiter de plus ni montrer son message', async () => {
+    mode = 'encours';
+    const { agent } = await signInWithPlan(app, 'veo-relance@exemple.test', 'pro');
+    const solde = async () => (await agent.get('/api/account/credits').expect(200)).body.credits.total as number;
+    const depart = await solde();
+    const lance = await agent.post('/api/creatives/videos').send(BRIEF).expect(202);
+    const premier = lance.body.requestId as string;
+    const cout = depart - (await solde());
+    assert.ok(cout > 0);
+
+    // Google fait échouer le rendu : l'auteur ne voit qu'un rendu qui continue, sous un nouvel identifiant.
+    pannes.add(premier);
+    const depots1 = depots.length;
+    const relance = await agent.get(`/api/creatives/requests/${premier}`).expect(200);
+    assert.equal(relance.body.status, 'in_progress');
+    assert.notEqual(relance.body.requestId, premier, 'le suivi continue sur le nouveau rendu');
+    assert.equal(depots.length, depots1 + 1, 'la même demande est redéposée, une seule fois');
+    assert.doesNotMatch(JSON.stringify(relance.body), /Gemini|try again|internal server/i);
+    assert.equal(await solde(), depart - cout, 'rien n’est débité de plus');
+    const second = relance.body.requestId as string;
+
+    // Un autre écran suit encore l'ancien identifiant (« Mes vidéos », un second onglet) : il est remis sur le bon, sans nouvelle relance.
+    const ancien = await agent.get(`/api/creatives/requests/${premier}`).expect(200);
+    assert.equal(ancien.body.requestId, second);
+    assert.equal(depots.length, depots1 + 1);
+
+    // « Mes vidéos » : une seule vidéo, en cours, sous son identifiant courant.
+    const liste = (await agent.get('/api/creatives/videos').expect(200)).body.videos as { requestId: string; status: string }[];
+    assert.deepEqual(liste.map((video) => [video.requestId, video.status]), [[second, 'in_progress']]);
+
+    mode = 'termine';
+    const fini = await agent.get(`/api/creatives/requests/${second}`).expect(200);
+    assert.equal(fini.body.status, 'completed');
+    await agent.get(`/api/creatives/requests/${second}/file`).buffer(true).expect(200);
+    assert.equal(await solde(), depart - cout, 'une vidéo, un seul débit');
+    assert.equal(((await agent.get('/api/creatives/videos').expect(200)).body.videos as { status: string }[])[0]!.status, 'completed');
+  });
+
+  it('après deux relances, rend l’échec en français, sans nommer le fournisseur, et rend les points', async () => {
+    mode = 'encours';
+    const { agent } = await signInWithPlan(app, 'veo-echec@exemple.test', 'pro');
+    const solde = async () => (await agent.get('/api/account/credits').expect(200)).body.credits.total as number;
+    const depart = await solde();
+    // Huit secondes : le premier dépôt part en haute définition.
+    const lance = await agent.post('/api/creatives/videos').send({ ...BRIEF, duration: 8 }).expect(202);
+    let courant = lance.body.requestId as string;
+    const resolution = () => (depots.at(-1)!.corps as { parameters: { resolution: string } }).parameters.resolution;
+    assert.equal(resolution(), '1080p');
+
+    for (const tour of [1, 2]) {
+      pannes.add(courant);
+      const suite = await agent.get(`/api/creatives/requests/${courant}`).expect(200);
+      assert.equal(suite.body.status, 'in_progress', `relance ${tour}`);
+      courant = suite.body.requestId as string;
+    }
+    assert.equal(resolution(), '720p', 'la dernière relance part aux réglages les plus sûrs');
+
+    pannes.add(courant);
+    const echec = await agent.get(`/api/creatives/requests/${courant}`).expect(200);
+    assert.equal(echec.body.status, 'failed');
+    assert.match(echec.body.message as string, /n’a pas abouti/);
+    assert.match(echec.body.message as string, /points ont été rendus/);
+    assert.doesNotMatch(JSON.stringify(echec.body), /Gemini|Google|Veo|try again|few minutes|internal server/i, 'ni anglais, ni nom du fournisseur, ni attente');
+    assert.equal(await solde(), depart, 'points rendus');
+    assert.deepEqual((await agent.get('/api/creatives/videos').expect(200)).body.videos, [], 'un rendu échoué ne figure pas dans « Mes vidéos »');
   });
 
   it('dit clairement que la réserve de rendus est épuisée, et rend les points', async () => {

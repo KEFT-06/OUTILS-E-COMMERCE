@@ -787,6 +787,12 @@ export const generations = pgTable(
     durationSeconds: integer('duration_seconds'),
     /** Résolution demandée au fournisseur : seules les vidéos en 720p se prolongent. */
     resolution: text('resolution'),
+    /**
+     * Demande d'origine d'une vidéo : son brief, le nombre de relances déjà faites et les
+     * identifiants de rendu qu'elle a portés. C'est ce qui permet au site de relancer LUI-MÊME un
+     * rendu que le fournisseur a fait échouer, au lieu de rendre l'échec à l'auteur.
+     */
+    request: jsonb('request').$type<Record<string, unknown> | null>(),
   },
   (table) => [
     uniqueIndex('generations_provider_ref_unique').on(table.provider, table.providerRef),

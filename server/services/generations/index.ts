@@ -1,4 +1,4 @@
-import { and, eq } from 'drizzle-orm';
+import { and, desc, eq, gt, inArray, isNotNull, ne, sql } from 'drizzle-orm';
 import { getDb } from '@server/db/client';
 import { generations, type GenerationKind } from '@server/db/schema';
 import { AppError } from '@server/middleware';
@@ -33,6 +33,8 @@ export async function runBilledGeneration<T>(input: {
   describe: (result: T) => { providerRef: string | null; state: GenerationState; fileFormat?: string | null; provider?: string };
   /** Vidéo longue : étape précédente, durée totale et résolution, enregistrées avec la génération. */
   video?: { parentId?: string | null; durationSeconds?: number | null; resolution?: string | null };
+  /** Demande d'origine, gardée pour pouvoir la relancer si le fournisseur la fait échouer. */
+  request?: Record<string, unknown>;
 }): Promise<{ result: T; generation: GenerationRow }> {
   const { account } = input.auth;
   const cost = await getActionCost(input.actionId);
@@ -71,6 +73,7 @@ export async function runBilledGeneration<T>(input: {
       parentId: input.video?.parentId ?? null,
       durationSeconds: input.video?.durationSeconds ?? null,
       resolution: input.video?.resolution ?? null,
+      request: input.request ?? null,
     })
     .returning();
 
@@ -79,6 +82,82 @@ export async function runBilledGeneration<T>(input: {
 }
 
 /** Génération du compte courant, ou 404 : l'existence d'une génération d'autrui n'est pas révélée. */
+/** Ce qu'une génération garde de sa demande d'origine. */
+export interface StoredRequest {
+  brief?: unknown;
+  /** Relances déjà faites après un échec chez le fournisseur. */
+  attempts?: number;
+  /** Identifiants de rendu portés avant une relance : l'écran qui les suit encore est remis sur le bon. */
+  previousRefs?: string[];
+}
+
+/**
+ * Réserve une relance, pour cette sonde seule. Deux écrans suivent parfois la même vidéo (celui
+ * qui l'a lancée et « Mes vidéos ») : sans cette réservation, chacun la relancerait de son côté.
+ */
+export async function claimRelaunch(generation: GenerationRow): Promise<boolean> {
+  const stored = (generation.request ?? {}) as StoredRequest;
+  const attempts = stored.attempts ?? 0;
+  const claimed = await getDb()
+    .update(generations)
+    .set({ request: { ...stored, attempts: attempts + 1 } })
+    .where(
+      and(
+        eq(generations.id, generation.id),
+        eq(generations.status, 'pending'),
+        sql`coalesce((${generations.request} ->> 'attempts')::int, 0) = ${attempts}`,
+      ),
+    )
+    .returning({ id: generations.id });
+  return claimed.length > 0;
+}
+
+/** La génération continue sous un nouvel identifiant de rendu ; l'ancien est retenu. */
+export async function continueUnderNewRef(generation: GenerationRow, providerRef: string): Promise<void> {
+  const [current] = await getDb().select({ request: generations.request }).from(generations).where(eq(generations.id, generation.id)).limit(1);
+  const stored = (current?.request ?? {}) as StoredRequest;
+  const previousRefs = [...(stored.previousRefs ?? []), ...(generation.providerRef ? [generation.providerRef] : [])].slice(-6);
+  await getDb()
+    .update(generations)
+    .set({ providerRef, request: { ...stored, previousRefs } })
+    .where(eq(generations.id, generation.id));
+}
+
+/** Génération du compte qui a porté cet identifiant avant une relance, ou null. */
+export async function findOwnedGenerationByFormerRef(auth: RequestAuth, provider: string, formerRef: string): Promise<GenerationRow | null> {
+  const [row] = await getDb()
+    .select()
+    .from(generations)
+    .where(
+      and(
+        eq(generations.userId, auth.account.user.id),
+        eq(generations.provider, provider),
+        sql`${generations.request} -> 'previousRefs' @> ${JSON.stringify([formerRef])}::jsonb`,
+      ),
+    )
+    .limit(1);
+  return row ?? null;
+}
+
+/** Vidéos récentes d'un compte, de la plus neuve à la plus ancienne ; les rendus échoués n'y figurent pas. */
+export async function listOwnVideoGenerations(userId: string, providers: string[], since: Date, limit: number): Promise<GenerationRow[]> {
+  return getDb()
+    .select()
+    .from(generations)
+    .where(
+      and(
+        eq(generations.userId, userId),
+        eq(generations.kind, 'video'),
+        inArray(generations.provider, providers),
+        isNotNull(generations.providerRef),
+        ne(generations.status, 'failed'),
+        gt(generations.createdAt, since),
+      ),
+    )
+    .orderBy(desc(generations.createdAt))
+    .limit(limit);
+}
+
 export async function findOwnedGeneration(auth: RequestAuth, provider: string, providerRef: string): Promise<GenerationRow> {
   const [generation] = await getDb()
     .select()

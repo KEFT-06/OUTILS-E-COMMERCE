@@ -50,6 +50,9 @@ const CreativeGeneratorPanel = lazy(() =>
 const MyVisualsPanel = lazy(() =>
   import('@/modules/creatifs/MyVisualsPanel').then((module) => ({ default: module.MyVisualsPanel })),
 );
+const MyVideosPanel = lazy(() =>
+  import('@/modules/creatifs/MyVideosPanel').then((module) => ({ default: module.MyVideosPanel })),
+);
 const MetaVideoStudioView = lazy(() =>
   import('@/modules/creatifs/MetaVideoStudioView').then((module) => ({ default: module.MetaVideoStudioView })),
 );
@@ -287,6 +290,7 @@ export function StudioPage() {
 export function CreatifsPage() {
   const { currentReport, isLoadingReport } = useWorkspace();
   const [visualsVersion, setVisualsVersion] = useState(0);
+  const [videosVersion, setVideosVersion] = useState(0);
   return (
     <div className="space-y-8">
       <PageHeader
@@ -294,7 +298,11 @@ export function CreatifsPage() {
         title="Créatifs publicitaires"
         description="Générez une vidéo ou un visuel publicitaire structuré par une méthode (AIDA, PAS…), la couverture de votre livre, puis travaillez les scripts vidéo de la niche analysée."
       />
-      <CreativeGeneratorPanel onVisualCreated={() => setVisualsVersion((version) => version + 1)} />
+      <CreativeGeneratorPanel
+        onVisualCreated={() => setVisualsVersion((version) => version + 1)}
+        onVideoChanged={() => setVideosVersion((version) => version + 1)}
+      />
+      <MyVideosPanel version={videosVersion} />
       <MyVisualsPanel version={visualsVersion} />
       {/* L'analyse n'est pas encore à l'écran : on ne dit pas qu'aucune niche n'a de campagne. */}
       {isLoadingReport && !currentReport ? (

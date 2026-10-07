@@ -24,7 +24,7 @@ import {
 } from '@server/services/creatives';
 import { VEO_KEEPS_DAYS, videoArchiveConfigured, videoRetentionDaysFor } from '@server/services/creatives/archive';
 import { createLocalVisual, listLocalVisuals, localVisualExists, sendLocalVisual } from '@server/services/creatives/local';
-import type { CreativeProvider } from '@server/services/creatives';
+import type { CreativeProvider, CreativeStatus } from '@server/services/creatives';
 import { falRequestIdSchema } from '@server/services/fal';
 import {
   VEO_EXTENSION_RESOLUTION,
@@ -36,7 +36,17 @@ import {
   veoRequestIdSchema,
   veoResolutionFor,
 } from '@server/services/veo';
-import { findOwnedGeneration, runBilledGeneration, settleGeneration } from '@server/services/generations';
+import {
+  type GenerationRow,
+  type StoredRequest,
+  claimRelaunch,
+  continueUnderNewRef,
+  findOwnedGeneration,
+  findOwnedGenerationByFormerRef,
+  listOwnVideoGenerations,
+  runBilledGeneration,
+  settleGeneration,
+} from '@server/services/generations';
 import { findAdFramework, isAdFrameworkAvailable } from '@server/shared/adFrameworks';
 
 /** Créatifs publicitaires : visuels par le moteur d'images interne (Google), vidéos par Veo (feuille de route 4.1, 4.2, 4.4). */
@@ -159,6 +169,8 @@ creativesRouter.post(
         fileFormat: fileFormatOf(status),
       }),
       video: { durationSeconds: duree, resolution: veoResolutionFor(duree, brief.extendable) },
+      // Le brief est gardé : si le fournisseur fait échouer le rendu, le site le relance de lui-même.
+      request: { brief, attempts: 0 },
     });
 
     res.status(202).json({ ...result, retentionDays: await videoRetentionDays(req.auth!.account.user.id) });
@@ -245,13 +257,51 @@ function videoDeadline(
   return video.archiveExpiresAt ?? new Date((video.completedAt ?? video.createdAt).getTime() + retentionDays * DAY_MS);
 }
 
+/** Relances au plus d'un rendu que le fournisseur a fait échouer, avant de rendre l'échec — et les points. */
+const VIDEO_RELAUNCHES = 2;
+
+/**
+ * Relance d'elle-même une vidéo dont le rendu a échoué CHEZ LE FOURNISSEUR (panne, surcharge) :
+ * la demande était bonne, la refaire a toutes les chances d'aboutir. L'auteur ne voit qu'un rendu
+ * un peu plus long ; rien n'est débité de plus. La dernière relance part aux réglages les plus
+ * sûrs. Rend le nouvel état à suivre, ou null quand il n'y a plus rien à tenter.
+ */
+async function relaunchVideo(generation: GenerationRow): Promise<CreativeStatus | null> {
+  const stored = (generation.request ?? {}) as StoredRequest;
+  const brief = videoBriefSchema.safeParse(stored.brief);
+  const attempts = stored.attempts ?? 0;
+  if (!brief.success || attempts >= VIDEO_RELAUNCHES || generation.status !== 'pending' || !generation.providerRef) return null;
+  // Une autre sonde s'en charge déjà : celle-ci continue simplement d'attendre.
+  if (!(await claimRelaunch(generation))) return { requestId: generation.providerRef, status: 'in_progress' };
+  try {
+    const next = await submitVideo(brief.data, { safe: attempts + 1 >= VIDEO_RELAUNCHES });
+    await continueUnderNewRef(generation, next.requestId);
+    console.warn(`[vidéo] rendu échoué chez le fournisseur : relance ${attempts + 1}/${VIDEO_RELAUNCHES}`);
+    return { requestId: next.requestId, status: 'in_progress' };
+  } catch (error) {
+    console.error('[vidéo] relance impossible :', error instanceof AppError ? error.code : error);
+    return null;
+  }
+}
+
 /** Suivi d'une génération de son auteur. Hors `aiLimiter` : le client sonde toutes les 5 secondes. */
 creativesRouter.get(
   '/requests/:requestId',
   requireAuth,
   asyncRoute(async (req, res) => {
     const requestId = parseCreativeRequestId(req.params.requestId);
-    const { generation, provider } = await findCreative(req, requestId);
+    let found: Awaited<ReturnType<typeof findCreative>>;
+    try {
+      found = await findCreative(req, requestId);
+    } catch (error) {
+      // Rendu relancé depuis : l'écran qui suit encore l'ancien identifiant est remis sur le nouveau.
+      const moved =
+        error instanceof AppError && error.code === 'GENERATION_NOT_FOUND' ? await findOwnedGenerationByFormerRef(req.auth!, 'veo', requestId) : null;
+      if (!moved?.providerRef) throw error;
+      res.json({ requestId: moved.providerRef, status: moved.status === 'completed' ? 'completed' : moved.status === 'failed' ? 'failed' : 'in_progress', ...(moved.status === 'completed' ? { mediaType: 'video' } : {}) });
+      return;
+    }
+    const { generation, provider } = found;
 
     /*
       Un visuel produit chez nous est enregistré une fois terminé : son existence EST son état.
@@ -284,7 +334,14 @@ creativesRouter.get(
         });
         return;
       }
-      const status = await getCreativeStatus(requestId, provider);
+      const { retryable, ...status } = await getCreativeStatus(requestId, provider);
+      if (status.status === 'failed' && retryable) {
+        const relaunched = await relaunchVideo(generation);
+        if (relaunched) {
+          res.json({ ...relaunched, retentionDays, ...videoChainInfo(generation) });
+          return;
+        }
+      }
       const settled = await settleGeneration(generation, generationStateOf(status.status), fileFormatOf(status));
       res.json({
         ...status,
@@ -298,6 +355,45 @@ creativesRouter.get(
     const status = await getCreativeStatus(requestId, provider);
     await settleGeneration(generation, generationStateOf(status.status), fileFormatOf(status));
     res.json({ ...status, retentionDays: PROVIDER_RETENTION_DAYS[provider] });
+  }),
+);
+
+/**
+ * « Mes vidéos » : les vidéos de l'auteur, en cours ou rendues.
+ *
+ * Le suivi d'une vidéo ne vivait que dans l'écran qui l'avait lancée. Écran quitté, page
+ * rechargée, connexion coupée une minute : la vidéo continuait chez le fournisseur, elle était
+ * payée, et plus rien ne permettait de la retrouver — le message renvoyait vers « Mes visuels »,
+ * qui ne liste que les images (constaté le 06/10/2026). L'état rendu ici est celui de la base :
+ * une vidéo encore « en cours » est sondée par l'écran, qui la solde comme le suivi d'origine.
+ */
+creativesRouter.get(
+  '/videos',
+  requireAuth,
+  asyncRoute(async (req, res) => {
+    const userId = req.auth!.account.user.id;
+    const retentionDays = await videoRetentionDays(userId);
+    const rows = await listOwnVideoGenerations(userId, ['veo', 'fal'], new Date(Date.now() - 120 * DAY_MS), 40);
+    // Une vidéo longue se construit par étapes : seule sa dernière version est montrée.
+    const prolongees = new Set(rows.map((row) => row.parentId).filter((id): id is string => id !== null));
+    const now = Date.now();
+    res.json({
+      videos: rows
+        .filter((row) => !prolongees.has(row.id))
+        .slice(0, 12)
+        .map((row) => {
+          const deadline = videoDeadline(row, retentionDays);
+          const completed = row.status === 'completed';
+          return {
+            requestId: row.providerRef,
+            status: completed ? 'completed' : 'in_progress',
+            createdAt: row.createdAt.toISOString(),
+            durationSeconds: row.durationSeconds,
+            availableUntil: completed ? deadline.toISOString() : null,
+            expired: completed && deadline.getTime() < now,
+          };
+        }),
+    });
   }),
 );
 
