@@ -61,6 +61,7 @@ const NichesPage = lazyPage(modulePages, 'NichesPage');
 const RadarPage = lazyPage(modulePages, 'RadarPage');
 const EspionnagePage = lazyPage(modulePages, 'EspionnagePage');
 const AlertesPage = lazyPage(modulePages, 'AlertesPage');
+const CreationsPage = lazyPage(modulePages, 'CreationsPage');
 const PagesProduitsPage = lazyPage(modulePages, 'PagesProduitsPage');
 const StorybookPage = lazyPage(modulePages, 'StorybookPage');
 const StudioPage = lazyPage(modulePages, 'StudioPage');
@@ -123,6 +124,7 @@ export default function App() {
                   <Route path="multilingue/relectures/:translationId" element={<GuideReviewPage />} />
                   <Route path="multilingue/:guideId" element={<GuidePage />} />
                   <Route path="multilingue/:guideId/:language" element={<GuideTranslationPage />} />
+                  <Route path="creations" element={<CreationsPage />} />
                   <Route path="kit-lancement" element={<KitLancementPage />} />
                   <Route path="campagnes" element={<CampagnesPage />} />
                   <Route path="distribution" element={<DistributionPage />} />

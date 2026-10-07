@@ -8,7 +8,7 @@ import { AWARENESS_OPTIONS } from '@/shared/lib/awareness';
 import { findAdFramework } from '@server/shared/adFrameworks';
 import { useAuth } from '@/features/auth/AuthContext';
 import { AdFrameworkPicker } from '@/modules/creatifs/AdFrameworkPicker';
-import { type AdReference, readAdReference } from '@/modules/creatifs/adReference';
+import { type AdReference, readAdReference, readProductStart } from '@/modules/creatifs/adReference';
 import { CREATIVE_ATTESTATIONS } from '@/modules/creatifs/attestations';
 import { launchCreative } from '@/modules/creatifs/launchCreative';
 import { BookCoverPanel } from '@/modules/creatifs/BookCoverPanel';
@@ -96,8 +96,18 @@ export function CreativeGeneratorPanel({
   */
   const location = useLocation();
   const [reference, setReference] = useState<AdReference | null>(() => readAdReference(location.state));
+  /*
+    Arrivée depuis un ouvrage de « Mes créations » (« Générer la vidéo associée ») : le brief part
+    de l'ouvrage — son titre, son public — sans rien ressaisir. Le reste du brouillon est remis à
+    zéro : une scène écrite pour un autre produit n'a rien à faire ici.
+  */
+  const [depart] = useState(() => readProductStart(location.state));
   const [initial] = useState<Partial<Brouillon>>(() =>
-    reference ? { ...brouillon, kind: 'video', purpose: 'ad', productName: reference.titre || brouillon.productName || '' } : brouillon,
+    reference
+      ? { ...brouillon, kind: 'video', purpose: 'ad', productName: reference.titre || brouillon.productName || '' }
+      : depart
+        ? { market: brouillon.market, format: brouillon.format, kind: 'video', purpose: 'ad', productName: depart.titre, audience: depart.public, onScreenText: depart.promesse.slice(0, 80) }
+        : brouillon,
   );
 
   const [kind, setKind] = useState<CreativeKind>(initial.kind ?? 'visual');

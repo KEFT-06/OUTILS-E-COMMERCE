@@ -1,5 +1,5 @@
-import { useEffect, useState } from 'react';
-import { Link, useNavigate, useSearchParams } from 'react-router-dom';
+import { useEffect, useRef, useState } from 'react';
+import { Link, useLocation, useNavigate, useSearchParams } from 'react-router-dom';
 import { BookOpen, FilePlus2, ImageIcon, Languages } from 'lucide-react';
 import { REVIEW_LEVELS, parseGuideText, wordCount, type GuideSection, type ReviewLevel } from '@server/shared/guides';
 import { LANGUAGE_RANKING_SOURCE, TOP_LANGUAGES, languageName } from '@server/shared/languages';
@@ -52,18 +52,41 @@ function firstIssue(error: ApiError): string {
   return issues?.[0]?.message ?? error.message;
 }
 
-function CreateGuideDialog({ onCreated }: { onCreated: (guide: Guide) => void }) {
+function CreateGuideDialog({
+  onCreated,
+  fromRequest = false,
+}: {
+  onCreated: (guide: Guide) => void;
+  /** Ce bouton-là reçoit la demande venue d'un autre écran. Un seul par page : deux fenêtres ouvertes se masquent l'une l'autre. */
+  fromRequest?: boolean;
+}) {
   const { currentReport } = useWorkspace();
   const drafts = useProductDrafts();
   const custom = useCustomProducts();
   const products = [...(currentReport?.digitalProducts ?? []), ...custom.products].map((product) => drafts.effective(product));
 
+  /*
+    « Traduire », depuis Mes créations : on arrive avec l'ouvrage déjà choisi et le formulaire
+    ouvert — il ne reste qu'à choisir les langues, sans rien ressaisir.
+  */
+  const demande = (useLocation().state as { produit?: unknown } | null)?.produit;
+  const demandee = fromRequest && typeof demande === 'string' ? demande : '';
   const [open, setOpen] = useState(false);
   const [mode, setMode] = useState<'text' | 'product'>('text');
   const [title, setTitle] = useState('');
   const [language, setLanguage] = useState('fr');
   const [text, setText] = useState('');
   const [productId, setProductId] = useState('');
+  // Les ouvrages arrivent après l'écran : la demande s'applique dès que le sien est là, une seule fois.
+  const disponible = demandee !== '' && products.some((candidate) => candidate.id === demandee);
+  const appliquee = useRef(false);
+  useEffect(() => {
+    if (!disponible || appliquee.current) return;
+    appliquee.current = true;
+    setMode('product');
+    setProductId(demandee);
+    setOpen(true);
+  }, [disponible, demandee]);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -373,7 +396,7 @@ export function MultilingualGuidesView() {
         eyebrow="Créer"
         title="Guides multilingues"
         description="Écrivez un guide une fois, traduisez-le dans les langues les plus parlées au monde, faites-le relire, puis exportez-le en PDF avec sa couverture."
-        actions={<CreateGuideDialog onCreated={openGuide} />}
+        actions={<CreateGuideDialog onCreated={openGuide} fromRequest />}
       />
 
       <TopLanguagesCard />

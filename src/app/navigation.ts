@@ -55,7 +55,8 @@ export type ModuleId =
   | 'campagnes'
   | 'distribution'
   | 'affiliation'
-  | 'multilingue';
+  | 'multilingue'
+  | 'creations';
 
 export interface Bilingual {
   fr: string;
@@ -222,6 +223,15 @@ export const MODULES: readonly ModuleEntry[] = [
     label: { fr: 'Guides multilingues', en: 'Multilingual guides' },
     description: { fr: 'Traduire, relire et exporter vos guides', en: 'Translate, review and export your guides' },
     icon: Languages,
+    ready: true,
+  },
+  {
+    id: 'creations',
+    path: '/app/creations',
+    group: 'creer',
+    label: { fr: 'Mes créations', en: 'My creations' },
+    description: { fr: 'Tous vos textes, vidéos et visuels', en: 'All your texts, videos and visuals' },
+    icon: History,
     ready: true,
   },
 ];

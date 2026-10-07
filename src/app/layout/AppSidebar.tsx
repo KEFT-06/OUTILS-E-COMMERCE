@@ -14,6 +14,7 @@ import {
 } from '@/shared/ui/dropdown-menu';
 import { Progress } from '@/shared/ui/progress';
 import { useAlertsUnread } from '@/shared/stores/useAlertsUnread';
+import { useExpiringVideos } from '@/shared/stores/useExpiringVideos';
 import { useRadarUnread } from '@/shared/stores/useRadarUnread';
 import {
   Sidebar,
@@ -38,6 +39,7 @@ export function AppSidebar() {
   const { isMobile, setOpenMobile } = useSidebar();
   const radarUnread = useRadarUnread();
   const alertsUnread = useAlertsUnread();
+  const expiringVideos = useExpiringVideos();
 
   const closeOnMobile = () => {
     if (isMobile) setOpenMobile(false);
@@ -91,6 +93,12 @@ export function AppSidebar() {
                       {entry.id === 'radar' && radarUnread > 0 && (
                         <SidebarMenuBadge className="bg-brand-green-text text-white">
                           {radarUnread > 99 ? '99+' : radarUnread}
+                        </SidebarMenuBadge>
+                      )}
+                      {/* Vidéos qui seront supprimées dans les 48 heures : à télécharger avant. */}
+                      {entry.id === 'creations' && expiringVideos > 0 && (
+                        <SidebarMenuBadge className="bg-amber-500 text-white" title={`${expiringVideos} vidéo${expiringVideos > 1 ? 's' : ''} à télécharger avant suppression`}>
+                          {expiringVideos}
                         </SidebarMenuBadge>
                       )}
                       {entry.id === 'alertes' && alertsUnread > 0 && (

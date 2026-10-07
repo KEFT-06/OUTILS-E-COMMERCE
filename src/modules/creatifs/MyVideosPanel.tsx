@@ -3,6 +3,7 @@ import { Clapperboard, Download } from 'lucide-react';
 import { CREATIVE_ATTESTATIONS } from '@/modules/creatifs/attestations';
 import { apiRequest } from '@/shared/lib/api';
 import { formatDateFr } from '@/shared/lib/formatDate';
+import { cn } from '@/shared/lib/utils';
 import { pollStatus } from '@/shared/lib/polling';
 import type { CreativeStatus } from '@/shared/types/creatives';
 import { Button } from '@/shared/ui/button';
@@ -38,7 +39,26 @@ const POLL_MS = 6_000;
 const fileUrl = (requestId: string, attachment = false) =>
   `/api/creatives/requests/${encodeURIComponent(requestId)}/file?disposition=${attachment ? 'attachment' : 'inline'}`;
 
-export function MyVideosPanel({ version }: { version: number }) {
+/** Ce qu'il reste avant la suppression, dit comme on le lirait sur une étiquette. */
+function resteAvantSuppression(availableUntil: string): { texte: string; proche: boolean } {
+  const reste = new Date(availableUntil).getTime() - Date.now();
+  const heures = Math.max(1, Math.round(reste / 3_600_000));
+  if (heures < 48) return { texte: `Expire dans ${heures} heure${heures > 1 ? 's' : ''}`, proche: true };
+  const jours = Math.round(heures / 24);
+  return { texte: `Expire dans ${jours} jours`, proche: false };
+}
+
+export function MyVideosPanel({
+  version,
+  limit,
+  showEmpty = false,
+}: {
+  version: number;
+  /** Vidéos listées au plus ; par défaut, les douze dernières. */
+  limit?: number;
+  /** « Mes créations » montre le panneau même vide ; sous le générateur, il s'efface. */
+  showEmpty?: boolean;
+}) {
   const [videos, setVideos] = useState<VideoEntry[] | null>(null);
   /** Change quand un rendu se termine : la liste est relue. */
   const [settled, setSettled] = useState(0);
@@ -47,7 +67,7 @@ export function MyVideosPanel({ version }: { version: number }) {
 
   useEffect(() => {
     let cancelled = false;
-    apiRequest<{ videos: VideoEntry[] }>('/api/creatives/videos')
+    apiRequest<{ videos: VideoEntry[] }>(limit ? `/api/creatives/videos?limit=${limit}` : '/api/creatives/videos')
       .then((result) => {
         if (!cancelled) setVideos(result.videos);
       })
@@ -57,7 +77,7 @@ export function MyVideosPanel({ version }: { version: number }) {
     return () => {
       cancelled = true;
     };
-  }, [version, settled]);
+  }, [version, settled, limit]);
 
   // Suivi des rendus en cours : chaque passage interroge le fournisseur et solde la vidéo quand elle aboutit.
   const pending = (videos ?? []).filter((video) => video.status === 'in_progress').map((video) => video.requestId).join(',');
@@ -83,7 +103,20 @@ export function MyVideosPanel({ version }: { version: number }) {
     };
   }, [pending]);
 
-  if (!videos || videos.length === 0) return null;
+  if (!videos || videos.length === 0) {
+    if (!showEmpty || !videos) return null;
+    return (
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <Clapperboard className="size-4 text-brand-green-text" aria-hidden="true" />
+            Mes vidéos
+          </CardTitle>
+          <CardDescription>Aucune vidéo pour l’instant : celles que vous générez dans les Créatifs publicitaires arrivent ici.</CardDescription>
+        </CardHeader>
+      </Card>
+    );
+  }
 
   const allAttested = attested.every(Boolean);
 
@@ -119,7 +152,12 @@ export function MyVideosPanel({ version }: { version: number }) {
                   {formatDateFr(video.createdAt)}
                   {video.durationSeconds ? ` · ${video.durationSeconds} s` : ''}
                   {video.status === 'completed' && !video.expired && video.availableUntil && (
-                    <span className="block">Téléchargeable jusqu’au {formatDateFr(video.availableUntil)}</span>
+                    <span
+                      className={cn('block font-medium', resteAvantSuppression(video.availableUntil).proche ? 'text-amber-600 dark:text-amber-500' : 'text-foreground')}
+                      title={`Téléchargeable jusqu’au ${formatDateFr(video.availableUntil)}`}
+                    >
+                      {resteAvantSuppression(video.availableUntil).texte}
+                    </span>
                   )}
                 </p>
                 {video.status === 'completed' && !video.expired && (

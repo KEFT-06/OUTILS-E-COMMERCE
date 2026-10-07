@@ -234,8 +234,20 @@ describe('Copie des vidéos Veo', () => {
     assert.ok(objets.has('veo/op-9999.mp4'), 'la nouvelle version est copiée');
     assert.equal(objets.has(`veo/${requestId}.mp4`), false, 'l’ancienne version est effacée');
 
+    // « Mes créations » : la pastille compte les vidéos qui seront supprimées dans les 48 heures.
+    assert.equal((await agent.get('/api/creatives/expiring').expect(200)).body.expiring, 0, 'quatre-vingt-dix jours devant elle : rien à signaler');
+    await getDb().update(generations).set({ archiveExpiresAt: new Date(Date.now() + 30 * 3_600_000) }).where(eq(generations.id, enfant!.id));
+    assert.equal((await agent.get('/api/creatives/expiring').expect(200)).body.expiring, 1, 'trente heures avant la suppression : à télécharger');
+    const liste = await agent.get('/api/creatives/videos?limit=40').expect(200);
+    assert.equal(liste.body.videos.length, 1, 'seule la dernière version de la vidéo longue est listée');
+    assert.equal(liste.body.videos[0].requestId, 'op-9999');
+    assert.equal(liste.body.videos[0].expired, false);
+    const reste = new Date(liste.body.videos[0].availableUntil as string).getTime() - Date.now();
+    assert.ok(reste > 29 * 3_600_000 && reste < 31 * 3_600_000, 'l’écran peut dire « expire dans 30 heures »');
+
     // Échéance passée : le balayage de nuit efface la copie, la ligne garde sa date.
     await getDb().update(generations).set({ archiveExpiresAt: new Date(Date.now() - 1_000) }).where(eq(generations.id, enfant!.id));
+    assert.equal((await agent.get('/api/creatives/expiring').expect(200)).body.expiring, 0, 'une vidéo déjà expirée ne se signale plus');
     const { purged } = await purgeExpiredVideos();
     assert.ok(purged >= 1);
     assert.equal(objets.has('veo/op-9999.mp4'), false);

@@ -74,6 +74,7 @@ const ProductPageBuilderView = lazy(() =>
 const CampaignBlueprintsView = lazy(() =>
   import('@/modules/campagnes/CampaignBlueprintsView').then((module) => ({ default: module.CampaignBlueprintsView })),
 );
+const CreationsView = lazy(() => import('@/modules/creations/CreationsView').then((module) => ({ default: module.CreationsView })));
 const MultilingualGuidesView = lazy(() =>
   import('@/modules/multilingue/MultilingualGuidesView').then((module) => ({ default: module.MultilingualGuidesView })),
 );
@@ -352,6 +353,10 @@ export function AffiliationPage() {
 
 export function MultilinguePage() {
   return <MultilingualGuidesView />;
+}
+
+export function CreationsPage() {
+  return <CreationsView />;
 }
 
 export function GuidePage() {

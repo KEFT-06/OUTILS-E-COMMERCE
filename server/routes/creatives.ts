@@ -373,14 +373,17 @@ creativesRouter.get(
   asyncRoute(async (req, res) => {
     const userId = req.auth!.account.user.id;
     const retentionDays = await videoRetentionDays(userId);
-    const rows = await listOwnVideoGenerations(userId, ['veo', 'fal'], new Date(Date.now() - 120 * DAY_MS), 40);
+    // « Mes créations » en demande davantage que le panneau sous le générateur.
+    const demandees = Number(req.query.limit);
+    const limite = Number.isInteger(demandees) ? Math.min(Math.max(demandees, 1), 60) : 12;
+    const rows = await listOwnVideoGenerations(userId, ['veo', 'fal'], new Date(Date.now() - 120 * DAY_MS), 120);
     // Une vidéo longue se construit par étapes : seule sa dernière version est montrée.
     const prolongees = new Set(rows.map((row) => row.parentId).filter((id): id is string => id !== null));
     const now = Date.now();
     res.json({
       videos: rows
         .filter((row) => !prolongees.has(row.id))
-        .slice(0, 12)
+        .slice(0, limite)
         .map((row) => {
           const deadline = videoDeadline(row, retentionDays);
           const completed = row.status === 'completed';
@@ -394,6 +397,28 @@ creativesRouter.get(
           };
         }),
     });
+  }),
+);
+
+/**
+ * Vidéos du compte qui seront supprimées dans les 48 heures : la pastille de « Mes créations ».
+ * Un entier, lu à chaque écran : aucune liste, aucun fichier.
+ */
+creativesRouter.get(
+  '/expiring',
+  requireAuth,
+  asyncRoute(async (req, res) => {
+    const userId = req.auth!.account.user.id;
+    const retentionDays = await videoRetentionDays(userId);
+    const rows = await listOwnVideoGenerations(userId, ['veo', 'fal'], new Date(Date.now() - 120 * DAY_MS), 120);
+    const prolongees = new Set(rows.map((row) => row.parentId).filter((id): id is string => id !== null));
+    const now = Date.now();
+    const expiring = rows.filter((row) => {
+      if (prolongees.has(row.id) || row.status !== 'completed') return false;
+      const reste = videoDeadline(row, retentionDays).getTime() - now;
+      return reste > 0 && reste < 2 * DAY_MS;
+    }).length;
+    res.json({ expiring });
   }),
 );
 
