@@ -208,6 +208,10 @@ export function ProductStudioPanel({ baseProduct, report, initialExpertOpen = fa
                 et télécharger au même endroit.
               </li>
               <li>
+                <span className="font-medium text-foreground/80">Texte → Produit</span> : bouton « Coller mon texte », en haut du
+                Studio — votre texte devient un ouvrage, chapitres reconnus, sans réécriture.
+              </li>
+              <li>
                 <span className="font-medium text-foreground/80">Vidéo → Produit</span> : bouton « Depuis une vidéo », en haut du
                 Studio.
               </li>

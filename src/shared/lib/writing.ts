@@ -11,6 +11,15 @@ export interface VideoProductResult {
   findings: WritingFinding[];
 }
 
+export interface TextProductResult extends VideoProductResult {
+  /** Ce qui a été reconnu dans le texte collé. */
+  recognized: { chapters: number; words: number; fromHeadings: boolean };
+}
+
+/** Bornes du texte collé (server/services/writing/pastedText.ts). */
+export const PASTED_TEXT_MIN = 300;
+export const PASTED_TEXT_MAX = 150_000;
+
 /** Rédaction par l'IA (server/services/writing) : modules d'un produit et textes du kit de lancement. */
 
 export interface WritingFinding {
@@ -141,6 +150,9 @@ export const writingApi = {
   }) => apiRequest<LaunchKitWritingResult>('/api/writing/launch-kit', { method: 'POST', body }),
 
   videoLink: (url: string) => apiRequest<VideoProductResult>('/api/writing/video-link', { method: 'POST', body: { url } }),
+
+  /** Le texte collé par l'auteur devient un produit : titre et chapitres reconnus, mots inchangés. */
+  textProduct: (text: string) => apiRequest<TextProductResult>('/api/writing/text-product', { method: 'POST', body: { text } }),
 
   /** Le fichier part tel quel, sans passer par le JSON : 14 Mo au plus. */
   videoFile: async (file: File): Promise<VideoProductResult> => {

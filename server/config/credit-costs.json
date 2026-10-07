@@ -59,6 +59,12 @@
       "description": "Ebook rédigé chapitre par chapitre à partir d’un plan détaillé, jusqu’à la longueur permise par votre palier. Le coût est annoncé avant le lancement et compté par tranche de 10 pages entamée. Points rendus si la rédaction échoue."
     },
     {
+      "id": "text_to_product",
+      "label": "Produit créé depuis votre texte",
+      "cost": 1,
+      "description": "Vous collez votre texte : son titre et ses chapitres sont reconnus, la fiche du produit est remplie (public, promesse, aimant à prospects), et vos mots restent les vôtres, sans réécriture. Points rendus si la mise en forme échoue."
+    },
+    {
       "id": "video_to_product",
       "label": "Produit tiré d’une vidéo",
       "cost": 6,

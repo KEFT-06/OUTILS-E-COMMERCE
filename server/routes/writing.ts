@@ -9,6 +9,7 @@ import {
   youtubeWatchUrl,
 } from '@server/services/writing/video';
 import { createVideoUpload, discardUploadedVideo, readUploadedVideo, videoUploadRequestSchema } from '@server/services/writing/videoUpload';
+import { pastedTextSchema, textToProduct } from '@server/services/writing/pastedText';
 import {
   type LaunchKitWritingRequest,
   type ProductRevisionRequest,
@@ -152,6 +153,22 @@ writingRouter.get(
   requireAuth,
   asyncRoute(async (req, res) => {
     res.json(await getEbookResult(req.auth!, req.params.id!));
+  }),
+);
+
+/* -------------------------------------------------------------------------- */
+/*  Texte → Produit                                                            */
+/* -------------------------------------------------------------------------- */
+
+/** L'auteur colle son texte : le produit est créé, titre et chapitres reconnus, sans réécriture. */
+writingRouter.post(
+  '/text-product',
+  requireAuth,
+  requireFeature('ai_writing'),
+  aiLimiter,
+  validateBody(pastedTextSchema),
+  asyncRoute(async (req, res) => {
+    res.json(await textToProduct(req.auth!, (req.body as { text: string }).text));
   }),
 );
 

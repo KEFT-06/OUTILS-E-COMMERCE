@@ -4,6 +4,7 @@ import { toast } from 'sonner';
 import {
   BookOpen,
   Clapperboard,
+  ClipboardPaste,
   Clock,
   ExternalLink,
   FileSpreadsheet,
@@ -19,6 +20,7 @@ import {
 } from 'lucide-react';
 import { Area, AreaChart, CartesianGrid, XAxis, YAxis } from 'recharts';
 import { ProductStudioPanel } from '@/modules/studio/ProductStudioPanel';
+import { TextToProductDialog } from '@/modules/studio/TextToProductDialog';
 import { VideoToProductDialog } from '@/modules/studio/VideoToProductDialog';
 import { BookCover } from '@/shared/components/BookCover';
 import { PageHeader } from '@/shared/components/PageHeader';
@@ -32,7 +34,7 @@ import { blankProduct, useCustomProducts } from '@/shared/stores/useCustomProduc
 import { useProductDrafts } from '@/shared/stores/useProductDrafts';
 import { useProviders } from '@/shared/hooks/useProviders';
 import { cn } from '@/shared/lib/utils';
-import type { VideoProductResult, WritingFinding } from '@/shared/lib/writing';
+import type { TextProductResult, VideoProductResult, WritingFinding } from '@/shared/lib/writing';
 import type { DigitalProductIdea, MarketAnalysisReport } from '@/shared/types/analysis';
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from '@/shared/ui/accordion';
 import { Alert, AlertDescription } from '@/shared/ui/alert';
@@ -106,6 +108,7 @@ export function DigitalProductsView({ report, onSelectProductForAd, onAnalyzeNic
   const [customPrice, setCustomPrice] = useState<number | null>(() => priceInUserCurrency(products[0]));
   const [adCost, setAdCost] = useState<number | null>(null);
   const [videoOpen, setVideoOpen] = useState(false);
+  const [textOpen, setTextOpen] = useState(false);
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [findings, setFindings] = useState<WritingFinding[]>([]);
 
@@ -129,6 +132,16 @@ export function DigitalProductsView({ report, onSelectProductForAd, onAnalyzeNic
     toast.success('Produit créé', { description: 'Complétez-le dans le mode Expert, ou faites rédiger ses modules automatiquement.' });
   };
 
+  const onTextProduct = (result: TextProductResult) => {
+    custom.add(result.product);
+    setSelectedId(result.product.id);
+    setFindings(result.findings);
+    const { chapters, words } = result.recognized;
+    toast.success('Votre ouvrage est créé', {
+      description: `${chapters} chapitre${chapters > 1 ? 's' : ''} reconnu${chapters > 1 ? 's' : ''}, ${words.toLocaleString('fr-FR')} mots, sans réécriture. Relisez-le, puis validez.`,
+    });
+  };
+
   const onVideoProduct = (result: VideoProductResult) => {
     custom.add(result.product);
     setSelectedId(result.product.id);
@@ -149,6 +162,11 @@ export function DigitalProductsView({ report, onSelectProductForAd, onAnalyzeNic
 
   const createActions = (
     <>
+      {/* Le geste le plus court pour qui a déjà écrit : coller, relire, valider. */}
+      <Button variant="outline" onClick={() => setTextOpen(true)} disabled={!custom.canAdd || !providers?.text} title={videoReason}>
+        <ClipboardPaste />
+        Coller mon texte
+      </Button>
       <Button variant="outline" onClick={createBlank} disabled={!custom.canAdd}>
         <Plus />
         Nouveau produit
@@ -160,7 +178,12 @@ export function DigitalProductsView({ report, onSelectProductForAd, onAnalyzeNic
     </>
   );
 
-  const videoDialog = <VideoToProductDialog open={videoOpen} onOpenChange={setVideoOpen} onCreated={onVideoProduct} />;
+  const videoDialog = (
+    <>
+      <VideoToProductDialog open={videoOpen} onOpenChange={setVideoOpen} onCreated={onVideoProduct} />
+      <TextToProductDialog open={textOpen} onOpenChange={setTextOpen} onCreated={onTextProduct} />
+    </>
+  );
 
   if (!baseProduct || !selectedProduct) {
     if (custom.status === 'loading') {
@@ -185,7 +208,7 @@ export function DigitalProductsView({ report, onSelectProductForAd, onAnalyzeNic
             </EmptyMedia>
             <EmptyTitle>Aucun produit pour l’instant</EmptyTitle>
             <EmptyDescription>
-              Partez de l’analyse d’une niche, créez votre produit à la main, ou transformez l’une de vos vidéos en produit.
+              Collez un texte que vous avez déjà écrit, partez de l’analyse d’une niche, créez votre produit à la main, ou transformez l’une de vos vidéos en produit.
             </EmptyDescription>
           </EmptyHeader>
           <EmptyContent className="flex-row flex-wrap justify-center gap-2">

@@ -53,6 +53,21 @@ const RETRY_PLAN: readonly { tier: ModelTier; waitMs: number }[] = [
 ];
 
 /**
+ * Tâches de RECONNAISSANCE (ranger un texte, en lire la structure) : le modèle léger d'abord.
+ *
+ * Mesuré le 07/10/2026 sur un vrai texte de 500 mots à découper en chapitres : le modèle léger
+ * répond en 3 secondes, repères exacts ; les deux modèles de rédaction réfléchissent plus d'une
+ * minute pour le même résultat. Leur force est d'écrire ; ici il n'y a rien à écrire. Ils
+ * restent le recours si le léger refuse.
+ */
+const FAST_PLAN: readonly { tier: ModelTier; waitMs: number }[] = [
+  { tier: 'lastResort', waitMs: 0 },
+  { tier: 'lastResort', waitMs: 2_000 },
+  { tier: 'fallback', waitMs: 0 },
+  { tier: 'primary', waitMs: 0 },
+];
+
+/**
  * Modèles que Google a retirés pour cette clé (réponse 404), retenus le temps du processus.
  *
  * Un modèle retiré n'est pas une demande refusée : la consigne est bonne, c'est l'adresse qui
@@ -113,6 +128,10 @@ export async function generateJson<T>(input: {
   timeoutMs: number;
   /** Modèle qui a produit la réponse : le principal, ou le modèle de secours. */
   onModel?: (model: string) => void;
+  /** « fast » : tâche de reconnaissance, servie d'abord par le modèle léger (voir FAST_PLAN). */
+  speed?: 'fast';
+  /** Temps accordé à UNE tentative : un modèle lent ne mange pas le délai des suivants. */
+  attemptTimeoutMs?: number;
 }): Promise<T> {
   const apiKey = env.GEMINI_API_KEY;
   if (!apiKey) throw providerUnavailable('rédaction automatique');
@@ -130,9 +149,8 @@ export async function generateJson<T>(input: {
   const modelFor: Record<ModelTier, string | null> = { primary: env.GEMINI_MODEL, fallback: fallbackModel, lastResort: lastResortModel };
   const usable = (tier: ModelTier) => Boolean(modelFor[tier]) && !retiredModels.has(modelFor[tier]!);
   // Si tous ont été retirés, on les redemande quand même : mieux vaut un refus exact que le silence.
-  const attempts = RETRY_PLAN.some((attempt) => usable(attempt.tier))
-    ? RETRY_PLAN.filter((attempt) => usable(attempt.tier))
-    : RETRY_PLAN.filter((attempt) => modelFor[attempt.tier]);
+  const plan = input.speed === 'fast' ? FAST_PLAN : RETRY_PLAN;
+  const attempts = plan.some((attempt) => usable(attempt.tier)) ? plan.filter((attempt) => usable(attempt.tier)) : plan.filter((attempt) => modelFor[attempt.tier]);
   const deadline = Date.now() + input.timeoutMs;
 
   /** Dernier refus passager, pour le message final si toutes les tentatives échouent. */
@@ -164,7 +182,7 @@ export async function generateJson<T>(input: {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'x-goog-api-key': apiKey },
         body,
-        signal: AbortSignal.timeout(Math.max(1, deadline - Date.now())),
+        signal: AbortSignal.timeout(Math.max(1, Math.min(deadline - Date.now(), input.attemptTimeoutMs ?? Number.POSITIVE_INFINITY))),
       });
     } catch {
       // Délai épuisé : inutile d'insister. Connexion coupée en route : un nouvel essai a sa chance.
