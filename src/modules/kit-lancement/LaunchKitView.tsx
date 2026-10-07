@@ -209,7 +209,7 @@ export function LaunchKitView({ products, market }: { products: DigitalProductId
       setFindings(result.findings);
       toast.success('Kit rédigé', { description: 'Relisez chaque texte et chaque script avant de l’exporter.' });
     } catch (error) {
-      toast.error('La rédaction n’a pas abouti', { description: toApiError(error, 'Réessayez dans un moment.').message });
+      toast.error('La rédaction n’a pas abouti', { description: toApiError(error, 'Le serveur n’a pas répondu.').message });
     } finally {
       setIsWriting(false);
     }
@@ -609,7 +609,7 @@ export function LaunchKitView({ products, market }: { products: DigitalProductId
             <Alert variant="warning">
               <AlertTriangle />
               <AlertDescription>
-                Le kit n’a pas pu être enregistré. Exportez-le avant de fermer cette page.
+                Connexion interrompue : votre kit reste à l’écran et s’enregistrera de lui-même dès son retour.
               </AlertDescription>
             </Alert>
           )}

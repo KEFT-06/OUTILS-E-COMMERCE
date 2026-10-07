@@ -96,8 +96,7 @@ export function ProductExpertEditor({ product, hasDraft, writeFailed, onSave, on
         <Alert variant="warning">
           <AlertTriangle />
           <AlertDescription>
-            Le brouillon n’a pas pu être enregistré sur votre compte (connexion interrompue ?). Réessayez dans un instant ;
-            en cas de doute, exportez le produit avant de quitter.
+            Connexion interrompue : votre brouillon reste à l’écran et s’enregistrera de lui-même dès son retour.
           </AlertDescription>
         </Alert>
       )}

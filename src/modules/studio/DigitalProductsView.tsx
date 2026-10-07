@@ -241,7 +241,7 @@ export function DigitalProductsView({ report, onSelectProductForAd, onAnalyzeNic
       {custom.writeFailed && (
         <Alert variant="warning">
           <AlertDescription>
-            Vos produits n’ont pas pu être enregistrés sur votre compte (connexion interrompue ?). Réessayez dans un instant.
+            Connexion interrompue : vos produits restent à l’écran et s’enregistreront d’eux-mêmes dès son retour.
           </AlertDescription>
         </Alert>
       )}

@@ -299,8 +299,7 @@ export function ProductPageBuilderView({ products }: { products: DigitalProductI
         <Alert variant="warning">
           <AlertTriangle />
           <AlertDescription>
-            Vos saisies n’ont pas pu être enregistrées sur votre compte (connexion interrompue ?). Réessayez dans un
-            instant ; en cas de doute, exportez la page avant de fermer l’onglet.
+            Connexion interrompue : vos saisies restent à l’écran et s’enregistreront d’elles-mêmes dès son retour.
           </AlertDescription>
         </Alert>
       )}

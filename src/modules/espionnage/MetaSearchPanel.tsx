@@ -139,13 +139,16 @@ export function MetaSearchPanel() {
         if (!reponse) {
           rates += 1;
           if (rates >= MAX_POLL_MISSES) {
+            // La recherche tourne côté serveur : on continue de la suivre, plus lentement, et son
+            // résultat s'affiche de lui-même au retour de la connexion. On ne demande pas de la relancer.
             setErreur(
-              "La connexion est perdue : la recherche continue sans vous, relancez-la dans une minute pour afficher son résultat.",
+              "Connexion perdue : la recherche continue sans vous, son résultat s’affichera ici dès le retour de la connexion.",
             );
-            return;
+            await new Promise((resolve) => setTimeout(resolve, 11_000));
           }
           continue;
         }
+        if (rates > 0) setErreur(null);
         rates = 0;
         if (reponse.search.status !== "running") {
           setRecherche(reponse.search);

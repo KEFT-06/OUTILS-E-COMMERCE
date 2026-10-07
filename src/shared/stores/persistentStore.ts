@@ -39,6 +39,13 @@ export function mergeRecords<T extends Record<string, unknown>>(account: T, lega
 }
 
 const SAVE_DELAY_MS = 800;
+/**
+ * Après un enregistrement manqué, le magasin réessaie seul : 4 s, 8 s, 16 s… jusqu'à une minute.
+ * L'écran demandait de « réessayer dans un instant » — c'est-à-dire de retoucher son texte pour
+ * relancer l'envoi. Ce n'est pas à l'utilisateur de surveiller sa connexion.
+ */
+const RETRY_MIN_MS = 4_000;
+const RETRY_MAX_MS = 60_000;
 
 interface RegisteredStore {
   bind: (accountId: string | null) => void;
@@ -69,6 +76,8 @@ if (typeof window !== 'undefined') {
     // Retour sur l'onglet : les brouillons modifiés depuis un autre appareil sont relus.
     else stores.forEach((store) => store.refresh());
   });
+  // Connexion revenue : ce qui attendait part tout de suite, sans attendre le prochain essai.
+  window.addEventListener('online', () => stores.forEach((store) => void store.flush(false)));
 }
 
 export function createPersistentStore<T>(options: {
@@ -86,6 +95,7 @@ export function createPersistentStore<T>(options: {
   let state: PersistentState<T> = { value: empty, writeFailed: false, status: 'idle' };
   let dirty = false;
   let timer: ReturnType<typeof setTimeout> | undefined;
+  let retryDelay = RETRY_MIN_MS;
   /** Change à chaque changement de compte : une réponse arrivée trop tard est ignorée. */
   let binding = 0;
   /** Les enregistrements partent l'un après l'autre : une ancienne version ne peut pas écraser la suivante. */
@@ -132,11 +142,18 @@ export function createPersistentStore<T>(options: {
         keepalive,
       });
       if (!response.ok) throw new Error(String(response.status));
+      retryDelay = RETRY_MIN_MS;
       if (current === binding && state.writeFailed) set({ writeFailed: false });
     } catch {
       if (current !== binding) return;
       dirty = true;
       set({ writeFailed: true });
+      // Onglet fermé (keepalive) : plus personne pour réessayer. Sinon, l'envoi repart de lui-même.
+      if (!keepalive) {
+        clearTimeout(timer);
+        timer = setTimeout(() => void enqueueSave(), retryDelay);
+        retryDelay = Math.min(retryDelay * 2, RETRY_MAX_MS);
+      }
     }
   };
 
