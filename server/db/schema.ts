@@ -1169,7 +1169,36 @@ export const marketProducts = pgTable(
  * remarqué — produit qui décolle, niche où plusieurs boutiques lancent la même chose, publicité
  * installée qui s'arrête. Partagées par tous les comptes, comme les données dont elles viennent.
  */
-export const ALERT_KINDS = ['winner', 'niche_trend', 'ad_stopped'] as const;
+/**
+ * Ventes cumulées d'un produit, un point par jour de relevé.
+ *
+ * L'index du marché ne gardait que le dernier compte de ventes : on savait qu'un produit en
+ * était à 340, jamais qu'il en avait fait 25 depuis la veille. Les règles d'alerte se lisent
+ * pourtant en ventes PAR JOUR (premier signal, scale, chute). Un point n'est écrit que quand le
+ * relevé a réellement lu les ventes : un compte repris de la veille donnerait « 0 vente
+ * aujourd'hui » — c'est-à-dire une fausse rupture de stock.
+ */
+export const marketSalesDaily = pgTable(
+  'market_sales_daily',
+  {
+    productId: uuid('product_id')
+      .notNull()
+      .references(() => marketProducts.id, { onDelete: 'cascade' }),
+    /** Jour du relevé en temps universel, « 2026-10-07 ». */
+    day: text('day').notNull(),
+    /** Ventes cumulées lues ce jour-là (dernier relevé du jour). */
+    salesCount: integer('sales_count').notNull(),
+  },
+  (table) => [primaryKey({ columns: [table.productId, table.day] }), index('market_sales_daily_day_idx').on(table.day)],
+).enableRLS();
+
+/**
+ * winner : lancement flash (30 ventes en 3 jours) · first_traction : 5 ventes dans la journée ·
+ * daily_scale : 10 ventes et plus dans la journée · flash_scale : de 5 au plus à 25 et plus en un
+ * jour · stockout : zéro vente après une forte journée, publicité toujours active ·
+ * ad_stopped : publicité installée désactivée · niche_trend : plusieurs boutiques sur un même sujet.
+ */
+export const ALERT_KINDS = ['winner', 'niche_trend', 'ad_stopped', 'first_traction', 'daily_scale', 'flash_scale', 'stockout'] as const;
 export const ALERT_LEVELS = ['info', 'opportunity', 'major'] as const;
 
 export const alerts = pgTable(

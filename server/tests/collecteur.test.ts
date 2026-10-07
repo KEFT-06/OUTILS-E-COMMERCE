@@ -118,7 +118,7 @@ describe('Collecteur maison', () => {
     const { agent } = await signInWithPlan(app, 'collecteur-alerte@exemple.test', 'pro');
     const fil = await agent.get('/api/alerts').expect(200);
     const arret = fil.body.alerts.find((alerte: { kind: string }) => alerte.kind === 'ad_stopped');
-    assert.match(arret.body, /TechNova 1.*9\d jours.*arrêtée/);
+    assert.match(arret.body, /TechNova 1.*9\d jours.*désactivée/);
     assert.equal(arret.payload.storeHost, 'kpougeet.mychariow.com');
 
     // Le passage est inscrit au journal : la collecte payante n'est plus due.

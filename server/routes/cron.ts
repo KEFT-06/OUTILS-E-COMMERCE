@@ -1,6 +1,6 @@
 import { timingSafeEqual } from 'node:crypto';
 import { Router, type Request } from 'express';
-import { env } from '@server/env';
+import { env, isServerless } from '@server/env';
 import { AppError, asyncRoute } from '@server/middleware';
 import { sendDueRadarDigests } from '@server/services/radar/alerts';
 import { collectPerformanceContributions } from '@server/services/performanceLoop/collect';
@@ -17,6 +17,7 @@ import { z } from 'zod';
 import { detectAlerts } from '@server/services/alerts';
 import { collectorPlan, ingestLibraryRecords, recordCollectorRun } from '@server/services/espionnage/library';
 import { indexDiscoveredStores } from '@server/services/market';
+import { runInBackground } from '@server/shared/backgroundWork';
 
 /**
  * Déclencheur périodique du radar, pour les hébergements où rien ne tourne entre deux requêtes.
@@ -196,7 +197,53 @@ cronRouter.get(
       console.warn('[cron] alertes :', error instanceof Error ? error.message : error);
       return null;
     });
+    // Des boutiques attendent encore leur relevé du jour : le site s'en charge lui-même, à la suite.
+    if (index && index.remaining > 0) await chainMarketIndex(1);
     res.json({ redactions, referencement, index, alertes });
+  }),
+);
+
+/*
+  Le relevé du marché tient en quatre minutes par appel, et l'hébergeur ne réveille le site qu'une
+  fois par jour : quelques dizaines de boutiques relevées, sur plusieurs centaines. Chaque boutique
+  n'était donc lue que tous les quatre ou cinq jours — or les alertes se lisent en ventes PAR JOUR,
+  c'est-à-dire entre deux relevés de jours consécutifs. Tant qu'il reste des boutiques à relever,
+  le site se rappelle lui-même (comme pour la rédaction des ebooks), dans une limite qui borne la
+  dépense : au plus MARKET_MAX_LINKS maillons par jour.
+*/
+const MARKET_MAX_LINKS = 14;
+
+async function chainMarketIndex(maillon: number): Promise<void> {
+  if (env.NODE_ENV === 'test' || !isServerless || !env.CRON_SECRET || maillon > MARKET_MAX_LINKS) return;
+  try {
+    const response = await fetch(`${env.APP_URL.replace(/\/+$/, '')}/api/cron/marche/suite`, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${env.CRON_SECRET}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ maillon }),
+      signal: AbortSignal.timeout(15_000),
+    });
+    if (!response.ok) console.warn(`[cron] suite de l’index du marché refusée (${response.status})`);
+  } catch (error) {
+    console.warn('[cron] suite de l’index du marché non partie :', error instanceof Error ? error.message : error);
+  }
+}
+
+/** Maillon suivant du relevé du marché : répond tout de suite, relève ensuite, puis passe la main. */
+cronRouter.post(
+  '/marche/suite',
+  asyncRoute(async (req, res) => {
+    if (!env.CRON_SECRET) throw new AppError(503, 'Le déclencheur périodique n’est pas configuré sur ce serveur.', 'CRON_NOT_CONFIGURED');
+    if (!secretIsValid(req)) throw new AppError(401, 'Déclencheur refusé.', 'CRON_DENIED');
+    const parsed = z.object({ maillon: z.coerce.number().int().min(1).max(MARKET_MAX_LINKS) }).safeParse(req.body);
+    if (!parsed.success) throw new AppError(400, 'Maillon inconnu.', 'MARKET_LINK_INVALID');
+    const { maillon } = parsed.data;
+    res.status(202).json({ accepted: true, maillon });
+    runInBackground(async () => {
+      const index = await indexDiscoveredStores(230_000);
+      await detectAlerts();
+      console.info(`[cron] index du marché, maillon ${maillon} : ${index.indexed} relevées, ${index.failed} en échec, ${index.remaining} en attente`);
+      if (index.remaining > 0) await chainMarketIndex(maillon + 1);
+    }, 'index du marché, suite');
   }),
 );
 

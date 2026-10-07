@@ -1,7 +1,7 @@
 import { and, asc, desc, eq, inArray, isNull, lt, or, sql } from 'drizzle-orm';
 import { getDb } from '@server/db/client';
 import { sansAccents } from '@server/db/search';
-import { discoveredStores, marketProducts, spiedAds } from '@server/db/schema';
+import { discoveredStores, marketProducts, marketSalesDaily, spiedAds } from '@server/db/schema';
 import { chariowStoreSource } from '@server/services/radar/sources/chariowStore';
 import type { RadarObservation } from '@server/services/radar/types';
 import { runInBackground } from '@server/shared/backgroundWork';
@@ -32,6 +32,9 @@ const PAUSE_MS = 400;
 const REINDEX_AFTER_MS = 20 * 3_600_000;
 
 const pause = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
+
+/** Jour d'un instant en temps universel, « 2026-10-07 » : la clé d'un point de ventes quotidien. */
+export const dayOf = (date: Date) => date.toISOString().slice(0, 10);
 
 /** Nom plié : minuscules, sans accents, espaces réduits. */
 export const nameKeyOf = (name: string) => sansAccents(name).toLowerCase().replace(/\s+/g, ' ').trim();
@@ -84,9 +87,13 @@ export async function indexStoreCatalog(store: MarketStoreRef, observations: Rad
     };
   });
 
+  // Ventes réellement lues à ce passage, par produit : seules elles font un point du jour.
+  const lues = new Map(observations.flatMap((observation) => (observation.salesCount === null || observation.salesCount === undefined ? [] : [[observation.externalId, observation.salesCount] as const])));
+  const jour = dayOf(now);
+
   const PAQUET = 100;
   for (let debut = 0; debut < rows.length; debut += PAQUET) {
-    await db
+    const ecrits = await db
       .insert(marketProducts)
       .values(rows.slice(debut, debut + PAQUET))
       .onConflictDoUpdate({
@@ -108,7 +115,25 @@ export async function indexStoreCatalog(store: MarketStoreRef, observations: Rad
           lastSeenAt: now,
           endedAt: null,
         },
-      });
+      })
+      .returning({ id: marketProducts.id, externalId: marketProducts.externalId });
+
+    /*
+      Le point du jour : les ventes cumulées lues aujourd'hui. C'est la différence entre deux
+      points consécutifs qui donne les ventes d'une journée, et c'est elle que lisent les alertes.
+      Un produit dont la fiche n'a pas répondu n'a PAS de point : reprendre son compte de la veille
+      ferait croire à une journée sans vente.
+    */
+    const points = ecrits.flatMap((ecrit) => {
+      const ventes = lues.get(ecrit.externalId);
+      return ventes === undefined ? [] : [{ productId: ecrit.id, day: jour, salesCount: ventes }];
+    });
+    if (points.length > 0) {
+      await db
+        .insert(marketSalesDaily)
+        .values(points)
+        .onConflictDoUpdate({ target: [marketSalesDaily.productId, marketSalesDaily.day], set: { salesCount: sql`excluded.sales_count` } });
+    }
   }
 
   // Ce qui était en vente et que ce relevé n'a pas retrouvé : sa date d'arrêt.
@@ -133,16 +158,33 @@ export interface MarketIndexOutcome {
  * anciennement relevées d'abord, dans un temps borné. Un échec avance quand même la date : une
  * boutique fermée ne doit pas bloquer la file.
  */
-export async function indexDiscoveredStores(budgetMs: number, now = new Date()): Promise<MarketIndexOutcome> {
+/** Boutiques dont le relevé du jour est dû, dans l'ordre où elles seront relevées. */
+export async function dueDiscoveredStores(now = new Date()) {
   const db = getDb();
   const seuil = new Date(now.getTime() - REINDEX_AFTER_MS);
   const due = or(isNull(discoveredStores.indexedAt), lt(discoveredStores.indexedAt, seuil));
+  /*
+    Les boutiques dont une publicité a été vue ces trois derniers jours passent devant : ce sont
+    celles qui vendent en ce moment, et les alertes se lisent en ventes PAR JOUR — il leur faut un
+    relevé chaque jour. Les autres attendent deux jours de plus à ancienneté égale ; elles ne sont
+    jamais écartées, seulement relevées moins souvent quand le temps manque.
+  */
+  const recente = new Date(now.getTime() - 3 * JOUR_MS).toISOString();
   const file = await db
     .select()
     .from(discoveredStores)
     .where(due)
-    .orderBy(sql`${discoveredStores.indexedAt} asc nulls first`, desc(discoveredStores.lastSeenAt))
+    .orderBy(
+      sql`coalesce(${discoveredStores.indexedAt}, 'epoch'::timestamptz) + case when ${discoveredStores.lastSeenAt} >= ${recente}::timestamptz then interval '0 hours' else interval '48 hours' end asc`,
+      desc(discoveredStores.lastSeenAt),
+    )
     .limit(300);
+  return file;
+}
+
+export async function indexDiscoveredStores(budgetMs: number, now = new Date()): Promise<MarketIndexOutcome> {
+  const db = getDb();
+  const file = await dueDiscoveredStores(now);
 
   const deadline = Date.now() + budgetMs;
   const outcome: MarketIndexOutcome = { indexed: 0, failed: 0, launched: 0, remaining: file.length };

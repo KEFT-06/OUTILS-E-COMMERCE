@@ -225,6 +225,114 @@ describe('Alertes', () => {
     assert.equal((await agent.get('/api/alerts/unread').expect(200)).body.unread, 0, 'la cloche s’éteint à l’ouverture du fil');
   });
 
+  /*
+    Les règles en ventes PAR JOUR : la différence entre deux relevés de jours consécutifs.
+    Une boutique, six produits, trois jours — chacun illustre une règle, ou son absence.
+  */
+  it('lit les ventes du jour : premier signal, pression, scale éclair et chute brutale, sans rien inventer', async () => {
+    const { indexStoreCatalog } = await import('@server/services/market');
+    const { detectNewAlerts, detectAlerts } = await import('@server/services/alerts');
+    const { getDb } = await import('@server/db/client');
+    const { spiedAds } = await import('@server/db/schema');
+    const boutique = { externalId: 'store_journal', host: 'journal.mychariow.com', label: 'Boutique Journal' };
+    const jour = (n: number) => new Date(Date.UTC(2026, 4, 10 + n, 3));
+    const produit = (externalId: string, name: string, salesCount: number | null) => ({ externalId, name, kind: 'downloadable', priceValue: 4_000, currency: 'XAF', salesCount });
+    const releve = (ventes: (number | null)[]) => [
+      produit('prd_eclair', 'Pack publicité Facebook', ventes[0]!),
+      produit('prd_pression', 'Guide du maraîchage', ventes[1]!),
+      produit('prd_signal', 'Recettes de jus naturels', ventes[2]!),
+      produit('prd_chute', 'Formation couture', ventes[3]!),
+      produit('prd_calme', 'Carnet de budget', ventes[4]!),
+      produit('prd_muet', 'Méthode de lecture', ventes[5] ?? null),
+    ];
+    await getDb().insert(spiedAds).values({
+      externalId: 'journal-ad-1',
+      storeHost: 'journal.mychariow.com',
+      landingUrl: 'https://journal.mychariow.com/p/couture',
+      advertiser: 'Boutique Journal',
+      variants: 1,
+      platforms: ['FACEBOOK'],
+      active: true,
+      lastSeenAt: jour(2),
+    });
+
+    await indexStoreCatalog(boutique, releve([100, 50, 10, 200, 40, 30]), jour(0));
+    await indexStoreCatalog(boutique, releve([103, 52, 11, 220, 44, 50]), jour(1));
+    // Troisième jour : la fiche du dernier produit n'a pas répondu — ses ventes ne sont PAS lues.
+    await indexStoreCatalog(boutique, releve([131, 64, 18, 220, 46, null]), jour(2));
+
+    const creees = await detectNewAlerts(jour(2));
+    const par = (nom: string) => creees.find((alerte) => alerte.payload.productName === nom);
+
+    const eclair = par('Pack publicité Facebook');
+    assert.equal(eclair?.kind, 'flash_scale');
+    assert.equal(eclair?.level, 'major');
+    assert.match(eclair!.body, /est passé de 3 à 28 ventes en une journée/);
+
+    const pression = par('Guide du maraîchage');
+    assert.equal(pression?.kind, 'daily_scale');
+    assert.equal(pression?.level, 'opportunity');
+    assert.match(pression!.body, /enregistre 12 ventes aujourd’hui/);
+
+    const signal = par('Recettes de jus naturels');
+    assert.equal(signal?.kind, 'first_traction');
+    assert.equal(signal?.level, 'info');
+    assert.match(signal!.body, /barre des 5 ventes dans la journée \(7 aujourd’hui\)/);
+
+    const chute = par('Formation couture');
+    assert.equal(chute?.kind, 'stockout');
+    assert.equal(chute?.level, 'major');
+    assert.match(chute!.body, /tombé à 0 vente aujourd’hui après 20 la veille, alors que sa publicité tourne encore/);
+
+    assert.equal(par('Carnet de budget'), undefined, 'deux ventes dans la journée : rien à signaler');
+    // 20 ventes la veille, aucun relevé aujourd'hui : ce n'est PAS « 0 vente », donc pas une chute.
+    assert.equal(par('Méthode de lecture'), undefined, 'un compte non lu ne fabrique pas une rupture de stock');
+    assert.equal(creees.length, 4, 'une alerte par constat, la plus forte seulement');
+    // De quoi ouvrir la boutique et partir du produit dans le Studio, depuis la carte.
+    assert.deepEqual(
+      { host: eclair!.payload.storeHost, price: eclair!.payload.price, currency: eclair!.payload.currency, today: eclair!.payload.salesToday, yesterday: eclair!.payload.salesYesterday },
+      { host: 'journal.mychariow.com', price: 4_000, currency: 'XAF', today: 28, yesterday: 3 },
+    );
+    assert.equal(await detectAlerts(jour(2)), 0, 'un second passage le même jour ne répète rien');
+
+    // Sans relevé la veille, pas de « ventes du jour » : trois jours plus tard, rien n'est annoncé.
+    await indexStoreCatalog(boutique, releve([400, 300, 200, 220, 46, 90]), jour(5));
+    assert.equal(await detectAlerts(jour(5)), 0, 'un écart de trois jours n’est pas une journée');
+  });
+
+  /*
+    Les ventes par jour demandent un relevé CHAQUE jour. Le temps de relevé est borné : les
+    boutiques qui font de la publicité en ce moment passent donc devant, les autres attendent
+    deux jours de plus à ancienneté égale — sans jamais être écartées.
+  */
+  it('relève d’abord les boutiques qui font de la publicité en ce moment, sans écarter les autres', async () => {
+    const { dueDiscoveredStores } = await import('@server/services/market');
+    const { getDb } = await import('@server/db/client');
+    const { discoveredStores } = await import('@server/db/schema');
+    const { inArray } = await import('drizzle-orm');
+    const now = new Date(Date.UTC(2026, 5, 20, 4));
+    const ilYA = (heures: number) => new Date(now.getTime() - heures * 3_600_000);
+    const hotes = ['file-chaude.mychariow.com', 'file-froide.mychariow.com', 'file-froide-ancienne.mychariow.com', 'file-jamais.mychariow.com', 'file-a-jour.mychariow.com'];
+    await getDb().insert(discoveredStores).values([
+      // Publicité vue hier, relevée il y a 25 h : due aujourd'hui.
+      { host: hotes[0]!, lastSeenAt: ilYA(20), indexedAt: ilYA(25) },
+      // Plus de publicité depuis dix jours, relevée il y a 30 h : elle attend.
+      { host: hotes[1]!, lastSeenAt: ilYA(240), indexedAt: ilYA(30) },
+      // Sans publicité non plus, mais pas relevée depuis quatre jours : elle repasse devant.
+      { host: hotes[2]!, lastSeenAt: ilYA(240), indexedAt: ilYA(96) },
+      // Jamais relevée : toujours en tête.
+      { host: hotes[3]!, lastSeenAt: ilYA(240), indexedAt: null },
+      // Relevée il y a deux heures : pas due.
+      { host: hotes[4]!, lastSeenAt: ilYA(2), indexedAt: ilYA(2) },
+    ]);
+    try {
+      const ordre = (await dueDiscoveredStores(now)).map((store) => store.host).filter((host) => hotes.includes(host));
+      assert.deepEqual(ordre, ['file-jamais.mychariow.com', 'file-froide-ancienne.mychariow.com', 'file-chaude.mychariow.com', 'file-froide.mychariow.com']);
+    } finally {
+      await getDb().delete(discoveredStores).where(inArray(discoveredStores.host, hotes));
+    }
+  });
+
   it('signale une tendance quand trois boutiques lancent un produit proche sous 72 heures', async () => {
     const { indexStoreCatalog } = await import('@server/services/market');
     const { detectAlerts, listAlerts } = await import('@server/services/alerts');

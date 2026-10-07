@@ -284,10 +284,10 @@ export interface StorePreview {
   limit: number | null;
 }
 
-export type AlertKind = 'winner' | 'niche_trend' | 'ad_stopped';
+export type AlertKind = 'winner' | 'niche_trend' | 'ad_stopped' | 'first_traction' | 'daily_scale' | 'flash_scale' | 'stockout';
 export type AlertLevel = 'info' | 'opportunity' | 'major';
 
-/** Alerte du fil : produit gagnant, tendance de niche, ou arrêt d'une publicité installée. */
+/** Alerte du fil : ventes du jour d'un produit, lancement flash, publicité installée arrêtée, tendance de niche. */
 export interface AlertItem {
   id: string;
   kind: AlertKind;

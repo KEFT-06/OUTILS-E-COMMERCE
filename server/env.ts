@@ -540,7 +540,17 @@ const schema = z.object({
   ALERT_WINNER_DAYS: z.coerce.number().int().min(1).max(30).default(3),
   ALERT_TREND_STORES: z.coerce.number().int().min(2).max(50).default(3),
   ALERT_TREND_HOURS: z.coerce.number().int().min(24).max(720).default(72),
-  ALERT_AD_MIN_DAYS: z.coerce.number().int().min(7).max(720).default(60),
+  /** Une publicité « installée » : désactivée après avoir tourné entre ces deux durées. */
+  ALERT_AD_MIN_DAYS: z.coerce.number().int().min(7).max(720).default(80),
+  ALERT_AD_MAX_DAYS: z.coerce.number().int().min(7).max(1_000).default(110),
+  /** Ventes dans la journée : premier signal, puis confirmation. */
+  ALERT_TRACTION_SALES: z.coerce.number().int().min(1).max(10_000).default(5),
+  ALERT_SCALE_SALES: z.coerce.number().int().min(2).max(100_000).default(10),
+  /** Scale éclair : au moins tant de ventes aujourd'hui, au plus tant la veille. */
+  ALERT_FLASH_SALES: z.coerce.number().int().min(2).max(100_000).default(25),
+  ALERT_FLASH_BEFORE: z.coerce.number().int().min(0).max(10_000).default(5),
+  /** Chute brutale : au moins tant de ventes la veille, aucune aujourd'hui, publicité active. */
+  ALERT_STOCKOUT_BEFORE: z.coerce.number().int().min(1).max(100_000).default(15),
 
   /**
    * Référence marché : combien de produits numériques existent déjà sur une niche, depuis quand,

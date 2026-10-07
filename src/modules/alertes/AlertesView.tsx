@@ -1,13 +1,14 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { Bell, Eye, Flame, PenSquare, Radar, Rocket, TriangleAlert, type LucideIcon } from 'lucide-react';
+import { Bell, Eye, PenSquare, Radar, Rocket, Signal, TriangleAlert, type LucideIcon } from 'lucide-react';
 import { toast } from 'sonner';
 import { followableOnRadar } from '@server/shared/storefronts';
 import { PageHeader } from '@/shared/components/PageHeader';
 import { apiRequest } from '@/shared/lib/api';
 import { useCachedState } from '@/shared/lib/apiCache';
 import { formatRelativeFr } from '@/shared/lib/formatDate';
-import { useUserCurrency } from '@/shared/lib/money';
+import { roundPrice } from '@server/shared/currency';
+import { useMoney, useUserCurrency } from '@/shared/lib/money';
 import { cn } from '@/shared/lib/utils';
 import { resetAlertsUnread } from '@/shared/stores/useAlertsUnread';
 import { blankProduct, useCustomProducts } from '@/shared/stores/useCustomProducts';
@@ -21,20 +22,23 @@ import { ToggleGroup, ToggleGroupItem } from '@/shared/ui/toggle-group';
 /**
  * Alertes : ce que le marché a fait pendant que personne ne regardait.
  *
- * Trois niveaux, du plus pressant au plus général : un concurrent qui coupe une publicité
- * installée, un produit qui décolle dès son lancement, une niche où plusieurs boutiques lancent
- * la même chose. Chaque carte mène directement au geste suivant.
+ * Trois priorités, de la plus pressante à la plus générale : un mouvement majeur (scale éclair,
+ * chute brutale, publicité installée désactivée), une opportunité (un concurrent qui accélère,
+ * un lancement flash), un signal (premier seuil de ventes, tendance de niche). Chaque carte mène
+ * directement au geste suivant : la boutique dans le Radar, ses publicités, ou le Studio.
  */
 
-const NIVEAUX: Record<AlertLevel, { label: string; icon: LucideIcon; bord: string; ton: string }> = {
-  major: { label: 'Mouvement d’un concurrent', icon: TriangleAlert, bord: 'border-l-red-500', ton: 'text-red-600 dark:text-red-400' },
-  opportunity: { label: 'Opportunité produit', icon: Rocket, bord: 'border-l-amber-500', ton: 'text-amber-600 dark:text-amber-500' },
-  info: { label: 'Tendance du marché', icon: Flame, bord: 'border-l-brand-green', ton: 'text-brand-green-text' },
+const NIVEAUX: Record<AlertLevel, { label: string; filtre: string; icon: LucideIcon; bord: string; ton: string; pastille: string }> = {
+  major: { label: 'Mouvement majeur', filtre: 'Mouvements majeurs', icon: TriangleAlert, bord: 'border-l-red-500', ton: 'text-red-600 dark:text-red-400', pastille: 'bg-red-500' },
+  opportunity: { label: 'Opportunité', filtre: 'Opportunités', icon: Rocket, bord: 'border-l-amber-500', ton: 'text-amber-600 dark:text-amber-500', pastille: 'bg-amber-500' },
+  info: { label: 'Signal', filtre: 'Signaux', icon: Signal, bord: 'border-l-brand-green', ton: 'text-brand-green-text', pastille: 'bg-brand-green' },
 };
+const ORDRE: AlertLevel[] = ['major', 'opportunity', 'info'];
 
 type Filtre = 'tout' | AlertLevel;
 
 const texte = (value: unknown): string | null => (typeof value === 'string' && value.trim() ? value : null);
+const nombre = (value: unknown): number | null => (typeof value === 'number' && Number.isFinite(value) ? value : null);
 
 function AlertCard({ alert }: { alert: AlertItem }) {
   const niveau = NIVEAUX[alert.level];
@@ -42,12 +46,26 @@ function AlertCard({ alert }: { alert: AlertItem }) {
   const navigate = useNavigate();
   const custom = useCustomProducts();
   const currency = useUserCurrency();
+  const money = useMoney();
 
   const host = texte(alert.payload.storeHost);
   const surRadar = followableOnRadar(host);
   const keyword = texte(alert.payload.keyword);
   // Idée de départ du produit à créer : le produit qui décolle, ou le sujet de la tendance.
   const idee = texte(alert.payload.productName) ?? (keyword ? `Produit sur « ${keyword} »` : null);
+  const prix = nombre(alert.payload.price);
+  const devise = texte(alert.payload.currency);
+  const ventesJour = nombre(alert.payload.salesToday);
+  const ventesVeille = nombre(alert.payload.salesYesterday);
+  const ventesTotal = nombre(alert.payload.sales);
+
+  // Les chiffres de la constatation, sous la phrase : ce qui permet de juger sans ouvrir la boutique.
+  const faits = [
+    ventesJour !== null ? `${ventesJour.toLocaleString('fr-FR')} vente${ventesJour > 1 ? 's' : ''} aujourd’hui` : null,
+    ventesVeille !== null ? `${ventesVeille.toLocaleString('fr-FR')} la veille` : null,
+    ventesTotal !== null ? `${ventesTotal.toLocaleString('fr-FR')} au total` : null,
+    prix !== null && prix > 0 ? `vendu ${money.format(prix, devise, { round: true })}` : null,
+  ].filter(Boolean);
 
   const creerProduit = () => {
     if (!idee) return;
@@ -55,7 +73,18 @@ function AlertCard({ alert }: { alert: AlertItem }) {
       toast.error('Votre Studio est plein : retirez un produit pour en créer un autre.');
       return;
     }
-    const product = { ...blankProduct(currency), title: idee };
+    /*
+      Le Studio reçoit ce que l'alerte sait du produit : son sujet, et le prix pratiqué sur le
+      marché, converti dans la devise du compte, comme point de départ du simulateur.
+    */
+    const prixDepart = prix !== null && prix > 0 ? money.convert(prix, devise) : null;
+    const product = {
+      ...blankProduct(currency),
+      title: idee,
+      ...(prixDepart !== null
+        ? { recommendedPrice: roundPrice(prixDepart, currency), pricingNote: 'Prix relevé sur le marché pour un produit proche : ajustez-le dans le simulateur.' }
+        : {}),
+    };
     custom.add(product);
     void navigate('/app/studio', { state: { produit: product.id } });
   };
@@ -71,6 +100,7 @@ function AlertCard({ alert }: { alert: AlertItem }) {
               {alert.unread && <span className="rounded-full bg-brand-green-text px-2 py-0.5 text-xs font-semibold text-white">Nouveau</span>}
             </p>
             <p className="text-sm leading-relaxed">{alert.body}</p>
+            {faits.length > 0 && <p className="text-sm font-medium tabular-nums">{faits.join(' · ')}</p>}
             <p className="text-xs text-muted-foreground">
               {niveau.label} · {formatRelativeFr(alert.occurredAt)}
             </p>
@@ -90,7 +120,7 @@ function AlertCard({ alert }: { alert: AlertItem }) {
             <Button asChild size="sm" variant="outline">
               <Link to={`/app/espionnage?boutique=${encodeURIComponent(host)}`}>
                 <Eye />
-                Analyser ses publicités
+                Analyser ses publicités sur l’Espionnage
               </Link>
             </Button>
           )}
@@ -105,7 +135,7 @@ function AlertCard({ alert }: { alert: AlertItem }) {
           {idee && (
             <Button size="sm" variant="outline" onClick={creerProduit}>
               <PenSquare />
-              Créer un produit similaire
+              Créer dans le Studio
             </Button>
           )}
         </div>
@@ -143,9 +173,19 @@ export function AlertesView() {
       );
   }, [alerts, filtre]);
 
+  const parNiveau = useMemo(() => {
+    const comptes: Record<AlertLevel, number> = { major: 0, opportunity: 0, info: 0 };
+    for (const alert of alerts ?? []) comptes[alert.level] += 1;
+    return comptes;
+  }, [alerts]);
+
   return (
     <div className="space-y-6">
-      <PageHeader eyebrow="Voir" title="Alertes" description="Produits qui décollent, niches qui s’emballent et publicités qui s’arrêtent chez vos concurrents." />
+      <PageHeader
+        eyebrow="Voir"
+        title="Alertes"
+        description="Ce que vos concurrents ont fait aujourd’hui : produits qui décollent, ventes qui s’envolent ou s’effondrent, publicités installées qui s’arrêtent."
+      />
 
       <ToggleGroup
         type="single"
@@ -156,10 +196,14 @@ export function AlertesView() {
         className="flex-wrap justify-start"
         aria-label="Filtrer les alertes"
       >
-        <ToggleGroupItem value="tout">Toutes</ToggleGroupItem>
-        <ToggleGroupItem value="major">Concurrents</ToggleGroupItem>
-        <ToggleGroupItem value="opportunity">Opportunités</ToggleGroupItem>
-        <ToggleGroupItem value="info">Tendances</ToggleGroupItem>
+        <ToggleGroupItem value="tout">Toutes{alerts ? ` · ${alerts.length}` : ''}</ToggleGroupItem>
+        {ORDRE.map((niveau) => (
+          <ToggleGroupItem key={niveau} value={niveau} className="gap-2">
+            <span className={cn('size-2 rounded-full', NIVEAUX[niveau].pastille)} aria-hidden="true" />
+            {NIVEAUX[niveau].filtre}
+            {alerts ? ` · ${parNiveau[niveau]}` : ''}
+          </ToggleGroupItem>
+        ))}
       </ToggleGroup>
 
       {alerts === null && (
@@ -175,7 +219,7 @@ export function AlertesView() {
             <EmptyMedia variant="icon">
               <Bell />
             </EmptyMedia>
-            <EmptyTitle>Aucune alerte pour l’instant</EmptyTitle>
+            <EmptyTitle>{filtre === 'tout' ? 'Aucune alerte pour l’instant' : `Aucune alerte « ${NIVEAUX[filtre].filtre.toLowerCase()} » pour l’instant`}</EmptyTitle>
             <EmptyDescription>Les alertes arrivent ici dès qu’un produit décolle ou qu’un concurrent bouge.</EmptyDescription>
           </EmptyHeader>
         </Empty>

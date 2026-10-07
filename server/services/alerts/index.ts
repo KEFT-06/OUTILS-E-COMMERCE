@@ -1,22 +1,36 @@
-import { and, count, desc, eq, gt, gte, isNotNull, isNull, sql } from 'drizzle-orm';
+import { and, count, desc, eq, gt, gte, inArray, isNotNull, isNull, sql } from 'drizzle-orm';
+import { alias } from 'drizzle-orm/pg-core';
 import { getDb } from '@server/db/client';
-import { alerts, marketProducts, spiedAds, users, type ALERT_KINDS, type ALERT_LEVELS } from '@server/db/schema';
+import { alerts, marketProducts, marketSalesDaily, spiedAds, users, type ALERT_KINDS, type ALERT_LEVELS } from '@server/db/schema';
 import { env } from '@server/env';
-import { nicheKeywords } from '@server/services/market';
+import { dayOf, nicheKeywords } from '@server/services/market';
 
 /**
  * Alertes : ce que le croisement de l'index du marché et du mur publicitaire a remarqué.
  *
- * Trois règles, écrites pour ne dire que ce qui a été observé :
+ * Sept règles, écrites pour ne dire que ce qui a été observé.
  *
- *   · PRODUIT GAGNANT — un produit LANCÉ sous nos yeux (apparu dans une boutique déjà relevée)
- *     qui atteint le seuil de ventes dans ses premiers jours. Un produit déjà là au premier
- *     relevé de sa boutique n'a pas de date de lancement connue : il n'est jamais déclaré gagnant.
- *   · TENDANCE DE NICHE — plusieurs boutiques différentes lancent, dans la même fenêtre, un
- *     produit qui porte le même mot distinctif.
- *   · ARRÊT D'UNE PUBLICITÉ INSTALLÉE — une publicité qui tournait depuis longtemps est déclarée
+ * Quatre se lisent en VENTES PAR JOUR — la différence entre deux relevés de jours consécutifs.
+ * Sans relevé la veille, il n'y a pas de « ventes du jour » : la règle ne se déclenche pas,
+ * plutôt que d'annoncer un chiffre reconstitué.
+ *
+ *   · PREMIER SIGNAL (info) — un produit passe la barre des 5 ventes dans la journée.
+ *   · PRESSION CONCURRENTIELLE (opportunité) — 10 ventes et plus dans la journée.
+ *   · SCALE ÉCLAIR (majeur) — 25 ventes et plus aujourd'hui, 5 au plus la veille. Il remplace la
+ *     règle précédente pour ce produit ce jour-là : une seule alerte par constat.
+ *   · CHUTE BRUTALE (majeur) — 15 ventes et plus la veille, aucune aujourd'hui, alors qu'une
+ *     publicité de la boutique tourne encore : rupture probable.
+ *
+ * Trois autres :
+ *
+ *   · LANCEMENT FLASH (opportunité) — un produit LANCÉ sous nos yeux (apparu dans une boutique
+ *     déjà relevée) qui atteint 30 ventes dans ses 3 premiers jours. Un produit déjà là au premier
+ *     relevé de sa boutique n'a pas de date de lancement connue : il n'est jamais déclaré.
+ *   · PLACE LIBÉRÉE (majeur) — une publicité qui tournait depuis 80 à 110 jours est déclarée
  *     arrêtée. Une publicité simplement absente d'une collecte n'est PAS arrêtée : seul un
  *     contrôle qui la dit inactive compte.
+ *   · TENDANCE DE NICHE (info) — plusieurs boutiques différentes lancent, dans la même fenêtre,
+ *     un produit qui porte le même mot distinctif.
  *
  * Une alerte par constatation : `dedupeKey` empêche qu'un second passage la répète.
  */
@@ -38,14 +52,112 @@ export interface AlertView {
 
 const JOUR_MS = 86_400_000;
 const jours = (from: Date, to: Date) => Math.max(1, Math.round((to.getTime() - from.getTime()) / JOUR_MS));
+const pluriel = (nombre: number) => (nombre > 1 ? 's' : '');
 
-interface NewAlert {
+export interface NewAlert {
   kind: AlertKind;
   level: AlertLevel;
   title: string;
   body: string;
   payload: Record<string, unknown>;
   dedupeKey: string;
+}
+
+/** Ce qu'une carte d'alerte sait d'un produit : de quoi ouvrir sa boutique, ou en partir dans le Studio. */
+const produitPayload = (row: typeof marketProducts.$inferSelect) => ({
+  storeHost: row.storeHost,
+  storeLabel: row.storeLabel ?? row.storeHost,
+  productName: row.name,
+  category: row.category,
+  price: row.priceValue,
+  currency: row.currency,
+  sales: row.salesCount,
+});
+
+/**
+ * Les quatre règles en ventes par jour. Trois points sont lus pour chaque produit relevé
+ * aujourd'hui : aujourd'hui, hier, avant-hier — soit les ventes du jour et celles de la veille.
+ */
+async function dailyRules(now: Date): Promise<NewAlert[]> {
+  const jour = dayOf(now);
+  const hierJour = dayOf(new Date(now.getTime() - JOUR_MS));
+  const avantHierJour = dayOf(new Date(now.getTime() - 2 * JOUR_MS));
+  const hier = alias(marketSalesDaily, 'hier');
+  const avantHier = alias(marketSalesDaily, 'avant_hier');
+
+  const rows = await getDb()
+    .select({ product: marketProducts, c0: marketSalesDaily.salesCount, c1: hier.salesCount, c2: avantHier.salesCount })
+    .from(marketSalesDaily)
+    .innerJoin(marketProducts, eq(marketProducts.id, marketSalesDaily.productId))
+    .innerJoin(hier, and(eq(hier.productId, marketSalesDaily.productId), eq(hier.day, hierJour)))
+    .leftJoin(avantHier, and(eq(avantHier.productId, marketSalesDaily.productId), eq(avantHier.day, avantHierJour)))
+    .where(and(eq(marketSalesDaily.day, jour), isNull(marketProducts.endedAt)));
+
+  // Un compteur qui recule (remboursements, correction de la boutique) n'est pas une vente négative.
+  const mesures = rows.map((row) => ({
+    product: row.product,
+    today: Math.max(0, row.c0 - row.c1),
+    yesterday: row.c2 === null ? null : Math.max(0, row.c1 - row.c2),
+  }));
+
+  // « Publicité active » : la boutique en a au moins une en cours au dernier contrôle.
+  const candidatesChute = mesures.filter((mesure) => mesure.today === 0 && (mesure.yesterday ?? 0) >= env.ALERT_STOCKOUT_BEFORE);
+  const hotes = [...new Set(candidatesChute.map((mesure) => mesure.product.storeHost))];
+  const actives =
+    hotes.length === 0
+      ? []
+      : await getDb()
+          .select({ host: spiedAds.storeHost, total: count() })
+          .from(spiedAds)
+          .where(and(inArray(spiedAds.storeHost, hotes), eq(spiedAds.active, true)))
+          .groupBy(spiedAds.storeHost);
+  const pubsActives = new Map(actives.map((row) => [row.host, Number(row.total)]));
+
+  const found: NewAlert[] = [];
+  for (const { product, today, yesterday } of mesures) {
+    const boutique = product.storeLabel ?? product.storeHost;
+    const base = { ...produitPayload(product), salesToday: today, salesYesterday: yesterday };
+    const cle = `${product.storeExternalId}:${product.externalId}:${jour}`;
+
+    if (today >= env.ALERT_FLASH_SALES && yesterday !== null && yesterday <= env.ALERT_FLASH_BEFORE) {
+      found.push({
+        kind: 'flash_scale',
+        level: 'major',
+        title: 'Scale éclair',
+        body: `« ${product.name} », de la boutique ${boutique}, est passé de ${yesterday} à ${today} ventes en une journée. Le concurrent injecte du budget publicitaire.`,
+        payload: base,
+        dedupeKey: `flash:${cle}`,
+      });
+    } else if (today >= env.ALERT_SCALE_SALES) {
+      found.push({
+        kind: 'daily_scale',
+        level: 'opportunity',
+        title: 'Pression concurrentielle',
+        body: `« ${product.name} », de la boutique ${boutique}, enregistre ${today} ventes aujourd’hui. Le concurrent accélère : c’est le moment de lancer une offre proche, ou une alternative.`,
+        payload: base,
+        dedupeKey: `scale:${cle}`,
+      });
+    } else if (today >= env.ALERT_TRACTION_SALES) {
+      found.push({
+        kind: 'first_traction',
+        level: 'info',
+        title: 'Premier signal',
+        body: `« ${product.name} », de la boutique ${boutique}, vient de passer la barre des ${env.ALERT_TRACTION_SALES} ventes dans la journée (${today} aujourd’hui). À surveiller de très près pour se positionner.`,
+        payload: base,
+        dedupeKey: `traction:${cle}`,
+      });
+    } else if (today === 0 && (yesterday ?? 0) >= env.ALERT_STOCKOUT_BEFORE && (pubsActives.get(product.storeHost) ?? 0) > 0) {
+      found.push({
+        kind: 'stockout',
+        level: 'major',
+        title: 'Chute brutale',
+        body: `« ${product.name} », de la boutique ${boutique}, est tombé à 0 vente aujourd’hui après ${yesterday} la veille, alors que sa publicité tourne encore. Rupture ou incident probable chez le concurrent : la place est à prendre.`,
+        payload: { ...base, activeAds: pubsActives.get(product.storeHost) },
+        dedupeKey: `stockout:${cle}`,
+      });
+    }
+  }
+  return found;
 }
 
 /** Produits lancés récemment qui ont déjà atteint le seuil de ventes. */
@@ -63,18 +175,9 @@ async function winners(now: Date): Promise<NewAlert[]> {
     return {
       kind: 'winner',
       level: 'opportunity',
-      title: 'Produit gagnant détecté',
-      body: `« ${row.name} », de la boutique ${boutique}, a enregistré ${row.salesCount} ventes en ${duree} jour${duree > 1 ? 's' : ''}.`,
-      payload: {
-        storeHost: row.storeHost,
-        storeLabel: boutique,
-        productName: row.name,
-        category: row.category,
-        sales: row.salesCount,
-        days: duree,
-        price: row.priceValue,
-        currency: row.currency,
-      },
+      title: 'Lancement flash',
+      body: `« ${row.name} », de la boutique ${boutique}, cumule déjà ${row.salesCount} ventes en ${duree} jour${pluriel(duree)}. Fort engouement immédiat sur le marché.`,
+      payload: { ...produitPayload(row), days: duree },
       dedupeKey: `winner:${row.storeExternalId}:${row.externalId}`,
     };
   });
@@ -122,31 +225,38 @@ async function stoppedAds(now: Date): Promise<NewAlert[]> {
 
   return rows.flatMap((row) => {
     const duree = jours(row.startedAt!, row.stoppedAt!);
-    if (duree < env.ALERT_AD_MIN_DAYS) return [];
+    // Trop courte : un essai abandonné. Trop longue : une campagne de fond, pas une place qui se libère.
+    if (duree < env.ALERT_AD_MIN_DAYS || duree > Math.max(env.ALERT_AD_MAX_DAYS, env.ALERT_AD_MIN_DAYS)) return [];
     const annonceur = row.advertiser ?? row.storeHost;
     return [
       {
         kind: 'ad_stopped' as const,
         level: 'major' as const,
-        title: 'Arrêt d’une publicité installée',
-        body: `La publicité de ${annonceur}, en diffusion depuis ${duree} jours, vient d’être arrêtée.`,
-        payload: { storeHost: row.storeHost, advertiser: annonceur, adId: row.id, pageId: row.pageId, days: duree, title: row.title },
+        title: 'Place libérée',
+        body: `La publicité installée de ${annonceur}, active depuis ${duree} jours, vient d’être désactivée. Son angle a fait ses preuves : la place est à reprendre.`,
+        payload: { storeHost: row.storeHost, storeLabel: annonceur, advertiser: annonceur, adId: row.id, pageId: row.pageId, days: duree, title: row.title, productName: row.title },
         dedupeKey: `ad_stopped:${row.externalId}`,
       },
     ];
   });
 }
 
-/** Applique les trois règles et enregistre ce qui est nouveau. Renvoie le nombre d'alertes créées. */
-export async function detectAlerts(now = new Date()): Promise<number> {
-  const found = [...(await winners(now)), ...(await nicheTrends(now)), ...(await stoppedAds(now))];
-  if (found.length === 0) return 0;
+/** Applique les règles et enregistre ce qui est nouveau. Renvoie les alertes créées à ce passage. */
+export async function detectNewAlerts(now = new Date()): Promise<(NewAlert & { id: string })[]> {
+  const found = [...(await dailyRules(now)), ...(await winners(now)), ...(await nicheTrends(now)), ...(await stoppedAds(now))];
+  if (found.length === 0) return [];
   const created = await getDb()
     .insert(alerts)
     .values(found.map((alert) => ({ ...alert, occurredAt: now })))
     .onConflictDoNothing({ target: alerts.dedupeKey })
-    .returning({ id: alerts.id });
-  return created.length;
+    .returning({ id: alerts.id, dedupeKey: alerts.dedupeKey });
+  const ids = new Map(created.map((row) => [row.dedupeKey, row.id]));
+  return found.flatMap((alert) => (ids.has(alert.dedupeKey) ? [{ ...alert, id: ids.get(alert.dedupeKey)! }] : []));
+}
+
+/** Applique les règles ; renvoie le nombre d'alertes créées. */
+export async function detectAlerts(now = new Date()): Promise<number> {
+  return (await detectNewAlerts(now)).length;
 }
 
 /** Fil des alertes, les plus récentes d'abord, avec ce que ce compte n'a pas encore vu. */

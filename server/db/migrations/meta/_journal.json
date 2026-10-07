@@ -274,6 +274,13 @@
       "when": 1791278961525,
       "tag": "0038_video_relance",
       "breakpoints": true
+    },
+    {
+      "idx": 39,
+      "version": "7",
+      "when": 1791347953888,
+      "tag": "0039_ventes_par_jour",
+      "breakpoints": true
     }
   ]
 }
