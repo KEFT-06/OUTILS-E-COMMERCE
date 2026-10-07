@@ -90,7 +90,7 @@ function falFailure(status: number, detail: string): AppError {
   if (status >= 500) {
     return new AppError(503, 'Le rendu vidéo n’a pas pu aboutir. Vos points ont été rendus.', 'FAL_UNAVAILABLE');
   }
-  return new AppError(502, 'La demande n’a pas pu être traitée. Réessayez : vos points ont été rendus.', 'FAL_FAILED');
+  return new AppError(502, 'La demande n’a pas pu être traitée : vos points ont été rendus.', 'FAL_FAILED');
 }
 
 async function call(path: string, method: 'GET' | 'POST', body?: unknown): Promise<unknown> {
@@ -109,7 +109,7 @@ async function call(path: string, method: 'GET' | 'POST', body?: unknown): Promi
       signal: AbortSignal.timeout(TIMEOUT_MS),
     });
   } catch {
-    throw new AppError(504, 'Le service vidéo n’a pas répondu à temps. Réessayez : vos points ont été rendus.', 'FAL_TIMEOUT');
+    throw new AppError(504, 'Le service vidéo n’a pas répondu à temps : vos points ont été rendus.', 'FAL_TIMEOUT');
   }
 
   const payload = await response.json().catch(() => null);

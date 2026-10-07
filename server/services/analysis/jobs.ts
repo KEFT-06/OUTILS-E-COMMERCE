@@ -131,7 +131,7 @@ async function holdForRetry(jobId: string, code: string, message: string): Promi
 async function failJob(jobId: string, error: unknown): Promise<void> {
   const known = error instanceof AppError;
   const code = known ? error.code : 'ANALYSIS_FAILED';
-  const message = known ? error.message : 'L’analyse a échoué sur le serveur. Réessayez : vos points ont été rendus.';
+  const message = known ? error.message : 'L’analyse a échoué sur le serveur : vos points ont été rendus.';
   if (!known) console.error('[analyse] échec inattendu', error);
 
   // Panne passagère : on attend au lieu de perdre l'étude déjà payée.

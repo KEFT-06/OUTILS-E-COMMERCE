@@ -112,7 +112,7 @@ export async function exchangeGoogleCode(code: string, flow: GoogleFlowState): P
   const payload = (await response.json().catch(() => null)) as { id_token?: string; error?: string } | null;
   if (!response.ok || !payload?.id_token) {
     console.error('[connexion Google] échange refusé :', response.status, payload?.error ?? '');
-    throw new AppError(401, 'Google a refusé la connexion. Réessayez.', 'GOOGLE_EXCHANGE_FAILED');
+    throw new AppError(401, 'Google a refusé la connexion.', 'GOOGLE_EXCHANGE_FAILED');
   }
 
   const [, body] = payload.id_token.split('.');
@@ -129,8 +129,8 @@ export async function exchangeGoogleCode(code: string, flow: GoogleFlowState): P
   if (!ISSUERS.has(claims.iss) || !audiences.includes(env.GOOGLE_OAUTH_CLIENT_ID!)) {
     throw new AppError(401, 'Ce jeton Google n’est pas destiné à Smart Creator.', 'GOOGLE_TOKEN_INVALID');
   }
-  if (claims.exp * 1000 < Date.now()) throw new AppError(401, 'La connexion Google a expiré. Réessayez.', 'GOOGLE_TOKEN_EXPIRED');
-  if (claims.nonce !== flow.nonce) throw new AppError(401, 'Connexion Google invalide. Réessayez.', 'GOOGLE_TOKEN_INVALID');
+  if (claims.exp * 1000 < Date.now()) throw new AppError(401, 'La connexion Google a expiré : reprenez-la depuis l’écran de connexion.', 'GOOGLE_TOKEN_EXPIRED');
+  if (claims.nonce !== flow.nonce) throw new AppError(401, 'Connexion Google invalide : reprenez-la depuis l’écran de connexion.', 'GOOGLE_TOKEN_INVALID');
   if (claims.email_verified !== true && claims.email_verified !== 'true') {
     throw new AppError(403, 'Votre adresse n’est pas vérifiée chez Google : connectez-vous avec votre mot de passe.', 'GOOGLE_EMAIL_UNVERIFIED');
   }

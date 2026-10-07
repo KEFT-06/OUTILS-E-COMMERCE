@@ -101,7 +101,7 @@ function cloudflareFailure(status: number, detail: string): AppError {
     refus définitif : un nouvel essai, ou l'autre moteur, a toutes ses chances.
   */
   if (status === 400 && /flagged/i.test(detail)) {
-    return new AppError(502, 'L’image n’a pas pu être produite. Réessayez : vos points ont été rendus.', 'CF_IMAGE_FLAGGED');
+    return new AppError(502, 'L’image n’a pas pu être produite : vos points ont été rendus.', 'CF_IMAGE_FLAGGED');
   }
   if (status === 400 || status === 422) {
     return new AppError(502, 'La description de l’image a été refusée. Reformulez-la : vos points ont été rendus.', 'CF_IMAGE_BAD_INPUT');
@@ -109,7 +109,7 @@ function cloudflareFailure(status: number, detail: string): AppError {
   if (status >= 500) {
     return new AppError(503, 'L’image n’a pas pu être produite. Vos points ont été rendus.', 'CF_IMAGE_UNAVAILABLE');
   }
-  return new AppError(502, 'L’image n’a pas pu être produite. Réessayez : vos points ont été rendus.', 'CF_IMAGE_FAILED');
+  return new AppError(502, 'L’image n’a pas pu être produite : vos points ont été rendus.', 'CF_IMAGE_FAILED');
 }
 
 /** Reconnaît le format d'après les premiers octets : Cloudflare ne déclare pas le type dans sa réponse JSON. */
@@ -178,7 +178,7 @@ async function produce(input: CloudflareImageInput): Promise<ImageResult & { neu
       signal: AbortSignal.timeout(TIMEOUT_MS),
     });
   } catch {
-    throw new AppError(504, 'L’image n’a pas été produite à temps. Réessayez : vos points ont été rendus.', 'CF_IMAGE_TIMEOUT');
+    throw new AppError(504, 'L’image n’a pas été produite à temps : vos points ont été rendus.', 'CF_IMAGE_TIMEOUT');
   }
 
   const { bytes, neurons } = await readImage(response);
@@ -232,7 +232,7 @@ async function readImage(response: Response): Promise<{ bytes: Buffer; neurons?:
   const encoded = payload.result?.image;
   if (!encoded) {
     console.error('[image cloudflare] réponse sans image', detailOf(payload));
-    throw new AppError(502, 'Aucune image n’a été produite. Réessayez : vos points ont été rendus.', 'CF_IMAGE_MISSING');
+    throw new AppError(502, 'Aucune image n’a été produite : vos points ont été rendus.', 'CF_IMAGE_MISSING');
   }
 
   const neurons = payload.result?.usage?.neurons;

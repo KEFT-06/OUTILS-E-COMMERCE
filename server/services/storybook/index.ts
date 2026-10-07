@@ -232,7 +232,7 @@ function gammaFailure(status: number): AppError {
   if (status === 402) {
     return new AppError(
       503,
-      "Le service de mise en page n'a plus assez de réserve pour illustrer ce conte : réessayez plus tard, vos points ont été rendus.",
+      "Le service de mise en page n'a pas pu illustrer ce conte : vos points ont été rendus.",
       'GAMMA_INSUFFICIENT_CREDITS',
     );
   }
@@ -240,7 +240,7 @@ function gammaFailure(status: number): AppError {
   if (status === 429)
     return new AppError(429, 'La mise en page n’a pas pu être lancée.', 'GAMMA_RATE_LIMITED');
   if (status === 400)
-    return new AppError(502, 'La mise en page a été refusée. Reformulez le conte, puis réessayez.', 'GAMMA_REJECTED_REQUEST');
+    return new AppError(502, 'La mise en page a été refusée : reformulez le conte.', 'GAMMA_REJECTED_REQUEST');
   return new AppError(502, 'Le service de mise en page est momentanément indisponible.', 'GAMMA_UNAVAILABLE');
 }
 

@@ -169,7 +169,7 @@ export async function generateJson<T>(input: {
     } catch {
       // Délai épuisé : inutile d'insister. Connexion coupée en route : un nouvel essai a sa chance.
       if (deadline - Date.now() < MIN_ATTEMPT_MS) {
-        throw new AppError(504, `Le ${service.name} n’a pas répondu à temps. Réessayez : vos points ont été rendus.`, `${service.code}_TIMEOUT`);
+        throw new AppError(504, `Le ${service.name} n’a pas répondu à temps : vos points ont été rendus.`, `${service.code}_TIMEOUT`);
       }
       networkFailure = true;
       console.warn(`[${service.log}] connexion à Google interrompue, tentative ${index + 1}/${attempts.length}`);
@@ -208,7 +208,7 @@ export async function generateJson<T>(input: {
       if (response.status === 401 || response.status === 403) {
         throw new AppError(503, `L’accès au ${service.name} est refusé : clé API invalide sur le serveur.`, `${service.code}_ACCESS_DENIED`);
       }
-      throw new AppError(502, `Le ${service.name} a refusé la demande. Réessayez : vos points ont été rendus.`, `${service.code}_FAILED`);
+      throw new AppError(502, `Le ${service.name} a refusé la demande : vos points ont été rendus.`, `${service.code}_FAILED`);
     }
     if (failure.refusal) recordGoogleRefusal(failure.refusal, model, failure.message);
     if (failure.refusal === 'billing') {
@@ -227,7 +227,7 @@ export async function generateJson<T>(input: {
   }
 
   if (lastStatus === 200) {
-    throw new AppError(502, `Réponse illisible du ${service.name}. Réessayez : vos points ont été rendus.`, `${service.code}_UNREADABLE`);
+    throw new AppError(502, `Réponse illisible du ${service.name} : vos points ont été rendus.`, `${service.code}_UNREADABLE`);
   }
   if (lastStatus === 429) {
     throw new AppError(429, `Le ${service.name} n’a pas pu aboutir. Vos points ont été rendus.`, `${service.code}_RATE_LIMITED`);
@@ -240,14 +240,14 @@ export async function generateJson<T>(input: {
     );
   }
   if (networkFailure && lastStatus === null) {
-    throw new AppError(504, `Le ${service.name} n’a pas répondu à temps. Réessayez : vos points ont été rendus.`, `${service.code}_TIMEOUT`);
+    throw new AppError(504, `Le ${service.name} n’a pas répondu à temps : vos points ont été rendus.`, `${service.code}_TIMEOUT`);
   }
   /*
     Une erreur interne qui résiste aux deux modèles tient le plus souvent à la demande elle-même
     (Google cite une consigne trop longue) : elle ne se réglera pas en attendant.
   */
   if (lastStatus === 500) {
-    throw new AppError(502, `Le ${service.name} a refusé la demande. Réessayez : vos points ont été rendus.`, `${service.code}_FAILED`);
+    throw new AppError(502, `Le ${service.name} a refusé la demande : vos points ont été rendus.`, `${service.code}_FAILED`);
   }
   throw new AppError(
     503,

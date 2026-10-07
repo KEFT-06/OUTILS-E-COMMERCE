@@ -49,7 +49,7 @@ export async function apiRequest<T>(
     response = early ? await early.catch(send) : await send();
   } catch (error) {
     if (error instanceof DOMException && error.name === 'AbortError') throw error;
-    throw new ApiError('Le serveur est injoignable. Vérifiez votre connexion, puis réessayez.', 'NETWORK_ERROR');
+    throw new ApiError('Le serveur est injoignable : vérifiez votre connexion.', 'NETWORK_ERROR');
   }
 
   if (!response.ok) {

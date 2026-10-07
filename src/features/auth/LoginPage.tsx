@@ -383,7 +383,7 @@ const GOOGLE_ERRORS: Record<string, string> = {
   google_non_verifie: 'Votre adresse n’est pas vérifiée chez Google. Connectez-vous avec votre mot de passe.',
   google_autre_compte: 'Ce compte Smart Creator est déjà relié à un autre compte Google.',
   compte_bloque: 'Ce compte est bloqué. Contactez l’administrateur de Smart Creator.',
-  google_refuse: 'Google a refusé la connexion. Réessayez, ou utilisez votre mot de passe.',
+  google_refuse: 'Google a refusé la connexion. Utilisez votre mot de passe, ou un autre compte Google.',
 };
 
 /** Bouton « Continuer avec Google » : une navigation vers le serveur, qui mène chez Google et en revient. */

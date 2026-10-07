@@ -113,7 +113,7 @@ function EmailVerificationNotice({ account }: { account: Account }) {
       setState('sent');
     } catch (caught) {
       setState('idle');
-      toast.error('L’e-mail n’a pas pu partir', { description: toApiError(caught, 'Réessayez dans un moment.').message });
+      toast.error('L’e-mail n’a pas pu partir', { description: toApiError(caught, 'Le serveur n’a pas répondu.').message });
     }
   };
 
@@ -475,7 +475,7 @@ function CheckoutButtons({ plan }: { plan: PlanDefinition }) {
       if (new URL(url).protocol !== 'https:') throw new Error('Adresse de paiement invalide.');
       window.location.assign(url);
     } catch (caught) {
-      toast.error('Le paiement n’a pas pu démarrer', { description: toApiError(caught, 'Réessayez dans un moment.').message });
+      toast.error('Le paiement n’a pas pu démarrer', { description: toApiError(caught, 'Le serveur n’a pas répondu.').message });
       setBusy(null);
     }
   };
@@ -1652,7 +1652,7 @@ function PersonalDataCard({ account }: { account: Account }) {
       triggerDownload(await response.blob(), `smart-creator-mes-donnees-${new Date().toISOString().slice(0, 10)}.json`);
       toast.success('Copie de vos données téléchargée');
     } catch (caught) {
-      toast.error('Téléchargement impossible', { description: toApiError(caught, 'Réessayez dans un moment.').message });
+      toast.error('Téléchargement impossible', { description: toApiError(caught, 'Le serveur n’a pas répondu.').message });
     } finally {
       setDownloading(false);
     }
@@ -1738,14 +1738,14 @@ function usePaymentReturn() {
           });
         } else if (result.status === 'pending') {
           toast.info('Paiement en cours de validation', {
-            description: 'Votre palier s’activera dès que Stripe confirmera le paiement : rechargez la page dans quelques minutes.',
+            description: 'Votre palier s’activera de lui-même dès que le paiement sera confirmé.',
           });
         } else {
           toast.error('Session de paiement expirée', { description: 'Aucun montant n’a été débité. Relancez le paiement.' });
         }
       })
       .catch((caught: unknown) => {
-        toast.error('Le paiement n’a pas pu être vérifié', { description: toApiError(caught, 'Réessayez dans un moment.').message });
+        toast.error('Le paiement n’a pas pu être vérifié', { description: toApiError(caught, 'Le serveur n’a pas répondu.').message });
       })
       .finally(clear);
   }, [outcome, sessionId, refresh, setParams]);

@@ -113,7 +113,7 @@ async function callAgent(input: {
       });
     } catch {
       if (deadline - Date.now() < MIN_ATTEMPT_MS) {
-        throw new AppError(504, `Le ${service.name} n’a pas répondu à temps. Réessayez : vos points ont été rendus.`, `${service.code}_TIMEOUT`);
+        throw new AppError(504, `Le ${service.name} n’a pas répondu à temps : vos points ont été rendus.`, `${service.code}_TIMEOUT`);
       }
       lastStatus = 503;
       console.warn(`[${service.log}] connexion interrompue, tentative ${attempt + 1}`);
@@ -177,18 +177,18 @@ async function callAgent(input: {
       continue;
     }
     console.error(`[${service.log}] demande refusée`, response.status, detail);
-    throw new AppError(502, `Le ${service.name} a refusé la demande. Réessayez : vos points ont été rendus.`, `${service.code}_FAILED`);
+    throw new AppError(502, `Le ${service.name} a refusé la demande : vos points ont été rendus.`, `${service.code}_FAILED`);
   }
 
   if (lastStatus === 200) {
-    throw new AppError(502, `Réponse illisible du ${service.name}. Réessayez : vos points ont été rendus.`, `${service.code}_UNREADABLE`);
+    throw new AppError(502, `Réponse illisible du ${service.name} : vos points ont été rendus.`, `${service.code}_UNREADABLE`);
   }
   if (lastStatus === 429) {
     throw new AppError(429, `Le ${service.name} n’a pas pu aboutir. Vos points ont été rendus.`, `${service.code}_RATE_LIMITED`);
   }
   // Une erreur interne qui résiste à tous les essais tient à la demande elle-même : attendre n'y changera rien.
   if (lastStatus === 500) {
-    throw new AppError(502, `Le ${service.name} a refusé la demande. Réessayez : vos points ont été rendus.`, `${service.code}_FAILED`);
+    throw new AppError(502, `Le ${service.name} a refusé la demande : vos points ont été rendus.`, `${service.code}_FAILED`);
   }
   throw new AppError(
     503,

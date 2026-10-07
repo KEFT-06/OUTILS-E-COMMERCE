@@ -126,7 +126,7 @@ export function WrittenReportPanel({ reportId, nicheName }: WrittenReportPanelPr
       setNow(Date.now());
       setDocument(response.document);
     } catch (error) {
-      toast.error('Le rapport n’a pas pu être lancé', { description: toApiError(error, 'Réessayez dans un moment.').message });
+      toast.error('Le rapport n’a pas pu être lancé', { description: toApiError(error, 'Le serveur n’a pas répondu.').message });
     } finally {
       setIsStarting(false);
     }
@@ -148,7 +148,7 @@ export function WrittenReportPanel({ reportId, nicheName }: WrittenReportPanelPr
         setBlocked(error.verdict);
         return;
       }
-      toast.error('Le PDF n’a pas pu être généré', { description: 'Réessayez dans un moment.' });
+      toast.error('Le PDF n’a pas pu être généré', { description: 'Le document n’a pas pu être assemblé sur cet appareil.' });
     } finally {
       setIsExporting(false);
     }

@@ -89,7 +89,7 @@ function ModuleBlock({
       setConsigne('');
       toast.success('Passage réécrit', { description: 'Relisez-le : vous pouvez revenir en arrière en un clic.' });
     } catch (error) {
-      toast.error('La retouche n’a pas abouti', { description: toApiError(error, 'Réessayez dans un moment.').message });
+      toast.error('La retouche n’a pas abouti', { description: toApiError(error, 'Le serveur n’a pas répondu.').message });
     } finally {
       setEnCours(false);
     }

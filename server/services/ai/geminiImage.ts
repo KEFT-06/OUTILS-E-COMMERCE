@@ -146,7 +146,7 @@ async function produceImage(input: GeminiImageInput): Promise<ImageResult> {
         throw new AppError(503, 'Le service d’images refuse l’accès du serveur : l’administrateur doit vérifier sa configuration.', 'GEMINI_IMAGE_ACCESS_DENIED');
       }
       if (status === 400) {
-        throw new AppError(502, 'L’image n’a pas pu être produite. Réessayez : vos points ont été rendus.', 'GEMINI_IMAGE_FAILED');
+        throw new AppError(502, 'L’image n’a pas pu être produite : vos points ont été rendus.', 'GEMINI_IMAGE_FAILED');
       }
       if (status === 429) {
         const kind = classifyGoogle429(payload);
@@ -185,9 +185,9 @@ async function produceImage(input: GeminiImageInput): Promise<ImageResult> {
     throw new AppError(503, 'L’image n’a pas pu être produite. Vos points ont été rendus.', 'GEMINI_IMAGE_OVERLOADED');
   }
   if (lastStatus === 504) {
-    throw new AppError(504, 'L’image n’a pas été produite à temps. Réessayez : vos points ont été rendus.', 'GEMINI_IMAGE_TIMEOUT');
+    throw new AppError(504, 'L’image n’a pas été produite à temps : vos points ont été rendus.', 'GEMINI_IMAGE_TIMEOUT');
   }
-  throw new AppError(502, 'L’image n’a pas pu être produite. Réessayez : vos points ont été rendus.', 'GEMINI_IMAGE_FAILED');
+  throw new AppError(502, 'L’image n’a pas pu être produite : vos points ont été rendus.', 'GEMINI_IMAGE_FAILED');
 }
 
 function readImage(payload: ImagePayload | null, model: string): ImageResult {
@@ -202,7 +202,7 @@ function readImage(payload: ImagePayload | null, model: string): ImageResult {
         'GEMINI_IMAGE_BLOCKED',
       );
     }
-    throw new AppError(502, 'Aucune image n’a été produite. Réessayez : vos points ont été rendus.', 'GEMINI_IMAGE_MISSING');
+    throw new AppError(502, 'Aucune image n’a été produite : vos points ont été rendus.', 'GEMINI_IMAGE_MISSING');
   }
 
   const mimeType = (image.mimeType ?? 'image/png').split(';')[0]!.trim();

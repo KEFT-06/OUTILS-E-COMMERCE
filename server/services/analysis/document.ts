@@ -357,7 +357,7 @@ function viewOf(row: DocumentRow, report: MarketAnalysisReport): ReportDocument 
 async function failDocument(reportId: string, error: unknown): Promise<void> {
   const known = error instanceof AppError;
   const code = known ? error.code : 'REPORT_FAILED';
-  const message = neutralizeMessage(known ? error.message : 'La rédaction du rapport a échoué sur le serveur. Réessayez : vos points ont été rendus.');
+  const message = neutralizeMessage(known ? error.message : 'La rédaction du rapport a échoué sur le serveur : vos points ont été rendus.');
   if (!known) console.error(`[${SERVICE.log}] échec inattendu`, error);
 
   await getDb().transaction(async (tx) => {

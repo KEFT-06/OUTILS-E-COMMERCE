@@ -91,7 +91,7 @@ async function perplexitySearch(query: string, market: string | null) {
       signal: AbortSignal.timeout(TIMEOUT_MS),
     });
   } catch {
-    throw new AppError(504, 'La recherche web n’a pas répondu à temps. Réessayez : vos points ont été rendus.', 'WEB_SEARCH_TIMEOUT');
+    throw new AppError(504, 'La recherche web n’a pas répondu à temps : vos points ont été rendus.', 'WEB_SEARCH_TIMEOUT');
   }
 
   if (!response.ok) {
@@ -102,7 +102,7 @@ async function perplexitySearch(query: string, market: string | null) {
     if (response.status === 429) {
       throw new AppError(429, 'La recherche web n’a pas pu aboutir. Vos points ont été rendus.', 'WEB_SEARCH_RATE_LIMITED');
     }
-    throw new AppError(502, 'La recherche web a échoué. Réessayez : vos points ont été rendus.', 'WEB_SEARCH_FAILED');
+    throw new AppError(502, 'La recherche web a échoué : vos points ont été rendus.', 'WEB_SEARCH_FAILED');
   }
 
   const parsed = resultsSchema.safeParse(await response.json().catch(() => null));

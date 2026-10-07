@@ -164,7 +164,7 @@ export const writingApi = {
         body: file,
       }).catch(() => null);
       if (!deposited?.ok) {
-        throw new ApiError('Le fichier n’a pas pu être envoyé : vérifiez votre connexion, puis réessayez. Aucun point n’a été retiré.');
+        throw new ApiError('Le fichier n’a pas pu être envoyé : vérifiez votre connexion. Aucun point n’a été retiré.');
       }
       const analysed = await fetch('/api/writing/video-uploaded', {
         method: 'POST',

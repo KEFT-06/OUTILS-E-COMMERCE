@@ -99,7 +99,7 @@ export function PerformanceBenchmarkPanel() {
         { description: enabled ? 'Vos chiffres sont relevés une fois par jour.' : 'Vos relevés ont été effacés.' },
       );
     } catch (error) {
-      toast.error('Le réglage n’a pas été enregistré', { description: toApiError(error, 'Réessayez dans un moment.').message });
+      toast.error('Le réglage n’a pas été enregistré', { description: toApiError(error, 'Le serveur n’a pas répondu.').message });
     } finally {
       setBusy(false);
     }

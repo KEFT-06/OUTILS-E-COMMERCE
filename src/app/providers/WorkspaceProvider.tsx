@@ -282,7 +282,7 @@ export const WorkspaceProvider: React.FC<{ children: React.ReactNode }> = ({ chi
       try {
         await apiRequest(`/api/reports/${encodeURIComponent(id)}`, { method: 'DELETE' });
       } catch (error) {
-        toast.error('Le rapport n’a pas pu être supprimé', { description: toApiError(error, 'Réessayez dans un moment.').message });
+        toast.error('Le rapport n’a pas pu être supprimé', { description: toApiError(error, 'Le serveur n’a pas répondu.').message });
         return;
       }
       const remaining = reports.filter((entry) => entry.id !== id);
@@ -349,7 +349,7 @@ export const WorkspaceProvider: React.FC<{ children: React.ReactNode }> = ({ chi
       toast.success('Analyse annulée', { description: 'Vos points ont été rendus.', id: `analyse-${analysisJob.id}`, duration: 6_000 });
       void refresh();
     } catch (error) {
-      toast.error('L’analyse n’a pas pu être annulée', { description: toApiError(error, 'Réessayez dans un moment.').message });
+      toast.error('L’analyse n’a pas pu être annulée', { description: toApiError(error, 'Le serveur n’a pas répondu.').message });
     }
   }, [analysisJob, refresh]);
 
@@ -454,7 +454,7 @@ export const WorkspaceProvider: React.FC<{ children: React.ReactNode }> = ({ chi
         setBlockedVerdict(error.verdict);
         return;
       }
-      toast.error("Le PDF n'a pas pu être généré", { description: 'Réessayez dans un moment.' });
+      toast.error("Le PDF n'a pas pu être généré", { description: 'Le document n’a pas pu être assemblé sur cet appareil.' });
     } finally {
       setIsExportingPdf(false);
     }
