@@ -316,8 +316,8 @@ export function NichesView() {
           ) : (
             <ul className="flex flex-wrap gap-2" aria-label="Niches enregistrées">
               {saved.map((niche) => (
-                <li key={niche} className="flex items-center gap-1 rounded-full border bg-background py-1 pr-1 pl-3 text-sm">
-                  <span className="max-w-[16rem] truncate">{niche}</span>
+                <li key={niche} className="flex max-w-full min-w-0 items-center gap-1 rounded-full border bg-background py-1 pr-1 pl-3 text-sm">
+                  <span className="max-w-[16rem] min-w-0 truncate">{niche}</span>
                   <Button
                     variant="ghost"
                     size="icon"
@@ -553,7 +553,7 @@ export function NichesView() {
             </EmptyHeader>
           </Empty>
         ) : (
-          <div className="grid items-start gap-4 lg:grid-cols-2">
+          <div className="grid grid-cols-1 items-start gap-4 lg:grid-cols-2">
             {results.map(({ catalog, niches }) => {
               const Icon = catalog.icon;
               const showAll = Boolean(key) || expanded[catalog.id];
