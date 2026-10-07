@@ -7,6 +7,7 @@ import { STOREFRONT_LABELS, type Storefront } from "@server/shared/storefronts";
 import { BrandIcon } from "@/shared/components/BrandIcon";
 import { AdCard, AdDetailsDialog } from "@/modules/espionnage/AdCard";
 import { MetaSearchPanel } from "@/modules/espionnage/MetaSearchPanel";
+import { SeriesNav } from "@/modules/espionnage/SeriesNav";
 import { PageHeader } from "@/shared/components/PageHeader";
 import { apiRequest } from "@/shared/lib/api";
 import { useCachedState } from "@/shared/lib/apiCache";
@@ -178,21 +179,31 @@ export function EspionnageView() {
     appliquer(valeur);
   };
 
+  /*
+    « Actualiser » fait entrer ce que les collectes ont rapporté, puis relit le mur — sans changer
+    de série : on se déplace maintenant par la barre des séries. Le bouton dit ce qu'il a trouvé,
+    y compris quand il n'y a rien de neuf, pour qu'on ne le croie pas sans effet.
+  */
   async function actualiser() {
     setActualisation(true);
+    let ajoutees = 0;
     try {
-      // Ce qu'une collecte terminée a rapporté entre dans le mur avant de servir la suite.
-      const { adsAdded } = await apiRequest<{ adsAdded: number }>("/api/espionnage/refresh", { method: "POST" });
-      if (adsAdded > 0) toast.success(`${adsAdded} nouvelle${adsAdded > 1 ? "s" : ""} annonce${adsAdded > 1 ? "s" : ""} sur le mur.`);
+      ajoutees = (await apiRequest<{ adsAdded: number }>("/api/espionnage/refresh", { method: "POST" })).adsAdded;
     } catch {
-      // La suite du mur reste lisible même si la récolte n'a pas répondu.
+      // Le mur reste lisible même si la récolte n'a pas répondu.
     }
-    const suivante = data ? (data.batch + 1) % Math.max(1, data.batches) : serie + 1;
-    if (suivante === serie) await load();
-    else setSerie(suivante);
+    await load();
     setActualisation(false);
-    document.getElementById("dernieres-publicites")?.scrollIntoView({ behavior: "smooth", block: "start" });
+    toast.success(ajoutees > 0 ? `${ajoutees} nouvelle${ajoutees > 1 ? "s" : ""} annonce${ajoutees > 1 ? "s" : ""} sur le mur` : "Le mur est à jour", {
+      description: ajoutees > 0 ? undefined : "Aucune nouvelle annonce depuis le dernier relevé.",
+    });
   }
+
+  /** Aller à une série : la liste remonte à son début. */
+  const allerALaSerie = (numero: number) => {
+    setSerie(Math.max(0, numero));
+    document.getElementById("dernieres-publicites")?.scrollIntoView({ behavior: "smooth", block: "start" });
+  };
 
   const voirAnnonceur = (ad: LibraryAd) => {
     setDetails(null);
@@ -243,11 +254,6 @@ export function EspionnageView() {
         <div className="flex scroll-mt-20 flex-wrap items-center justify-between gap-3" id="dernieres-publicites">
           <h2 className="font-display text-xl font-bold tracking-tight">Dernières publicités repérées</h2>
           <div className="flex items-center gap-3">
-            {data && data.batches > 1 && (
-              <span className="text-sm text-muted-foreground tabular-nums">
-                Série {data.batch + 1} sur {data.batches}
-              </span>
-            )}
             <Button variant="outline" onClick={() => void actualiser()} disabled={actualisation || data === null}>
               <RefreshCw className={actualisation ? "animate-spin" : undefined} />
               Actualiser
@@ -287,15 +293,17 @@ export function EspionnageView() {
           <div className="space-y-4">
             <div className="flex flex-col gap-3 md:flex-row md:items-end md:justify-between">
               <div>
+                {/* Le nombre EXACT d'annonces que retiennent les réglages, toutes séries réunies : c'est
+                    celui qu'on retrouve en les parcourant. */}
                 <p className="font-display text-2xl font-extrabold tracking-tight tabular-nums">
                   {data
-                    ? `${data.ads.length} annonce${data.ads.length > 1 ? "s" : ""}`
+                    ? `${data.matching.toLocaleString("fr-FR")} annonce${data.matching > 1 ? "s" : ""}`
                     : "…"}
                 </p>
                 <p className="text-sm text-muted-foreground">
-                  {/* Les boutiques des annonces AFFICHÉES : le total du mur, sous un filtre, annonçait
-                      « 78 annonces chez 198 boutiques ». */}
-                  {data ? `chez ${boutiquesAffichees} boutique${boutiquesAffichees > 1 ? "s" : ""}` : ""}
+                  {data && data.ads.length > 0
+                    ? `${data.batches > 1 ? `${data.ads.length} sur cette série, ` : ""}chez ${boutiquesAffichees} boutique${boutiquesAffichees > 1 ? "s" : ""}`
+                    : ""}
                   {hint ? ` · ${hint}` : ""}
                 </p>
               </div>
@@ -357,7 +365,7 @@ export function EspionnageView() {
                     value={plateforme}
                     onValueChange={regler((value: string) => setPlateforme(value as typeof plateforme))}
                   >
-                    <SelectTrigger className="w-full sm:w-48" aria-label="Plateforme de la boutique">
+                    <SelectTrigger className="w-full sm:w-56" aria-label="Plateforme de la boutique">
                       <SelectValue />
                     </SelectTrigger>
                     <SelectContent>
@@ -422,23 +430,9 @@ export function EspionnageView() {
             </div>
           )}
 
-          {data && data.hiddenByPlan > 0 && (
-            /*
-          Dire ce qui manque, et pourquoi. Un mur tronqué en silence passe pour un mur pauvre :
-          l'utilisateur en conclut que l'outil ne trouve rien, alors que c'est son palier qui borne.
-        */
-            <Alert>
-              <AlertTitle>
-                {data.hiddenByPlan} annonce{data.hiddenByPlan > 1 ? "s" : ""} de
-                plus correspond
-                {data.hiddenByPlan > 1 ? "ent" : ""} à ce filtre
-              </AlertTitle>
-              <AlertDescription>
-                Votre palier affiche {data.visibleLimit} annonces à la fois :
-                « Actualiser » montre les suivantes. Un palier supérieur en
-                affiche davantage d’un coup.
-              </AlertDescription>
-            </Alert>
+          {/* Où l'on est, et où l'on peut aller : toutes les annonces retenues se parcourent, série par série. */}
+          {data && (
+            <SeriesNav batch={data.batch} batches={data.batches} matching={data.matching} pageSize={data.pageSize} shown={data.ads.length} onGo={allerALaSerie} />
           )}
 
           {data && data.ads.length > 0 && (
@@ -454,6 +448,11 @@ export function EspionnageView() {
                 />
               ))}
             </div>
+          )}
+
+          {/* En bas aussi : après cent annonces, on ne remonte pas pour passer à la suite. */}
+          {data && data.batches > 1 && data.ads.length > 0 && (
+            <SeriesNav batch={data.batch} batches={data.batches} matching={data.matching} pageSize={data.pageSize} shown={data.ads.length} onGo={allerALaSerie} />
           )}
 
           <AdDetailsDialog

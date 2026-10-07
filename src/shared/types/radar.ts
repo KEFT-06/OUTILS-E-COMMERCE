@@ -209,6 +209,8 @@ export interface EspionnageView {
   /** Série affichée (0 = la première) et nombre de séries : « Actualiser » passe à la suivante. */
   batch: number;
   batches: number;
+  /** Annonces servies par série : de quoi dire « annonces 101 à 200 sur 380 ». */
+  pageSize: number;
   /** Une collecte tourne : de nouvelles annonces arrivent dans quelques minutes. */
   collecting?: boolean;
 }
@@ -240,6 +242,46 @@ export interface MarketSearch {
   stores: number;
   indexedStores: number;
   indexedProducts: number;
+}
+
+export interface StorePreviewProduct {
+  id: string;
+  name: string;
+  category: string | null;
+  price: number | null;
+  currency: string | null;
+  sales: number | null;
+  salesTracked: number | null;
+  firstSeenAt: string;
+  launchedAt: string | null;
+  endedAt: string | null;
+}
+
+/** Fiche d'une boutique ouverte dans le Radar sans la surveiller : catalogue connu, ventes, publicités. */
+export interface StorePreview {
+  host: string;
+  label: string;
+  url: string;
+  storefront: 'chariow' | 'maketou' | 'shopify' | null;
+  /** Le Radar sait relever son catalogue, donc la surveiller. */
+  followable: boolean;
+  /** Surveillance du compte sur cette boutique, s'il y en a déjà une. */
+  watchId: string | null;
+  products: StorePreviewProduct[];
+  liveItems: number;
+  endedItems: number;
+  totalSales: number;
+  itemsWithSales: number;
+  /** Premier relevé du catalogue en cours : la fiche se redemande dans un instant. */
+  pending: boolean;
+  /** Sa vitrine n'a pas répondu au relevé : la fiche montre ce qui reste connu, ses publicités. */
+  unreachable: boolean;
+  /** Offres mises en avant dans ses publicités, les plus diffusées d'abord. */
+  advertised: { title: string; url: string; ads: number; active: number }[];
+  indexedAt: string | null;
+  ads: { active: number; total: number; videos: number; firstAdAt: string | null; checkedAt: string | null };
+  /** Boutiques que le palier permet de surveiller. 0 : aucune. null : sans limite. */
+  limit: number | null;
 }
 
 export type AlertKind = 'winner' | 'niche_trend' | 'ad_stopped';

@@ -123,6 +123,8 @@ export interface EspionnageView {
   /** Série servie (0 = la première) et nombre de séries : « Actualiser » passe à la suivante. */
   batch: number;
   batches: number;
+  /** Annonces servies par série : de quoi dire « annonces 101 à 200 sur 380 ». */
+  pageSize: number;
   /** Une collecte tourne chez le fournisseur : de nouvelles annonces arrivent dans quelques minutes. */
   collecting: boolean;
 }
@@ -131,8 +133,6 @@ const JOUR_MS = 86_400_000;
 
 /** Plafond de page, tous paliers confondus : deux cents vignettes suffisent à alourdir l'écran. */
 const PLAFOND_ABSOLU = 200;
-/** Annonces qui montent en tête à chaque « Actualiser » quand tout le mur tient sur une page. */
-const ROTATION = 24;
 
 /**
  * Durée pendant laquelle l'annonce a été VUE en diffusion : de sa date de début au dernier
@@ -232,7 +232,6 @@ export async function listSpiedAds(
   if (filters.pageId) conditions.push(eq(spiedAds.pageId, filters.pageId));
   if (filters.mediaKind) conditions.push(eq(spiedAds.mediaKind, filters.mediaKind));
   if (filters.country) conditions.push(sql`${spiedAds.countries} @> ${JSON.stringify([filters.country])}::jsonb`);
-  if (filters.storefront) conditions.push(onStorefront(filters.storefront));
   if (filters.etat) conditions.push(eq(spiedAds.active, filters.etat === 'active'));
   if (filters.search) {
     /*
@@ -258,6 +257,15 @@ export async function listSpiedAds(
     conditions.push(containsIgnoringAccents([spiedAds.title, spiedAds.bodyText, spiedAds.advertiser], filters.search));
   }
 
+  /*
+    Tous les réglages SAUF la plateforme : c'est contre eux que se compte chaque plateforme. Le
+    filtre annonçait le total de la plateforme sur tout le mur — « Chariow · 540 » — même avec
+    « Vidéos » et « Cameroun » choisis à côté : on cliquait, et la liste en montrait quarante. Un
+    nombre affiché à côté d'un choix doit être celui qu'on obtient en le faisant.
+  */
+  const sansPlateforme = conditions.length > 0 ? and(...conditions) : undefined;
+  if (filters.storefront) conditions.push(onStorefront(filters.storefront));
+
   const where = conditions.length > 0 ? and(...conditions) : undefined;
   const order =
     filters.sort === 'newest'
@@ -270,26 +278,23 @@ export async function listSpiedAds(
   const [correspondantes] = await getDb().select({ total: count() }).from(spiedAds).where(where);
   const matching = Number(correspondantes?.total ?? 0);
   /*
-    Deux cas. Plus d'annonces que le palier n'en montre : chaque série est une page entière,
-    sans recouvrement. Tout tient sur une page : la série fait tourner l'ordre d'un écran
-    (ROTATION annonces), pour que le haut du mur change quand même — sinon « Actualiser »
-    n'aurait rien à montrer à un palier qui voit déjà tout.
+    Une série est une PAGE : les annonces 1 à N, puis N+1 à 2N, sans recouvrement, et toutes les
+    séries réunies font exactement les annonces annoncées. Quand tout tenait sur une page, les
+    séries faisaient seulement tourner l'ordre : l'écran affichait « Série 2 sur 3 » au-dessus des
+    mêmes annonces — un nombre de séries qui ne correspondait à rien (propriétaire, 07/10/2026).
   */
-  const fits = matching <= limit;
-  const step = fits ? Math.min(ROTATION, Math.max(matching, 1)) : limit;
-  const batches = Math.max(1, Math.ceil(matching / step));
+  const batches = Math.max(1, Math.ceil(matching / limit));
   // Au-delà de la dernière série, on revient à la première : le bouton ne mène jamais à un mur vide.
   const batch = Math.max(0, filters.batch ?? 0) % batches;
 
   // L'identifiant départage les dates égales : sans lui, deux séries pourraient se chevaucher.
-  const page = await getDb()
+  const rows = await getDb()
     .select()
     .from(spiedAds)
     .where(where)
     .orderBy(...order, asc(spiedAds.id))
     .limit(limit)
-    .offset(fits ? 0 : batch * limit);
-  const rows = fits ? [...page.slice(batch * step), ...page.slice(0, batch * step)] : page;
+    .offset(batch * limit);
 
   /*
     Combien d'annonces le palier cache-t-il, parmi celles que les filtres retiennent ? On le
@@ -315,14 +320,20 @@ export async function listSpiedAds(
 
   const parPlateforme = await Promise.all(
     STOREFRONTS.map(async (id) => {
-      const [row] = await getDb().select({ ads: count() }).from(spiedAds).where(onStorefront(id));
+      const [row] = await getDb()
+        .select({ ads: count() })
+        .from(spiedAds)
+        .where(sansPlateforme ? and(sansPlateforme, onStorefront(id)) : onStorefront(id));
       return { id, ads: Number(row?.ads ?? 0) };
     }),
   );
 
   return {
     countries: paysConnus.map((row) => row.pays).sort(),
-    storefronts: parPlateforme.filter((entry) => entry.ads > 0),
+    // La plateforme choisie reste proposée même à zéro : on doit pouvoir lire « 0 » et en changer.
+    storefronts: parPlateforme.filter((entry) => entry.ads > 0 || entry.id === filters.storefront),
+    /** Annonces servies par série : de quoi dire « annonces 101 à 200 sur 380 ». */
+    pageSize: limit,
     ads: rows.map((row) => viewOf(row, now)),
     total: Number(totaux?.total ?? 0),
     stores: Number(totaux?.stores ?? 0),

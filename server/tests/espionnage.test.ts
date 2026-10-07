@@ -429,16 +429,36 @@ describe('Mur d’espionnage — ce que le palier laisse voir', () => {
     assert.deepEqual(ids(apresLaFin), ids(premiere));
   });
 
-  it('fait tourner le haut du mur même quand le palier voit déjà tout', async () => {
+  it('n’annonce qu’une série quand tout tient à l’écran, et des nombres qui sont ceux de la liste', async () => {
     const { agent: pro } = await signInWithPlan(app, 'espion-rotation@exemple.test', 'pro');
     const premiere = await pro.get('/api/espionnage?storeHost=boutique-masse.mychariow.com').expect(200);
     const suivante = await pro.get('/api/espionnage?storeHost=boutique-masse.mychariow.com&batch=1').expect(200);
 
     assert.equal(premiere.body.matching, 70);
-    assert.equal(premiere.body.batches, 3, '70 annonces, 24 qui montent en tête à chaque fois');
-    assert.equal(suivante.body.ads.length, 70, 'aucune annonce ne disparaît : seul l’ordre tourne');
-    assert.equal(suivante.body.ads[0].id, premiere.body.ads[24].id, 'la 25e annonce passe en tête');
-    assert.equal(suivante.body.ads.at(-1).id, premiere.body.ads[23].id, 'et les premières passent à la fin');
+    assert.equal(premiere.body.ads.length, 70, 'les 70 annonces annoncées sont toutes là');
+    // Les séries faisaient tourner l'ordre : « Série 2 sur 3 » au-dessus des mêmes annonces.
+    assert.equal(premiere.body.batches, 1, 'une seule série : il n’y a rien d’autre à montrer');
+    assert.equal(suivante.body.batch, 0, 'demander une série qui n’existe pas ramène à la première');
+    assert.deepEqual(
+      (suivante.body.ads as { id: string }[]).map((ad) => ad.id),
+      (premiere.body.ads as { id: string }[]).map((ad) => ad.id),
+    );
+
+    // Le nombre affiché à côté d'une plateforme est celui qu'on obtient en la choisissant, réglages compris.
+    const tout = await pro.get('/api/espionnage').expect(200);
+    for (const entree of tout.body.storefronts as { id: string; ads: number }[]) {
+      const filtree = await pro.get(`/api/espionnage?storefront=${entree.id}`).expect(200);
+      assert.equal(filtree.body.matching, entree.ads, `${entree.id} : nombre annoncé = nombre obtenu`);
+    }
+    const videos = await pro.get('/api/espionnage?mediaKind=video').expect(200);
+    for (const entree of videos.body.storefronts as { id: string; ads: number }[]) {
+      const filtree = await pro.get(`/api/espionnage?mediaKind=video&storefront=${entree.id}`).expect(200);
+      assert.equal(filtree.body.matching, entree.ads, `vidéos sur ${entree.id} : nombre annoncé = nombre obtenu`);
+      assert.ok((filtree.body.ads as { mediaKind: string }[]).every((ad) => ad.mediaKind === 'video'), 'et la liste ne contient que des vidéos');
+    }
+    const arretees = await pro.get('/api/espionnage?etat=arretee').expect(200);
+    const somme = (arretees.body.storefronts as { ads: number }[]).reduce((total, entree) => total + entree.ads, 0);
+    assert.ok(somme <= arretees.body.matching, 'les plateformes ne comptent que des annonces retenues par les autres réglages');
   });
 
   it('« Actualiser » ne lance aucune collecte payante', async () => {

@@ -169,11 +169,17 @@ describe('Collecteur maison', () => {
     assert.equal(versement.body.storesNew, 0, 'le Radar ne relève que Chariow : aucune boutique ne lui est confiée');
 
     const { agent } = await signInWithPlan(app, 'collecteur-plateformes@exemple.test', 'pro');
-    const mur = await agent.get('/api/espionnage').query({ etat: 'active' }).expect(200);
+    const mur = await agent.get('/api/espionnage').expect(200);
     assert.deepEqual(
       (mur.body.storefronts as { id: string; ads: number }[]).map((entry) => `${entry.id}:${entry.ads}`),
       ['chariow:1', 'maketou:1', 'shopify:1'],
       'le filtre ne propose que les plateformes présentes, avec leur compte',
+    );
+    // Le compte suit les autres réglages : l'annonce Chariow est arrêtée, elle ne compte pas parmi celles « en cours ».
+    const enCours = await agent.get('/api/espionnage').query({ etat: 'active' }).expect(200);
+    assert.deepEqual(
+      (enCours.body.storefronts as { id: string; ads: number }[]).map((entry) => `${entry.id}:${entry.ads}`),
+      ['maketou:1', 'shopify:1'],
     );
     const surMaketou = await agent.get('/api/espionnage').query({ storefront: 'maketou' }).expect(200);
     assert.deepEqual((surMaketou.body.ads as { storeHost: string }[]).map((ad) => ad.storeHost), ['awa-shop.mymaketou.shop']);
