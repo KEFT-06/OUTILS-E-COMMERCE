@@ -140,6 +140,32 @@ export async function createCover(auth: RequestAuth, input: CoverRequest): Promi
   return serializeCover(row);
 }
 
+/**
+ * Les couvertures prêtes d'un compte pour un type de sujet, une par sujet (la plus récente),
+ * SANS leurs octets : de quoi montrer la couverture de chaque ouvrage sur sa carte en une seule
+ * lecture, au lieu d'une demande par carte.
+ */
+export async function listCovers(auth: RequestAuth, subject: string): Promise<CoverView[]> {
+  const rows = await getDb()
+    .select({
+      id: covers.id,
+      subject: covers.subject,
+      subjectId: covers.subjectId,
+      status: covers.status,
+      mimeType: covers.mimeType,
+      createdAt: covers.createdAt,
+      updatedAt: covers.updatedAt,
+    })
+    .from(covers)
+    .where(and(eq(covers.userId, auth.account.user.id), eq(covers.subject, subject), eq(covers.status, 'ready')))
+    .orderBy(desc(covers.createdAt))
+    .limit(300);
+  const seen = new Set<string>();
+  return rows
+    .filter((row) => (seen.has(row.subjectId) ? false : (seen.add(row.subjectId), true)))
+    .map((row) => ({ ...row, status: 'ready' as const, createdAt: row.createdAt.toISOString(), updatedAt: row.updatedAt.toISOString() }));
+}
+
 /** Dernière couverture d'un guide ou d'un produit (prête, ou en cours). */
 export async function latestCover(auth: RequestAuth, subject: string, subjectId: string): Promise<CoverView | null> {
   const [row] = await getDb()

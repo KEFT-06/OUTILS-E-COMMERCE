@@ -101,6 +101,8 @@ function blockParagraphs(blocks: BookBlock[], chapterAnchor: string): Paragraph[
 export interface ProductDocxCover {
   type: 'png' | 'jpg';
   data: Uint8Array;
+  /** Couverture composée, au format d'une page : ses proportions ne sont pas celles de l'illustration seule. */
+  composed?: boolean;
 }
 
 /** Construit le document sans le télécharger : séparé pour pouvoir être vérifié hors navigateur. */
@@ -112,7 +114,13 @@ export function buildProductDOCX(productDocument: ProductDocument, coverImage: P
       ? [
           new Paragraph({
             alignment: AlignmentType.CENTER,
-            children: [new ImageRun({ type: coverImage.type, data: coverImage.data, transformation: { width: 420, height: 747 } })],
+            children: [
+              new ImageRun({
+                type: coverImage.type,
+                data: coverImage.data,
+                transformation: coverImage.composed ? { width: 500, height: 707 } : { width: 420, height: 747 },
+              }),
+            ],
           }),
           pageBreak(),
         ]

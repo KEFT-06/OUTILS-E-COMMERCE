@@ -1,5 +1,6 @@
 import { checkSectionsCompliance } from '@/shared/lib/complianceGate';
 import { coversApi } from '@/shared/lib/covers';
+import { composeCoverFor } from '@/shared/lib/downloadBookCover';
 import {
   ProductDocument,
   buildProductDocument,
@@ -112,17 +113,28 @@ export async function exportProduct(
     throw new ProductExportBlockedError(verdict);
   }
 
-  // Une couverture illisible ne prive pas de l'export : le document part sans elle.
-  const image = coverId ? await coversApi.image(coverId).catch(() => null) : null;
+  /*
+    Tout ouvrage part avec sa couverture, celle qui se voit à l'écran : son illustration sous le
+    titre s'il en a une, une couverture typographique sinon. Sans illustration, le document
+    commençait par une page de titre nue ; avec, par une image surmontée d'un bandeau qui n'était
+    pas la couverture montrée ailleurs. Si la composition échoue, le document part sans elle.
+  */
+  const illustration = coverId ? await coversApi.image(coverId).catch(() => null) : null;
+  const cover = await composeCoverFor({
+    imageUrl: illustration?.dataUrl ?? null,
+    text: { title: productDocument.title, subtitle: productDocument.subtitle, label: productDocument.typeName },
+    seed: product.id,
+  })
+    .then((canvas) => canvas.toDataURL('image/jpeg', 0.92))
+    .catch(() => null);
 
   if (format === 'pdf') {
-    const pdfFormat = image ? ({ 'image/png': 'PNG', 'image/jpeg': 'JPEG', 'image/webp': 'WEBP' } as const)[image.mimeType as 'image/png'] : undefined;
-    renderProductPDF(productDocument, image && pdfFormat ? { dataUrl: image.dataUrl, format: pdfFormat } : null);
+    renderProductPDF(productDocument, cover ? { dataUrl: cover, format: 'JPEG', composed: true } : null);
   } else {
     // Chargé à la demande : la bibliothèque DOCX est lourde et ne sert qu'à cet export.
     const { renderProductDOCX } = await import('@/modules/studio/export/productDocx');
-    const docxType = image?.mimeType === 'image/png' ? 'png' : image?.mimeType === 'image/jpeg' ? 'jpg' : null;
-    await renderProductDOCX(productDocument, image && docxType ? { type: docxType, data: image.bytes } : null);
+    const bytes = cover ? Uint8Array.from(atob(cover.slice(cover.indexOf(',') + 1)), (char) => char.charCodeAt(0)) : null;
+    await renderProductDOCX(productDocument, bytes ? { type: 'jpg', data: bytes, composed: true } : null);
   }
 
   recordExport('ebook', format);

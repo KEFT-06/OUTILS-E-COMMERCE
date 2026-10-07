@@ -5,9 +5,12 @@ import { LongformEbookPanel } from '@/modules/studio/LongformEbookPanel';
 import { ProductExpertEditor } from '@/modules/studio/ProductExpertEditor';
 import { ProductPreviewPanel } from '@/modules/studio/ProductPreviewPanel';
 import { useEbookJob } from '@/modules/studio/useEbookJob';
+import { BookCover } from '@/shared/components/BookCover';
 import { CoverGenerator } from '@/shared/components/CoverGenerator';
+import { downloadBookCover } from '@/shared/lib/downloadBookCover';
+import { rememberProductCover } from '@/shared/stores/useProductCovers';
 import { WritingFindings } from '@/shared/components/WritingFindings';
-import type { CoverView } from '@/shared/lib/covers';
+import { type CoverView, coversApi } from '@/shared/lib/covers';
 import {
   ProductExportBlockedError,
   type ProductExportFormat,
@@ -64,6 +67,7 @@ export function ProductStudioPanel({ baseProduct, report, initialExpertOpen = fa
   const [exportError, setExportError] = useState<string | null>(null);
   const [blockedVerdict, setBlockedVerdict] = useState<ProductExportVerdict | null>(null);
   const [cover, setCover] = useState<CoverView | null>(null);
+  const [downloadingCover, setDownloadingCover] = useState(false);
   const [generateOpen, setGenerateOpen] = useState(false);
   const [isPreviewOpen, setIsPreviewOpen] = useState(false);
   /** Vrai quand l'ouvrage vient d'être rédigé : la vue s'ouvre et vient à l'écran d'elle-même. */
@@ -226,15 +230,56 @@ export function ProductStudioPanel({ baseProduct, report, initialExpertOpen = fa
         <WritingFindings findings={findings} />
 
         <div className="space-y-3 border-t pt-4">
-          <p className="text-sm font-semibold">Couverture du PDF</p>
-          <CoverGenerator
-            key={baseProduct.id}
-            subject="product"
-            subjectId={baseProduct.id}
-            title={product.title}
-            subtitle={product.subtitle}
-            onChange={setCover}
-          />
+          <p className="text-sm font-semibold">Couverture</p>
+          <div className="flex flex-col gap-4 sm:flex-row">
+            <div className="w-36 shrink-0 space-y-2 sm:w-40">
+              <BookCover
+                title={product.title}
+                subtitle={product.subtitle}
+                label={product.typeName}
+                imageUrl={cover?.status === 'ready' ? coversApi.imageUrl(cover) : null}
+                seed={baseProduct.id}
+              />
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                className="w-full"
+                disabled={downloadingCover}
+                onClick={() => {
+                  setDownloadingCover(true);
+                  void downloadBookCover({
+                    imageUrl: cover?.status === 'ready' ? coversApi.imageUrl(cover) : null,
+                    text: { title: product.title, subtitle: product.subtitle, label: product.typeName },
+                    seed: baseProduct.id,
+                  })
+                    .catch(() => toast.error('La couverture n’a pas pu être téléchargée', { description: 'Relancez le téléchargement.' }))
+                    .finally(() => setDownloadingCover(false));
+                }}
+              >
+                {downloadingCover ? <Spinner /> : <FileDown />}
+                Télécharger
+              </Button>
+            </div>
+            <div className="min-w-0 flex-1 space-y-2">
+              <p className="text-sm leading-relaxed text-muted-foreground">
+                Cette couverture ouvre le PDF et le DOCX, et accompagne le produit partout sur le site. Ajoutez-lui une illustration :
+                le titre reste posé dessus.
+              </p>
+              <CoverGenerator
+                key={baseProduct.id}
+                subject="product"
+                subjectId={baseProduct.id}
+                title={product.title}
+                subtitle={product.subtitle}
+                hidePreview
+                onChange={(next) => {
+                  setCover(next);
+                  rememberProductCover(baseProduct.id, next);
+                }}
+              />
+            </div>
+          </div>
         </div>
 
         {exportError && (

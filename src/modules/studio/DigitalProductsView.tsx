@@ -20,7 +20,9 @@ import {
 import { Area, AreaChart, CartesianGrid, XAxis, YAxis } from 'recharts';
 import { ProductStudioPanel } from '@/modules/studio/ProductStudioPanel';
 import { VideoToProductDialog } from '@/modules/studio/VideoToProductDialog';
+import { BookCover } from '@/shared/components/BookCover';
 import { PageHeader } from '@/shared/components/PageHeader';
+import { useProductCovers } from '@/shared/stores/useProductCovers';
 import { WritingFindings } from '@/shared/components/WritingFindings';
 import { usePricing } from '@/modules/studio/usePricing';
 import { roundPrice } from '@server/shared/currency';
@@ -80,6 +82,7 @@ export function DigitalProductsView({ report, onSelectProductForAd, onAnalyzeNic
   const drafts = useProductDrafts();
   const custom = useCustomProducts();
   const providers = useProviders();
+  const covers = useProductCovers();
 
   const products = useMemo(() => [...(report?.digitalProducts ?? []), ...custom.products], [report, custom.products]);
   // Produit créé depuis une alerte (« Créer un produit similaire ») : il s'ouvre directement.
@@ -243,7 +246,7 @@ export function DigitalProductsView({ report, onSelectProductForAd, onAnalyzeNic
         </Alert>
       )}
 
-      <div role="radiogroup" aria-label="Produits" className="grid gap-4 md:grid-cols-3">
+      <div role="radiogroup" aria-label="Produits" className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
         {products.map((candidate) => {
           const product = drafts.effective(candidate);
           const isSelected = baseProduct.id === candidate.id;
@@ -257,10 +260,20 @@ export function DigitalProductsView({ report, onSelectProductForAd, onAnalyzeNic
               aria-checked={isSelected}
               onClick={() => selectProduct(candidate)}
               className={cn(
-                'flex flex-col justify-between gap-4 rounded-xl border bg-card p-5 text-left shadow-xs transition-colors hover:border-primary/50',
+                'flex gap-4 rounded-xl border bg-card p-4 text-left shadow-xs transition-colors hover:border-primary/50',
                 isSelected && 'border-primary ring-2 ring-primary/25',
               )}
             >
+              {/* La couverture de l'ouvrage, titre dessus : avec son illustration s'il en a une, typographique sinon. */}
+              <BookCover
+                title={product.title}
+                subtitle={product.subtitle}
+                label={product.typeName}
+                imageUrl={covers[candidate.id]}
+                seed={candidate.id}
+                className="w-24 shrink-0 self-start sm:w-28"
+              />
+              <span className="flex min-w-0 flex-1 flex-col justify-between gap-4">
               <span className="space-y-2">
                 <span className="flex flex-wrap items-center justify-between gap-2">
                   <Badge variant="secondary">
@@ -292,6 +305,7 @@ export function DigitalProductsView({ report, onSelectProductForAd, onAnalyzeNic
                   </span>
                 )}
                 {badge && <span className="font-medium text-foreground/80">{badge}</span>}
+              </span>
               </span>
             </button>
           );

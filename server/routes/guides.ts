@@ -8,6 +8,7 @@ import {
   createCover,
   deleteCover,
   latestCover,
+  listCovers,
   refreshCover,
   sendCoverImage,
   type CoverRequest,
@@ -193,6 +194,17 @@ coversRouter.get(
     const query = coverSubjectQuery.safeParse(req.query);
     if (!query.success) throw new AppError(400, 'Sujet de couverture invalide.', 'VALIDATION_ERROR');
     res.json({ cover: await latestCover(req.auth!, query.data.subject, query.data.subjectId) });
+  }),
+);
+
+/** Toutes les couvertures prêtes du compte pour un type de sujet : une lecture pour toutes les cartes. */
+coversRouter.get(
+  '/mine',
+  noStore,
+  asyncRoute(async (req, res) => {
+    const subject = z.enum(['guide', 'product']).safeParse(req.query.subject);
+    if (!subject.success) throw new AppError(400, 'Sujet de couverture invalide.', 'VALIDATION_ERROR');
+    res.json({ covers: await listCovers(req.auth!, subject.data) });
   }),
 );
 

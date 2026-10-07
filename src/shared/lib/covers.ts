@@ -36,6 +36,8 @@ export const coversApi = {
     apiRequest<{ cover: CoverView | null }>(`/api/covers?subject=${subject}&subjectId=${encodeURIComponent(subjectId)}`).then(
       (response) => response.cover,
     ),
+  /** Les couvertures prêtes du compte pour un type de sujet, une par sujet. */
+  mine: (subject: 'guide' | 'product') => apiRequest<{ covers: CoverView[] }>(`/api/covers/mine?subject=${subject}`).then((response) => response.covers),
   create: (input: CoverInput) => apiRequest<{ cover: CoverView }>('/api/covers', { method: 'POST', body: input }).then((response) => response.cover),
   refresh: (coverId: string) => apiRequest<{ cover: CoverView }>(`/api/covers/${coverId}`).then((response) => response.cover),
   remove: (coverId: string) => apiRequest<void>(`/api/covers/${coverId}`, { method: 'DELETE' }),

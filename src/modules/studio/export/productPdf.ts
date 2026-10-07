@@ -56,6 +56,8 @@ const TOC_SECTION_LINE = 6.2;
 export interface ProductCoverImage {
   dataUrl: string;
   format: 'PNG' | 'JPEG' | 'WEBP';
+  /** Couverture déjà composée, titre compris, au format de la page : elle est posée telle quelle. */
+  composed?: boolean;
 }
 
 /** Construit le document sans le télécharger : séparé pour pouvoir être vérifié hors navigateur. */
@@ -72,7 +74,11 @@ export function buildProductPDF(productDocument: ProductDocument, cover: Product
 
   // --- Couverture illustrée : une page de plus, avant la page de titre ---
   const offset = cover ? 1 : 0;
-  if (cover) {
+  if (cover?.composed) {
+    // La couverture telle qu'elle se voit à l'écran : pleine page, rien à y ajouter.
+    doc.addImage(cover.dataUrl, cover.format, 0, 0, pageWidth, pageHeight);
+    doc.addPage();
+  } else if (cover) {
     // Image 9:16 en pleine page, recadrée en haut et en bas ; bandeau sombre pour le titre.
     const imageHeight = pageWidth * (16 / 9);
     doc.addImage(cover.dataUrl, cover.format, 0, (pageHeight - imageHeight) / 2, pageWidth, imageHeight);

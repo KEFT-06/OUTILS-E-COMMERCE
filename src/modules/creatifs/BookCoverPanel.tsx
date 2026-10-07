@@ -1,13 +1,14 @@
 import { useEffect, useState } from 'react';
-import { BookOpen, Download, ImageDown } from 'lucide-react';
+import { Download, ImageDown } from 'lucide-react';
 import { toast } from 'sonner';
 import { useWorkspace } from '@/app/providers/WorkspaceProvider';
 import { useAuth } from '@/features/auth/AuthContext';
-import { canvasToBlob, composeBookCover, loadCoverImage } from '@/modules/creatifs/bookCover';
+import { BookCover } from '@/shared/components/BookCover';
+import { composeCoverFor, downloadBookCover } from '@/shared/lib/downloadBookCover';
+import { rememberProductCover } from '@/shared/stores/useProductCovers';
 import { CoverGenerator } from '@/shared/components/CoverGenerator';
 import { ZoomableImage } from '@/shared/components/ZoomableImage';
 import { type CoverView, coversApi } from '@/shared/lib/covers';
-import { triggerDownload } from '@/shared/lib/download';
 import { toFileSlug } from '@/shared/lib/pdfText';
 import { useCustomProducts } from '@/shared/stores/useCustomProducts';
 import { useProductDrafts } from '@/shared/stores/useProductDrafts';
@@ -78,15 +79,12 @@ export function BookCoverPanel() {
   const title = texts.title.trim();
   const settledTexts = useDebounced(`${texts.title}\n${texts.subtitle}\n${author}`, 250);
 
+  const label = product?.typeName;
+  // La couverture en grand, telle qu'elle sera téléchargée : sur son illustration, ou typographique.
   useEffect(() => {
-    if (!imageUrl) {
-      setComposed(null);
-      return;
-    }
     let cancelled = false;
     const [coverTitle = '', subtitle = '', coverAuthor = ''] = settledTexts.split('\n');
-    loadCoverImage(imageUrl)
-      .then((image) => composeBookCover(image, { title: coverTitle, subtitle, author: coverAuthor }))
+    composeCoverFor({ imageUrl, text: { title: coverTitle, subtitle, author: coverAuthor, label }, seed: subjectId })
       .then((canvas) => {
         if (!cancelled) setComposed(canvas.toDataURL('image/jpeg', 0.9));
       })
@@ -96,14 +94,12 @@ export function BookCoverPanel() {
     return () => {
       cancelled = true;
     };
-  }, [imageUrl, settledTexts]);
+  }, [imageUrl, settledTexts, label, subjectId]);
 
   const download = async () => {
-    if (!imageUrl) return;
     setDownloading(true);
     try {
-      const canvas = await composeBookCover(await loadCoverImage(imageUrl), { title, subtitle: texts.subtitle, author });
-      triggerDownload(await canvasToBlob(canvas), `${toFileSlug(title, 'livre')}-couverture.jpg`);
+      await downloadBookCover({ imageUrl, text: { title, subtitle: texts.subtitle, author, label }, seed: subjectId });
     } catch {
       toast.error('La couverture n’a pas pu être téléchargée', { description: 'Relancez le téléchargement.' });
     } finally {
@@ -123,21 +119,12 @@ export function BookCoverPanel() {
               imageClassName="size-full object-cover"
             />
           ) : (
-            // Avant l'illustration : la page telle qu'elle sera composée, titre en place.
-            <div className="flex size-full flex-col gap-2 p-5 text-white">
-              <span className="h-1 w-8 bg-white" aria-hidden="true" />
-              <p className="font-display text-xl leading-tight font-extrabold text-balance">{title || 'Le titre de votre livre'}</p>
-              {texts.subtitle.trim() && <p className="text-xs leading-snug text-slate-300">{texts.subtitle}</p>}
-              <div className="mt-auto flex flex-col items-center gap-2 pb-4 text-center text-xs text-slate-400">
-                {ready ? <Spinner /> : <BookOpen className="size-6" aria-hidden="true" />}
-                {ready ? 'Mise en page…' : 'L’illustration viendra ici, sous votre titre.'}
-              </div>
-              {author.trim() && <p className="text-sm font-semibold">{author}</p>}
-            </div>
+            // Le temps de la composer en grand : la même couverture, dessinée par la page.
+            <BookCover title={title || 'Le titre de votre livre'} subtitle={texts.subtitle} author={author} label={label} imageUrl={imageUrl} seed={subjectId} className="size-full rounded-none shadow-none ring-0" />
           )}
         </div>
         <div className="mx-auto flex max-w-[17rem] flex-col gap-2">
-          <Button onClick={() => void download()} disabled={!composed || downloading}>
+          <Button onClick={() => void download()} disabled={downloading || title.length < 2}>
             {downloading ? <Spinner /> : <Download />}
             Télécharger la couverture
           </Button>
@@ -200,7 +187,19 @@ export function BookCoverPanel() {
 
         <div className="space-y-3 border-t pt-4">
           <p className="text-sm font-semibold">Illustration</p>
-          <CoverGenerator key={subjectId} subject="product" subjectId={subjectId} title={title} subtitle={texts.subtitle} onChange={setCover} hidePreview />
+          <CoverGenerator
+            key={subjectId}
+            subject="product"
+            subjectId={subjectId}
+            title={title}
+            subtitle={texts.subtitle}
+            hidePreview
+            onChange={(next) => {
+              setCover(next);
+              // Un produit du Studio : sa carte et son PDF prennent aussitôt la nouvelle illustration.
+              if (product) rememberProductCover(product.id, next);
+            }}
+          />
         </div>
       </div>
     </div>
