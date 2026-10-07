@@ -105,7 +105,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     return () => window.removeEventListener(SESSION_EXPIRED_EVENT, onExpired);
   }, []);
 
-  const signup = useCallback(async (input: { name: string; email: string; password: string; country: string; website?: string }) => {
+  const signup = useCallback(async (input: { name: string; email: string; password: string; country: string; website?: string; ref?: string }) => {
     const { account: created } = await apiRequest<{ account: Account }>('/api/auth/signup', { method: 'POST', body: input });
     setAccount(created);
   }, []);

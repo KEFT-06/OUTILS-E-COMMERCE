@@ -124,12 +124,24 @@ export const users = pgTable(
      * qui retrouve le compte aux connexions suivantes.
      */
     googleSub: text('google_sub'),
+    /** Code de parrainage du compte, attribué à la première ouverture de son écran de parrainage. */
+    referralCode: text('referral_code'),
+    /** Visites arrivées par son lien de parrainage. */
+    referralClicks: integer('referral_clicks').notNull().default(0),
+    /**
+     * Parrain : le compte dont le lien a amené celui-ci (dernier clic avant l'inscription).
+     * La clé étrangère (la table se référence elle-même) est posée par la migration 0040.
+     */
+    referredBy: uuid('referred_by'),
+    referredAt: moment('referred_at'),
     createdAt: createdAt(),
     updatedAt: moment('updated_at').notNull().defaultNow(),
   },
   (table) => [
     uniqueIndex('users_email_unique').on(table.email),
     uniqueIndex('users_google_sub_unique').on(table.googleSub),
+    uniqueIndex('users_referral_code_unique').on(table.referralCode),
+    index('users_referred_by_idx').on(table.referredBy),
     index('users_created_idx').on(table.createdAt),
   ],
 ).enableRLS();
@@ -1169,6 +1181,67 @@ export const marketProducts = pgTable(
  * remarqué — produit qui décolle, niche où plusieurs boutiques lancent la même chose, publicité
  * installée qui s'arrête. Partagées par tous les comptes, comme les données dont elles viennent.
  */
+/**
+ * Parrainage : ce qu'un paiement d'un filleul rapporte à son parrain.
+ *
+ * Une commission par paiement (`paymentId` unique) : le retour de Stripe et son webhook peuvent
+ * se croiser sans la créer deux fois. Elle naît « en attente », devient « validée » après le
+ * délai de garde — le temps qu'un remboursement se déclare —, puis « payée » quand le retrait
+ * qui la contient est réglé. Tous les montants sont en francs CFA, la devise des comptes du site.
+ */
+export const REFERRAL_COMMISSION_STATUSES = ['pending', 'approved', 'paid', 'cancelled'] as const;
+export const REFERRAL_PAYOUT_STATUSES = ['requested', 'paid', 'rejected'] as const;
+export const REFERRAL_PAYOUT_METHODS = ['orange_money', 'mtn_momo', 'bank', 'crypto'] as const;
+
+export const referralPayouts = pgTable(
+  'referral_payouts',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    affiliateId: uuid('affiliate_id')
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
+    amountFcfa: integer('amount_fcfa').notNull(),
+    method: text('method').$type<(typeof REFERRAL_PAYOUT_METHODS)[number]>().notNull(),
+    /** Où verser : numéro Mobile Money, IBAN ou adresse de portefeuille, tel que saisi par le parrain. */
+    destination: text('destination').notNull(),
+    holderName: text('holder_name').notNull(),
+    status: text('status').$type<(typeof REFERRAL_PAYOUT_STATUSES)[number]>().notNull().default('requested'),
+    /** Référence du versement, ou motif du refus, écrits par l'équipe. */
+    note: text('note'),
+    requestedAt: createdAt(),
+    processedAt: moment('processed_at'),
+    processedBy: uuid('processed_by').references(() => users.id, { onDelete: 'set null' }),
+  },
+  (table) => [index('referral_payouts_affiliate_idx').on(table.affiliateId), index('referral_payouts_status_idx').on(table.status)],
+).enableRLS();
+
+export const referralCommissions = pgTable(
+  'referral_commissions',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    affiliateId: uuid('affiliate_id')
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
+    referredUserId: uuid('referred_user_id').references(() => users.id, { onDelete: 'set null' }),
+    paymentId: uuid('payment_id')
+      .notNull()
+      .references(() => payments.id, { onDelete: 'cascade' }),
+    /** Montant du paiement du filleul, puis la commission qui en découle. */
+    baseFcfa: integer('base_fcfa').notNull(),
+    amountFcfa: integer('amount_fcfa').notNull(),
+    status: text('status').$type<(typeof REFERRAL_COMMISSION_STATUSES)[number]>().notNull().default('pending'),
+    /** Fin du délai de garde : la commission peut être validée à partir de cette date. */
+    approveAt: moment('approve_at').notNull(),
+    payoutId: uuid('payout_id').references(() => referralPayouts.id, { onDelete: 'set null' }),
+    createdAt: createdAt(),
+  },
+  (table) => [
+    uniqueIndex('referral_commissions_payment_unique').on(table.paymentId),
+    index('referral_commissions_affiliate_idx').on(table.affiliateId, table.status),
+    index('referral_commissions_due_idx').on(table.status, table.approveAt),
+  ],
+).enableRLS();
+
 /**
  * Ventes cumulées d'un produit, un point par jour de relevé.
  *

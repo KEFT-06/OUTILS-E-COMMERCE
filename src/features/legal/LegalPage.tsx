@@ -213,6 +213,12 @@ function Confidentialite() {
           Ces éléments sont nécessaires au fonctionnement du site. Smart Creator ne dépose aucun cookie publicitaire ni de
           mesure d’audience.
         </p>
+        <p>
+          Un seul cookie n’est pas nécessaire, et il n’est déposé qu’avec votre accord : le cookie de parrainage « sc_ref ».
+          Si vous arrivez par le lien d’un membre, le site vous demande s’il doit retenir ce parrainage ; si vous acceptez,
+          le code de ce membre est gardé 30 jours, pour qu’il soit crédité si vous vous inscrivez. Si vous refusez, rien
+          n’est gardé sur votre appareil.
+        </p>
       </Section>
 
       <Section title="Mesure d’audience sans cookie">

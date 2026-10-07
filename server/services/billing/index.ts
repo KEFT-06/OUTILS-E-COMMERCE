@@ -12,6 +12,7 @@ import { notifyTeamInBackground } from '@server/services/email';
 import { createCheckoutSession, retrieveCheckoutSession, stripeMode, verifyWebhookSignature } from '@server/services/billing/stripe';
 import { convertAmount, currencyForCountry, fromMinorUnits, getRates, toMinorUnits } from '@server/services/currency';
 import { getPlan, getPlanConfig, planPrice } from '@server/services/plans';
+import { recordReferralCommission } from '@server/services/referral';
 import { formatMoney } from '@server/shared/currency';
 
 /**
@@ -173,6 +174,8 @@ export async function fulfillCheckout(sessionId: string): Promise<CheckoutOutcom
       tx,
     );
     await tx.update(paymentCheckouts).set({ paymentId: payment!.id }).where(eq(paymentCheckouts.id, sessionId));
+    // Paiement d'un filleul : la commission de son parrain est créée avec lui, en attente.
+    await recordReferralCommission({ paymentId: payment!.id, userId: user.id, amountFcfa }, tx, now);
     await recordAuthEvent(
       'payment_completed',
       {

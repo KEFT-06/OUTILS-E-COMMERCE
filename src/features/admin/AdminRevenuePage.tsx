@@ -12,6 +12,7 @@ import {
   useAdminResource,
 } from '@/features/admin/adminApi';
 import { RecordPaymentDialog, RefundPaymentDialog } from '@/features/admin/AdminDialogs';
+import { ReferralPayoutsCard } from '@/features/admin/ReferralPayoutsCard';
 import { AdminErrorAlert, GranularityToggle, KpiCard, Pagination } from '@/features/admin/components';
 import { changeRatio, compactNumber, formatPeriod } from '@/features/admin/format';
 import { useAuth } from '@/features/auth/AuthContext';
@@ -292,6 +293,8 @@ export function AdminRevenuePage() {
           )}
         </CardContent>
       </Card>
+
+      <ReferralPayoutsCard canSettle={canRecord} />
     </div>
   );
 }

@@ -1,11 +1,12 @@
 import { lazy, Suspense, useState, type ReactNode } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { Compass, PenSquare, Sparkles } from 'lucide-react';
 import { ACCOUNT_PATH, pathOf, type ModuleId } from '@/app/navigation';
 import { useWorkspace } from '@/app/providers/WorkspaceProvider';
 import { AccountView } from '@/features/account/AccountView';
 import { AnalysisProgress } from '@/modules/analyse/AnalysisProgress';
 import { PageHeader } from '@/shared/components/PageHeader';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/shared/ui/tabs';
 import { useCustomProducts } from '@/shared/stores/useCustomProducts';
 import type { DigitalProductIdea, MarketAnalysisReport } from '@/shared/types/analysis';
 import { Button } from '@/shared/ui/button';
@@ -75,6 +76,7 @@ const CampaignBlueprintsView = lazy(() =>
   import('@/modules/campagnes/CampaignBlueprintsView').then((module) => ({ default: module.CampaignBlueprintsView })),
 );
 const CreationsView = lazy(() => import('@/modules/creations/CreationsView').then((module) => ({ default: module.CreationsView })));
+const ReferralPanel = lazy(() => import('@/modules/affiliation/ReferralPanel').then((module) => ({ default: module.ReferralPanel })));
 const MultilingualGuidesView = lazy(() =>
   import('@/modules/multilingue/MultilingualGuidesView').then((module) => ({ default: module.MultilingualGuidesView })),
 );
@@ -347,8 +349,34 @@ export function DistributionPage() {
   return <DistributionView />;
 }
 
+/**
+ * Deux affiliations, deux onglets : le parrainage de Smart Creator (on recommande le site, on
+ * touche une commission), et les affiliés de sa propre boutique (ceux qui vendent ses produits).
+ */
 export function AffiliationPage() {
-  return <AffiliationView />;
+  const [params, setParams] = useSearchParams();
+  const onglet = params.get('onglet') === 'boutique' ? 'boutique' : 'parrainage';
+  return (
+    <div className="space-y-6">
+      <Tabs value={onglet} onValueChange={(next) => setParams(next === 'boutique' ? { onglet: 'boutique' } : {}, { replace: true })}>
+        <TabsList className="grid h-auto w-full grid-cols-2 sm:inline-flex sm:w-auto">
+          <TabsTrigger value="parrainage" className="h-auto min-w-0 py-1.5 whitespace-normal">
+            Parrainage Smart Creator
+          </TabsTrigger>
+          <TabsTrigger value="boutique" className="h-auto min-w-0 py-1.5 whitespace-normal">
+            Affiliés de ma boutique
+          </TabsTrigger>
+        </TabsList>
+        <TabsContent value="parrainage" className="space-y-6">
+          <PageHeader eyebrow="Vendre" title="Parrainage" description="Recommandez Smart Creator et touchez une commission sur les paiements des personnes que vous amenez." />
+          <ReferralPanel />
+        </TabsContent>
+        <TabsContent value="boutique">
+          <AffiliationView />
+        </TabsContent>
+      </Tabs>
+    </div>
+  );
 }
 
 export function MultilinguePage() {

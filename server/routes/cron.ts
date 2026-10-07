@@ -15,6 +15,7 @@ import { sweepPendingGenerations } from '@server/services/generations/sweeper';
 import { sweepDueWatches } from '@server/services/radar/sweeper';
 import { z } from 'zod';
 import { detectAlerts } from '@server/services/alerts';
+import { settleDueCommissions } from '@server/services/referral';
 import { collectorPlan, ingestLibraryRecords, recordCollectorRun } from '@server/services/espionnage/library';
 import { indexDiscoveredStores } from '@server/services/market';
 import { runInBackground } from '@server/shared/backgroundWork';
@@ -98,6 +99,10 @@ cronRouter.get(
 
     const sweep = await sweepDueWatches();
     const digests = await sendDueRadarDigests();
+    // Parrainage : fin du délai de garde, les commissions dont le paiement tient sont validées.
+    await settleDueCommissions().catch((error: unknown) => {
+      console.warn('[cron] commissions de parrainage :', error instanceof Error ? error.message : error);
+    });
 
     /*
       Un relevé par jour des vendeurs consentants. Il ne servira à rien avant que cinq

@@ -5,6 +5,7 @@ import { getDb } from '@server/db/client';
 import {
   PAYMENT_METHODS,
   PLAN_IDS,
+  REFERRAL_PAYOUT_STATUSES,
   auditLogs,
   authEvents,
   authThrottles,
@@ -50,6 +51,7 @@ import { revokeUserSessions } from '@server/services/auth/sessions';
 import { removeStoryFiles, storyFilesOf } from '@server/services/storybook/illustrate';
 import { convertAmount, getRates, toMinorUnits } from '@server/services/currency';
 import { FEATURES, getPlan, getPlanConfig, isFeature } from '@server/services/plans';
+import { cancelCommissionOf, listPayouts, processPayout, recordReferralCommission, referralTerms } from '@server/services/referral';
 import { audienceSummary } from '@server/services/audience';
 import { creativeListQuerySchema, findCreativeFile, listCreatives } from '@server/services/admin/creatives';
 import { pricingOverview } from '@server/services/admin/pricing';
@@ -843,6 +845,8 @@ adminRouter.post(
           recordedBy: auth.account.user.id,
         })
         .returning();
+      // Paiement d'un filleul, même encaissé hors ligne : la commission de son parrain naît avec lui.
+      await recordReferralCommission({ paymentId: created!.id, userId: target.id, amountFcfa }, tx);
 
       let expiresAt: Date | null = null;
       if (body.activatePlan) {
@@ -911,6 +915,8 @@ adminRouter.post(
         .where(and(eq(payments.id, paymentId.data), eq(payments.status, 'paid')))
         .returning();
       if (!row) throw new AppError(409, 'Paiement introuvable ou déjà remboursé.', 'PAYMENT_NOT_REFUNDABLE');
+      // Paiement remboursé : la commission qu'il avait fait naître tombe, si elle n'est pas déjà versée.
+      await cancelCommissionOf(row.id, tx);
 
       await recordAudit(
         {
@@ -1004,5 +1010,49 @@ adminRouter.get(
   asyncRoute(async (req, res) => {
     res.setHeader('Cache-Control', 'no-store');
     res.json(await checkServices({ refresh: req.query.refresh === '1' }));
+  }),
+);
+
+/* -------------------------------------------------------------------------- */
+/*  Parrainage : demandes de retrait                                           */
+/* -------------------------------------------------------------------------- */
+
+/** Demandes de retrait des parrains, les plus récentes d'abord, avec les conditions en vigueur. */
+adminRouter.get(
+  '/referral/payouts',
+  requirePermission('admin.revenue.read'),
+  asyncRoute(async (req, res) => {
+    const status = z.enum(REFERRAL_PAYOUT_STATUSES).safeParse(req.query.status);
+    res.json({ payouts: await listPayouts(status.success ? status.data : undefined), terms: referralTerms() });
+  }),
+);
+
+const payoutDecisionSchema = z.object({
+  decision: z.enum(['paid', 'rejected']),
+  /** Référence du versement, ou motif du refus : le parrain la lit. */
+  note: z.string().trim().max(300).optional(),
+});
+
+/**
+ * Règle une demande : « payée » une fois le versement fait hors du site (Mobile Money, virement,
+ * crypto), ou « refusée » — le solde redevient alors disponible pour une nouvelle demande.
+ */
+adminRouter.post(
+  '/referral/payouts/:payoutId',
+  requirePermission('admin.payments.record'),
+  validateBody(payoutDecisionSchema),
+  asyncRoute(async (req, res) => {
+    const auth = req.auth!;
+    const payoutId = z.string().uuid().safeParse(req.params.payoutId);
+    if (!payoutId.success) throw new AppError(400, 'Identifiant de retrait invalide.', 'INVALID_PAYOUT_ID');
+    const { decision, note } = req.body as z.infer<typeof payoutDecisionSchema>;
+    await processPayout(payoutId.data, decision, auth.account.user.id, note || null);
+    await recordAudit({
+      actor: actorOf(auth),
+      action: decision === 'paid' ? 'referral.payout_paid' : 'referral.payout_rejected',
+      details: { payoutId: payoutId.data, note: note ?? null },
+      client: clientInfo(req),
+    });
+    res.status(204).end();
   }),
 );

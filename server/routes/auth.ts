@@ -5,6 +5,8 @@ import { authCookieOptions, clearAuthCookie, readCookie } from '@server/lib/cook
 import { sha256 } from '@server/lib/crypto';
 import { AppError, asyncRoute, countrySchema, routeLimiter, validateBody } from '@server/middleware';
 import { requireAuth } from '@server/middleware/auth';
+import { clearReferralCookie, referralCodeOf } from '@server/routes/referral';
+import { attachReferral, normalizeCode } from '@server/services/referral';
 import { loadAccount } from '@server/services/accounts';
 import { accountView } from '@server/services/accounts/view';
 import { clientInfo, recordAuthEvent } from '@server/services/audit';
@@ -74,6 +76,8 @@ const signupSchema = z.object({
   country: countrySchema.optional(),
   /** Champ piège invisible : un robot le remplit, une personne jamais. */
   website: z.string().max(200).optional(),
+  /** Code du parrain dont le lien a été suivi pendant cette visite, quand aucun cookie ne le porte. */
+  ref: z.string().trim().max(24).optional(),
 });
 
 authRouter.post(
@@ -81,13 +85,30 @@ authRouter.post(
   routeLimiter(60, 10),
   validateBody(signupSchema),
   asyncRoute(async (req, res) => {
-    const { name, email, password, country, website } = req.body as z.infer<typeof signupSchema>;
+    const { name, email, password, country, website, ref } = req.body as z.infer<typeof signupSchema>;
     if (website) throw new AppError(400, 'L’inscription n’a pas pu aboutir.', 'SIGNUP_REJECTED');
     const client = clientInfo(req);
     const user = await registerUser({ name, email, password, country, client });
+    await attachFollowedReferral(req, res, user.id, ref);
     await respondWithSession(req, res, await openSession(user, false, client), 201);
   }),
 );
+
+/**
+ * Rattache le compte qui vient d'être créé au parrain dont ce navigateur a suivi le lien, puis
+ * efface le cookie : il a servi. Un souci ici ne doit jamais faire échouer une inscription.
+ */
+async function attachFollowedReferral(req: Request, res: Response, userId: string, sameVisit?: unknown): Promise<void> {
+  // Le lien retenu avec l'accord du visiteur ; à défaut, celui suivi pendant cette même visite.
+  const code = referralCodeOf(req) ?? normalizeCode(sameVisit);
+  if (!code) return;
+  try {
+    await attachReferral(userId, code);
+  } catch (error) {
+    console.warn('[parrainage] rattachement impossible :', error instanceof Error ? error.message : error);
+  }
+  clearReferralCookie(res);
+}
 
 /* -------------------------------------------------------------------------- */
 /*  Continuer avec Google                                                      */
@@ -115,7 +136,9 @@ authRouter.get(
       return;
     }
     const { flow, url } = startGoogleFlow(req.query.next);
-    res.cookie(GOOGLE_COOKIE, JSON.stringify(flow), googleCookieOptions);
+    // Lien de parrainage suivi pendant cette visite : il fait le trajet avec la connexion, dix minutes.
+    const ref = normalizeCode(req.query.ref);
+    res.cookie(GOOGLE_COOKIE, JSON.stringify(ref ? { ...flow, ref } : flow), googleCookieOptions);
     res.redirect(303, url);
   }),
 );
@@ -159,6 +182,8 @@ authRouter.get(
       const previous = readCookie(req, SESSION_COOKIE);
       if (previous) await revokeSession(sha256(previous), 'replaced');
       setSessionCookie(res, result.token, result.expiresAt);
+      // Compte créé à l'instant par Google : il est rattaché au parrain dont le lien a été suivi.
+      if (result.created) await attachFollowedReferral(req, res, result.user.id, (flow as { ref?: unknown }).ref);
       res.redirect(303, flow.next);
     } catch (error) {
       const reason =

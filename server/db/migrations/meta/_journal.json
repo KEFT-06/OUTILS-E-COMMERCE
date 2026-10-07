@@ -281,6 +281,13 @@
       "when": 1791347953888,
       "tag": "0039_ventes_par_jour",
       "breakpoints": true
+    },
+    {
+      "idx": 40,
+      "version": "7",
+      "when": 1791350266118,
+      "tag": "0040_parrainage",
+      "breakpoints": true
     }
   ]
 }

@@ -22,6 +22,7 @@ import {
 } from '@/app/routes/AdminPages';
 import { NotFoundPage } from '@/app/routes/NotFoundPage';
 import { CookieNotice } from '@/shared/components/CookieNotice';
+import { ReferralCapture, ReferralLinkPage } from '@/features/referral/ReferralCapture';
 import { ErrorBoundary } from '@/shared/components/ErrorBoundary';
 import { FloatingContact } from '@/shared/components/FloatingContact';
 import { ScrollAids } from '@/shared/components/ScrollAids';
@@ -105,6 +106,7 @@ export default function App() {
               <Route path="/confidentialite" element={<LegalPage kind="confidentialite" />} />
               <Route path="/conditions" element={<LegalPage kind="conditions" />} />
               <Route path="/contact" element={<ContactPage />} />
+              <Route path="/r/:code" element={<ReferralLinkPage />} />
 
               <Route path="/app" element={<RequireAuth />}>
                 <Route element={<AppLayout />}>
@@ -201,6 +203,7 @@ function AppChrome() {
 
   return (
     <>
+      <ReferralCapture />
       <ScrollAids />
       <FloatingContact />
       <CookieNotice />

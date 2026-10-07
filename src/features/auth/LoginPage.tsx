@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { BrandIcon } from '@/shared/components/BrandIcon';
+import { currentReferral } from '@/shared/lib/referral';
 import { Link, Navigate, useLocation, useSearchParams } from 'react-router-dom';
 import { useTrackVisit } from '@/shared/hooks/useTrackVisit';
 import { usePublicPageMeta } from '@/shared/hooks/usePublicPageMeta';
@@ -261,7 +262,9 @@ function SignupForm() {
   const onSubmit = form.handleSubmit(async ({ name, email, password: chosen, country, website }) => {
     setError(null);
     try {
-      await signup({ name, email, password: chosen, country, ...(website ? { website } : {}) });
+      // Arrivé par le lien d'un membre pendant cette visite : le compte lui est rattaché.
+      const ref = currentReferral();
+      await signup({ name, email, password: chosen, country, ...(website ? { website } : {}), ...(ref ? { ref } : {}) });
     } catch (caught) {
       setError(toApiError(caught, 'La création du compte a échoué.'));
     }
@@ -388,9 +391,10 @@ const GOOGLE_ERRORS: Record<string, string> = {
 
 /** Bouton « Continuer avec Google » : une navigation vers le serveur, qui mène chez Google et en revient. */
 function GoogleButton({ next }: { next: string }) {
+  const ref = currentReferral();
   return (
     <Button variant="outline" className="w-full" asChild>
-      <a href={`/api/auth/google/start?next=${encodeURIComponent(next)}`}>
+      <a href={`/api/auth/google/start?next=${encodeURIComponent(next)}${ref ? `&ref=${encodeURIComponent(ref)}` : ''}`}>
         <BrandIcon brand="google" decorative />
         Continuer avec Google
       </a>

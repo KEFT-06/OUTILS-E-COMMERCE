@@ -16,6 +16,7 @@ import { affiliationRouter, marketplacesRouter } from '@server/routes/marketplac
 import { marketRouter } from '@server/routes/market';
 import { publicRouter } from '@server/routes/public';
 import { radarRouter } from '@server/routes/radar';
+import { referralRouter } from '@server/routes/referral';
 import { reportsRouter } from '@server/routes/reports';
 import { storybookRouter } from '@server/routes/storybook';
 import { workspaceRouter } from '@server/routes/workspace';
@@ -53,6 +54,7 @@ api.use('/creatives', creativesRouter);
 api.use('/radar', radarRouter);
 api.use('/espionnage', espionnageRouter);
 api.use('/alerts', alertsRouter);
+api.use('/referral', referralRouter);
 api.use('/market', marketRouter);
 // Déclencheur périodique : protégé par son propre secret, pas par une session utilisateur.
 api.use('/cron', cronRouter);

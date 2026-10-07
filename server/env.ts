@@ -540,6 +540,18 @@ const schema = z.object({
   ALERT_WINNER_DAYS: z.coerce.number().int().min(1).max(30).default(3),
   ALERT_TREND_STORES: z.coerce.number().int().min(2).max(50).default(3),
   ALERT_TREND_HOURS: z.coerce.number().int().min(24).max(720).default(72),
+  /*
+    Parrainage. La commission est un POURCENTAGE du paiement du filleul, ou un montant FIXE par
+    paiement si REFERRAL_COMMISSION_FIXED_FCFA est supérieur à zéro (il l'emporte alors).
+  */
+  REFERRAL_COMMISSION_PERCENT: z.coerce.number().min(0).max(90).default(20),
+  REFERRAL_COMMISSION_FIXED_FCFA: z.coerce.number().int().min(0).max(10_000_000).default(0),
+  /** Jours de garde avant qu'une commission soit validée : le temps qu'un remboursement se déclare. */
+  REFERRAL_HOLD_DAYS: z.coerce.number().int().min(0).max(180).default(14),
+  /** Solde validé à atteindre pour demander un retrait. */
+  REFERRAL_MIN_PAYOUT_FCFA: z.coerce.number().int().min(0).max(100_000_000).default(10_000),
+  /** Durée de vie du lien suivi : au-delà, une inscription n'est plus rattachée au parrain. */
+  REFERRAL_COOKIE_DAYS: z.coerce.number().int().min(1).max(365).default(30),
   /** Une publicité « installée » : désactivée après avoir tourné entre ces deux durées. */
   ALERT_AD_MIN_DAYS: z.coerce.number().int().min(7).max(720).default(80),
   ALERT_AD_MAX_DAYS: z.coerce.number().int().min(7).max(1_000).default(110),
