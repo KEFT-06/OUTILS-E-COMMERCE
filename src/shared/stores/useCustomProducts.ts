@@ -50,5 +50,7 @@ export function useCustomProducts() {
     canAdd: snapshot.status === 'ready' && snapshot.value.length < MAX_CUSTOM_PRODUCTS,
     add: (product: DigitalProductIdea) => store.commit([product, ...store.getState().value].slice(0, MAX_CUSTOM_PRODUCTS)),
     remove: (productId: string) => store.commit(store.getState().value.filter((product) => product.id !== productId)),
+    /** Remplace un produit par sa version complétée (étude de marché rendue). */
+    update: (next: DigitalProductIdea) => store.commit(store.getState().value.map((product) => (product.id === next.id ? next : product))),
   };
 }

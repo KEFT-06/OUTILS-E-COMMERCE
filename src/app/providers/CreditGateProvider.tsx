@@ -2,7 +2,7 @@ import React, { Suspense, createContext, lazy, useCallback, useContext, useEffec
 import { useAuth } from '@/features/auth/AuthContext';
 import { toast } from 'sonner';
 import { reloadOnceForNewVersion } from '@/shared/lib/reloadForNewVersion';
-import { CreditCostTable, CreditQuote } from '@/shared/types/credits';
+import { CreditAction, CreditCostTable, CreditQuote } from '@/shared/types/credits';
 
 /*
   La fenêtre des points ne s'ouvre qu'avant une action payante : elle se charge à part, et
@@ -141,16 +141,27 @@ export const CreditGateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
         const table = await loadCostTable();
         setCostTable(table);
 
-        const definition = table.actions.find((a) => a.id === actionId);
-        if (!definition) {
+        /*
+          « a+b » : deux actions lancées d'un seul geste (coller son texte, puis l'étude de son
+          marché). Elles sont annoncées ENSEMBLE — un seul prix, une seule confirmation — et le
+          serveur débite chacune pour ce qu'elle est : celle qui échoue rend ses points, seule.
+        */
+        const parts = actionId.split('+').map((id) => table.actions.find((a) => a.id === id));
+        const first = parts[0];
+        if (!first || parts.some((part) => !part)) {
           throw new Error(
             `L'action « ${actionId} » ne figure pas dans la grille tarifaire v${table.version}.`,
           );
         }
+        const others = parts.slice(1) as CreditAction[];
 
         // Même calcul que le serveur : toute tranche entamée est due. La fenêtre annonçait le prix
         // d'une seule tranche (2 points pour un ebook de 40 pages, qui en coûte 8).
-        cost = definition.perUnit ? definition.cost * Math.max(1, Math.ceil(units / definition.perUnit)) : definition.cost;
+        cost = (first.perUnit ? first.cost * Math.max(1, Math.ceil(units / first.perUnit)) : first.cost) + others.reduce((sum, part) => sum + part.cost, 0);
+        const definition: CreditAction =
+          others.length === 0
+            ? first
+            : { id: actionId, label: [first, ...others].map((part) => part.label).join(' + '), cost, description: [first, ...others].map((part) => part.description).join(' ') };
         const unlimited = account?.credits.unlimited ?? false;
         const balanceBefore = account?.credits.total ?? 0;
 

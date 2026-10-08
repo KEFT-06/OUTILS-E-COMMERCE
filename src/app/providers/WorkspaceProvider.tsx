@@ -8,7 +8,7 @@ import { apiRequest } from '@/shared/lib/api';
 import { toApiError } from '@/shared/lib/apiError';
 import { ComplianceBlockedError, exportReportPDF } from '@/shared/lib/complianceGate';
 import { useMoney } from '@/shared/lib/money';
-import type { AnalysisJob, MarketAnalysisReport, ReportSummary } from '@/shared/types/analysis';
+import type { AnalysisJob, AnalysisSubject, MarketAnalysisReport, ReportSummary } from '@/shared/types/analysis';
 import type { ReportComplianceVerdict } from '@/shared/types/compliance';
 import { ComplianceBlockDialog } from '@/shared/components/ComplianceBlockDialog';
 
@@ -29,7 +29,13 @@ interface WorkspaceContextType {
   isAnalyzing: boolean;
   /** Analyse en cours du compte (étude puis rédaction), suivie jusqu'à son terme. */
   analysisJob: AnalysisJob | null;
-  analyzeNiche: (query: string, market?: string | null) => Promise<void>;
+  /** `subject` : l'étude est menée pour un ouvrage que l'auteur a déjà écrit. */
+  analyzeNiche: (query: string, market?: string | null, subject?: AnalysisSubject) => Promise<void>;
+  /**
+   * Lance l'étude SANS repasser par la porte des points : pour l'appelant qui vient d'en annoncer
+   * le prix avec le sien (texte collé + étude, une seule confirmation). Renvoie l'analyse suivie.
+   */
+  launchAnalysis: (query: string, market?: string | null, subject?: AnalysisSubject) => Promise<AnalysisJob>;
   /** Renonce à l'analyse en cours : points rendus, compte libéré immédiatement. */
   cancelAnalysis: () => Promise<void>;
   isExportingPdf: boolean;
@@ -316,24 +322,29 @@ export const WorkspaceProvider: React.FC<{ children: React.ReactNode }> = ({ chi
    * tout de suite ; le suivi ci-dessous affiche chaque étape jusqu'au rapport. Aucun rapport de
    * repli n'est fabriqué : l'erreur du serveur est montrée telle quelle, elle dit ce qui manque.
    */
+  const launchAnalysis = useCallback(async (query: string, market?: string | null, subject?: AnalysisSubject) => {
+    const { job } = await apiRequest<{ job: AnalysisJob }>('/api/analyze-niche', {
+      method: 'POST',
+      body: { query, ...(market ? { market } : {}), ...(subject ? { subject } : {}) },
+    });
+    setAnalysisJob(job);
+    return job;
+  }, []);
+
   const analyzeNiche = useCallback(
-    async (query: string, market?: string | null) => {
+    async (query: string, market?: string | null, subject?: AnalysisSubject) => {
       try {
         await runWithCredits('niche_analysis', async () => {
-          const { job } = await apiRequest<{ job: AnalysisJob }>('/api/analyze-niche', {
-            method: 'POST',
-            body: { query, ...(market ? { market } : {}) },
-          });
+          const job = await launchAnalysis(query, market, subject);
           if (job.query !== query) {
             toast.info('Une analyse est déjà en cours', { description: `« ${job.query} » : son rapport arrive d’abord.` });
           }
-          setAnalysisJob(job);
         });
       } catch (error) {
         toast.error('L’analyse n’a pas pu être lancée', { description: toApiError(error, 'Erreur inconnue.').message });
       }
     },
-    [runWithCredits],
+    [runWithCredits, launchAnalysis],
   );
 
   /**
@@ -397,6 +408,21 @@ export const WorkspaceProvider: React.FC<{ children: React.ReactNode }> = ({ chi
               rememberNewestReport(accountId, report.id);
             }
             setAnalysisJob(null);
+            if (report.authorWork) {
+              /*
+                Étude menée pour un ouvrage : son auteur est dans le Studio, en train de le relire.
+                On ne l'en sort pas — la fiche de son ouvrage se complète sous ses yeux, et le
+                rapport entier est à un geste.
+              */
+              toast.success(`Étude de marché terminée pour « ${report.authorWork.title} »`, {
+                id: toastId,
+                description: 'Verdict, concurrents, prix pratiqués et public : tout est dans votre rapport.',
+                duration: 12_000,
+                action: { label: 'Voir l’étude', onClick: () => navigate(pathOf('analyse')) },
+              });
+              void refresh();
+              return;
+            }
             navigate(pathOf('analyse'));
             toast.success(`Analyse terminée pour « ${report.nicheName} »`, { id: toastId, description: undefined, duration: 6_000 });
             void refresh();
@@ -471,6 +497,7 @@ export const WorkspaceProvider: React.FC<{ children: React.ReactNode }> = ({ chi
       isAnalyzing: analysisJob !== null,
       analysisJob,
       analyzeNiche,
+      launchAnalysis,
       cancelAnalysis,
       isExportingPdf,
       exportPdf,
@@ -488,6 +515,7 @@ export const WorkspaceProvider: React.FC<{ children: React.ReactNode }> = ({ chi
       deleteAllReports,
       analysisJob,
       analyzeNiche,
+      launchAnalysis,
       cancelAnalysis,
       isExportingPdf,
       exportPdf,

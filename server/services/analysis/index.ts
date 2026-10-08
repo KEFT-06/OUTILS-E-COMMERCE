@@ -10,10 +10,10 @@ import { generateJsonWithPerplexity } from '@server/services/ai/perplexity';
 import { sharpenProductTitles } from '@server/services/analysis/productAngles';
 import {
   ANALYSIS_PROMPT_VERSION,
-  ANALYSIS_RESPONSE_SCHEMA,
   FRAMEWORK_PHASES,
   LEVELS,
   VERDICTS,
+  analysisResponseSchemaFor,
   buildAnalysisPrompt,
   parseAnalysisResponse,
   type AnalysisResponse,
@@ -24,6 +24,8 @@ import type { WebSource } from '@server/services/analysis/webSearch';
 import { conversionHints, currencyForCountry, getRates } from '@server/services/currency';
 import type { DataProvenance } from '@server/shared/provenance';
 import type {
+  AnalysisSubject,
+  AuthorWorkReview,
   CompetitorInsight,
   DigitalProductIdea,
   MarketAnalysisReport,
@@ -53,9 +55,30 @@ const TIMEOUT_MS = 240_000;
 /** Rapports gardés par compte : les plus anciens au-delà sont effacés. */
 export const REPORTS_KEPT = 50;
 
+const ligne = (max: number) =>
+  z
+    .string()
+    .trim()
+    .max(max)
+    .transform((value) => value.replace(/\s+/g, ' '));
+
+/**
+ * Ouvrage de l'auteur pour lequel l'étude est menée. Sa FICHE seulement — quelques lignes —,
+ * jamais son texte : l'étude porte sur le marché, et le texte n'a rien à faire dans une recherche.
+ */
+export const analysisSubjectSchema = z.object({
+  productId: z.string().trim().min(1).max(120),
+  title: ligne(200).pipe(z.string().min(2)),
+  subtitle: ligne(300).optional(),
+  audience: ligne(600).optional(),
+  promise: ligne(600).optional(),
+  chapters: z.array(ligne(160)).max(40).default([]),
+});
+
 export const analysisRequestSchema = z.object({
   query: nicheQuerySchema,
   market: marketSchema.nullish(),
+  subject: analysisSubjectSchema.nullish(),
 });
 
 export type AnalysisRequest = z.infer<typeof analysisRequestSchema>;
@@ -109,8 +132,11 @@ export function assembleReport(input: {
   response: AnalysisResponse;
   model: string;
   currency: string;
+  /** Ouvrage que l'auteur a déjà écrit : le rapport prend position sur lui. */
+  subject?: AnalysisSubject | null;
 }): MarketAnalysisReport {
   const { id, sources, response } = input;
+  const subject = input.subject ?? null;
   const validIds = new Set(sources.map((source) => source.id));
   const cite = (ids: readonly number[]) => ids.filter((sourceId) => validIds.has(sourceId));
   const noSource =
@@ -236,7 +262,8 @@ export function assembleReport(input: {
         id: `${id}-a${index + 1}`,
         framework: script.framework,
         frameworkFullName: FRAMEWORK_NAMES[script.framework],
-        targetProductTitle: digitalProducts[0]?.title ?? nicheName,
+        // L'étude d'un ouvrage déjà écrit vend CET ouvrage, pas la première idée qui le prolonge.
+        targetProductTitle: subject?.title ?? digitalProducts[0]?.title ?? nicheName,
         hookHeadline: script.hookHeadline,
         metaPrimaryText: script.primaryText,
         metaHeadline: script.headline,
@@ -326,6 +353,30 @@ export function assembleReport(input: {
   });
   const proposed = (source: string): DataProvenance => ({ source, collectedAt, isDemonstration: false });
 
+  /*
+    Ce que l'étude dit de l'ouvrage de l'auteur. Un prix n'y figure que s'il vient d'une source :
+    la règle est celle des idées de produits, et elle ne s'assouplit pas parce que l'ouvrage existe.
+  */
+  const review = subject ? response.authorWork : null;
+  /*
+    Toujours présent quand l'étude est menée pour un ouvrage, même si le rédacteur n'a rien dit de
+    lui : c'est ce bloc qui rattache le rapport à l'ouvrage. Sans lui, la fiche du Studio resterait
+    vide après une étude payée, et proposerait de la relancer.
+  */
+  const authorWork: AuthorWorkReview | null = subject
+    ? {
+        productId: subject.productId,
+        title: subject.title,
+        positioning: review?.positioning ?? '',
+        targetProblem: review?.targetProblem ?? '',
+        angle: review?.angle ?? '',
+        pricingNote: (sources.length > 0 && (review?.pricingNote || response.pricing.recommendation)) || pricingFallback,
+        strengths: review?.strengths ?? [],
+        missingChapters: (review?.missingChapters ?? []).filter((chapter) => chapter.title).slice(0, 4),
+        sourceIds: cite(review?.sourceIds ?? []),
+      }
+    : null;
+
   return {
     id,
     query: input.query,
@@ -341,6 +392,7 @@ export function assembleReport(input: {
     competitors,
     digitalProducts,
     adCampaigns,
+    ...(authorWork ? { authorWork } : {}),
     illustrativeImages: [],
     strategicActionPlan: response.actionPlan
       .filter((phase) => phase.title && phase.steps.length > 0)
@@ -399,6 +451,7 @@ export async function writeReport(input: {
   research: ResearchOutcome;
 }): Promise<MarketAnalysisReport> {
   const { request, now, research } = input;
+  const subject = request.subject ?? null;
   const market = request.market ?? null;
   const marketName = market ? countryName(market) : null;
 
@@ -424,8 +477,9 @@ export async function writeReport(input: {
       webSearchConfigured: true,
       memo: research.memo,
       currency: { code: currency, conversions: conversionHints(currency, rates) },
+      subject,
     }),
-    responseSchema: ANALYSIS_RESPONSE_SCHEMA,
+    responseSchema: analysisResponseSchemaFor(Boolean(subject)),
     parse: parseAnalysisResponse,
     timeoutMs: TIMEOUT_MS,
     onModel: (used) => {
@@ -454,6 +508,7 @@ export async function writeReport(input: {
     response,
     model,
     currency,
+    subject,
   });
 
   const db = getDb();

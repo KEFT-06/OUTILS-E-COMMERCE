@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { useLocation } from 'react-router-dom';
+import { useLocation, useNavigate } from 'react-router-dom';
 import { toast } from 'sonner';
 import {
   BookOpen,
@@ -19,6 +19,10 @@ import {
   Video,
 } from 'lucide-react';
 import { Area, AreaChart, CartesianGrid, XAxis, YAxis } from 'recharts';
+import { pathOf } from '@/app/navigation';
+import { analysisStepLabel, useWorkspace } from '@/app/providers/WorkspaceProvider';
+import { useAuth } from '@/features/auth/AuthContext';
+import { MarketReviewCard, subjectOf } from '@/modules/studio/MarketReviewCard';
 import { ProductStudioPanel } from '@/modules/studio/ProductStudioPanel';
 import { TextToProductDialog } from '@/modules/studio/TextToProductDialog';
 import { VideoToProductDialog } from '@/modules/studio/VideoToProductDialog';
@@ -35,7 +39,7 @@ import { useProductDrafts } from '@/shared/stores/useProductDrafts';
 import { useProviders } from '@/shared/hooks/useProviders';
 import { cn } from '@/shared/lib/utils';
 import type { TextProductResult, VideoProductResult, WritingFinding } from '@/shared/lib/writing';
-import type { DigitalProductIdea, MarketAnalysisReport } from '@/shared/types/analysis';
+import type { DigitalProductIdea, MarketAnalysisReport, MissingChapter } from '@/shared/types/analysis';
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from '@/shared/ui/accordion';
 import { Alert, AlertDescription } from '@/shared/ui/alert';
 import { Badge } from '@/shared/ui/badge';
@@ -85,6 +89,9 @@ export function DigitalProductsView({ report, onSelectProductForAd, onAnalyzeNic
   const custom = useCustomProducts();
   const providers = useProviders();
   const covers = useProductCovers();
+  const navigate = useNavigate();
+  const { account } = useAuth();
+  const { analysisJob, analyzeNiche, reports, selectReport } = useWorkspace();
 
   const products = useMemo(() => [...(report?.digitalProducts ?? []), ...custom.products], [report, custom.products]);
   // Produit créé depuis une alerte (« Créer un produit similaire ») : il s'ouvre directement.
@@ -118,6 +125,34 @@ export function DigitalProductsView({ report, onSelectProductForAd, onAnalyzeNic
     setAdCost((previous) => previous ?? pricing.adCostPerAcquisition.default);
   }, [pricing]);
 
+  /*
+    L'étude menée pour un ouvrage se range AVEC lui dès que son rapport est ouvert : repères de
+    prix, problème visé, angle, et ce qu'elle dit de lui. Elle y reste quand une autre niche
+    devient le rapport courant. Le brouillon, s'il existe, masque l'original : il est complété aussi.
+  */
+  const authorWork = report?.authorWork;
+  useEffect(() => {
+    if (!report || !authorWork || custom.status !== 'ready') return;
+    const base = custom.products.find((candidate) => candidate.id === authorWork.productId);
+    if (!base || base.marketReview?.reportId === report.id) return;
+    const complete = (product: DigitalProductIdea): DigitalProductIdea => ({
+      ...product,
+      pricingNote: authorWork.pricingNote || product.pricingNote,
+      ...(authorWork.targetProblem ? { targetProblem: authorWork.targetProblem } : {}),
+      ...(authorWork.angle ? { angle: authorWork.angle } : {}),
+      marketReview: {
+        reportId: report.id,
+        nicheName: report.nicheName,
+        verdict: report.overallVerdict,
+        positioning: authorWork.positioning,
+        strengths: authorWork.strengths,
+        missingChapters: authorWork.missingChapters,
+      },
+    });
+    custom.update(complete(base));
+    if (drafts.hasDraft(base.id)) drafts.saveDraft(complete(drafts.effective(base)));
+  }, [report, authorWork, custom, drafts]);
+
   const selectProduct = (product: DigitalProductIdea) => {
     setSelectedId(product.id);
     // Sans prix avancé, le curseur repart de la valeur par défaut de la table des prix.
@@ -132,13 +167,17 @@ export function DigitalProductsView({ report, onSelectProductForAd, onAnalyzeNic
     toast.success('Produit créé', { description: 'Complétez-le dans le mode Expert, ou faites rédiger ses modules automatiquement.' });
   };
 
-  const onTextProduct = (result: TextProductResult) => {
+  const onTextProduct = (result: TextProductResult, studied: boolean) => {
     custom.add(result.product);
     setSelectedId(result.product.id);
     setFindings(result.findings);
     const { chapters, words } = result.recognized;
+    const reconnu = `${chapters} chapitre${chapters > 1 ? 's' : ''} reconnu${chapters > 1 ? 's' : ''}, ${words.toLocaleString('fr-FR')} mots, sans réécriture.`;
     toast.success('Votre ouvrage est créé', {
-      description: `${chapters} chapitre${chapters > 1 ? 's' : ''} reconnu${chapters > 1 ? 's' : ''}, ${words.toLocaleString('fr-FR')} mots, sans réécriture. Relisez-le, puis validez.`,
+      description: studied
+        ? `${reconnu} L’étude de son marché — « ${result.niche} » — est lancée : son résultat viendra se ranger dans sa fiche.`
+        : `${reconnu} Relisez-le, puis validez.`,
+      duration: studied ? 10_000 : 6_000,
     });
   };
 
@@ -241,6 +280,21 @@ export function DigitalProductsView({ report, onSelectProductForAd, onAnalyzeNic
 
   const origin = selectedProduct.origin;
   const originUrl = origin?.kind === 'video' ? safeHttpUrl(origin.url) : null;
+
+  // Étude de marché de l'ouvrage : rendue, en cours, ou à lancer d'un geste.
+  const review = selectedProduct.marketReview;
+  const studyStep = analysisJob?.subject?.productId === baseProduct.id ? analysisStepLabel(analysisJob.status) : null;
+  const canStudy =
+    isCustom && !analysisJob && Boolean(account?.features.niche_analysis) && Boolean(providers?.webSearch) && selectedProduct.title.trim().length >= 4 && selectedProduct.title !== 'Nouveau produit';
+  const addChapter = (chapter: MissingChapter) => {
+    const { marketReview, ...rest } = selectedProduct;
+    drafts.saveDraft({
+      ...rest,
+      tableOfContents: [...rest.tableOfContents, { moduleNumber: rest.tableOfContents.length + 1, title: chapter.title, details: '' }],
+      ...(marketReview ? { marketReview: { ...marketReview, missingChapters: marketReview.missingChapters.filter((candidate) => candidate.title !== chapter.title) } } : {}),
+    });
+    toast.success('Chapitre ajouté à votre ouvrage', { description: 'Il attend son contenu : faites-le rédiger, ou écrivez-le dans le mode Expert.' });
+  };
 
   return (
     <div className="space-y-6">
@@ -387,6 +441,25 @@ export function DigitalProductsView({ report, onSelectProductForAd, onAnalyzeNic
                 <p className="mb-1 text-sm font-semibold">Repères de prix</p>
                 <p className="text-sm leading-relaxed text-muted-foreground">{selectedProduct.pricingNote}</p>
               </div>
+            )}
+
+            {(review || studyStep || canStudy) && (
+              <MarketReviewCard
+                {...(review ? { review } : {})}
+                pendingStep={studyStep}
+                onAddChapter={addChapter}
+                {...(review && reports.some((entry) => entry.id === review.reportId)
+                  ? {
+                      onOpenReport: () => {
+                        selectReport(review.reportId);
+                        navigate(pathOf('analyse'));
+                      },
+                    }
+                  : {})}
+                {...(canStudy
+                  ? { onStudy: () => void analyzeNiche(selectedProduct.title.replace(/\s+/g, ' ').trim().slice(0, 200), account?.country ?? null, subjectOf(selectedProduct)) }
+                  : {})}
+              />
             )}
 
             <div className="space-y-2">

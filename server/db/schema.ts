@@ -453,6 +453,8 @@ export const analysisJobs = pgTable(
       .references(() => users.id, { onDelete: 'cascade' }),
     query: text('query').notNull(),
     market: text('market'),
+    /** Ouvrage déjà écrit pour lequel l'étude est menée (sa fiche, jamais son texte) ; null : analyse d'une niche. */
+    subject: jsonb('subject'),
     /** queued · research · writing · waiting · completed · failed */
     status: text('status').notNull(),
     /**

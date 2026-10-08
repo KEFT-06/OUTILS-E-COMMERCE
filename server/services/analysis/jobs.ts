@@ -6,11 +6,11 @@ import { providers } from '@server/env';
 import { AppError } from '@server/middleware';
 import type { RequestAuth } from '@server/middleware/auth';
 import { debitCredits, refundDebit } from '@server/services/accounts';
-import { type AnalysisRequest, todayLabel, writeReport } from '@server/services/analysis';
+import { type AnalysisRequest, analysisSubjectSchema, todayLabel, writeReport } from '@server/services/analysis';
 import { researchMarket } from '@server/services/analysis/research';
 import { getActionCost } from '@server/services/credits';
 import { ensureReady } from '@server/services/preflight';
-import type { AnalysisJob, WebGroundingSource } from '@server/shared/analysis';
+import type { AnalysisJob, AnalysisSubject, WebGroundingSource } from '@server/shared/analysis';
 import { runInBackground } from '@server/shared/backgroundWork';
 import { countryName } from '@server/shared/countries';
 
@@ -68,12 +68,19 @@ function viewOf(row: JobRow): AnalysisJobView {
     market: row.market,
     status: row.status as AnalysisJobStatus,
     reportId: row.reportId,
+    ...(subjectOf(row) ? { subject: { productId: subjectOf(row)!.productId, title: subjectOf(row)!.title } } : {}),
     error: row.errorCode ? { code: row.errorCode, message: row.errorMessage ?? 'L’analyse a échoué.' } : null,
     createdAt: row.createdAt.toISOString(),
     updatedAt: row.updatedAt.toISOString(),
     ...(row.retryAfter ? { retryAfter: row.retryAfter.toISOString() } : {}),
     ...(row.sources ? { sources: row.sources as WebGroundingSource[] } : {}),
   };
+}
+
+/** Ouvrage de l'auteur enregistré avec l'analyse ; relu avec le même contrôle qu'à l'entrée. */
+function subjectOf(row: JobRow): AnalysisSubject | null {
+  const parsed = analysisSubjectSchema.safeParse(row.subject);
+  return parsed.success ? parsed.data : null;
 }
 
 /** Analyses en cours dans ce processus : un même travail n'est jamais exécuté deux fois. */
@@ -161,7 +168,7 @@ async function runJob(jobId: string): Promise<void> {
     if (!job || !PENDING.includes(job.status as AnalysisJobStatus)) return;
 
     const [owner] = await db.select({ country: users.country }).from(users).where(eq(users.id, job.userId)).limit(1);
-    const request: AnalysisRequest = { query: job.query, market: job.market };
+    const request: AnalysisRequest = { query: job.query, market: job.market, subject: subjectOf(job) };
     const now = new Date();
 
     await setStatus(jobId, 'research');
@@ -260,6 +267,7 @@ export async function startAnalysis(auth: RequestAuth, request: AnalysisRequest)
         userId,
         query: request.query,
         market: request.market ?? null,
+        subject: request.subject ?? null,
         status: 'queued',
         creditsCharged: debit.charged,
         debitTransactionId: debit.transactionId,

@@ -48,7 +48,10 @@ const paragraphe = (sujet: string, phrases = 6) => Array.from({ length: phrases 
 const FICHE = {
   subtitle: 'La méthode pas à pas',
   type: 'ebook',
+  niche: 'élevage de poules en ville',
   targetAudience: 'Éleveurs débutants',
+  targetProblem: 'Ne pas savoir par où commencer sans terrain',
+  angle: 'Élevage en cour, sans terrain',
   transformationPromise: 'Savoir lancer un petit élevage',
   leadMagnet: { title: 'Liste du matériel', format: 'PDF', hook: 'Tout ce qu’il faut avant de commencer' },
 };
@@ -149,6 +152,11 @@ describe('Texte → Produit : reconnaître sans réécrire', () => {
     );
     assert.equal(body.product.tableOfContents[1].details, paragraphe('le poulailler'), 'le texte du chapitre est celui de l’auteur, mot pour mot');
     assert.equal(body.product.targetAudience, 'Éleveurs débutants');
+    // La niche se lit dans le texte : c'est sur elle que partira l'étude de marché, sans que l'auteur la nomme.
+    assert.equal(body.niche, 'élevage de poules en ville');
+    assert.equal(body.product.targetProblem, 'Ne pas savoir par où commencer sans terrain');
+    assert.equal(body.product.angle, 'Élevage en cour, sans terrain');
+    assert.match(consignes.at(-1)!, /niche : la niche de marché de cet ouvrage/);
     assert.equal(body.product.typeName, 'Ebook');
     assert.deepEqual(body.product.origin, { kind: 'manual' });
     assert.deepEqual({ chapters: body.recognized.chapters, fromHeadings: body.recognized.fromHeadings }, { chapters: 3, fromHeadings: true });

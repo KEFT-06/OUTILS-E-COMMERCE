@@ -259,7 +259,10 @@ export const PASTED_TEXT_PROMPT = [
   'À PRODUIRE (JSON)',
   '- title, subtitle : le titre de l’ouvrage tel que l’auteur l’a écrit s’il figure en tête du texte ; sinon le titre le plus juste. Un sous-titre d’une phrase.',
   '- type : ebook, template, masterclass, bundle ou micro_tool, selon la nature du texte.',
+  '- niche : la niche de marché de cet ouvrage, en 3 à 8 mots, telle qu’un vendeur la chercherait pour étudier ses concurrents (exemples : « élevage de poulets de chair en ville », « vente de beignets devant les écoles »). Le sujet et son public, jamais le titre de l’ouvrage.',
   '- targetAudience : à qui ce texte s’adresse, en une ou deux phrases.',
+  '- targetProblem : le problème précis que vit ce lecteur avant de lire, en une phrase.',
+  '- angle : ce qui distingue cet ouvrage, en quelques mots (méthode, contrainte levée, terrain précis).',
   '- transformationPromise : ce que le lecteur saura faire après l’avoir lu, sans promesse de résultat garanti.',
   '- leadMagnet : un aimant à prospects gratuit tiré du texte (titre, format, accroche).',
   '- chapters : les 3 à 12 parties du texte, DANS L’ORDRE. Pour chacune : « title », son titre (celui de l’auteur s’il existe, sinon un titre court et juste), et « opening », les 8 PREMIERS MOTS du passage où elle commence, RECOPIÉS À L’IDENTIQUE depuis le texte (même orthographe, mêmes fautes, même ponctuation). La première partie commence au premier mot du texte.',
@@ -271,12 +274,15 @@ const RESPONSE_SCHEMA = {
     title: { type: 'STRING' },
     subtitle: { type: 'STRING' },
     type: { type: 'STRING', enum: [...PRODUCT_TYPES] },
+    niche: { type: 'STRING' },
     targetAudience: { type: 'STRING' },
+    targetProblem: { type: 'STRING' },
+    angle: { type: 'STRING' },
     transformationPromise: { type: 'STRING' },
     chapters: { type: 'ARRAY', items: { type: 'OBJECT', properties: { title: { type: 'STRING' }, opening: { type: 'STRING' } }, required: ['title', 'opening'] } },
     leadMagnet: { type: 'OBJECT', properties: { title: { type: 'STRING' }, format: { type: 'STRING' }, hook: { type: 'STRING' } }, required: ['title', 'format', 'hook'] },
   },
-  required: ['title', 'subtitle', 'type', 'targetAudience', 'transformationPromise', 'chapters', 'leadMagnet'],
+  required: ['title', 'subtitle', 'type', 'niche', 'targetAudience', 'targetProblem', 'angle', 'transformationPromise', 'chapters', 'leadMagnet'],
 };
 
 const court = (max: number) =>
@@ -289,7 +295,10 @@ const responseSchema = z.object({
   title: court(200),
   subtitle: court(300),
   type: z.enum(PRODUCT_TYPES).catch('ebook'),
+  niche: court(120),
   targetAudience: court(1000),
+  targetProblem: court(300),
+  angle: court(120),
   transformationPromise: court(1000),
   chapters: z.array(z.object({ title: court(160), opening: court(200) }).catch({ title: '', opening: '' })).catch([]),
   leadMagnet: z.object({ title: court(200), format: court(100), hook: court(1000) }).catch({ title: '', format: '', hook: '' }),
@@ -300,6 +309,11 @@ export interface PastedTextResult {
   findings: Awaited<ReturnType<typeof findingsOf>>;
   /** Ce qui a été reconnu, pour que l'écran le dise à l'auteur avant qu'il valide. */
   recognized: { chapters: number; words: number; fromHeadings: boolean };
+  /**
+   * Niche de l'ouvrage, lue dans le texte : c'est sur elle que part l'étude de marché. L'auteur
+   * n'a pas à la nommer — « quand je donne un texte, il sait dans quelle niche il se trouve ».
+   */
+  niche: string;
 }
 
 export async function textToProduct(auth: RequestAuth, rawText: string): Promise<PastedTextResult> {
@@ -353,6 +367,8 @@ export async function textToProduct(auth: RequestAuth, rawText: string): Promise
         estimatedMarginPercent: null,
         pricingNote: 'Prix à fixer dans le simulateur.',
         targetAudience: response.targetAudience,
+        ...(response.targetProblem ? { targetProblem: response.targetProblem } : {}),
+        ...(response.angle ? { angle: response.angle } : {}),
         transformationPromise: response.transformationPromise,
         tableOfContents: modules.map((module, index) => ({ moduleNumber: index + 1, title: module.title, details: module.details })),
         leadMagnet: response.leadMagnet,
@@ -364,7 +380,13 @@ export async function textToProduct(auth: RequestAuth, rawText: string): Promise
         ...product.tableOfContents.map((module) => ({ label: `Module ${module.moduleNumber} — ${module.title}`, text: module.details })),
       ]);
 
-      return { product, findings, recognized: { chapters: modules.length, words: text.split(/\s+/).filter(Boolean).length, fromHeadings } };
+      return {
+        product,
+        findings,
+        recognized: { chapters: modules.length, words: text.split(/\s+/).filter(Boolean).length, fromHeadings },
+        // Sans niche reconnue, le titre de l'ouvrage reste la meilleure requête d'étude.
+        niche: (response.niche.length >= 2 ? response.niche : product.title).slice(0, 120),
+      };
     },
     describe: () => ({ providerRef: null, state: 'completed' }),
   });

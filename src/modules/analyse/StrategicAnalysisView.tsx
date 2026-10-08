@@ -16,6 +16,7 @@ import {
 } from 'lucide-react';
 import { countryName } from '@server/shared/countries';
 import { LegalNotice } from '@/modules/analyse/LegalNotice';
+import { MarketReviewCard } from '@/modules/studio/MarketReviewCard';
 import { cn } from '@/shared/lib/utils';
 import type { MarketAnalysisReport, OverallVerdict } from '@/shared/types/analysis';
 import { Badge } from '@/shared/ui/badge';
@@ -126,9 +127,29 @@ export function StrategicAnalysisView({ report, onNavigateToProducts, onNavigate
 
           <p className="max-w-4xl text-base leading-relaxed sm:text-lg">{report.executiveSummary}</p>
 
+          {/* Étude menée pour un ouvrage déjà écrit : ce qu'elle dit de lui, avant le reste du rapport. */}
+          {report.authorWork && (
+            <div className="space-y-2">
+              <p className="text-sm text-muted-foreground">
+                Étude menée pour votre ouvrage <span className="font-medium text-foreground">« {report.authorWork.title} »</span>
+                {report.authorWork.pricingNote ? <> · {report.authorWork.pricingNote}</> : null}
+              </p>
+              <MarketReviewCard
+                review={{
+                  reportId: report.id,
+                  nicheName: report.nicheName,
+                  verdict: report.overallVerdict,
+                  positioning: report.authorWork.positioning,
+                  strengths: report.authorWork.strengths,
+                  missingChapters: report.authorWork.missingChapters,
+                }}
+              />
+            </div>
+          )}
+
           <div className="flex flex-wrap gap-2 border-t pt-4">
             <Button variant="outline" onClick={onNavigateToProducts}>
-              Idées de produits ({report.digitalProducts.length})
+              {report.authorWork ? 'Ouvrir mon ouvrage dans le Studio' : `Idées de produits (${report.digitalProducts.length})`}
               <ArrowRight />
             </Button>
             <Button onClick={onNavigateToMetaAds}>

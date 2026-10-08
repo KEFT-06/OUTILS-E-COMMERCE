@@ -59,7 +59,7 @@ interface Report {
     currency: string;
     pricingNote: string;
   }[];
-  adCampaigns: { durationSeconds: number; scenes: { timing: string; phase: string }[]; complianceCheck: unknown[] }[];
+  adCampaigns: { targetProductTitle?: string; durationSeconds: number; scenes: { timing: string; phase: string }[]; complianceCheck: unknown[] }[];
   groundingSources: { id: number; url: string; title: string }[];
   dataProvenance: Record<string, { source: string; sampleSize?: number; isDemonstration: boolean } | undefined>;
   decisions: { gap: string; proposal: string; basis: string; sourceIds: number[] }[];
@@ -418,5 +418,56 @@ describe('Idées de produits — un angle, pas un sujet', () => {
       timeoutMs: 9_000,
     });
     assert.equal(rendu[0]!.title, 'Guide du jardinage');
+  });
+});
+
+/*
+  Demande du propriétaire, le 07/10/2026 : « quand je colle mon texte, ça fait l'analyse… et ça me
+  donne toutes les infos comme si j'avais analysé une niche ». L'étude peut donc être menée POUR un
+  ouvrage que l'auteur a déjà écrit : sa fiche accompagne la demande, et le rapport parle de lui.
+*/
+describe('Analyse de niche — menée pour un ouvrage déjà écrit', () => {
+  const OUVRAGE = {
+    productId: 'texte-0001',
+    title: 'Élever des poules en ville',
+    subtitle: 'La méthode pas à pas',
+    audience: 'Éleveurs débutants',
+    promise: 'Savoir lancer un petit élevage',
+    chapters: ['Choisir ses poules', 'Le poulailler', 'Nourrir'],
+  };
+
+  it('décrit l’ouvrage au rédacteur, range dans le rapport ce que l’étude dit de lui, et vend cet ouvrage dans les publicités', async () => {
+    const { agent } = await signInWithPlan(app, 'autrice-etude@exemple.com', 'pro');
+    const lancee = await agent.post('/api/analyze-niche').send({ query: 'élevage de poules en ville', market: 'CM', subject: OUVRAGE }).expect(202);
+    assert.deepEqual(lancee.body.job.subject, { productId: 'texte-0001', title: 'Élever des poules en ville' }, 'l’écran sait pour quel ouvrage l’étude tourne');
+    const job = await waitForJob(agent, lancee.body.job.id as string);
+    assert.equal(job.status, 'completed');
+
+    const consigne = providers.writerCalls.at(-1)!.prompt;
+    assert.match(consigne, /OUVRAGE DE L’AUTEUR/);
+    assert.match(consigne, /Sommaire : 1\. Choisir ses poules · 2\. Le poulailler · 3\. Nourrir/);
+    assert.match(consigne, /NE repropose PAS l’ouvrage de l’auteur/);
+
+    const { report } = (await agent.get(`/api/reports/${job.reportId}`).expect(200)).body as {
+      report: Report & { authorWork?: { productId: string; title: string; pricingNote: string; strengths: string[]; missingChapters: { title: string }[]; sourceIds: number[] } };
+    };
+    assert.equal(report.authorWork?.productId, 'texte-0001');
+    assert.equal(report.authorWork?.title, 'Élever des poules en ville');
+    assert.match(report.authorWork!.pricingNote, /FCFA/);
+    assert.deepEqual(report.authorWork!.missingChapters.map((chapter) => chapter.title), ['Vendre sa production'], 'un chapitre sans titre est écarté');
+    assert.ok(!report.authorWork!.sourceIds.includes(99), 'une source qui n’existe pas n’est pas citée');
+    assert.ok(report.adCampaigns.every((campaign) => campaign.targetProductTitle === 'Élever des poules en ville'), 'les publicités vendent l’ouvrage de l’auteur');
+    assert.ok(report.digitalProducts.length > 0, 'les idées de produits restent : elles le prolongent');
+  });
+
+  it('ne change rien à l’analyse d’une niche, et refuse une fiche d’ouvrage sans titre', async () => {
+    const { agent } = await signInWithPlan(app, 'analyste-sans-ouvrage@exemple.com', 'pro');
+    const job = await analyze(agent, { query: 'élevage de poulets', market: 'CM' });
+    assert.equal((job as Job & { subject?: unknown }).subject, undefined);
+    const { report } = (await agent.get(`/api/reports/${job.reportId}`).expect(200)).body as { report: Report & { authorWork?: unknown } };
+    assert.equal(report.authorWork, undefined);
+    assert.doesNotMatch(providers.writerCalls.at(-1)!.prompt, /OUVRAGE DE L’AUTEUR/);
+
+    await agent.post('/api/analyze-niche').send({ query: 'élevage de poulets', subject: { productId: 'x', title: '', chapters: [] } }).expect(400);
   });
 });

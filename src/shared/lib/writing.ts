@@ -14,6 +14,8 @@ export interface VideoProductResult {
 export interface TextProductResult extends VideoProductResult {
   /** Ce qui a été reconnu dans le texte collé. */
   recognized: { chapters: number; words: number; fromHeadings: boolean };
+  /** Niche de l'ouvrage, lue dans le texte : l'étude de marché part sur elle. */
+  niche: string;
 }
 
 /** Bornes du texte collé (server/services/writing/pastedText.ts). */

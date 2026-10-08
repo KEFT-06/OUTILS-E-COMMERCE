@@ -68,6 +68,50 @@ export interface CompetitorInsight {
 /** Produit créé hors d'une analyse de niche : tiré d'une vidéo, ou saisi à la main. */
 export type ProductOrigin = { kind: 'video'; label: string; url?: string } | { kind: 'manual' };
 
+/**
+ * Ouvrage que l'auteur a DÉJÀ écrit, et pour lequel l'étude de marché est menée. Seule sa fiche
+ * accompagne la demande — titre, public, promesse, titres des chapitres —, jamais son texte.
+ */
+export interface AnalysisSubject {
+  /** Produit du Studio à qui l'étude revient. */
+  productId: string;
+  title: string;
+  subtitle?: string;
+  audience?: string;
+  promise?: string;
+  chapters: string[];
+}
+
+/** Chapitre que les acheteurs attendent, d'après l'étude, et que le sommaire ne couvre pas. */
+export interface MissingChapter {
+  title: string;
+  why: string;
+}
+
+/** Ce que l'étude dit de l'ouvrage de l'auteur, face à ce qui se vend déjà. */
+export interface AuthorWorkReview {
+  productId: string;
+  title: string;
+  /** Où il se place face aux offres relevées, et ce qui le distingue. */
+  positioning: string;
+  targetProblem: string;
+  angle: string;
+  pricingNote: string;
+  strengths: string[];
+  missingChapters: MissingChapter[];
+  sourceIds: number[];
+}
+
+/** L'étude de marché d'un produit du Studio, gardée avec lui une fois le rapport rendu. */
+export interface ProductMarketReview {
+  reportId: string;
+  nicheName: string;
+  verdict: OverallVerdict | null;
+  positioning: string;
+  strengths: string[];
+  missingChapters: MissingChapter[];
+}
+
 export interface DigitalProductIdea {
   id: string;
   /** Absent : produit proposé par une analyse de niche. */
@@ -102,6 +146,8 @@ export interface DigitalProductIdea {
     hook: string;
   };
   imageUrl: string;
+  /** Étude de marché menée pour ce produit (ouvrage collé par son auteur). */
+  marketReview?: ProductMarketReview;
 }
 
 export interface MetaAdScene {
@@ -234,6 +280,8 @@ export interface MarketAnalysisReport {
   channels?: { channel: string; why: string }[];
   /** Risques réels, chacun avec sa parade : plus de « points à vérifier » laissés à l'auteur. */
   risks?: { risk: string; mitigation: string; sourceIds: number[] }[];
+  /** Étude menée pour un ouvrage que l'auteur a déjà écrit : ce qu'elle dit de lui. */
+  authorWork?: AuthorWorkReview;
   /** Ancienne forme, conservée telle quelle sur les rapports produits avant septembre 2026. */
   limitations?: string[];
   generator?: ReportGenerator;
@@ -278,6 +326,8 @@ export interface AnalysisJob {
    */
   status: 'queued' | 'research' | 'writing' | 'waiting' | 'completed' | 'failed';
   reportId: string | null;
+  /** Ouvrage de l'auteur pour lequel l'étude est menée ; absent : analyse d'une niche. */
+  subject?: { productId: string; title: string };
   error: { code: string; message: string } | null;
   /** Renseigné en attente seulement : instant de la prochaine tentative. */
   retryAfter?: string | null;

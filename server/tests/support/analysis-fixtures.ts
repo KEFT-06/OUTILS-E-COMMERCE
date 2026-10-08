@@ -18,6 +18,20 @@ export function fakeAnalysis(prompt: string) {
   const ids = withSources ? [1, 2] : [];
   return {
     nicheName: 'Élevage de poulets en ville',
+    // Étude menée pour un ouvrage déjà écrit : le rédacteur prend position sur lui.
+    ...(prompt.includes('OUVRAGE DE L’AUTEUR')
+      ? {
+          authorWork: {
+            positioning: 'Plus concret que la formation relevée, et écrit pour la ville.',
+            targetProblem: 'Ne pas savoir par où commencer sans terrain.',
+            angle: 'Élevage en cour, sans terrain',
+            pricingNote: 'Entre 5 000 et 15 000 FCFA d’après la formation relevée.',
+            strengths: ['Un chapitre sur le poulailler, que les acheteurs réclament.'],
+            missingChapters: [{ title: 'Vendre sa production', why: 'Les éleveurs demandent comment écouler leurs poulets.' }, { title: '', why: 'sans titre : écarté' }],
+            sourceIds: withSources ? [2, 99] : [],
+          },
+        }
+      : {}),
     executiveSummary: withSources ? 'Des guides payants existent déjà [1] [2].' : 'Les faits de marché n’ont pas été étudiés.',
     summarySourceIds: ids,
     verdict: 'Opportunité Forte',
