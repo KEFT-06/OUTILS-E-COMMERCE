@@ -175,7 +175,7 @@ function Confidentialite() {
           navigateur.
         </p>
         <ul className="list-disc space-y-1.5 pl-5">
-          <li>Prestataires de rédaction et de traduction par intelligence artificielle : la niche et le marché d’une analyse avec l’étude et les sources trouvées, les textes à rédiger ou à traduire, le brief d’un storybook, la description d’une couverture, la vidéo ou le lien YouTube d’un produit créé à partir d’une vidéo ;</li>
+          <li>Prestataires de rédaction et de traduction par intelligence artificielle : la niche et le marché d’une analyse avec l’étude et les sources trouvées, les textes à rédiger ou à traduire, le brief d’un storybook, la fiche d’un ouvrage (titre, public visé, promesse, titres des chapitres) et la description de sa couverture, la vidéo ou le lien YouTube d’un produit créé à partir d’une vidéo ;</li>
           <li>Prestataire de recherche sur le web : la niche et le marché d’une analyse, sans aucune donnée de compte ;</li>
           <li>Prestataire de création de visuels et de vidéos : le brief d’un visuel ou d’une vidéo ;</li>
           <li>Prestataire de mise en page illustrée : le texte d’un storybook et la description de ses illustrations ;</li>

@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { ImageIcon, RefreshCw, Sparkles, Trash2 } from 'lucide-react';
 import { useCreditGate } from '@/app/providers/CreditGateProvider';
 import { ZoomableImage } from '@/shared/components/ZoomableImage';
-import { type CoverView, coversApi } from '@/shared/lib/covers';
+import { type CoverBook, type CoverView, coversApi } from '@/shared/lib/covers';
 import { toApiError } from '@/shared/lib/apiError';
 import { cn } from '@/shared/lib/utils';
 import { Alert, AlertDescription } from '@/shared/ui/alert';
@@ -37,6 +37,7 @@ export function CoverGenerator({
   subjectId,
   title,
   subtitle,
+  book,
   onChange,
   className,
   hidePreview = false,
@@ -45,6 +46,8 @@ export function CoverGenerator({
   subjectId: string;
   title: string;
   subtitle?: string;
+  /** Public, promesse et chapitres de l'ouvrage, quand l'écran les connaît : la scène en est tirée. */
+  book?: CoverBook;
   onChange?: (cover: CoverView | null) => void;
   className?: string;
   /** L'écran montre déjà la couverture composée (onglet Livre) : la vignette ferait doublon. */
@@ -132,6 +135,16 @@ export function CoverGenerator({
           title,
           ...(subtitle?.trim() ? { subtitle: subtitle.trim().slice(0, 300) } : {}),
           ...(description.trim() ? { description: description.trim() } : {}),
+          ...(book?.audience?.trim() ? { audience: book.audience.trim().slice(0, 1000) } : {}),
+          ...(book?.promise?.trim() ? { promise: book.promise.trim().slice(0, 1000) } : {}),
+          ...(book?.chapters?.length
+            ? {
+                chapters: book.chapters
+                  .map((chapter) => chapter.trim().slice(0, 200))
+                  .filter(Boolean)
+                  .slice(0, 24),
+              }
+            : {}),
           style,
         }),
       );
@@ -219,6 +232,7 @@ export function CoverGenerator({
             rows={2}
             placeholder="Ex. une jeune éleveuse dans une cour ensoleillée, avec quelques poules"
           />
+          <p className="text-xs text-muted-foreground">Laissez vide : la scène est choisie d’après le contenu de votre ouvrage.</p>
         </div>
         <div className="flex flex-wrap gap-2">
           <Button type="button" size="sm" onClick={() => void generate()} disabled={busy || pending || title.trim().length < 2}>

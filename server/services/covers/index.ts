@@ -6,6 +6,7 @@ import { covers, guides } from '@server/db/schema';
 import { AppError } from '@server/middleware';
 import type { RequestAuth } from '@server/middleware/auth';
 import { generateImage } from '@server/services/ai/image';
+import { coverArtDirection } from '@server/services/covers/artDirection';
 import { findOwnedGeneration, runBilledGeneration, settleGeneration } from '@server/services/generations';
 import { countryName } from '@server/shared/countries';
 
@@ -15,6 +16,10 @@ import { countryName } from '@server/shared/countries';
  * Générées par le modèle d'image de Gemini (GEMINI_IMAGE_MODEL), sans aucun texte : le titre
  * est posé ensuite par la mise en page, dans la langue de chaque export. L'image arrive dans la
  * réponse et reste en base : elle est disponible à chaque nouvel export.
+ *
+ * DEUX TEMPS. La direction artistique (covers/artDirection.ts) lit la fiche de l'ouvrage et écrit
+ * la scène ; le moteur d'images la peint. Sans la première, la scène est composée ici, d'après
+ * le titre : l'auteur a toujours sa couverture.
  */
 
 export const COVER_STYLES = ['illustration', 'photo', 'minimal'] as const;
@@ -34,6 +39,13 @@ export const coverRequestSchema = z.object({
   /** Ce que l'image doit montrer ; absent : une métaphore visuelle du sujet. */
   description: z.string().trim().max(500).optional(),
   style: z.enum(COVER_STYLES).default('illustration'),
+  /*
+    La fiche de l'ouvrage, quand l'écran la connaît : à qui il s'adresse, ce qu'il promet, ses
+    chapitres. C'est d'elle que la direction artistique tire une scène qui parle de CE livre.
+  */
+  audience: z.string().trim().max(1000).optional(),
+  promise: z.string().trim().max(1000).optional(),
+  chapters: z.array(z.string().trim().max(200)).max(24).optional(),
 });
 
 export type CoverRequest = z.infer<typeof coverRequestSchema>;
@@ -49,15 +61,21 @@ export type CoverRequest = z.infer<typeof coverRequestSchema>;
  *
  * `market` ancre la scène dans le pays du compte : sans lui, les modèles rendent par défaut des
  * décors et des visages qui ne sont pas ceux des lecteurs de Smart Creator.
+ *
+ * `scene` : la scène écrite par la direction artistique. Elle remplace la description et la
+ * métaphore, jamais les lignes qui suivent — pays, style, tiers supérieur dégagé, aucun texte,
+ * aucune marque. Ces garde-fous partent toujours, quoi qu'ait écrit le directeur artistique.
  */
 export function buildCoverPrompt(
-  input: Pick<CoverRequest, 'title' | 'subtitle' | 'description' | 'style'> & { market?: string | null },
+  input: Pick<CoverRequest, 'title' | 'subtitle' | 'description' | 'style'> & { market?: string | null; scene?: string | null },
 ): string {
   const subject = [input.title, input.subtitle].filter(Boolean).join(' — ');
   return [
-    input.description
-      ? `A scene showing: ${input.description}.`
-      : `A single strong, positive visual metaphor evoking this subject, shown as a scene: ${subject}.`,
+    input.scene
+      ? `A scene showing: ${input.scene}`
+      : input.description
+        ? `A scene showing: ${input.description}.`
+        : `A single strong, positive visual metaphor evoking this subject, shown as a scene: ${subject}.`,
     input.market ? `Setting and people rooted in ${input.market}, everyday and contemporary.` : '',
     `Style: ${STYLE_DIRECTION[input.style]}`,
     'Vertical composition. The upper third stays calm and empty — plain background or open sky, no subject in it.',
@@ -97,8 +115,21 @@ async function ownedCover(auth: RequestAuth, coverId: string | undefined): Promi
   return row;
 }
 
+/** Titres des sections d'un guide, pour la direction artistique. Les « (suite) » d'un chapitre redécoupé n'en sont pas. */
+async function guideHeadings(userId: string, guideId: string): Promise<string[]> {
+  if (!z.string().uuid().safeParse(guideId).success) return [];
+  const [row] = await getDb().select({ sections: guides.sections }).from(guides).where(and(eq(guides.userId, userId), eq(guides.id, guideId))).limit(1);
+  const sections = Array.isArray(row?.sections) ? (row.sections as { heading?: unknown }[]) : [];
+  return sections
+    .map((section) => (typeof section.heading === 'string' ? section.heading.trim() : ''))
+    .filter((heading) => heading && !/\(suite\)$/.test(heading))
+    .slice(0, 12);
+}
+
 export async function createCover(auth: RequestAuth, input: CoverRequest): Promise<CoverView> {
-  const prompt = buildCoverPrompt({ ...input, market: countryName(auth.account.user.country) || null });
+  const market = countryName(auth.account.user.country) || null;
+  // La consigne de repli : celle qui part si la direction artistique ne répond pas.
+  let prompt = buildCoverPrompt({ ...input, market });
   // Format portrait des exports (PDF, DOCX) : l'image n'y est pas déformée.
   const { result } = await runBilledGeneration({
     auth,
@@ -111,7 +142,21 @@ export async function createCover(auth: RequestAuth, input: CoverRequest): Promi
       vendre. Son auteur n'est donc pas son seul lecteur, contrairement à ce qu'on pouvait
       croire tant qu'elle n'était qu'une page de garde.
     */
-    run: () => generateImage({ prompt, aspectRatio: '9:16', tier: 'premium' }),
+    run: async () => {
+      const chapters = input.chapters?.length ? input.chapters : input.subject === 'guide' ? await guideHeadings(auth.account.user.id, input.subjectId).catch(() => []) : [];
+      const scene = await coverArtDirection({
+        title: input.title,
+        subtitle: input.subtitle,
+        audience: input.audience,
+        promise: input.promise,
+        chapters,
+        wish: input.description,
+        market,
+        medium: STYLE_DIRECTION[input.style],
+      });
+      if (scene) prompt = buildCoverPrompt({ ...input, market, scene });
+      return generateImage({ prompt, aspectRatio: '9:16', tier: 'premium' });
+    },
     describe: (image) => ({ providerRef: null, state: 'completed', fileFormat: image.mimeType === 'image/jpeg' ? 'jpg' : image.mimeType.split('/')[1] }),
   });
 

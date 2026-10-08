@@ -276,6 +276,7 @@ export function ProductStudioPanel({ baseProduct, report, initialExpertOpen = fa
                 subjectId={baseProduct.id}
                 title={product.title}
                 subtitle={product.subtitle}
+                book={{ audience: product.targetAudience, promise: product.transformationPromise, chapters: product.tableOfContents.map((module) => module.title) }}
                 hidePreview
                 onChange={(next) => {
                   setCover(next);

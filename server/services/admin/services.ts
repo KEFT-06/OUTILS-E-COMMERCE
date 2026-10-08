@@ -2,6 +2,7 @@ import { and, desc, eq, sql } from 'drizzle-orm';
 import { databaseKind, getDb } from '@server/db/client';
 import { generations, storybooks, watches } from '@server/db/schema';
 import { env, isProd, providers } from '@server/env';
+import { lastClaudeOutcome } from '@server/services/ai/claude';
 import { lastGoogleRefusal } from '@server/services/ai/googleRefusal';
 import { lastImageOutcome } from '@server/services/ai/image';
 import { videoArchiveConfigured } from '@server/services/creatives/archive';
@@ -88,6 +89,36 @@ async function checkDatabase(): Promise<ServiceCheck> {
     state: isProd ? 'error' : 'warning',
     detail: 'Base embarquée sur ce poste (développement) : les données ne sont pas en ligne.',
     action: 'Renseigner DATABASE_URL avec la chaîne « Session pooler » de Supabase et le mot de passe de la base.',
+  };
+}
+
+/**
+ * Direction artistique des couvertures. Aucun appel de contrôle : chaque demande est payante, et
+ * son absence n'empêche rien — la couverture se fait alors avec la consigne composée par le serveur.
+ */
+function checkClaude(): ServiceCheck {
+  const base = { id: 'claude', name: 'Claude (direction artistique)', role: 'Écrit, d’après la fiche de l’ouvrage, la scène que le moteur d’images peint en couverture' };
+  if (!providers.claude)
+    return {
+      ...base,
+      state: 'off',
+      detail: 'Aucune clé : les couvertures se font avec la consigne composée par le serveur.',
+      action: 'Créer une clé sur platform.claude.com et la mettre dans CLAUDE_API_KEY.',
+    };
+  const last = lastClaudeOutcome();
+  if (!last) return { ...base, state: 'ok', detail: `Clé présente · modèle ${env.CLAUDE_MODEL}. Aucune couverture demandée depuis le démarrage.`, action: null };
+  const quand = new Date(last.at).toLocaleString('fr-FR', { timeZone: env.REPORTING_TIMEZONE });
+  if (last.ok) return { ...base, state: 'ok', detail: `Modèle ${env.CLAUDE_MODEL} · dernière scène écrite le ${quand}.`, action: null };
+  return {
+    ...base,
+    state: 'warning',
+    detail: `Dernière demande sans réponse utilisable (${last.code}) le ${quand} : la couverture a été faite avec la consigne composée par le serveur.`,
+    action:
+      last.code === 'AUTH'
+        ? 'Clé refusée : vérifier CLAUDE_API_KEY et le crédit du compte sur platform.claude.com.'
+        : last.code === 'BAD_REQUEST'
+          ? 'Demande refusée : vérifier le nom du modèle dans CLAUDE_MODEL.'
+          : null,
   };
 }
 
@@ -567,6 +598,7 @@ export async function checkServices(options: { refresh?: boolean } = {}): Promis
     checkDatabase(),
     checkGemini(),
     Promise.resolve(checkImages()),
+    Promise.resolve(checkClaude()),
     checkPerplexity(),
     checkGamma(),
     checkVeo(),

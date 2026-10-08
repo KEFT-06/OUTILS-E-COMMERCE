@@ -33,12 +33,14 @@ describe('État des services', () => {
     };
 
     const byId = Object.fromEntries(report.services.map((service) => [service.id, service]));
-    assert.deepEqual(Object.keys(byId).sort(), ['chariow', 'database', 'email', 'gamma', 'gemini', 'images', 'perplexity', 'radar', 'sebpay', 'stripe', 'veo', 'video-archive']);
+    assert.deepEqual(Object.keys(byId).sort(), ['chariow', 'claude', 'database', 'email', 'gamma', 'gemini', 'images', 'perplexity', 'radar', 'sebpay', 'stripe', 'veo', 'video-archive']);
 
     assert.equal(byId.database!.state, 'warning', 'base embarquée : pas en ligne');
     assert.match(byId.database!.action ?? '', /Session pooler/);
     assert.equal(byId.perplexity!.state, 'error', 'sans Perplexity, l’analyse est refusée');
     assert.equal(byId.gamma!.state, 'off');
+    assert.equal(byId.claude!.state, 'off', 'sans clé, la direction artistique est simplement absente');
+    assert.match(byId.claude!.detail, /couvertures se font/, 'et la ligne dit que rien n’est cassé');
     assert.equal(byId.stripe!.state, 'off');
     assert.equal(byId.email!.state, 'off');
     assert.match(byId.email!.action ?? '', /Brevo/);

@@ -193,6 +193,7 @@ export function BookCoverPanel() {
             subjectId={subjectId}
             title={title}
             subtitle={texts.subtitle}
+            book={product ? { audience: product.targetAudience, promise: product.transformationPromise, chapters: product.tableOfContents.map((module) => module.title) } : undefined}
             hidePreview
             onChange={(next) => {
               setCover(next);

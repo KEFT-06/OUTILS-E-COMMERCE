@@ -36,6 +36,10 @@ export async function createTestApp(overrides: Record<string, string> = {}): Pro
     SUPABASE_URL: 'http://127.0.0.1:9',
     GEMINI_API_KEY: 'cle-gemini-de-test',
     GEMINI_API_URL: 'http://127.0.0.1:9',
+    // Direction artistique : le poste du propriétaire en porte la vraie clé. Sans ces deux lignes,
+    // chaque couverture de test irait la consulter pour de vrai. Les tests qui la veulent la redéfinissent.
+    CLAUDE_API_KEY: '',
+    CLAUDE_API_URL: 'http://127.0.0.1:9',
     // Neutralisés par défaut : env.ts charge le .env du poste, et sans ces trois lignes une
     // suite lancée sur une machine configurée irait taper la vraie API Cloudflare — donc
     // consommerait la réserve d'images du jour, et rendrait le résultat des tests dépendant

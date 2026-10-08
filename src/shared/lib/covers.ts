@@ -23,7 +23,14 @@ export interface CoverInput {
   subtitle?: string;
   description?: string;
   style: 'illustration' | 'photo' | 'minimal';
+  /** Fiche de l'ouvrage : la scène de la couverture en est tirée. */
+  audience?: string;
+  promise?: string;
+  chapters?: string[];
 }
+
+/** Ce que l'écran sait de l'ouvrage au moment de demander sa couverture. */
+export type CoverBook = Pick<CoverInput, 'audience' | 'promise' | 'chapters'>;
 
 export interface CoverImage {
   bytes: Uint8Array;

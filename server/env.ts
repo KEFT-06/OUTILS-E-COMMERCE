@@ -105,6 +105,16 @@ const schema = z.object({
   GEMINI_API_KEY: z.string().min(1).optional(),
   GEMINI_API_URL: z.string().url().default('https://generativelanguage.googleapis.com'),
   /**
+   * Direction artistique des couvertures (Anthropic) : elle écrit la scène que le moteur d'images
+   * peint. Optionnelle — sans elle, la consigne est composée par le serveur, comme auparavant.
+   */
+  CLAUDE_API_KEY: z.string().min(1).optional(),
+  CLAUDE_API_URL: z.string().url().default('https://api.anthropic.com'),
+  CLAUDE_MODEL: z
+    .string()
+    .regex(/^[\w.-]+$/)
+    .default('claude-opus-5-5'),
+  /**
    * Modèle Gemini des analyses de niche, des rédactions et des traductions.
    *
    * 3.6 Flash est passé devant 3.5 Flash le 24 septembre 2026 : il est à la fois plus récent
@@ -673,6 +683,7 @@ export const listenHost = env.HOST || (isProd ? '0.0.0.0' : '127.0.0.1');
 /** Vrai si la clé du fournisseur est présente. Aucune route ne doit la lire directement. */
 export const providers = {
   gemini: Boolean(env.GEMINI_API_KEY),
+  claude: Boolean(env.CLAUDE_API_KEY),
   webSearch: Boolean(env.PERPLEXITY_API_KEY),
   email: Boolean(env.EMAIL_PROVIDER && env.EMAIL_API_KEY && env.EMAIL_FROM),
   payments: Boolean(env.STRIPE_API_KEY && !env.STRIPE_API_KEY.trim().startsWith('pk_')),
