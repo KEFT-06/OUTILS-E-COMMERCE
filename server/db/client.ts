@@ -108,7 +108,20 @@ export async function initDatabase(
         connect_timeout: isLocal ? 0 : 10,
       });
     let client = open();
-    const db = drizzle(client, { schema });
+    /*
+      Le pilote de requêtes ne tient pas le client lui-même mais cette façade — les trois accès
+      dont il se sert. Quand les connexions sont remplacées (server/db/vigil.ts), tout accès déjà
+      obtenu par getDb() passe par les neuves : celui qu'une génération longue garde sous la main
+      pendant qu'elle attend son fournisseur sert encore quand elle enregistre son résultat.
+    */
+    const facade = {
+      unsafe: (...args: unknown[]) => (client.unsafe as (...given: unknown[]) => unknown)(...args),
+      begin: (...args: unknown[]) => (client.begin as (...given: unknown[]) => unknown)(...args),
+      get options() {
+        return client.options;
+      },
+    } as unknown as typeof client;
+    const db = drizzle(facade, { schema });
     if (runMigrations) await migrate(db, { migrationsFolder: MIGRATIONS_FOLDER });
 
     database = db as unknown as Database;
@@ -116,7 +129,8 @@ export async function initDatabase(
     renewConnection = () => {
       const silent = client;
       client = open();
-      database = drizzle(client, { schema }) as unknown as Database;
+      // Mêmes réglages de types que le premier client (dates, JSON) : le pilote les pose à sa construction.
+      drizzle(client);
       // Sans attendre la fin de ses requêtes : une connexion muette ne rendrait jamais la main.
       void silent.end({ timeout: 0 }).catch(() => undefined);
     };

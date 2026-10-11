@@ -2,7 +2,7 @@ import { join } from 'node:path';
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import { createApp } from '@server/app';
 import { initDatabase } from '@server/db/client';
-import { createVigil } from '@server/db/vigil';
+import { createVigil, guardQuickRead } from '@server/db/vigil';
 import { env } from '@server/env';
 import { bootstrapFirstAdmin } from '@server/services/admin/bootstrap';
 
@@ -58,8 +58,8 @@ export default async function handler(request: IncomingMessage, response: Server
   /*
     Les pages du site n'ont pas besoin de la base : leur HTML part tout de suite. On attendait
     la connexion à PostgreSQL avant d'envoyer quoi que ce soit, et au premier appel d'une
-    instance — base en Irlande, fonction aux États-Unis — l'écran restait noir plusieurs
-    secondes. La connexion se prépare quand même en parallèle, pour les appels qui suivent.
+    instance l'écran restait noir plusieurs secondes. La connexion se prépare quand même en
+    parallèle, pour les appels qui suivent.
   */
   if (!(request.url ?? '/').startsWith('/api')) {
     prepare().catch((error: unknown) => {
@@ -68,11 +68,17 @@ export default async function handler(request: IncomingMessage, response: Server
     app(request as never, response as never);
     return;
   }
+  // Une lecture courte ne reste jamais pendue : au bout de huit secondes, les connexions sont remplacées.
+  const guard = guardQuickRead(request, response);
   try {
     await prepare();
     // Une instance qui a dormi vérifie sa connexion avant de servir (server/db/vigil.ts).
-    await vigil.awake();
+    guard.stage('veille');
+    const outcome = await vigil.awake();
+    // Ce que la veille a fait se lit de l'extérieur, réponse par réponse : c'est ce qui dit si elle sert.
+    if (outcome !== 'none' && !response.headersSent) response.setHeader('Server-Timing', `base;desc="${outcome === 'alive' ? 'sonde' : 'remplacee'}"`);
   } catch (error) {
+    if (response.headersSent) return;
     console.error('[démarrage] base de données inaccessible :', error instanceof Error ? error.message : error);
     response.statusCode = 503;
     response.setHeader('Content-Type', 'application/json; charset=utf-8');
@@ -80,6 +86,9 @@ export default async function handler(request: IncomingMessage, response: Server
     response.end(JSON.stringify({ error: { code: 'DATABASE_UNAVAILABLE', message: 'Le service est momentanément indisponible.' } }));
     return;
   }
+  // Le garde-fou a déjà répondu pendant la préparation : il n'y a plus rien à servir.
+  if (response.headersSent) return;
+  guard.stage('application');
   const leave = vigil.enter();
   response.once('finish', leave);
   response.once('close', leave);

@@ -46,8 +46,15 @@ export const errorHandler = (
   err: unknown,
   req: Request,
   res: Response,
-  _next: NextFunction,
+  next: NextFunction,
 ): void => {
+  // La réponse est déjà partie (le garde-fou des lectures a répondu à la place d'une requête
+  // pendue, server/db/vigil.ts) : il n'y a plus rien à écrire, Express ferme proprement.
+  if (res.headersSent) {
+    next(err);
+    return;
+  }
+
   // Erreurs de lecture du corps de la requête : réponses claires plutôt qu'une erreur interne.
   const bodyError = typeof err === 'object' && err !== null ? (err as { type?: unknown }).type : undefined;
   if (bodyError === 'entity.too.large') {
