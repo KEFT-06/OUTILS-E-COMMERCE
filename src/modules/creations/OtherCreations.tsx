@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { BarChart3, BookImage, Download, FileText, Image as ImageIcon, PenSquare } from 'lucide-react';
+import { BarChart3, BookImage, Download, FileText, Image as ImageIcon, Languages, PenSquare } from 'lucide-react';
 import { useWorkspace } from '@/app/providers/WorkspaceProvider';
 import type { GuideSummary } from '@/modules/multilingue/guidesApi';
 import { apiRequest } from '@/shared/lib/api';
@@ -73,6 +73,10 @@ export function ReportsCard({ recherche }: { recherche: string }) {
                       <FileText />
                       Dossier PDF
                     </Button>
+                    <Button size="sm" variant="outline" onClick={() => void navigate('/app/multilingue', { state: { rapport: report.id } })}>
+                      <Languages />
+                      Traduire
+                    </Button>
                   </div>
                 </div>
               </li>
@@ -105,6 +109,7 @@ function StorybookThumbnail({ entry }: { entry: StorybookEntry }) {
 
 /** Contes illustrés du compte, avec leur couverture quand elle est prête. */
 export function StorybooksCard({ recherche }: { recherche: string }) {
+  const navigate = useNavigate();
   const [entries, setEntries] = useCachedState<StorybookEntry[]>('/api/storybook/books');
   useEffect(() => {
     apiRequest<{ storybooks: StorybookEntry[] }>('/api/storybook/books')
@@ -161,12 +166,18 @@ export function StorybooksCard({ recherche }: { recherche: string }) {
                         </Link>
                       </Button>
                       {entry.status === 'completed' && (
-                        <Button asChild size="sm" variant="outline">
-                          <a href={storybookPdfPath(entry.id)} download>
-                            <Download />
-                            Télécharger le PDF
-                          </a>
-                        </Button>
+                        <>
+                          <Button asChild size="sm" variant="outline">
+                            <a href={storybookPdfPath(entry.id)} download>
+                              <Download />
+                              Télécharger le PDF
+                            </a>
+                          </Button>
+                          <Button size="sm" variant="outline" onClick={() => void navigate('/app/multilingue', { state: { conte: entry.id } })}>
+                            <Languages />
+                            Traduire
+                          </Button>
+                        </>
                       )}
                     </div>
                   </div>

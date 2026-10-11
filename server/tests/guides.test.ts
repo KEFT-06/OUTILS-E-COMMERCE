@@ -99,7 +99,7 @@ const GUIDE = {
   ],
 };
 
-type Translation = { language: string; level: string; status: string; checks: { code: string; severity: string }[]; reviewerComment: string | null };
+type Translation = { language: string; level: string; status: string; outdated?: boolean; checks: { code: string; severity: string }[]; reviewerComment: string | null };
 const translationOf = (body: { guide: { translations: Translation[] } }, language: string) =>
   body.guide.translations.find((translation) => translation.language === language)!;
 
@@ -372,5 +372,52 @@ describe('Guides multilingues — la langue se lit dans le texte, et la longueur
     } finally {
       lotRefuse = null;
     }
+  });
+});
+
+describe('Guides multilingues — on traduit ce qui existe, sans créer de guide à la main', () => {
+  /*
+    Demande du propriétaire, 11/10/2026 : « on ne crée pas de guide, on traduit les rapports, les
+    ebooks, les storybooks disponibles ». « Traduire » sur une œuvre envoie son texte avec son
+    origine : elle n'a qu'un guide, qu'un second clic rouvre au lieu d'en empiler un autre.
+  */
+  const TEXTE = 'Quand on commence un petit élevage en ville, il faut d’abord choisir un endroit propre et à l’abri du vent, puis prévoir l’eau et la nourriture de chaque jour.';
+  const ebook = (titre: string, corps: string) => ({ title: titre, sourceLanguage: 'fr', terms: [], sections: [{ id: 'm1', heading: 'Module 1 — Le poulailler', body: corps }], source: { kind: 'product', id: 'idee-poules-1' } });
+
+  it('une œuvre n’a qu’un guide : un second « Traduire » le rouvre, et un texte modifié signale ses traductions à mettre à jour', async () => {
+    const agent = await author('auteure-oeuvres@exemple.com', 'pro');
+    const premier = (await agent.post('/api/guides').send(ebook('Élever des poules en ville', TEXTE)).expect(201)).body.guide;
+    assert.deepEqual(premier.source, { kind: 'product', id: 'idee-poules-1' });
+    await agent.post(`/api/guides/${premier.id}/translations`).send({ languages: ['en'] }).expect(200);
+
+    // Second clic, même texte : le même guide, rien de changé.
+    const second = (await agent.post('/api/guides').send(ebook('Élever des poules en ville', TEXTE)).expect(201)).body.guide;
+    assert.deepEqual([second.id, second.revision, second.translations.length], [premier.id, premier.revision, 1]);
+
+    // L'ebook a été retouché entre-temps : son guide suit, et la traduction existante est signalée.
+    const retouche = (await agent.post('/api/guides').send(ebook('Élever des poules en ville', `${TEXTE} Comptez un mètre carré pour quatre poules.`)).expect(201)).body.guide;
+    assert.equal(retouche.id, premier.id);
+    assert.equal(retouche.revision, premier.revision + 1);
+    assert.equal(retouche.sections[0].id, premier.sections[0].id, 'la section garde son identifiant : la traduction reste alignée');
+    assert.equal(translationOf({ guide: retouche }, 'en').outdated, true);
+
+    const liste = (await agent.get('/api/guides').expect(200)).body.guides as { id: string; source: { kind: string; id: string } | null }[];
+    assert.deepEqual(liste.map((guide) => guide.source), [{ kind: 'product', id: 'idee-poules-1' }], 'un seul guide pour cette œuvre');
+  });
+
+  it('un rapport et un conte se traduisent de la même façon, chacun avec son propre guide ; l’œuvre d’un autre compte ne se confond pas', async () => {
+    const agent = await author('auteure-rapport@exemple.com', 'pro');
+    const rapport = (await agent.post('/api/guides').send({ ...ebook('Élevage de poulets en ville', TEXTE), source: { kind: 'report', id: 'rapport-1' } }).expect(201)).body.guide;
+    const conte = (await agent.post('/api/guides').send({ ...ebook('Le petit manguier d’Awa', TEXTE), source: { kind: 'storybook', id: 'rapport-1' } }).expect(201)).body.guide;
+    assert.notEqual(rapport.id, conte.id, 'même identifiant, mais un rapport n’est pas un conte');
+
+    const autre = await author('autre-auteure@exemple.com', 'pro');
+    const ailleurs = (await autre.post('/api/guides').send({ ...ebook('Élevage de poulets en ville', TEXTE), source: { kind: 'report', id: 'rapport-1' } }).expect(201)).body.guide;
+    assert.notEqual(ailleurs.id, rapport.id);
+
+    // Une origine inconnue est refusée ; un texte collé autrefois n'en a pas, et reste accepté.
+    await agent.post('/api/guides').send({ ...ebook('x'.repeat(4), TEXTE), source: { kind: 'video', id: 'v1' } }).expect(400);
+    const colle = (await agent.post('/api/guides').send({ title: 'Texte collé', sourceLanguage: 'fr', terms: [], sections: [{ id: 's1', heading: '', body: TEXTE }] }).expect(201)).body.guide;
+    assert.equal(colle.source, null);
   });
 });

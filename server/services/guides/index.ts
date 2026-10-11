@@ -54,6 +54,8 @@ export const guideInputSchema = z
       .max(GUIDE_LIMITS.sectionsMax, `Un guide compte ${GUIDE_LIMITS.sectionsMax} sections au plus.`),
     /** Noms à garder tels quels : marque, produit, personne. */
     terms: z.array(z.string().trim().min(1).max(80)).max(30).default([]),
+    /** Ce dont ce texte est tiré : l'ouvrage, le rapport ou le conte que l'on traduit. */
+    source: z.object({ kind: z.enum(['product', 'report', 'storybook']), id: z.string().trim().min(1).max(120) }).optional(),
   })
   .superRefine((guide, ctx) => {
     if (new Set(guide.sections.map((section) => section.id)).size !== guide.sections.length) {
@@ -250,6 +252,7 @@ async function guideView(auth: RequestAuth, guide: GuideRow) {
     sections: guide.sections,
     terms: guide.terms,
     revision: guide.revision,
+    source: guide.sourceKind && guide.sourceId ? { kind: guide.sourceKind, id: guide.sourceId } : null,
     words: wordCount(guide.sections),
     cover: await latestCover(auth, 'guide', guide.id),
     limits: { languages: effectiveLimits(auth.account).guideLanguages, used: rows.length },
@@ -290,6 +293,7 @@ export async function listGuides(auth: RequestAuth) {
       id: guide.id,
       title: guide.title,
       sourceLanguage: guide.sourceLanguage,
+      source: guide.sourceKind && guide.sourceId ? { kind: guide.sourceKind, id: guide.sourceId } : null,
       words: wordCount(guide.sections),
       hasCover: Boolean(guide.coverId),
       updatedAt: guide.updatedAt.toISOString(),
@@ -309,8 +313,38 @@ export async function getGuide(auth: RequestAuth, guideId: string | undefined) {
   return guideView(auth, await ownedGuide(auth, guideId));
 }
 
+/** Le texte d'un guide, section par section : ce qui dit s'il a changé. */
+const textOfSections = (sections: readonly { heading: string; body: string }[]) => sections.map((section) => `${section.heading}\n${section.body}`).join('\n\n');
+
 export async function createGuide(auth: RequestAuth, input: GuideInput) {
   const db = getDb();
+
+  /*
+    « Traduire » un ouvrage, un rapport ou un conte : il n'a qu'un guide. Un second clic rouvre
+    le même, avec son texte d'aujourd'hui — ses traductions sont alors signalées à mettre à jour
+    si le texte a changé — au lieu d'empiler un guide par clic.
+  */
+  if (input.source) {
+    const [existing] = await db
+      .select()
+      .from(guides)
+      .where(and(eq(guides.userId, auth.account.user.id), eq(guides.sourceKind, input.source.kind), eq(guides.sourceId, input.source.id)))
+      .orderBy(desc(guides.updatedAt))
+      .limit(1);
+    if (existing) {
+      const sections = cleanSections(input.sections);
+      const changed = existing.title !== input.title || textOfSections(existing.sections) !== textOfSections(sections);
+      if (!changed) return guideView(auth, existing);
+      // Les identifiants des sections déjà traduites sont gardés tant que le plan n'a pas bougé : la traduction reste alignée.
+      const kept = sections.map((section, index) => ({ ...section, id: existing.sections[index]?.id ?? section.id }));
+      const [updated] = await db
+        .update(guides)
+        .set({ title: input.title, sections: kept, revision: existing.revision + 1, updatedAt: new Date() })
+        .where(eq(guides.id, existing.id))
+        .returning();
+      return guideView(auth, updated ?? existing);
+    }
+  }
   const [count] = await db
     .select({ value: sql<number>`count(*)`.mapWith(Number) })
     .from(guides)
@@ -328,6 +362,8 @@ export async function createGuide(auth: RequestAuth, input: GuideInput) {
       sourceLanguage: correctedLanguage(input.sourceLanguage, texteDe(input)) ?? input.sourceLanguage,
       sections: cleanSections(input.sections),
       terms: [...new Set(input.terms)],
+      sourceKind: input.source?.kind ?? null,
+      sourceId: input.source?.id ?? null,
     })
     .returning();
   return guideView(auth, row!);

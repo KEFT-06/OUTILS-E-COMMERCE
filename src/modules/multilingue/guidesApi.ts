@@ -36,6 +36,8 @@ export interface Guide {
   sections: GuideSection[];
   terms: string[];
   revision: number;
+  /** Ce dont le guide est la traduction : un ouvrage, un rapport ou un conte. null : un texte collé autrefois. */
+  source: { kind: 'product' | 'report' | 'storybook'; id: string } | null;
   words: number;
   cover: CoverView | null;
   limits: { languages: number | null; used: number };
@@ -48,6 +50,8 @@ export interface GuideSummary {
   id: string;
   title: string;
   sourceLanguage: string;
+  /** Ce dont le guide est la traduction : un ouvrage, un rapport ou un conte. null : un texte collé autrefois. */
+  source: { kind: 'product' | 'report' | 'storybook'; id: string } | null;
   words: number;
   hasCover: boolean;
   updatedAt: string;
@@ -59,6 +63,8 @@ export interface GuideInput {
   sourceLanguage: string;
   sections: GuideSection[];
   terms: string[];
+  /** L'œuvre que l'on traduit : un second envoi pour la même œuvre rouvre son guide au lieu d'en créer un autre. */
+  source?: { kind: 'product' | 'report' | 'storybook'; id: string };
 }
 
 export interface TranslationFailure {

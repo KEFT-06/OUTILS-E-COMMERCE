@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
-import { Link, useNavigate, useParams } from 'react-router-dom';
+import { Link, useLocation, useNavigate, useParams } from 'react-router-dom';
 import { toast } from 'sonner';
-import { ArrowLeft, ChevronDown, PenLine, Plus, Save, Trash2 } from 'lucide-react';
+import { ArrowLeft, ChevronDown, Languages, PenLine, Plus, Save, Trash2 } from 'lucide-react';
 import { GUIDE_LIMITS, wordCount, type GuideSection } from '@server/shared/guides';
 import { findLanguage, languageName } from '@server/shared/languages';
 import { ACCOUNT_PATH } from '@/app/navigation';
@@ -178,7 +178,9 @@ export function GuideWorkspaceView() {
 
   const [guide, setGuide] = useState<Guide | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [pickerOpen, setPickerOpen] = useState(false);
+  // « Traduire », cliqué sur un ouvrage, un rapport ou un conte : on arrive ici avec le choix des langues déjà ouvert.
+  const demandeTraduction = Boolean((useLocation().state as { traduire?: unknown } | null)?.traduire);
+  const [pickerOpen, setPickerOpen] = useState(demandeTraduction);
   const [selected, setSelected] = useState<string[]>([]);
   const [translating, setTranslating] = useState(false);
   const [source, setSource] = useState<SourceDraft | null>(null);
@@ -397,8 +399,8 @@ export function GuideWorkspaceView() {
                 >
                   <DialogTrigger asChild>
                     <Button size="sm" disabled={translationsUnavailable || remaining === 0}>
-                      <Plus />
-                      Ajouter des langues
+                      <Languages />
+                      Traduire dans une langue
                     </Button>
                   </DialogTrigger>
                   <DialogContent className="max-h-[90svh] overflow-y-auto sm:max-w-2xl">

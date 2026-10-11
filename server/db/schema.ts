@@ -220,10 +220,17 @@ export const guides = pgTable(
     /** Augmente à chaque modification du texte : une traduction plus ancienne est signalée. */
     revision: integer('revision').notNull().default(1),
     coverId: uuid('cover_id'),
+    /**
+     * Ce dont le guide est la traduction : un ouvrage du Studio (product), un rapport d'analyse
+     * (report) ou un conte illustré (storybook), et son identifiant. null : un texte collé, du
+     * temps où l'on créait un guide avant de le traduire.
+     */
+    sourceKind: text('source_kind').$type<'product' | 'report' | 'storybook'>(),
+    sourceId: text('source_id'),
     createdAt: createdAt(),
     updatedAt: moment('updated_at').notNull().defaultNow(),
   },
-  (table) => [index('guides_user_idx').on(table.userId, table.updatedAt)],
+  (table) => [index('guides_user_idx').on(table.userId, table.updatedAt), index('guides_source_idx').on(table.userId, table.sourceKind, table.sourceId)],
 ).enableRLS();
 
 export const guideTranslations = pgTable(

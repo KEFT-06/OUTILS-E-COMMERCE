@@ -1,257 +1,58 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useLocation, useNavigate, useSearchParams } from 'react-router-dom';
-import { BookOpen, FilePlus2, ImageIcon, Languages } from 'lucide-react';
-import { GUIDE_LIMITS, REVIEW_LEVELS, parseGuideText, wordCount, type GuideSection, type ReviewLevel } from '@server/shared/guides';
+import { BarChart3, BookImage, BookOpen, ImageIcon, Languages } from 'lucide-react';
+import { toast } from 'sonner';
+import { REVIEW_LEVELS, type GuideSection, type ReviewLevel } from '@server/shared/guides';
 import { detectLanguage } from '@server/shared/languageDetect';
 import { LANGUAGE_RANKING_SOURCE, TOP_LANGUAGES, languageName } from '@server/shared/languages';
 import { useWorkspace } from '@/app/providers/WorkspaceProvider';
 import { useAuth } from '@/features/auth/AuthContext';
 import { LevelBadge } from '@/modules/multilingue/GuideBadges';
-import { LanguageSelect } from '@/modules/multilingue/LanguagePicker';
 import { ReviewerPanel } from '@/modules/multilingue/ReviewerPanel';
-import { type Guide, type GuideSummary, guidesApi } from '@/modules/multilingue/guidesApi';
-import { useCachedState } from '@/shared/lib/apiCache';
+import { type GuideSummary, guidesApi } from '@/modules/multilingue/guidesApi';
+import { WORK_LABELS, type WorkKind, productSections, reportSections, storybookSections, textOf } from '@/modules/multilingue/sources';
 import { PageHeader } from '@/shared/components/PageHeader';
-import { ApiError, toApiError } from '@/shared/lib/apiError';
+import { apiRequest } from '@/shared/lib/api';
+import { useCachedState } from '@/shared/lib/apiCache';
+import { toApiError } from '@/shared/lib/apiError';
 import { formatDateFr } from '@/shared/lib/formatDate';
 import { useAccountProducts } from '@/shared/stores/useAccountProducts';
 import { useProductDrafts } from '@/shared/stores/useProductDrafts';
-import type { DigitalProductIdea } from '@/shared/types/analysis';
+import type { MarketAnalysisReport, ReportDocument } from '@/shared/types/analysis';
+import type { StorybookEntry } from '@/shared/types/storybook';
 import { Alert, AlertDescription } from '@/shared/ui/alert';
 import { Badge } from '@/shared/ui/badge';
 import { Button } from '@/shared/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/shared/ui/card';
-import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from '@/shared/ui/dialog';
-import { Input } from '@/shared/ui/input';
-import { Label } from '@/shared/ui/label';
-import { NoDataState } from '@/shared/components/NoDataState';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/shared/ui/select';
 import { Skeleton } from '@/shared/ui/skeleton';
 import { Spinner } from '@/shared/ui/spinner';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/shared/ui/tabs';
-import { Textarea } from '@/shared/ui/textarea';
-import { ToggleGroup, ToggleGroupItem } from '@/shared/ui/toggle-group';
 
 /**
- * Module 10 — Guides multilingues : écrire un guide une fois, le traduire dans
- * les langues les plus parlées au monde, le faire relire, l'exporter en PDF
- * avec sa couverture.
+ * Module 10 — Guides multilingues : traduire ce que l'on a déjà créé.
+ *
+ * Demande du propriétaire, 11/10/2026 : « on ne crée pas de guide, on traduit les rapports
+ * disponibles, les ebooks disponibles, les storybooks disponibles », et « le bouton de traduction
+ * ne fonctionne pas ». Reproduit le même jour avec le vrai service : la traduction aboutissait —
+ * mais « Traduire » ouvrait un formulaire « Nouveau guide », il fallait « Créer le guide », puis
+ * trouver « Ajouter des langues » sur l'écran suivant. Trois gestes avant le premier mot traduit,
+ * dont aucun ne s'appelait traduire.
+ *
+ * L'écran liste maintenant ce qui existe — ouvrages, rapports, contes — et « Traduire » ouvre
+ * directement le choix des langues. Le « guide » reste, en coulisse, ce qui tient le texte et
+ * ses traductions ; on ne le crée plus à la main.
  */
 
-const newId = () => crypto.randomUUID().slice(0, 12);
-
-function productSections(product: DigitalProductIdea): GuideSection[] {
-  return [
-    ...(product.transformationPromise.trim() ? [{ id: newId(), heading: 'Promesse', body: product.transformationPromise }] : []),
-    ...(product.targetAudience.trim() ? [{ id: newId(), heading: 'Pour qui', body: product.targetAudience }] : []),
-    ...product.tableOfContents.map((module) => ({ id: newId(), heading: `Module ${module.moduleNumber} — ${module.title}`, body: module.details })),
-  ];
+interface Work {
+  kind: WorkKind;
+  id: string;
+  title: string;
+  /** Ce qui situe l'œuvre : son type, sa date. */
+  detail: string;
 }
 
-function firstIssue(error: ApiError): string {
-  const issues = (error.details as { issues?: { message?: string }[] } | undefined)?.issues;
-  return issues?.[0]?.message ?? error.message;
-}
-
-function CreateGuideDialog({
-  onCreated,
-  fromRequest = false,
-}: {
-  onCreated: (guide: Guide) => void;
-  /** Ce bouton-là reçoit la demande venue d'un autre écran. Un seul par page : deux fenêtres ouvertes se masquent l'une l'autre. */
-  fromRequest?: boolean;
-}) {
-  const { currentReport } = useWorkspace();
-  const drafts = useProductDrafts();
-  const mine = useAccountProducts(currentReport);
-  const products = mine.all.map((product) => drafts.effective(product));
-
-  /*
-    « Traduire », depuis Mes créations : on arrive avec l'ouvrage déjà choisi et le formulaire
-    ouvert — il ne reste qu'à choisir les langues, sans rien ressaisir.
-  */
-  const demande = (useLocation().state as { produit?: unknown } | null)?.produit;
-  const demandee = fromRequest && typeof demande === 'string' ? demande : '';
-  const [open, setOpen] = useState(false);
-  const [mode, setMode] = useState<'text' | 'product'>('text');
-  const [title, setTitle] = useState('');
-  const [language, setLanguage] = useState('fr');
-  const [text, setText] = useState('');
-  const [productId, setProductId] = useState('');
-  // Les ouvrages arrivent après l'écran : la demande s'applique dès que le sien est là, une seule fois.
-  const disponible = demandee !== '' && products.some((candidate) => candidate.id === demandee);
-  const appliquee = useRef(false);
-  useEffect(() => {
-    if (!disponible || appliquee.current) return;
-    appliquee.current = true;
-    setMode('product');
-    setProductId(demandee);
-    setOpen(true);
-  }, [disponible, demandee]);
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-
-  const product = products.find((candidate) => candidate.id === productId);
-  const preview = mode === 'text' ? parseGuideText(text, () => '') : product ? productSections(product) : [];
-
-  /*
-    La langue d'origine se LIT dans le texte. Elle se choisissait dans une liste, et qui venait
-    traduire y mettait la langue qu'il voulait obtenir : un ouvrage français enregistré « anglais »
-    ne pouvait plus être traduit en anglais. La liste reste, pour corriger — elle ne décide plus.
-  */
-  const [languageTouched, setLanguageTouched] = useState(false);
-  const reconnue = useMemo(() => {
-    const source = mode === 'text' ? text : product ? productSections(product).map((section) => `${section.heading}\n${section.body}`).join('\n') : '';
-    return detectLanguage(source)?.code ?? null;
-  }, [mode, text, product]);
-  useEffect(() => {
-    if (reconnue && !languageTouched) setLanguage(reconnue);
-  }, [reconnue, languageTouched]);
-  const effectiveTitle = (mode === 'product' && !title.trim() ? (product?.title ?? '') : title).trim();
-
-  const submit = async (event: React.FormEvent) => {
-    event.preventDefault();
-    setError(null);
-    const sections = mode === 'text' ? parseGuideText(text, newId) : product ? productSections(product) : [];
-    if (sections.length === 0) {
-      setError(mode === 'text' ? 'Collez le texte du guide.' : 'Choisissez un produit du Studio.');
-      return;
-    }
-    setBusy(true);
-    try {
-      const guide = await guidesApi.create({ title: effectiveTitle, sourceLanguage: language, sections, terms: [] });
-      setOpen(false);
-      onCreated(guide);
-    } catch (caught) {
-      setError(firstIssue(toApiError(caught, 'Le guide n’a pas pu être créé.')));
-    } finally {
-      setBusy(false);
-    }
-  };
-
-  return (
-    <Dialog open={open} onOpenChange={setOpen}>
-      <DialogTrigger asChild>
-        <Button>
-          <FilePlus2 />
-          Nouveau guide
-        </Button>
-      </DialogTrigger>
-      <DialogContent className="max-h-[90svh] overflow-y-auto sm:max-w-2xl">
-        <form onSubmit={(event) => void submit(event)} className="space-y-4">
-          <DialogHeader>
-            <DialogTitle>Nouveau guide</DialogTitle>
-            <DialogDescription>Collez le texte d’un guide ou d’un ebook, ou partez d’un produit du Studio.</DialogDescription>
-          </DialogHeader>
-
-          <ToggleGroup
-            type="single"
-            variant="outline"
-            value={mode}
-            onValueChange={(value) => value && setMode(value as 'text' | 'product')}
-            aria-label="Point de départ"
-            className="flex-wrap"
-          >
-            <ToggleGroupItem value="text">Coller un texte</ToggleGroupItem>
-            <ToggleGroupItem value="product" disabled={products.length === 0}>
-              Depuis le Studio
-            </ToggleGroupItem>
-          </ToggleGroup>
-          {products.length === 0 && (
-            <p className="text-xs text-muted-foreground">
-              Pour partir d’un produit, analysez une niche ou créez votre produit dans le Studio.
-            </p>
-          )}
-
-          <div className="grid gap-4 sm:grid-cols-2">
-            <div className="space-y-1.5">
-              <Label htmlFor="guide-title">Titre</Label>
-              <Input
-                id="guide-title"
-                value={title}
-                onChange={(event) => setTitle(event.target.value)}
-                maxLength={200}
-                placeholder={mode === 'product' && product ? product.title : 'Ex. Élever des poulets en ville'}
-                required={mode === 'text'}
-              />
-            </div>
-            <div className="space-y-1.5">
-              <Label htmlFor="guide-language">Langue d’origine du texte</Label>
-              <LanguageSelect
-                id="guide-language"
-                value={language}
-                onChange={(code) => {
-                  setLanguageTouched(true);
-                  setLanguage(code);
-                }}
-              />
-              <p className="text-xs text-muted-foreground">
-                {reconnue && !languageTouched
-                  ? `Reconnue dans votre texte : ${languageName(reconnue).toLowerCase()}. Les langues de traduction se choisissent à l’étape suivante.`
-                  : 'La langue dans laquelle le texte est écrit. Les langues de traduction se choisissent à l’étape suivante.'}
-              </p>
-            </div>
-          </div>
-
-          {mode === 'text' ? (
-            <div className="space-y-1.5">
-              <Label htmlFor="guide-text">Texte du guide</Label>
-              <Textarea
-                id="guide-text"
-                value={text}
-                onChange={(event) => setText(event.target.value)}
-                rows={12}
-                maxLength={GUIDE_LIMITS.totalMax}
-                placeholder={'# Budget\nPrévoir le budget de 50 poussins…\n\n# Alimentation\nDeux repas par jour…'}
-              />
-              <p className="text-xs text-muted-foreground">
-                Chaque ligne qui commence par # ouvre une section.
-                {preview.length > 0 && ` ${preview.length} section${preview.length > 1 ? 's' : ''}, ${wordCount(preview).toLocaleString('fr-FR')} mots.`}
-              </p>
-            </div>
-          ) : (
-            <div className="space-y-1.5">
-              <Label htmlFor="guide-product">Produit du Studio</Label>
-              <Select value={productId} onValueChange={setProductId}>
-                <SelectTrigger id="guide-product" className="w-full">
-                  <SelectValue placeholder="Choisissez un produit" />
-                </SelectTrigger>
-                <SelectContent>
-                  {products.map((candidate) => (
-                    <SelectItem key={candidate.id} value={candidate.id}>
-                      {candidate.title}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-              {product && (
-                <p className="text-xs text-muted-foreground">
-                  Promesse, public et {product.tableOfContents.length} modules repris, soit {preview.length} sections à compléter ensuite.
-                </p>
-              )}
-            </div>
-          )}
-
-          {error && (
-            <Alert variant="danger">
-              <AlertDescription>{error}</AlertDescription>
-            </Alert>
-          )}
-
-          <DialogFooter className="gap-2 sm:gap-2">
-            <Button type="button" variant="outline" onClick={() => setOpen(false)}>
-              Annuler
-            </Button>
-            <Button type="submit" disabled={busy || effectiveTitle.length < 2}>
-              {busy && <Spinner />}
-              Créer le guide
-            </Button>
-          </DialogFooter>
-        </form>
-      </DialogContent>
-    </Dialog>
-  );
-}
+const ICONS: Record<WorkKind, typeof BookOpen> = { product: BookOpen, report: BarChart3, storybook: BookImage };
+const keyOf = (kind: WorkKind, id: string) => `${kind}:${id}`;
 
 function LevelsCard() {
   return (
@@ -310,64 +111,103 @@ function TopLanguagesCard() {
   );
 }
 
-function GuideList({ onCreated }: { onCreated: (guide: Guide) => void }) {
-  const { account } = useAuth();
-  const [data, setData, keepData] = useCachedState<{ limits: { languages: number | null }; guides: GuideSummary[] }>('/api/guides');
-  const [error, setError] = useState<string | null>(null);
-
-  useEffect(() => {
-    let cancelled = false;
-    guidesApi
-      .list()
-      .then((loaded) => {
-        // Retenue même si l'écran a été quitté entre-temps : elle servira à sa prochaine ouverture.
-        keepData(loaded);
-        if (!cancelled) setData(loaded);
-      })
-      .catch((caught: unknown) => {
-        if (!cancelled) setError(toApiError(caught, 'Les guides n’ont pas pu être chargés.').message);
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [setData, keepData]);
-
-  if (error) {
-    return (
-      <Alert variant="danger">
-        <AlertDescription>{error}</AlertDescription>
-      </Alert>
-    );
-  }
-  if (!data) {
-    return (
-      <div className="grid gap-4 md:grid-cols-2" role="status" aria-label="Chargement des guides">
-        <Skeleton className="h-36 rounded-xl" />
-        <Skeleton className="h-36 rounded-xl" />
-      </div>
-    );
-  }
-
-  const limit = data.limits.languages;
-
+/** Langues déjà obtenues pour une œuvre, ou ce qui manque encore. */
+function TranslationBadges({ guide }: { guide: GuideSummary | undefined }) {
+  if (!guide || guide.translations.length === 0) return <span className="text-xs text-muted-foreground">Pas encore traduit</span>;
   return (
-    <div className="space-y-4">
-      <p className="text-sm text-muted-foreground">
-        {limit === null
-          ? `Traductions illimitées avec le palier ${account?.plan.label ?? ''}.`
-          : `${limit} langue${limit > 1 ? 's' : ''} par guide avec le palier ${account?.plan.label ?? ''}.`}
-      </p>
-      {data.guides.length === 0 ? (
-        <NoDataState
-          icon={BookOpen}
-          title="Aucun guide pour l’instant"
-          reason="Collez le texte d’un guide ou d’un ebook, ou partez d’un produit du Studio : vous le traduirez ensuite."
-        >
-          <CreateGuideDialog onCreated={onCreated} />
-        </NoDataState>
-      ) : (
+    <>
+      {guide.translations.map((translation) => (
+        <Badge key={translation.language} variant={translation.outdated ? 'warning' : translation.level === 'A' ? 'success' : 'outline'}>
+          {languageName(translation.language)} · {translation.level}
+        </Badge>
+      ))}
+    </>
+  );
+}
+
+/** Une famille d'œuvres à traduire : ouvrages, rapports ou contes. */
+function WorksCard({
+  kind,
+  works,
+  loading,
+  guides,
+  busy,
+  onTranslate,
+}: {
+  kind: WorkKind;
+  works: Work[];
+  loading: boolean;
+  guides: Map<string, GuideSummary>;
+  busy: string | null;
+  onTranslate: (work: Work) => void;
+}) {
+  const Icon = ICONS[kind];
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle>
+          <h2 className="flex items-center gap-2">
+            <Icon className="size-4 text-brand-green-text" aria-hidden="true" />
+            {WORK_LABELS[kind].many}
+          </h2>
+        </CardTitle>
+      </CardHeader>
+      <CardContent>
+        {loading && works.length === 0 ? (
+          <Skeleton className="h-20 rounded-lg" />
+        ) : works.length === 0 ? (
+          <p className="text-sm text-muted-foreground">{WORK_LABELS[kind].empty}</p>
+        ) : (
+          <ul className="grid gap-3 lg:grid-cols-2">
+            {works.map((work) => {
+              const guide = guides.get(keyOf(work.kind, work.id));
+              const enCours = busy === keyOf(work.kind, work.id);
+              return (
+                <li key={work.id} className="flex flex-col gap-3 rounded-lg border bg-card p-4">
+                  <div className="min-w-0">
+                    <p className="line-clamp-2 font-medium" title={work.title}>
+                      {work.title}
+                    </p>
+                    <p className="text-xs text-muted-foreground">{work.detail}</p>
+                  </div>
+                  <div className="flex flex-wrap items-center gap-1.5">
+                    <TranslationBadges guide={guide} />
+                  </div>
+                  <div className="flex flex-wrap gap-2">
+                    <Button size="sm" onClick={() => onTranslate(work)} disabled={busy !== null} aria-label={`Traduire « ${work.title} »`}>
+                      {enCours ? <Spinner /> : <Languages />}
+                      Traduire
+                    </Button>
+                    {guide && guide.translations.length > 0 && (
+                      <Button asChild size="sm" variant="outline">
+                        <Link to={`/app/multilingue/${guide.id}`}>Voir les traductions</Link>
+                      </Button>
+                    )}
+                  </div>
+                </li>
+              );
+            })}
+          </ul>
+        )}
+      </CardContent>
+    </Card>
+  );
+}
+
+/** Textes traduits autrefois à partir d'un texte collé : ils restent accessibles, on n'en crée plus. */
+function OtherGuides({ guides }: { guides: GuideSummary[] }) {
+  if (guides.length === 0) return null;
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle>
+          <h2>Autres textes traduits</h2>
+        </CardTitle>
+        <CardDescription>Des textes que vous aviez collés ici : leurs traductions restent à vous.</CardDescription>
+      </CardHeader>
+      <CardContent>
         <ul className="grid gap-4 md:grid-cols-2">
-          {data.guides.map((guide) => (
+          {guides.map((guide) => (
             <li key={guide.id}>
               <Link
                 to={`/app/multilingue/${guide.id}`}
@@ -389,53 +229,174 @@ function GuideList({ onCreated }: { onCreated: (guide: Guide) => void }) {
                   )}
                 </p>
                 <div className="mt-3 flex flex-wrap gap-1.5">
-                  {guide.translations.length === 0 ? (
-                    <span className="text-xs text-muted-foreground">Pas encore traduit</span>
-                  ) : (
-                    guide.translations.map((translation) => (
-                      <Badge key={translation.language} variant={translation.outdated ? 'warning' : translation.level === 'A' ? 'success' : 'outline'}>
-                        {languageName(translation.language)} · {translation.level}
-                      </Badge>
-                    ))
-                  )}
+                  <TranslationBadges guide={guide} />
                 </div>
                 <p className="mt-3 text-xs text-muted-foreground">Modifié le {formatDateFr(guide.updatedAt)}</p>
               </Link>
             </li>
           ))}
         </ul>
+      </CardContent>
+    </Card>
+  );
+}
+
+function Translations() {
+  const { account } = useAuth();
+  const navigate = useNavigate();
+  const { currentReport, reports } = useWorkspace();
+  const drafts = useProductDrafts();
+  const mine = useAccountProducts(currentReport);
+  const [data, setData, keepData] = useCachedState<{ limits: { languages: number | null }; guides: GuideSummary[] }>('/api/guides');
+  const [storybooks, setStorybooks] = useCachedState<StorybookEntry[]>('/api/storybook/books');
+  const [error, setError] = useState<string | null>(null);
+  const [busy, setBusy] = useState<string | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    guidesApi
+      .list()
+      .then((loaded) => {
+        // Retenue même si l'écran a été quitté entre-temps : elle servira à sa prochaine ouverture.
+        keepData(loaded);
+        if (!cancelled) setData(loaded);
+      })
+      .catch((caught: unknown) => {
+        if (!cancelled) setError(toApiError(caught, 'Vos traductions n’ont pas pu être chargées.').message);
+      });
+    apiRequest<{ storybooks: StorybookEntry[] }>('/api/storybook/books')
+      .then(({ storybooks: loaded }) => setStorybooks(loaded))
+      .catch(() => undefined);
+    return () => {
+      cancelled = true;
+    };
+  }, [setData, keepData, setStorybooks]);
+
+  const products = useMemo(() => mine.all.map((product) => drafts.effective(product)), [mine, drafts]);
+  const works = useMemo<Record<WorkKind, Work[]>>(
+    () => ({
+      product: products.map((product) => ({ kind: 'product', id: product.id, title: product.title, detail: `${product.typeName} · ${product.tableOfContents.length} modules` })),
+      report: reports.map((report) => ({ kind: 'report', id: report.id, title: report.nicheName, detail: `Analysé le ${formatDateFr(report.createdAt)}` })),
+      // Un conte encore en cours d'écriture n'a pas son texte définitif : il se traduira une fois prêt.
+      storybook: (storybooks ?? [])
+        .filter((entry) => entry.status === 'completed')
+        .map((entry) => ({ kind: 'storybook', id: entry.id, title: entry.title, detail: `${entry.pages} pages · créé le ${formatDateFr(entry.createdAt)}` })),
+    }),
+    [products, reports, storybooks],
+  );
+  const guides = useMemo(() => new Map((data?.guides ?? []).flatMap((guide) => (guide.source ? [[keyOf(guide.source.kind, guide.source.id), guide] as const] : []))), [data]);
+
+  /** Le texte qui part à la traduction, lu à l'instant : c'est l'œuvre telle qu'elle est aujourd'hui. */
+  const sectionsOf = useCallback(
+    async (work: Work): Promise<{ sections: GuideSection[]; language: string | null }> => {
+      if (work.kind === 'product') {
+        const product = products.find((candidate) => candidate.id === work.id);
+        return { sections: product ? productSections(product) : [], language: null };
+      }
+      if (work.kind === 'storybook') {
+        const entry = (storybooks ?? []).find((candidate) => candidate.id === work.id);
+        return { sections: entry ? storybookSections(entry) : [], language: entry?.language ?? null };
+      }
+      const [{ report }, written] = await Promise.all([
+        apiRequest<{ report: MarketAnalysisReport }>(`/api/reports/${encodeURIComponent(work.id)}`),
+        apiRequest<{ document: ReportDocument | null }>(`/api/reports/${encodeURIComponent(work.id)}/document`).catch(() => ({ document: null })),
+      ]);
+      return { sections: reportSections(report, written.document), language: null };
+    },
+    [products, storybooks],
+  );
+
+  const translate = useCallback(
+    async (work: Work) => {
+      setBusy(keyOf(work.kind, work.id));
+      try {
+        const { sections, language } = await sectionsOf(work);
+        if (sections.length === 0) {
+          toast.error('Rien à traduire pour l’instant', { description: `« ${work.title} » n’a pas encore de texte : rédigez-le, puis revenez le traduire.` });
+          return;
+        }
+        const guide = await guidesApi.create({
+          title: work.title,
+          sourceLanguage: language ?? detectLanguage(textOf(sections))?.code ?? 'fr',
+          sections,
+          terms: [],
+          source: { kind: work.kind, id: work.id },
+        });
+        // Le choix des langues s'ouvre tout de suite : « Traduire » traduit.
+        void navigate(`/app/multilingue/${guide.id}`, { state: { traduire: true } });
+      } catch (caught) {
+        toast.error('Traduction impossible', { description: toApiError(caught, 'Cette œuvre n’a pas pu être préparée pour la traduction.').message });
+      } finally {
+        setBusy(null);
+      }
+    },
+    [sectionsOf, navigate],
+  );
+
+  /*
+    « Traduire », depuis Mes créations : on arrive avec l'œuvre désignée, et le choix des langues
+    s'ouvre sans rien demander de plus. La demande s'applique dès que l'œuvre est là, une seule fois.
+  */
+  const state = useLocation().state as { produit?: unknown; rapport?: unknown; conte?: unknown } | null;
+  const asked = useMemo<Work | null>(() => {
+    const find = (kind: WorkKind, id: unknown) => (typeof id === 'string' ? (works[kind].find((work) => work.id === id) ?? null) : null);
+    return find('product', state?.produit) ?? find('report', state?.rapport) ?? find('storybook', state?.conte);
+  }, [state, works]);
+  const applied = useRef(false);
+  useEffect(() => {
+    if (!asked || applied.current) return;
+    applied.current = true;
+    void translate(asked);
+  }, [asked, translate]);
+
+  const limit = data?.limits.languages;
+  const others = (data?.guides ?? []).filter((guide) => !guide.source);
+
+  return (
+    <div className="space-y-6">
+      {error && (
+        <Alert variant="danger">
+          <AlertDescription>{error}</AlertDescription>
+        </Alert>
       )}
+      {limit !== undefined && (
+        <p className="text-sm text-muted-foreground">
+          {limit === null
+            ? `Traductions illimitées avec le palier ${account?.plan.label ?? ''}.`
+            : `${limit} langue${limit > 1 ? 's' : ''} par œuvre avec le palier ${account?.plan.label ?? ''}.`}
+        </p>
+      )}
+      {(['product', 'report', 'storybook'] as WorkKind[]).map((kind) => (
+        <WorksCard key={kind} kind={kind} works={works[kind]} loading={kind === 'storybook' ? storybooks === null : false} guides={guides} busy={busy} onTranslate={(work) => void translate(work)} />
+      ))}
+      <OtherGuides guides={others} />
     </div>
   );
 }
 
 export function MultilingualGuidesView() {
   const { account } = useAuth();
-  const navigate = useNavigate();
   const [params, setParams] = useSearchParams();
   const canReview = account?.permissions.includes('guides.review') ?? false;
   const tab = canReview && params.get('onglet') === 'relectures' ? 'relectures' : 'guides';
-  const openGuide = (guide: Guide) => navigate(`/app/multilingue/${guide.id}`);
 
   return (
     <div className="space-y-6">
       <PageHeader
         eyebrow="Créer"
         title="Guides multilingues"
-        description="Écrivez un guide une fois, traduisez-le dans les langues les plus parlées au monde, faites-le relire, puis exportez-le en PDF avec sa couverture."
-        actions={<CreateGuideDialog onCreated={openGuide} fromRequest />}
+        description="Traduisez ce que vous avez déjà créé — vos ebooks, vos rapports d’analyse, vos contes illustrés — dans les langues les plus parlées au monde, puis faites relire et exportez."
       />
-
-      <TopLanguagesCard />
 
       {canReview ? (
         <Tabs value={tab} onValueChange={(value) => setParams(value === 'relectures' ? { onglet: 'relectures' } : {}, { replace: true })} className="gap-4">
           <TabsList>
-            <TabsTrigger value="guides">Mes guides</TabsTrigger>
+            <TabsTrigger value="guides">Mes traductions</TabsTrigger>
             <TabsTrigger value="relectures">Relectures</TabsTrigger>
           </TabsList>
           <TabsContent value="guides" className="space-y-6">
-            <GuideList onCreated={openGuide} />
+            <Translations />
+            <TopLanguagesCard />
             <LevelsCard />
           </TabsContent>
           <TabsContent value="relectures">
@@ -444,7 +405,8 @@ export function MultilingualGuidesView() {
         </Tabs>
       ) : (
         <>
-          <GuideList onCreated={openGuide} />
+          <Translations />
+          <TopLanguagesCard />
           <LevelsCard />
         </>
       )}
