@@ -85,12 +85,26 @@ const store = createPersistentStore<ProductDrafts>({
   },
 });
 
+/** Liste stable tant que les brouillons ne changent pas : elle sert de dépendance aux écrans. */
+let listedFrom: ProductDrafts | null = null;
+let listed: DigitalProductIdea[] = [];
+function listOf(drafts: ProductDrafts): DigitalProductIdea[] {
+  if (listedFrom !== drafts) {
+    listedFrom = drafts;
+    listed = Object.values(drafts);
+  }
+  return listed;
+}
+
 export function useProductDrafts() {
   const snapshot = useSyncExternalStore(store.subscribe, store.getState);
   const drafts = snapshot.value;
 
   return {
     writeFailed: snapshot.writeFailed,
+
+    /** Tous les ouvrages retouchés ou rédigés, quelle que soit l'analyse dont ils viennent. */
+    all: listOf(drafts),
 
     hasDraft: (productId: string) => Object.prototype.hasOwnProperty.call(drafts, productId),
 

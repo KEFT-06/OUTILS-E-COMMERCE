@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { toast } from 'sonner';
 import {
@@ -37,7 +37,7 @@ import { safeHttpUrl } from '@/shared/lib/safeUrl';
 import { blankProduct, useCustomProducts } from '@/shared/stores/useCustomProducts';
 import { useDeleteProduct } from '@/shared/stores/useDeleteProduct';
 import { useProductDrafts } from '@/shared/stores/useProductDrafts';
-import { useRemovedProducts, withoutRemoved } from '@/shared/stores/useRemovedProducts';
+import { useAccountProducts } from '@/shared/stores/useAccountProducts';
 import { useProviders } from '@/shared/hooks/useProviders';
 import { cn } from '@/shared/lib/utils';
 import type { TextProductResult, VideoProductResult, WritingFinding } from '@/shared/lib/writing';
@@ -95,10 +95,10 @@ export function DigitalProductsView({ report, onSelectProductForAd, onAnalyzeNic
   const { account } = useAuth();
   const { analysisJob, analyzeNiche, reports, selectReport } = useWorkspace();
 
-  const removed = useRemovedProducts();
   const deleteProduct = useDeleteProduct();
-  // Les produits de l'analyse en cours, moins ceux que le compte a supprimés, puis ceux créés hors analyse.
-  const products = useMemo(() => [...withoutRemoved(report?.digitalProducts ?? [], removed.ids), ...custom.products], [report, custom.products, removed.ids]);
+  // Les ouvrages du compte : ceux de l'analyse ouverte, ceux créés hors analyse, et ceux travaillés à partir d'une autre analyse.
+  const mine = useAccountProducts(report);
+  const products = mine.all;
   // Produit créé depuis une alerte (« Créer un produit similaire ») : il s'ouvre directement.
   const demande = (useLocation().state as { produit?: unknown } | null)?.produit;
   const [selectedId, setSelectedId] = useState<string | null>(typeof demande === 'string' ? demande : null);
@@ -333,7 +333,7 @@ export function DigitalProductsView({ report, onSelectProductForAd, onAnalyzeNic
           const product = drafts.effective(candidate);
           const isSelected = baseProduct.id === candidate.id;
           const Icon = FORMAT_ICONS[product.type as keyof typeof FORMAT_ICONS] ?? Package;
-          const badge = originLabel(candidate);
+          const badge = originLabel(candidate) ?? (mine.elsewhere.some((other) => other.id === candidate.id) ? 'Autre analyse' : null);
           return (
             <div key={candidate.id} className="relative flex">
             <button
@@ -410,7 +410,8 @@ export function DigitalProductsView({ report, onSelectProductForAd, onAnalyzeNic
       <ProductStudioPanel
         key={baseProduct.id}
         baseProduct={baseProduct}
-        report={isCustom ? null : report}
+        // L'analyse ouverte n'éclaire que SES produits : un ouvrage venu d'une autre niche ne doit pas être rédigé d'après celle-ci.
+        report={mine.fromReport.some((candidate) => candidate.id === baseProduct.id) ? report : null}
         initialExpertOpen={justCreatedId === baseProduct.id}
       />
 

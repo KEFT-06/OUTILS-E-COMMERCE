@@ -6,6 +6,7 @@ import { formatAudioDuration } from '@server/shared/audio';
 import { useWorkspace } from '@/app/providers/WorkspaceProvider';
 import { MyVideosPanel } from '@/modules/creatifs/MyVideosPanel';
 import { MyVisualsPanel } from '@/modules/creatifs/MyVisualsPanel';
+import { CoversCard, ReportsCard, StorybooksCard } from '@/modules/creations/OtherCreations';
 import type { GuideSummary } from '@/modules/multilingue/guidesApi';
 import { BookCover } from '@/shared/components/BookCover';
 import { PageHeader } from '@/shared/components/PageHeader';
@@ -17,7 +18,7 @@ import { useCustomProducts } from '@/shared/stores/useCustomProducts';
 import { useDeleteProduct } from '@/shared/stores/useDeleteProduct';
 import { type ProductCover, useProductCovers } from '@/shared/stores/useProductCovers';
 import { useProductDrafts } from '@/shared/stores/useProductDrafts';
-import { useRemovedProducts, withoutRemoved } from '@/shared/stores/useRemovedProducts';
+import { useAccountProducts } from '@/shared/stores/useAccountProducts';
 import { refreshExpiringVideos } from '@/shared/stores/useExpiringVideos';
 import type { DigitalProductIdea } from '@/shared/types/analysis';
 import { Alert, AlertDescription, AlertTitle } from '@/shared/ui/alert';
@@ -166,7 +167,7 @@ export function CreationsView() {
   const { currentReport, isLoadingReport } = useWorkspace();
   const custom = useCustomProducts();
   const drafts = useProductDrafts();
-  const removed = useRemovedProducts();
+  const mine = useAccountProducts(currentReport);
   const deleteProduct = useDeleteProduct();
   // L'ouvrage dont la suppression est demandée, le temps de la confirmer.
   const [aSupprimer, setASupprimer] = useState<DigitalProductIdea | null>(null);
@@ -201,13 +202,14 @@ export function CreationsView() {
   }, [setGuides]);
 
   const produits = useMemo(() => {
-    const tous = [...custom.products, ...withoutRemoved(currentReport?.digitalProducts ?? [], removed.ids)];
+    // Tous les ouvrages du compte : créés hors analyse, proposés par l'analyse ouverte, et travaillés à partir d'une autre.
+    const tous = [...mine.custom, ...mine.fromReport, ...mine.elsewhere];
     const mot = recherche.trim().toLowerCase();
     return (mot ? tous.filter((product) => product.title.toLowerCase().includes(mot)) : tous).map((product) => ({
       product: drafts.effective(product),
       written: drafts.hasDraft(product.id),
     }));
-  }, [custom.products, currentReport, drafts, recherche, removed.ids]);
+  }, [mine, drafts, recherche]);
 
   const guidesVisibles = useMemo(() => {
     const mot = recherche.trim().toLowerCase();
@@ -244,7 +246,7 @@ export function CreationsView() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
-      <PageHeader eyebrow="Créer" title="Mes créations" description="Tout ce que vous avez produit, au même endroit : vos textes, vos vidéos et vos visuels." />
+      <PageHeader eyebrow="Créer" title="Mes créations" description="Tout ce que vous avez produit, au même endroit : ouvrages, rapports, contes, guides, vidéos, visuels et couvertures." />
 
       {bientot.length > 0 && (
         <Alert variant="warning">
@@ -275,7 +277,7 @@ export function CreationsView() {
           <TabsTrigger value="medias" className="h-auto min-w-0 py-1.5 whitespace-normal">
             <Clapperboard />
             <span>
-              <span className="hidden sm:inline">Mes </span>vidéos et visuels
+              <span className="hidden sm:inline">Mes </span>vidéos, visuels et couvertures
             </span>
             {bientot.length > 0 && <span className="ml-1 rounded-full bg-amber-500 px-1.5 text-xs font-semibold text-white">{bientot.length}</span>}
           </TabsTrigger>
@@ -342,6 +344,9 @@ export function CreationsView() {
             </CardContent>
           </Card>
 
+          <ReportsCard recherche={recherche} />
+          <StorybooksCard recherche={recherche} />
+
           <div className="flex flex-wrap gap-2 text-sm">
             <span className="text-muted-foreground">Aussi dans votre compte :</span>
             <Link to="/app/kit-lancement" className="font-medium underline underline-offset-2">
@@ -350,18 +355,13 @@ export function CreationsView() {
             <Link to="/app/pages-produits" className="font-medium underline underline-offset-2">
               pages produits
             </Link>
-            <Link to="/app/dossier-pdf" className="font-medium underline underline-offset-2">
-              dossiers d’analyse
-            </Link>
-            <Link to="/app/storybook" className="font-medium underline underline-offset-2">
-              contes illustrés
-            </Link>
           </div>
         </TabsContent>
 
         <TabsContent value="medias" className="space-y-6">
           <MyVideosPanel version={0} limit={40} showEmpty />
           <MyVisualsPanel version={0} />
+          <CoversCard products={mine.all} guides={guides?.guides ?? []} />
         </TabsContent>
       </Tabs>
     </div>
