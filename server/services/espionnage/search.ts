@@ -10,7 +10,7 @@ import { effectiveLimits } from '@server/services/accounts';
 import { listSpiedAds } from '@server/services/espionnage';
 import { collectorDispatchConfigured, requestCollectorPassage } from '@server/services/espionnage/dispatch';
 import { fromLibraryRecord } from '@server/services/espionnage/library';
-import { readAnyMetaAd } from '@server/services/espionnage/parse';
+import { readAnyMetaAd, withoutPlaceholders } from '@server/services/espionnage/parse';
 import { followableOnRadar } from '@server/shared/storefronts';
 import {
   FAILED_RUN,
@@ -149,8 +149,8 @@ function adViewOf(fields: NonNullable<ReturnType<typeof readAnyMetaAd>>, searche
     externalId: fields.externalId,
     storeHost: fields.storeHost,
     landingUrl: fields.landingUrl,
-    title: fields.title && !/\{\{[^}]*\}\}/.test(fields.title) ? fields.title : null,
-    bodyText: fields.bodyText ?? null,
+    title: withoutPlaceholders(fields.title),
+    bodyText: withoutPlaceholders(fields.bodyText),
     advertiser: fields.advertiser ?? null,
     mediaUrl: fields.mediaUrl ?? null,
     mediaKind: fields.mediaKind ?? null,
@@ -225,9 +225,9 @@ export async function searchQuota(auth: RequestAuth, now = new Date()): Promise<
  * Réponse tirée de nos relevés, et recherche confiée au collecteur. Ce que le mur contient pour
  * ce mot part tout de suite ; la lecture fraîche de la bibliothèque le remplacera à son arrivée.
  */
-async function serveFromOurBase(row: SearchRow, auth: RequestAuth, request: AdSearchRequest, now: Date): Promise<AdSearchView> {
+async function switchToOurBase(row: SearchRow, now: Date): Promise<SearchRow> {
   const ours = await listSpiedAds(
-    { search: request.query, ...(request.country === 'ALL' ? {} : { country: request.country }), etat: 'active', sort: 'oldest', limit: env.SPY_SEARCH_RESULTS },
+    { search: row.query, ...(row.country === 'ALL' ? {} : { country: row.country }), etat: 'active', sort: 'oldest', limit: env.SPY_SEARCH_RESULTS },
     null,
     now,
   )
@@ -255,8 +255,10 @@ async function serveFromOurBase(row: SearchRow, auth: RequestAuth, request: AdSe
     .where(eq(adSearches.id, row.id))
     .returning();
   if (!earlier) void requestCollectorPassage();
-  return viewOf(served ?? row, auth, false);
+  return served ?? row;
 }
+
+const serveFromOurBase = async (row: SearchRow, auth: RequestAuth, now: Date): Promise<AdSearchView> => viewOf(await switchToOurBase(row, now), auth, false);
 
 /**
  * Lance une recherche, ou relit la même faite depuis moins de 24 heures. Les refus du palier
@@ -306,7 +308,7 @@ export async function startAdSearch(auth: RequestAuth, request: AdSearchRequest,
     .returning();
 
   // Le plafond mensuel du serveur borne la DÉPENSE : une fois atteint, la recherche passe par nos relevés, qui ne coûtent rien.
-  if (!providers.apify || quota.serverLeft <= 0) return serveFromOurBase(row!, auth, request, now);
+  if (!providers.apify || quota.serverLeft <= 0) return serveFromOurBase(row!, auth, now);
 
   try {
     const response = await apifyFetch(apifyUrl(`/acts/${env.APIFY_ADS_ACTOR}/runs`), {
@@ -330,7 +332,7 @@ export async function startAdSearch(auth: RequestAuth, request: AdSearchRequest,
   } catch (error) {
     // Compte refusé, réserve épuisée, service muet : ce n'est pas l'affaire de celui qui cherche.
     console.warn('[recherche] lecture payante indisponible, la recherche passe par nos relevés :', error instanceof AppError ? error.code : error);
-    return serveFromOurBase(row!, auth, request, now);
+    return serveFromOurBase(row!, auth, now);
   }
 }
 
@@ -464,16 +466,9 @@ async function advance(row: SearchRow, now: Date): Promise<SearchRow> {
   }
 
   if (FAILED_RUN.has(status) || now.getTime() - row.createdAt.getTime() > SEARCH_STALE_MS) {
-    const [failed] = await getDb()
-      .update(adSearches)
-      .set({
-        status: 'failed',
-        error: 'La recherche n’a pas abouti chez le fournisseur. Relancez-la dans un moment.',
-        finishedAt: new Date(),
-      })
-      .where(and(eq(adSearches.id, row.id), eq(adSearches.status, 'running')))
-      .returning();
-    return failed ?? row;
+    // Le passage payant a échoué en route, ou ne finit pas : la recherche n'échoue pas pour autant, elle change de source.
+    console.warn('[recherche] passage payant sans résultat, la recherche passe par nos relevés :', status);
+    return switchToOurBase(row, now);
   }
   return row;
 }

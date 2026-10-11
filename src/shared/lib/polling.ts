@@ -24,10 +24,10 @@ export async function pollStatus<T>(url: string, failure: string): Promise<T | n
     return null;
   }
   if (response.status === 429 || response.status >= 500) return null;
-  if (!response.ok) throw await readApiError(response, `${failure} (${response.status}).`);
+  if (!response.ok) throw await readApiError(response, `${failure}.`);
   return (await response.json().catch(() => null)) as T | null;
 }
 
 /** Message quand la connexion reste perdue : le travail, lui, continue et reste retrouvable. */
 export const lostTrackMessage = (whereToFind: string) =>
-  `La connexion au serveur est perdue depuis plus d’une minute. Le travail continue sans vous : retrouvez-le ${whereToFind}. Si le fournisseur échoue, vos points vous seront rendus automatiquement.`;
+  `La connexion est perdue depuis plus d’une minute. Le travail continue sans vous : retrouvez-le ${whereToFind}. S’il n’aboutit pas, vos points vous seront rendus d’eux-mêmes.`;

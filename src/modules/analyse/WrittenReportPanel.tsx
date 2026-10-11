@@ -251,7 +251,7 @@ export function WrittenReportPanel({ reportId, nicheName }: WrittenReportPanelPr
             {document?.status === 'failed' && (
               <Alert variant="danger">
                 <AlertTitle>La rédaction précédente n’a pas abouti</AlertTitle>
-                <AlertDescription>{document.error?.message ?? 'Vos points ont été rendus. Relancez la rédaction ci-dessous.'}</AlertDescription>
+                <AlertDescription>{document.error?.message ?? 'Vos points ont été rendus. La rédaction se relance ci-dessous, quand vous le voulez.'}</AlertDescription>
               </Alert>
             )}
             {selector}

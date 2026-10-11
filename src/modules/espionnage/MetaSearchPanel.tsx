@@ -403,7 +403,7 @@ export function MetaSearchPanel() {
             La recherche de « {recherche.query} » n’a pas abouti
           </AlertTitle>
           <AlertDescription>
-            {recherche.error ?? "Relancez-la dans un moment."}
+            {recherche.error ?? "Aucune publicité n’a pu être lue pour ce mot."}
           </AlertDescription>
         </Alert>
       )}

@@ -92,6 +92,20 @@ export type MetaAd = z.infer<typeof metaAdSchema>;
  * seule annonce ainsi coupée faisait échouer l'enregistrement de tout son lot — constaté le
  * 04/10/2026 sur une vraie collecte, où les textes publicitaires sont pleins d'emojis.
  */
+/**
+ * Texte d'annonce sans les gabarits de catalogue restés vides. Une publicité de catalogue arrive
+ * avec « {{product.name}} » à la place du titre que Meta remplit à l'affichage : montré tel quel,
+ * c'est du charabia sur le mur (vu au tour du site, 11/10/2026). null : il ne reste rien à lire.
+ */
+export function withoutPlaceholders(value: string | null | undefined): string | null {
+  if (!value) return null;
+  const clean = value
+    .replace(/\{\{[^}]*\}\}/g, '')
+    .replace(/[ \t]{2,}/g, ' ')
+    .trim();
+  return clean || null;
+}
+
 export function clip(text: string, max: number): string {
   return text.slice(0, max).replace(/[\uD800-\uDBFF](?![\uDC00-\uDFFF])|(?<![\uD800-\uDBFF])[\uDC00-\uDFFF]/g, '');
 }

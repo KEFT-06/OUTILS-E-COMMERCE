@@ -53,6 +53,28 @@ describe('Marque blanche', () => {
     assert.equal(neutralizeCode('WRITING_OVERLOADED'), 'WRITING_OVERLOADED');
   });
 
+  /*
+    Tour du site du 11/10/2026 : une quinzaine de messages parlaient au client de ce qui ne regarde
+    que l'administrateur. Il y lisait une panne, sans rien pouvoir y faire.
+  */
+  it('ne dit à un client ni réglage du serveur, ni clé, ni réponse brute d’un service', () => {
+    const indisponible = 'Ce service est momentanément indisponible.';
+    assert.equal(neutralizeMessage('Le service d’images refuse l’accès du serveur : l’administrateur doit vérifier sa configuration.'), indisponible);
+    assert.equal(neutralizeMessage("Le service de rédaction automatique n'est pas disponible sur ce serveur : l'administrateur doit le configurer."), indisponible);
+    assert.equal(neutralizeMessage('L’accès au service de rédaction est refusé : clé API invalide sur le serveur.'), indisponible);
+    assert.equal(neutralizeMessage('La mesure de marché n’a pas abouti (réponse 502).'), indisponible);
+    assert.equal(neutralizeMessage('Génération introuvable chez le fournisseur.'), indisponible);
+    // Ce que le client doit savoir, lui, reste : ses points.
+    assert.equal(
+      neutralizeMessage('La rédaction des rapports n’est pas branchée sur ce serveur : l’administrateur doit la configurer. Aucun point n’a été retiré.'),
+      'Ce service est momentanément indisponible. Aucun point n’a été retiré.',
+    );
+    // Un message qui parle au client n'est pas touché.
+    for (const message of ['Ce compte est bloqué. Contactez l’administrateur de Smart Creator.', 'Action réservée aux administrateurs.', 'Le rendu vidéo est momentanément indisponible : l’administrateur en a été informé. Vos points ont été rendus.']) {
+      assert.equal(neutralizeMessage(message), message);
+    }
+  });
+
   it('le gestionnaire d’erreurs neutralise pour les utilisateurs, pas pour l’administration', async () => {
     const app = express();
     const panne = () => {

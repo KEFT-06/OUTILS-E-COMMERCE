@@ -51,7 +51,7 @@ export function formEncode(value: Record<string, unknown>, prefix = '', params =
 
 async function stripeRequest<T>(method: 'GET' | 'POST', path: string, body?: Record<string, unknown>, idempotencyKey?: string): Promise<T> {
   const key = env.STRIPE_API_KEY?.trim();
-  if (!key) throw new AppError(503, 'Le paiement en ligne n’est pas encore configuré sur ce serveur.', 'PAYMENT_NOT_CONFIGURED');
+  if (!key) throw new AppError(503, 'Le paiement en ligne n’est pas encore ouvert.', 'PAYMENT_NOT_CONFIGURED');
 
   let response: Response;
   try {
@@ -76,7 +76,7 @@ async function stripeRequest<T>(method: 'GET' | 'POST', path: string, body?: Rec
       throw new AppError(503, 'L’accès au service de paiement est refusé : clé Stripe invalide sur le serveur.', 'PAYMENT_ACCESS_DENIED');
     }
     if (response.status === 404) throw new AppError(404, 'Paiement introuvable.', 'PAYMENT_NOT_FOUND');
-    throw new AppError(502, 'Le service de paiement a refusé la demande. Réessayez, ou contactez l’équipe Smart Creator.', 'PAYMENT_FAILED');
+    throw new AppError(502, 'Le paiement n’a pas pu démarrer : aucun montant n’a été débité. Si cela se reproduit, écrivez à l’équipe Smart Creator.', 'PAYMENT_FAILED');
   }
   return (await response.json()) as T;
 }

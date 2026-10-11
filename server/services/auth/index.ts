@@ -142,7 +142,7 @@ function tooManyAttempts(seconds: number, subject = 'Trop de tentatives de conne
   const delay = minutes >= 90 ? `${Math.round(minutes / 60)} heures` : `${minutes} minute${minutes > 1 ? 's' : ''}`;
   return new AppError(
     429,
-    `${subject}. Par sécurité, réessayez dans ${delay}.`,
+    `${subject}. Par sécurité, ce sera de nouveau possible dans ${delay}.`,
     'TOO_MANY_ATTEMPTS',
     { retryAfterSeconds: seconds },
   );

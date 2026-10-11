@@ -1746,7 +1746,7 @@ function usePaymentReturn() {
             description: 'Votre palier s’activera de lui-même dès que le paiement sera confirmé.',
           });
         } else {
-          toast.error('Session de paiement expirée', { description: 'Aucun montant n’a été débité. Relancez le paiement.' });
+          toast.error('Session de paiement expirée', { description: 'Aucun montant n’a été débité. Choisissez de nouveau votre palier pour payer.' });
         }
       })
       .catch((caught: unknown) => {

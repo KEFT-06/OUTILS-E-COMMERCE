@@ -201,6 +201,19 @@ describe('Collecteur maison', () => {
     assert.ok(plan.body.extra.maxPerQuery < plan.body.maxPerQuery, 'plafond plus bas que pour la plateforme principale');
   });
 
+  it('n’affiche pas sur le mur un titre de catalogue resté vide', async () => {
+    const base = annonce();
+    await verser({
+      country: 'CM',
+      items: [{ ...base, ad_archive_id: '2020202020', snapshot: { ...base.snapshot, title: '{{product.name}}', body: { text: 'Livraison rapide {{product.brand}} partout au pays.' }, link_description: '{{product.description}}' } }],
+    }).expect(200);
+    const { agent } = await signInWithPlan(app, 'mur-gabarit@exemple.test', 'pro');
+    const mur = await agent.get('/api/espionnage').expect(200);
+    const lue = mur.body.ads.find((ad: { externalId: string }) => ad.externalId === '2020202020') as { title: string | null; bodyText: string | null; linkDescription: string | null };
+    assert.ok(lue, 'l’annonce est sur le mur');
+    assert.deepEqual([lue.title, lue.bodyText, lue.linkDescription], [null, 'Livraison rapide partout au pays.', null]);
+  });
+
   it('écarte un lot illisible sans rien enregistrer', async () => {
     await verser({ country: 'Cameroun', items: [] }).expect(400);
     await verser({ items: 'pas une liste' }).expect(400);

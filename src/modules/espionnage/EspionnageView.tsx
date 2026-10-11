@@ -496,8 +496,8 @@ export function EspionnageView() {
                       ? "Aucune annonce en cours ne correspond. Affichez tous les états, élargissez l’ancienneté ou retirez la recherche."
                       : "Élargissez l’ancienneté, changez l’état ou retirez la recherche."
                     : data.configured
-                      ? "Les premières annonces arrivent : le mur se remplit de lui-même. En attendant, cherchez un mot-clé dans l’onglet « Rechercher comme sur Meta »."
-                      : "Le mur des annonces n’est pas encore disponible. Cherchez un mot-clé dans l’onglet « Rechercher comme sur Meta »."}
+                      ? "Les premières annonces arrivent : le mur se remplit de lui-même. En attendant, cherchez un mot-clé dans la recherche, en haut de cette page."
+                      : "Le mur des annonces n’est pas encore disponible. Cherchez un mot-clé dans la recherche, en haut de cette page."}
                 </EmptyDescription>
               </EmptyHeader>
             </Empty>

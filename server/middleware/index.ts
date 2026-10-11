@@ -134,7 +134,7 @@ export const validateBody =
 const limiterMessage = {
   error: {
     code: 'RATE_LIMITED',
-    message: 'Trop de requêtes. Réessayez dans quelques instants.',
+    message: 'Trop de demandes à la suite : la suivante passera dans quelques instants.',
   },
 };
 

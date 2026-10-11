@@ -104,7 +104,7 @@ export function BookCoverPanel() {
     try {
       await downloadBookCover({ imageUrl, complete, text: { title, subtitle: texts.subtitle, author, label }, seed: subjectId });
     } catch {
-      toast.error('La couverture n’a pas pu être téléchargée', { description: 'Relancez le téléchargement.' });
+      toast.error('La couverture n’a pas pu être téléchargée', { description: 'La connexion a peut-être été coupée pendant le transfert.' });
     } finally {
       setDownloading(false);
     }

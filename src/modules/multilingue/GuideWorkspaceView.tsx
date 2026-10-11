@@ -605,7 +605,7 @@ export function GuideWorkspaceView() {
           </CardHeader>
           <CardContent>
             {providers?.images === false ? (
-              <p className="text-sm text-muted-foreground">La génération d’images n’est pas encore configurée sur le serveur.</p>
+              <p className="text-sm text-muted-foreground">La création de couvertures est momentanément indisponible.</p>
             ) : (
               <CoverGenerator
                 subject="guide"

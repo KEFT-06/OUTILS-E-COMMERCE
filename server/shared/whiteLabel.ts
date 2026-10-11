@@ -17,10 +17,27 @@ const APRES_PREPOSITION = new RegExp(`\\b(de|du|à|au)\\s+(?:${NAMES})\\b`, 'gi'
 const NOM = new RegExp(`\\b(?:${NAMES})\\b`, 'gi');
 const TEST = new RegExp(`\\b(?:${NAMES})\\b|chez\\s+Google`, 'i');
 
-/** Message sans nom de fournisseur, en gardant une phrase lisible. */
+/**
+ * Ce qui ne regarde que l'administrateur : un accès refusé au serveur, un réglage manquant, la
+ * réponse brute d'un service. Un client à qui l'on écrit « le service refuse l'accès du serveur :
+ * l'administrateur doit vérifier sa configuration » apprend qu'il y a une panne, pas ce qu'il peut
+ * faire — et il n'y peut rien (tour du site du 11/10/2026 : une quinzaine de messages de ce genre).
+ * Il lit donc que le service est indisponible, et si ses points lui ont été rendus ; le motif
+ * reste à l'administration, qui le retrouve dans l'état des services et dans le journal.
+ */
+const ADMIN_MATTER = /l[’']administrateur doit|clé [^.]{0,24}invalide|refuse l[’']accès du serveur|sur (?:ce|le) serveur|(?:chez|par) le fournisseur|\(réponse [^)]*\)/i;
+const REFUND = /[^.!?:]*(?:points ont été rendus|Aucun point n[’']a été retiré)[^.!?]*[.!?]?/i;
+
+function forCustomer(message: string): string {
+  if (!ADMIN_MATTER.test(message)) return message;
+  const refund = REFUND.exec(message)?.[0]?.trim() ?? '';
+  return ['Ce service est momentanément indisponible.', refund ? refund.charAt(0).toUpperCase() + refund.slice(1) : ''].filter(Boolean).join(' ');
+}
+
+/** Message sans nom de fournisseur ni affaire d'administrateur, en gardant une phrase lisible. */
 export function neutralizeMessage(message: string): string {
-  if (!TEST.test(message)) return message;
-  const neutre = message
+  if (!TEST.test(message)) return forCustomer(message);
+  const neutre = forCustomer(message)
     .replace(CHEZ, '')
     .replace(APRES_PREPOSITION, (_all, preposition: string) => (preposition.toLowerCase() === 'à' || preposition.toLowerCase() === 'au' ? 'au service' : 'du service'))
     .replace(NOM, 'le service')

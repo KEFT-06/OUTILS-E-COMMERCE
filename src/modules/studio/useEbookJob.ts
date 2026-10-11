@@ -114,7 +114,7 @@ export function useEbookJob({ productId, onWritten }: { productId: string; onWri
       */
       if (response.job.productId !== productId) {
         toast.info('Une rédaction est déjà en cours', {
-          description: `« ${response.job.title} » se termine d’abord : relancez celle-ci juste après. Aucun point n’a été retiré.`,
+          description: `« ${response.job.title} » se termine d’abord : celle-ci pourra partir juste après. Aucun point n’a été retiré.`,
           duration: 10_000,
         });
         return;

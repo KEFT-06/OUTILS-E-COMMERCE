@@ -260,7 +260,7 @@ export function ProductStudioPanel({ baseProduct, report, initialExpertOpen = fa
                     text: { title: product.title, subtitle: product.subtitle, label: product.typeName },
                     seed: baseProduct.id,
                   })
-                    .catch(() => toast.error('La couverture n’a pas pu être téléchargée', { description: 'Relancez le téléchargement.' }))
+                    .catch(() => toast.error('La couverture n’a pas pu être téléchargée', { description: 'La connexion a peut-être été coupée pendant le transfert.' }))
                     .finally(() => setDownloadingCover(false));
                 }}
               >

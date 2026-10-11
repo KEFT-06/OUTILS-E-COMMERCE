@@ -307,7 +307,7 @@ export const WorkspaceProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     try {
       await apiRequest('/api/reports', { method: 'DELETE' });
     } catch (error) {
-      toast.error('L’historique n’a pas pu être effacé', { description: toApiError(error, 'Relancez la suppression.').message });
+      toast.error('L’historique n’a pas pu être effacé', { description: toApiError(error, 'Le serveur n’a pas répondu.').message });
       return;
     }
     setReports([]);

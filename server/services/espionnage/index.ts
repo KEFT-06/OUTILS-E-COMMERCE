@@ -5,6 +5,7 @@ import { spiedAds } from '@server/db/schema';
 import { providers } from '@server/env';
 import { harvestCollectionRuns, lastDiscoveryAt, pendingCollectionRuns } from '@server/services/radar/discovery';
 import { isMetaMediaUrl, storeMissingAvatars, storeMissingThumbnails } from '@server/services/espionnage/media';
+import { withoutPlaceholders } from '@server/services/espionnage/parse';
 import { runInBackground } from '@server/shared/backgroundWork';
 import { STOREFRONTS, type Storefront } from '@server/shared/storefronts';
 
@@ -164,8 +165,8 @@ function viewOf(row: typeof spiedAds.$inferSelect, now: Date): SpiedAdView {
     externalId: row.externalId,
     storeHost: row.storeHost,
     landingUrl: row.landingUrl,
-    title: row.title,
-    bodyText: row.bodyText,
+    title: withoutPlaceholders(row.title),
+    bodyText: withoutPlaceholders(row.bodyText),
     advertiser: row.advertiser,
     mediaUrl: row.mediaUrl,
     mediaKind: row.mediaKind,
@@ -186,9 +187,9 @@ function viewOf(row: typeof spiedAds.$inferSelect, now: Date): SpiedAdView {
     impressionsText: row.impressionsText,
     ctaText: row.ctaText,
     displayFormat: row.displayFormat,
-    linkCaption: row.linkCaption,
-    linkDescription: row.linkDescription,
-    cards: row.cards ?? [],
+    linkCaption: withoutPlaceholders(row.linkCaption),
+    linkDescription: withoutPlaceholders(row.linkDescription),
+    cards: (row.cards ?? []).map((card) => ({ ...card, title: withoutPlaceholders(card.title), body: withoutPlaceholders(card.body) })),
     daysSinceSeen: Math.max(0, Math.floor((now.getTime() - row.lastSeenAt.getTime()) / JOUR_MS)),
   };
 }

@@ -44,7 +44,7 @@ const formatDay = (date: Date) => date.toLocaleDateString('fr-FR', { day: 'numer
 const notFound = () => new AppError(404, 'Paiement introuvable sur votre compte.', 'PAYMENT_NOT_FOUND');
 
 export async function startCheckout(auth: RequestAuth, request: CheckoutRequest): Promise<{ url: string }> {
-  if (!providers.payments) throw new AppError(503, 'Le paiement en ligne n’est pas encore configuré sur ce serveur.', 'PAYMENT_NOT_CONFIGURED');
+  if (!providers.payments) throw new AppError(503, 'Le paiement en ligne n’est pas encore ouvert.', 'PAYMENT_NOT_CONFIGURED');
 
   const { user } = auth.account;
   const [config, rates, plan] = await Promise.all([getPlanConfig(), getRates(), getPlan(request.plan)]);

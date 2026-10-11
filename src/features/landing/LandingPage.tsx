@@ -467,8 +467,8 @@ export function LandingPage() {
           <section id="paliers" className="mx-auto max-w-6xl scroll-mt-20 px-4 py-20 sm:px-6">
             <SectionHeading
               eyebrow="Paliers"
-              title="Un forfait pour chaque étape"
-              description="Chaque carte détaille ce que comprend le forfait : points de recherche, niches enregistrées, méthodes publicitaires et fonctions. Prix dans la devise de votre pays."
+              title="Un palier pour chaque étape"
+              description="Chaque carte détaille ce que comprend le palier : points de recherche, niches enregistrées, méthodes publicitaires et fonctions. Prix dans la devise de votre pays."
             />
             <div className="mt-8 flex flex-col gap-2 sm:flex-row sm:items-center">
               <label htmlFor="landing-price-country" className="text-sm font-medium">

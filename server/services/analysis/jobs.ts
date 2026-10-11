@@ -371,7 +371,7 @@ async function resumeJob(job: JobRow): Promise<void> {
       job.id,
       new AppError(
         504,
-        'L’analyse a été interrompue et n’a pas pu reprendre. Relancez-la : vos points ont été rendus.',
+        'L’analyse a été interrompue et n’a pas pu reprendre : vos points ont été rendus.',
         'ANALYSIS_INTERRUPTED',
       ),
     );
