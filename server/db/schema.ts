@@ -49,6 +49,8 @@ export const GENERATION_KINDS = [
   'launch_kit_writing',
   // Lecture à voix haute d'un module (parcours audio).
   'audio',
+  // Étude de la vidéo d'une publicité du mur.
+  'ad_study',
 ] as const;
 
 export const PAYMENT_METHODS = ['mobile_money', 'card', 'bank_transfer', 'cash', 'chariow', 'other'] as const;

@@ -1,0 +1,1 @@
+ALTER TYPE "public"."generation_kind" ADD VALUE 'ad_study';

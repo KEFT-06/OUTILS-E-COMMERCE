@@ -1,14 +1,16 @@
 import { useEffect, useRef, useState } from 'react';
 import { useLocation } from 'react-router-dom';
-import { AlertTriangle, BookOpen, Clapperboard, Download, Image as ImageIcon, PenLine, ShieldCheck, Sparkles } from 'lucide-react';
+import { AlertTriangle, BookOpen, Clapperboard, Download, Eye, Image as ImageIcon, PenLine, ShieldCheck, Sparkles } from 'lucide-react';
+import { toast } from 'sonner';
 import { useCreditGate } from '@/app/providers/CreditGateProvider';
+import { apiRequest } from '@/shared/lib/api';
 import { ApiError, readApiError, toApiError } from '@/shared/lib/apiError';
 import { MAX_POLL_MISSES, lostTrackMessage, pollStatus } from '@/shared/lib/polling';
 import { AWARENESS_OPTIONS } from '@/shared/lib/awareness';
 import { findAdFramework } from '@server/shared/adFrameworks';
 import { useAuth } from '@/features/auth/AuthContext';
 import { AdFrameworkPicker } from '@/modules/creatifs/AdFrameworkPicker';
-import { type AdReference, readAdReference, readProductStart } from '@/modules/creatifs/adReference';
+import { type AdReference, type AdStudy, readAdReference, readProductStart } from '@/modules/creatifs/adReference';
 import { CREATIVE_ATTESTATIONS } from '@/modules/creatifs/attestations';
 import { launchCreative } from '@/modules/creatifs/launchCreative';
 import { BookCoverPanel } from '@/modules/creatifs/BookCoverPanel';
@@ -104,7 +106,8 @@ export function CreativeGeneratorPanel({
   const [depart] = useState(() => readProductStart(location.state));
   const [initial] = useState<Partial<Brouillon>>(() =>
     reference
-      ? { ...brouillon, kind: 'video', purpose: 'ad', productName: reference.titre || brouillon.productName || '' }
+      ? // Le produit reste celui de l'auteur : le titre d'une annonce est celui d'un autre vendeur, pas le nom de son produit.
+        { ...brouillon, kind: 'video', purpose: 'ad', productName: brouillon.productName ?? '' }
       : depart
         ? { market: brouillon.market, format: brouillon.format, kind: 'video', purpose: 'ad', productName: depart.titre, audience: depart.public, onScreenText: depart.promesse.slice(0, 80) }
         : brouillon,
@@ -126,6 +129,44 @@ export function CreativeGeneratorPanel({
   const [onScreenText, setOnScreenText] = useState(initial.onScreenText ?? '');
   const [visualStyle, setVisualStyle] = useState(initial.visualStyle ?? '');
   const [duration, setDuration] = useState<VideoDuration>(initial.duration ?? 6);
+  /** Ce que l'outil a vu dans la vidéo de la publicité de référence. */
+  const [etude, setEtude] = useState<AdStudy | null>(null);
+  const [etudeEnCours, setEtudeEnCours] = useState(false);
+
+  /**
+   * L'outil regarde la vidéo de la publicité de référence, dit ce qui la fait marcher, et écrit
+   * la scène d'une vidéo semblable pour le produit de l'auteur : le brief se remplit, il reste à
+   * le relire. On reprend une mécanique, jamais le texte ni les images d'un autre.
+   */
+  const etudierLaVideo = async () => {
+    const adId = reference?.adId;
+    if (!adId) return;
+    setEtudeEnCours(true);
+    setError(null);
+    try {
+      const rendu = await runWithCredits('ad_video_study', () =>
+        apiRequest<{ study: AdStudy }>(`/api/espionnage/ads/${adId}/study`, {
+          method: 'POST',
+          body: { ...(productName.trim() ? { productName: productName.trim().slice(0, 160) } : {}), ...(audience.trim() ? { audience: audience.trim().slice(0, 300) } : {}) },
+        }),
+      );
+      if (!rendu || unmountedRef.current) return;
+      const { study } = rendu;
+      setEtude(study);
+      setKind('video');
+      setBookMode(false);
+      setSceneDescription(study.brief.sceneDescription);
+      if (study.brief.onScreenText) setOnScreenText(study.brief.onScreenText);
+      if (study.brief.visualStyle) setVisualStyle(study.brief.visualStyle);
+      if (!audience.trim() && study.brief.audience) setAudience(study.brief.audience);
+      if ((VIDEO_FORMATS as readonly string[]).includes(study.format)) setFormat(study.format);
+      toast.success('Vidéo regardée', { description: 'Sa construction est sous vos yeux, et votre scène est écrite : relisez-la, puis générez.' });
+    } catch (caught) {
+      if (!unmountedRef.current) setError(toApiError(caught, 'La vidéo n’a pas pu être regardée.'));
+    } finally {
+      if (!unmountedRef.current) setEtudeEnCours(false);
+    }
+  };
 
   // Enregistré à chaque changement. Le stockage local est synchrone et bon marché : attendre
   // une pause de frappe ferait perdre les dernières secondes, justement celles d'une coupure.
@@ -415,6 +456,46 @@ export function CreativeGeneratorPanel({
               {reference.titre && <p className="font-medium text-foreground">{reference.titre}</p>}
               {reference.texte && <p className="line-clamp-4 whitespace-pre-line">{reference.texte}</p>}
               <p>Inspirez-vous de son angle pour décrire VOTRE scène : son texte et ses images restent les siens.</p>
+              {etude && (
+                <div className="mt-1 space-y-2 rounded-lg border bg-background p-3 text-foreground">
+                  <p>
+                    <span className="font-semibold">Son accroche.</span> {etude.hook}
+                  </p>
+                  <div>
+                    <p className="font-semibold">
+                      Ses temps{etude.durationSeconds > 0 ? ` (${etude.durationSeconds} s)` : ''}
+                    </p>
+                    <ol className="mt-1 space-y-1">
+                      {etude.beats.map((beat, index) => (
+                        <li key={index} className="flex gap-2">
+                          <span className="shrink-0 font-medium tabular-nums text-muted-foreground">{beat.moment || `${index + 1}.`}</span>
+                          <span className="min-w-0">
+                            {beat.shows}
+                            {beat.says && <span className="text-muted-foreground"> — « {beat.says} »</span>}
+                          </span>
+                        </li>
+                      ))}
+                    </ol>
+                  </div>
+                  {etude.whyItWorks.length > 0 && (
+                    <div>
+                      <p className="font-semibold">Ce qui la fait marcher</p>
+                      <ul className="mt-1 list-disc space-y-1 pl-5">
+                        {etude.whyItWorks.map((reason, index) => (
+                          <li key={index}>{reason}</li>
+                        ))}
+                      </ul>
+                    </div>
+                  )}
+                  <p className="text-muted-foreground">Votre scène est écrite ci-dessous, pour votre produit : relisez-la avant de générer.</p>
+                </div>
+              )}
+              {reference.adId && !etude && (
+                <Button type="button" size="sm" variant="outline" className="mt-1 h-auto min-h-9 whitespace-normal py-2 text-left" onClick={() => void etudierLaVideo()} disabled={etudeEnCours || isGenerating}>
+                  {etudeEnCours ? <Spinner /> : <Eye />}
+                  {etudeEnCours ? 'La vidéo est regardée : environ une minute…' : 'Regarder sa vidéo et écrire ma scène'}
+                </Button>
+              )}
               <Button type="button" variant="link" className="h-auto p-0" onClick={() => setReference(null)}>
                 Retirer la référence
               </Button>

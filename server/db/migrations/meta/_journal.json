@@ -316,6 +316,13 @@
       "when": 1791694531083,
       "tag": "0044_parcours_audio",
       "breakpoints": true
+    },
+    {
+      "idx": 45,
+      "version": "7",
+      "when": 1791695460214,
+      "tag": "0045_etude_de_publicite",
+      "breakpoints": true
     }
   ]
 }

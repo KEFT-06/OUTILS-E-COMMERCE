@@ -98,6 +98,8 @@ const referenceDe = (ad: LibraryAd): { reference: AdReference } => ({
     titre: ad.title ?? '',
     texte: (ad.bodyText ?? '').replace(/\{\{[^}]*\}\}/g, '').trim().slice(0, 900),
     video: ad.mediaKind === 'video',
+    // Une annonce du mur porte un identifiant à nous : sa vidéo peut être regardée par l'outil.
+    ...(ad.mediaKind === 'video' && /^[0-9a-f-]{36}$/.test(ad.id) ? { adId: ad.id } : {}),
   },
 });
 

@@ -1,10 +1,11 @@
 import { Router } from 'express';
 import { z } from 'zod';
-import { asyncRoute, routeLimiter, validateBody } from '@server/middleware';
-import { requireAuth } from '@server/middleware/auth';
+import { aiLimiter, asyncRoute, routeLimiter, validateBody } from '@server/middleware';
+import { requireAuth, requireFeature } from '@server/middleware/auth';
 import { effectiveLimits } from '@server/services/accounts';
 import { listSpiedAds, refreshWall, refreshWallInBackground, spiedStores } from '@server/services/espionnage';
 import { adDownloadKind, sendAdDownload, sendAdThumbnail, sendAdVideo, sendPageAvatar } from '@server/services/espionnage/media';
+import { type AdStudyRequest, adStudyRequestSchema, studyAdVideo } from '@server/services/espionnage/study';
 import { STOREFRONTS } from '@server/shared/storefronts';
 import {
   type AdSearchRequest,
@@ -17,7 +18,7 @@ import {
 
 /**
  * Mur d'espionnage : lecture seule d'un cache partagé, alimenté par le passage payant de la
- * découverte. Aucune route ici ne déclenche de dépense, et aucune ne coûte de point.
+ * découverte. Lire le mur ne coûte rien ; seule l'étude de la vidéo d'une publicité coûte des points.
  *
  * La collecte, elle, reste à `POST /api/radar/discover/refresh`, réservée aux administrateurs :
  * un même passage remplit les deux écrans, donc il n'y a qu'un seul endroit où l'on paie.
@@ -92,6 +93,17 @@ espionnageRouter.get(
   routeLimiter(10, 60),
   asyncRoute(async (req, res) => {
     await sendAdDownload(req.params.id, res);
+  }),
+);
+
+/** La vidéo d'une publicité, regardée pour l'auteur : sa mécanique, et la scène d'une vidéo semblable pour son produit. */
+espionnageRouter.post(
+  '/ads/:id/study',
+  requireFeature('ai_writing'),
+  aiLimiter,
+  validateBody(adStudyRequestSchema),
+  asyncRoute(async (req, res) => {
+    res.json({ study: await studyAdVideo(req.auth!, req.params.id, req.body as AdStudyRequest) });
   }),
 );
 

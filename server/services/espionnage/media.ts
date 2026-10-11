@@ -293,6 +293,44 @@ export async function adDownloadKind(adId: string | undefined): Promise<'video' 
   return row.thumbnailPath && supabaseStorage() ? 'image' : null;
 }
 
+/** Au-delà, une vidéo ne passe pas d'un seul tenant au service qui la regarde. */
+export const AD_VIDEO_MAX_BYTES = 14 * 1024 * 1024;
+
+/**
+ * La vidéo d'une publicité, en mémoire, pour être regardée par le service d'étude. La définition
+ * légère d'abord : elle suffit à lire une construction, et elle tient dans la limite. null : ce
+ * n'est pas une vidéo, ou elle n'est plus en ligne chez Meta.
+ */
+export async function fetchAdVideo(adId: string | undefined): Promise<{ bytes: Buffer; mimeType: string } | null> {
+  if (!adId || !/^[0-9a-f-]{36}$/.test(adId)) return null;
+  const [row] = await getDb()
+    .select({ mediaKind: spiedAds.mediaKind, playUrl: spiedAds.playUrl, downloadUrl: spiedAds.downloadUrl })
+    .from(spiedAds)
+    .where(eq(spiedAds.id, adId))
+    .limit(1);
+  if (!row || row.mediaKind !== 'video') return null;
+  for (const raw of [row.playUrl, row.downloadUrl]) {
+    if (!raw) continue;
+    try {
+      const url = await assertPublicUrl(raw, 'L’adresse de la vidéo');
+      const local = !isProd && url.hostname === '127.0.0.1';
+      if (!local && !META_MEDIA_HOST.test(url.hostname)) continue;
+      const response = await fetch(url, { signal: AbortSignal.timeout(DOWNLOAD_TIMEOUT_VIDEO_MS) });
+      const type = (response.headers.get('content-type') ?? '').split(';')[0]!.trim().toLowerCase();
+      const announced = Number(response.headers.get('content-length') ?? 0);
+      if (!response.ok || !type.startsWith('video/') || announced > AD_VIDEO_MAX_BYTES) {
+        await response.body?.cancel().catch(() => undefined);
+        continue;
+      }
+      const bytes = Buffer.from(await response.arrayBuffer());
+      if (bytes.length >= 1_000 && bytes.length <= AD_VIDEO_MAX_BYTES) return { bytes, mimeType: type };
+    } catch {
+      // Adresse expirée ou refusée : on essaie la suivante.
+    }
+  }
+  return null;
+}
+
 /**
  * Remet le fichier d'origine d'une publicité : la vidéo, ou l'image en pleine définition.
  *

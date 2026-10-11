@@ -15,6 +15,7 @@ export const CREDIT_REASON_LABELS: Record<string, string> = {
 export const GENERATION_KIND_LABELS: Record<string, string> = {
   video: 'Vidéos',
   audio: 'Lectures audio',
+  ad_study: 'Études de publicités',
   image: 'Visuels',
   storybook: 'Storybooks',
   ebook: 'Ebooks',

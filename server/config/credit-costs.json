@@ -95,6 +95,12 @@
       "description": "Visuel unique au format demandé."
     },
     {
+      "id": "ad_video_study",
+      "label": "Étude de la vidéo d’une publicité",
+      "cost": 2,
+      "description": "La vidéo d’une publicité du mur est regardée pour vous : son accroche, ses temps dans l’ordre, ce qui la fait marcher — puis la scène d’une vidéo semblable est écrite pour votre produit, prête à générer. On reprend une mécanique, jamais le texte ni les images d’un autre. Points rendus si l’étude échoue ; rien n’est débité si la vidéo n’est plus en ligne."
+    },
+    {
       "id": "audio_reading",
       "label": "Lecture audio d’un module",
       "cost": 1,

@@ -11,6 +11,18 @@ export interface AdReference {
   texte: string;
   /** L'annonce d'origine est une vidéo (sinon une image). */
   video: boolean;
+  /** Annonce du mur dont la vidéo peut être regardée par l'outil ; absent : seul son texte est connu. */
+  adId?: string;
+}
+
+/** Ce que l'outil a vu dans la vidéo d'une publicité, et la scène qu'il en tire pour l'auteur (server/services/espionnage/study.ts). */
+export interface AdStudy {
+  hook: string;
+  beats: { moment: string; shows: string; says: string }[];
+  whyItWorks: string[];
+  format: '9:16' | '16:9' | '1:1';
+  durationSeconds: number;
+  brief: { sceneDescription: string; onScreenText: string; visualStyle: string; audience: string };
 }
 
 const texteDe = (value: unknown, max: number) => (typeof value === 'string' ? value.trim().slice(0, max) : '');
@@ -39,5 +51,6 @@ export function readAdReference(state: unknown): AdReference | null {
   const brut = reference as Record<string, unknown>;
   const annonceur = texteDe(brut.annonceur, 120);
   if (!annonceur) return null;
-  return { annonceur, titre: texteDe(brut.titre, 160), texte: texteDe(brut.texte, 900), video: brut.video === true };
+  const adId = typeof brut.adId === 'string' && /^[0-9a-f-]{36}$/.test(brut.adId) ? brut.adId : undefined;
+  return { annonceur, titre: texteDe(brut.titre, 160), texte: texteDe(brut.texte, 900), video: brut.video === true, ...(adId ? { adId } : {}) };
 }
