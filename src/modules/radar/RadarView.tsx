@@ -29,6 +29,7 @@ import { dureeLisible, eventText, joursDepuis } from '@/modules/radar/radarText'
 import { SalesViewToggle, type SalesView } from '@/modules/radar/SalesViewToggle';
 import { StorePreviewPanel } from '@/modules/radar/StorePreviewPanel';
 import { WatchItemsPanel } from '@/modules/radar/WatchItemsPanel';
+import { useScreenMemory } from '@/shared/lib/apiCache';
 
 /**
  * Radar — le seul écran du site qui se remplit sans que personne ne clique.
@@ -214,7 +215,7 @@ const hoteNormal = (value: string) =>
 export function RadarView() {
   const [data, setData] = useCachedState<RadarDashboard>('/api/radar');
   const [loadError, setLoadError] = useState<ApiError | null>(null);
-  const [target, setTarget] = useState('');
+  const [target, setTarget] = useScreenMemory('radar.lien', '');
   const [isAdding, setIsAdding] = useState(false);
   const [busyWatch, setBusyWatch] = useState<string | null>(null);
   /** Interrupteur du résumé par e-mail, tenu localement pour répondre au clic sans attendre. */
@@ -224,7 +225,7 @@ export function RadarView() {
    * relevé ou un retrait, le panneau suit la liste rechargée au lieu d'afficher des
    * compteurs périmés — ou une boutique qui n'existe plus.
    */
-  const [ouverteId, setOuverteId] = useState<string | null>(null);
+  const [ouverteId, setOuverteId] = useScreenMemory<string | null>('radar.boutique-ouverte', null);
   /** Lecture des ventes : total depuis la création, ou depuis la mise sous surveillance. Retenue d'une visite à l'autre. */
   const [vue, setVueState] = useState<SalesView>(() => {
     try {
@@ -361,7 +362,7 @@ export function RadarView() {
     if (!dejaSurveillee) return;
     setOuverteId(dejaSurveillee.id);
     fermerBoutique();
-  }, [dejaSurveillee, fermerBoutique]);
+  }, [dejaSurveillee, fermerBoutique, setOuverteId]);
 
   /** Fiche en lecture : seulement quand la liste des surveillances est connue, pour ne pas clignoter. */
   const apercu = hoteDemande && data && !dejaSurveillee ? hoteDemande : null;
@@ -379,7 +380,7 @@ export function RadarView() {
       setOuverteId(id);
       fermerBoutique();
     },
-    [fermerBoutique],
+    [fermerBoutique, setOuverteId],
   );
 
   /** « Surveiller cette boutique », depuis sa fiche : l'ajout, puis son catalogue suivi. */

@@ -15,7 +15,7 @@ import { useCallback, useState, type Dispatch, type SetStateAction } from 'react
  */
 
 /** Au-delà, les entrées les plus anciennes sont oubliées (filtres essayés puis abandonnés). */
-const MAX_ENTRIES = 80;
+const MAX_ENTRIES = 240;
 
 const responses = new Map<string, unknown>();
 /** Avance à chaque changement de compte. */
@@ -38,6 +38,43 @@ export function remember(key: string, value: unknown, at: number = epoch): void 
   if (value === null || value === undefined) return;
   responses.set(key, value);
   if (responses.size > MAX_ENTRIES) responses.delete(responses.keys().next().value as string);
+}
+
+/** Ce que l'utilisateur faisait sur un écran se range à part des réponses du serveur. */
+const screenKey = (key: string) => `écran:${key}`;
+
+/**
+ * Remplace `useState(initial)` pour ce que l'utilisateur FAIT sur un écran : une saisie en cours,
+ * un filtre, un onglet, l'ouvrage ouvert, un résultat affiché.
+ *
+ * Demande du propriétaire, 11/10/2026 : « si un utilisateur sort d'un module il doit pouvoir
+ * revenir et retrouver ce qu'il faisait, et non une page blanche ». Mesuré ce jour-là : sur seize
+ * modules, neuf perdaient quelque chose quand on sortait par le menu et qu'on revenait — la niche
+ * tapée, le lien d'une boutique, le mot-clé d'une recherche, le brief d'un conte, un filtre, un
+ * onglet. Chaque écran repartait de ses valeurs de départ, parce qu'il les gardait pour lui seul.
+ *
+ * Même mémoire que celle des réponses : celle de l'onglet, vidée au changement de compte. La
+ * valeur est rangée dans une enveloppe, pour qu'un champ vidé ou une case décochée se retienne
+ * aussi — « rien » est un choix comme un autre.
+ */
+export function useScreenMemory<T>(key: string, initial: T | (() => T)): [T, Dispatch<SetStateAction<T>>] {
+  const [value, setValue] = useState<T>(() => {
+    const known = lastKnown<{ v: T }>(screenKey(key));
+    if (known) return known.v;
+    return typeof initial === 'function' ? (initial as () => T)() : initial;
+  });
+  const [born] = useState(cacheEpoch);
+  const set = useCallback<Dispatch<SetStateAction<T>>>(
+    (next) => {
+      setValue((previous) => {
+        const resolved = typeof next === 'function' ? (next as (current: T) => T)(previous) : next;
+        remember(screenKey(key), { v: resolved }, born);
+        return resolved;
+      });
+    },
+    [key, born],
+  );
+  return [value, set];
 }
 
 export function forgetResponses(): void {

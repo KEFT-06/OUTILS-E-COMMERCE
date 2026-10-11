@@ -27,6 +27,7 @@ import {
   SelectValue,
 } from "@/shared/ui/select";
 import { Switch } from "@/shared/ui/switch";
+import { useScreenMemory } from "@/shared/lib/apiCache";
 
 /**
  * Recherche dans la bibliothèque publicitaire, comme sur la page de Meta : un pays, un mot-clé,
@@ -70,12 +71,13 @@ const EXEMPLES = ["chariow", "formation", "ebook", "coaching"];
 
 export function MetaSearchPanel() {
   const [apercu, setApercu] = useCachedState<AdSearchOverview>("/api/espionnage/searches");
-  const [motCle, setMotCle] = useState("");
-  const [pays, setPays] = useState<string>("ALL");
-  const [recherche, setRecherche] = useState<AdSearch | null>(null);
+  // La recherche ouverte, son mot et son pays se retrouvent en revenant sur l'écran.
+  const [motCle, setMotCle] = useScreenMemory("espionnage.mot", "");
+  const [pays, setPays] = useScreenMemory<string>("espionnage.pays", "ALL");
+  const [recherche, setRecherche] = useScreenMemory<AdSearch | null>("espionnage.recherche", null);
   const [lancement, setLancement] = useState(false);
   const [erreur, setErreur] = useState<string | null>(null);
-  const [seulementChariow, setSeulementChariow] = useState(false);
+  const [seulementChariow, setSeulementChariow] = useScreenMemory("espionnage.seulement-chariow", false);
   const [annonceur, setAnnonceur] = useState<{
     pageId: string;
     nom: string;
@@ -134,7 +136,7 @@ export function MetaSearchPanel() {
         .catch(() => undefined);
     }, 20_000);
     return () => clearInterval(minuteur);
-  }, [aCompleter, chargerApercu]);
+  }, [aCompleter, chargerApercu, setRecherche]);
 
   // Suivi d'une recherche en cours : relue toutes les quatre secondes jusqu'au résultat.
   useEffect(() => {
@@ -185,7 +187,7 @@ export function MetaSearchPanel() {
       suivi.current += 1;
       clearInterval(minuteur);
     };
-  }, [recherche?.id, recherche?.status, chargerApercu]);
+  }, [recherche?.id, recherche?.status, chargerApercu, setRecherche]);
 
   async function lancer(mot = motCle, codePays = pays) {
     const texte = mot.trim();

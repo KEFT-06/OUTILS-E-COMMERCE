@@ -59,6 +59,7 @@ import {
 } from '@/shared/ui/dialog';
 import { Empty, EmptyContent, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from '@/shared/ui/empty';
 import { Skeleton } from '@/shared/ui/skeleton';
+import { useScreenMemory } from '@/shared/lib/apiCache';
 
 interface DigitalProductsViewProps {
   /** Rapport de la niche active : ses produits, sa provenance et ses sources. null : aucun rapport. */
@@ -101,7 +102,11 @@ export function DigitalProductsView({ report, onSelectProductForAd, onAnalyzeNic
   const products = mine.all;
   // Produit créé depuis une alerte (« Créer un produit similaire ») : il s'ouvre directement.
   const demande = (useLocation().state as { produit?: unknown } | null)?.produit;
-  const [selectedId, setSelectedId] = useState<string | null>(typeof demande === 'string' ? demande : null);
+  // L'ouvrage ouvert se retrouve en revenant ; un ouvrage demandé depuis un autre écran passe devant.
+  const [selectedId, setSelectedId] = useScreenMemory<string | null>('studio.ouvrage', null);
+  useEffect(() => {
+    if (typeof demande === 'string') setSelectedId(demande);
+  }, [demande, setSelectedId]);
   const [justCreatedId, setJustCreatedId] = useState<string | null>(null);
   const baseProduct = products.find((candidate) => candidate.id === selectedId) ?? products[0];
   const selectedProduct = baseProduct ? drafts.effective(baseProduct) : undefined;

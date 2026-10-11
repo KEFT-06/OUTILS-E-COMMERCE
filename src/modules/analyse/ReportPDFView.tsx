@@ -32,6 +32,7 @@ import { Button } from '@/shared/ui/button';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/shared/ui/tabs';
 import { RatesVisual } from '@/modules/analyse/RatesVisual';
 import { WrittenReportPanel } from '@/modules/analyse/WrittenReportPanel';
+import { useScreenMemory } from '@/shared/lib/apiCache';
 
 /**
  * Dossier PDF : tout ce que l'analyse a établi, en six onglets, puis la rédaction du rapport à la
@@ -75,7 +76,7 @@ export function ReportPDFView({ report }: ReportPDFViewProps) {
   const money = useMoney();
   // Toujours un verdict : celui du rapport, ou celui que ses niveaux donnent.
   const verdict = settledVerdict(report);
-  const [tab, setTab] = useState<TabId>('synthese');
+  const [tab, setTab] = useScreenMemory<TabId>('dossier.onglet', 'synthese');
   const [isDownloading, setIsDownloading] = useState(false);
   const [blockedVerdict, setBlockedVerdict] = useState<ReportComplianceVerdict | null>(null);
 

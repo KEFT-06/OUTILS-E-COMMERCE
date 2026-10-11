@@ -18,6 +18,7 @@ import { Input } from '@/shared/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/shared/ui/select';
 import { Spinner } from '@/shared/ui/spinner';
 import { Textarea } from '@/shared/ui/textarea';
+import { useScreenMemory } from '@/shared/lib/apiCache';
 
 /**
  * Storybook africain : le conte est rédigé, relu par son auteur, puis illustré une page à la
@@ -58,20 +59,21 @@ export function StorybookView() {
   const coutIllustration = costTable?.actions.find((action) => action.id === 'storybook_illustration')?.cost ?? null;
 
   const { account } = useAuth();
-  const [brief, setBrief] = useState<StorybookBrief>(() => ({
+  // Le brief en cours et le conte écrit en attente de relecture se retrouvent en revenant sur l'écran.
+  const [brief, setBrief] = useScreenMemory<StorybookBrief>('storybook.brief', () => ({
     ...INITIAL_BRIEF,
     country: account?.country ?? guessCountryCode() ?? INITIAL_BRIEF.country,
   }));
   const [isGenerating, setIsGenerating] = useState(false);
   const [isWriting, setIsWriting] = useState(false);
   /** Conte écrit, en attente de relecture. Null : rien à relire pour l’instant. */
-  const [story, setStory] = useState<StoryDraft | null>(null);
+  const [story, setStory] = useScreenMemory<StoryDraft | null>('storybook.conte', null);
   const [elapsedSeconds, setElapsedSeconds] = useState(0);
   const [result, setResult] = useState<StorybookStatus | null>(null);
   /** Illustrations terminées sur attendues, tel que le serveur le compte. */
   const [progress, setProgress] = useState<StorybookStatus['progress'] | null>(null);
   const [error, setError] = useState<ApiError | null>(null);
-  const [title, setTitle] = useState<string | null>(null);
+  const [title, setTitle] = useScreenMemory<string | null>('storybook.titre', null);
   /** Change à chaque conte créé : la liste « Mes contes » se recharge. */
   const [libraryVersion, setLibraryVersion] = useState(0);
 

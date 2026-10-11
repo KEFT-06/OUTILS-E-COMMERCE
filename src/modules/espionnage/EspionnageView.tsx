@@ -32,6 +32,7 @@ import {
   SelectValue,
 } from "@/shared/ui/select";
 import { Skeleton } from "@/shared/ui/skeleton";
+import { useScreenMemory } from "@/shared/lib/apiCache";
 
 /**
  * Mur d'espionnage : les publicités qui tournent en ce moment et qui mènent à une boutique de la
@@ -97,21 +98,21 @@ export function EspionnageView() {
   // Aucune consigne d'administration sur cet écran, pas même pour un administrateur : la
   // collecte tourne seule, et l'écran d'un abonné ne doit rien montrer de la cuisine (29/09/2026).
   const [erreur, setErreur] = useState<string | null>(null);
-  const [anciennete, setAnciennete] = useState("0");
-  const [format, setFormat] = useState<"tous" | "image" | "video">("tous");
+  const [anciennete, setAnciennete] = useScreenMemory("mur.anciennete", "0");
+  const [format, setFormat] = useScreenMemory<"tous" | "image" | "video">("mur.format", "tous");
   /*
     « En cours » par défaut, comme la bibliothèque de Meta, dont c'est le premier filtre et
     le réglage d'ouverture : la question qu'on se pose en arrivant est « qu'est-ce qui tourne
     encore ? ». Les annonces arrêtées restent à un clic — une offre qui a tourné deux cents
     jours avant de s'arrêter reste une preuve.
   */
-  const [etat, setEtat] = useState<"toutes" | "active" | "arretee">("active");
-  const [tri, setTri] = useState<"oldest" | "newest" | "variants">("oldest");
+  const [etat, setEtat] = useScreenMemory<"toutes" | "active" | "arretee">("mur.etat", "active");
+  const [tri, setTri] = useScreenMemory<"oldest" | "newest" | "variants">("mur.tri", "oldest");
   const [serie, setSerie] = useState(() => (boutique ? 0 : serieDeDepart()));
   const [actualisation, setActualisation] = useState(false);
-  const [pays, setPays] = useState("tous");
+  const [pays, setPays] = useScreenMemory("mur.pays", "tous");
   /** Plateforme de la boutique où mène l'annonce : Chariow, Maketou, Shopify. */
-  const [plateforme, setPlateforme] = useState<"toutes" | Storefront>("toutes");
+  const [plateforme, setPlateforme] = useScreenMemory<"toutes" | Storefront>("mur.plateforme", "toutes");
   const [busy, setBusy] = useState<string | null>(null);
   const [details, setDetails] = useState<LibraryAd | null>(null);
   /** « Toutes les annonces de cet annonceur », comme sur la page d'un annonceur chez Meta. */

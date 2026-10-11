@@ -5,7 +5,7 @@ import { toast } from 'sonner';
 import { followableOnRadar } from '@server/shared/storefronts';
 import { PageHeader } from '@/shared/components/PageHeader';
 import { apiRequest } from '@/shared/lib/api';
-import { useCachedState } from '@/shared/lib/apiCache';
+import { useCachedState, useScreenMemory } from '@/shared/lib/apiCache';
 import { formatRelativeFr } from '@/shared/lib/formatDate';
 import { roundPrice } from '@server/shared/currency';
 import { useMoney, useUserCurrency } from '@/shared/lib/money';
@@ -152,7 +152,7 @@ export function AlertesView() {
   const [alerts, setAlerts] = useCachedState<AlertItem[]>('/api/alerts');
   const [watch, setWatch] = useState<AlertWatch | null>(null);
   const [lent, setLent] = useState(false);
-  const [filtre, setFiltre] = useState<Filtre>('tout');
+  const [filtre, setFiltre] = useScreenMemory<Filtre>('alertes.filtre', 'tout');
 
   useEffect(() => {
     let quitte = false;

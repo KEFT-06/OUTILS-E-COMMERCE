@@ -3,7 +3,7 @@ import { BrandIcon } from '@/shared/components/BrandIcon';
 import { parseAmount } from '@/shared/lib/parseAmount';
 import { AlertTriangle, ExternalLink, Eye, Scissors, TrendingUp } from 'lucide-react';
 import { PageHeader } from '@/shared/components/PageHeader';
-import { useCachedState } from '@/shared/lib/apiCache';
+import { useCachedState, useScreenMemory } from '@/shared/lib/apiCache';
 import { type ApiError, readApiError, toApiError } from '@/shared/lib/apiError';
 import { formatDateFr } from '@/shared/lib/formatDate';
 import { useUserCurrency } from '@/shared/lib/money';
@@ -52,9 +52,9 @@ function positiveNumber(raw: string): number | null {
 export function CampaignBlueprintsView() {
   const [config, setConfig, keepConfig] = useCachedState<CampaignBlueprintConfig>('/api/campaigns/blueprints');
   const [error, setError] = useState<ApiError | null>(null);
-  const [platformId, setPlatformId] = useState('meta');
-  const [budgetInput, setBudgetInput] = useState('');
-  const [targetCpaInput, setTargetCpaInput] = useState('');
+  const [platformId, setPlatformId] = useScreenMemory('campagnes.plateforme', 'meta');
+  const [budgetInput, setBudgetInput] = useScreenMemory('campagnes.budget', '');
+  const [targetCpaInput, setTargetCpaInput] = useScreenMemory('campagnes.cout-cible', '');
   // Budget dans la devise du pays de l'utilisateur, sans choix d'une autre : chacun ne voit que la sienne.
   const currency = useUserCurrency();
 

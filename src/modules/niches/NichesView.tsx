@@ -38,6 +38,7 @@ import { Input } from '@/shared/ui/input';
 import { Progress } from '@/shared/ui/progress';
 import { Select, SelectContent, SelectGroup, SelectItem, SelectLabel, SelectTrigger, SelectValue } from '@/shared/ui/select';
 import { Spinner } from '@/shared/ui/spinner';
+import { useScreenMemory } from '@/shared/lib/apiCache';
 
 /**
  * Catalogue des niches, niches enregistrées, et historique des niches analysées.
@@ -79,12 +80,13 @@ export function NichesView() {
   const { account, saveNiche, removeNiche } = useAuth();
   const { analyzeNiche, isAnalyzing, reports, currentReport, selectReport, deleteReport, deleteAllReports } = useWorkspace();
   const own = useNicheCatalog();
-  const [query, setQuery] = useState('');
-  const [sectorId, setSectorId] = useState('all');
-  const [expanded, setExpanded] = useState<Record<string, boolean>>({});
-  const [custom, setCustom] = useState('');
-  const [target, setTarget] = useState(AUTO);
-  const [newCatalog, setNewCatalog] = useState('');
+  // Ce que l'on faisait ici se retrouve en revenant : la recherche, le secteur ouvert, la niche en cours de saisie.
+  const [query, setQuery] = useScreenMemory('niches.recherche', '');
+  const [sectorId, setSectorId] = useScreenMemory('niches.secteur', 'all');
+  const [expanded, setExpanded] = useScreenMemory<Record<string, boolean>>('niches.ouverts', {});
+  const [custom, setCustom] = useScreenMemory('niches.saisie', '');
+  const [target, setTarget] = useScreenMemory('niches.catalogue', AUTO);
+  const [newCatalog, setNewCatalog] = useScreenMemory('niches.nouveau-catalogue', '');
   const [pending, setPending] = useState<string | null>(null);
   const [historyOpen, setHistoryOpen] = useState(false);
   const [confirmation, setConfirmation] = useState<Confirmation>(null);

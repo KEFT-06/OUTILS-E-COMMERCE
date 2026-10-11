@@ -13,6 +13,7 @@ import type { DigitalProductIdea, MarketAnalysisReport } from '@/shared/types/an
 import { Button } from '@/shared/ui/button';
 import { Empty, EmptyDescription, EmptyHeader, EmptyTitle } from '@/shared/ui/empty';
 import { Skeleton } from '@/shared/ui/skeleton';
+import { useScreenMemory } from '@/shared/lib/apiCache';
 
 /**
  * Un composant par route. Chaque page lit la niche active dans l'espace de
@@ -356,10 +357,19 @@ export function DistributionPage() {
  */
 export function AffiliationPage() {
   const [params, setParams] = useSearchParams();
-  const onglet = params.get('onglet') === 'boutique' ? 'boutique' : 'parrainage';
+  // L'adresse décide quand elle nomme un onglet ; sinon, celui où l'on était.
+  const [dernierOnglet, setDernierOnglet] = useScreenMemory<'boutique' | 'parrainage'>('smart-gain.onglet', 'parrainage');
+  const demande = params.get('onglet');
+  const onglet = demande === 'boutique' ? 'boutique' : demande === 'parrainage' ? 'parrainage' : dernierOnglet;
   return (
     <div className="space-y-6">
-      <Tabs value={onglet} onValueChange={(next) => setParams(next === 'boutique' ? { onglet: 'boutique' } : {}, { replace: true })}>
+      <Tabs
+        value={onglet}
+        onValueChange={(next) => {
+          setDernierOnglet(next === 'boutique' ? 'boutique' : 'parrainage');
+          setParams(next === 'boutique' ? { onglet: 'boutique' } : {}, { replace: true });
+        }}
+      >
         <TabsList className="grid h-auto w-full grid-cols-2 sm:inline-flex sm:w-auto">
           <TabsTrigger value="parrainage" className="h-auto min-w-0 py-1.5 whitespace-normal">
             Parrainage Smart Creator

@@ -19,6 +19,7 @@ import { Label } from '@/shared/ui/label';
 import { Spinner } from '@/shared/ui/spinner';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/shared/ui/tabs';
 import { Textarea } from '@/shared/ui/textarea';
+import { useScreenMemory } from '@/shared/lib/apiCache';
 
 /**
  * Affiliation : trois outils, chacun limité à ce qui est réellement possible.
@@ -58,9 +59,10 @@ async function copyText(value: string) {
 }
 
 export function AffiliationView() {
-  const [baseUrl, setBaseUrl] = useState('');
-  const [fields, setFields] = useState<UtmFields>(EMPTY_UTM);
-  const [codesInput, setCodesInput] = useState('');
+  const [outil, setOutil] = useScreenMemory('smart-gain.outil', 'utm');
+  const [baseUrl, setBaseUrl] = useScreenMemory('smart-gain.adresse', '');
+  const [fields, setFields] = useScreenMemory<UtmFields>('smart-gain.champs', EMPTY_UTM);
+  const [codesInput, setCodesInput] = useScreenMemory('smart-gain.codes', '');
 
   const [affiliateCode, setAffiliateCode] = useState('');
   const [affiliate, setAffiliate] = useState<AffiliateSummary | null>(null);
@@ -158,7 +160,7 @@ export function AffiliationView() {
         </AlertDescription>
       </Alert>
 
-      <Tabs defaultValue="utm" className="gap-4">
+      <Tabs value={outil} onValueChange={setOutil} className="gap-4">
         <div className="-mx-1 overflow-x-auto px-1 pb-1">
           <TabsList>
             <TabsTrigger value="utm">

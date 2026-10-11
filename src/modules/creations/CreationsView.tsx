@@ -11,7 +11,7 @@ import type { GuideSummary } from '@/modules/multilingue/guidesApi';
 import { BookCover } from '@/shared/components/BookCover';
 import { PageHeader } from '@/shared/components/PageHeader';
 import { apiRequest } from '@/shared/lib/api';
-import { useCachedState } from '@/shared/lib/apiCache';
+import { useCachedState, useScreenMemory } from '@/shared/lib/apiCache';
 import { audioApi } from '@/shared/lib/audio';
 import { formatDateFr } from '@/shared/lib/formatDate';
 import { useCustomProducts } from '@/shared/stores/useCustomProducts';
@@ -161,8 +161,11 @@ function GuideRow({ guide }: { guide: GuideSummary }) {
 
 export function CreationsView() {
   const [params, setParams] = useSearchParams();
-  const onglet: Onglet = params.get('onglet') === 'medias' ? 'medias' : 'textes';
-  const [recherche, setRecherche] = useState('');
+  // L'adresse décide quand elle nomme un onglet (lien venu d'un autre écran) ; sinon, celui où l'on était.
+  const [dernierOnglet, setDernierOnglet] = useScreenMemory<Onglet>('creations.onglet', 'textes');
+  const demande = params.get('onglet');
+  const onglet: Onglet = demande === 'medias' ? 'medias' : demande === 'textes' ? 'textes' : dernierOnglet;
+  const [recherche, setRecherche] = useScreenMemory('creations.recherche', '');
 
   const { currentReport, isLoadingReport } = useWorkspace();
   const custom = useCustomProducts();
@@ -257,7 +260,14 @@ export function CreationsView() {
           <AlertDescription>
             <p>Les vidéos ne sont conservées qu’un temps. {bientot.length === 1 ? 'Téléchargez-la sur votre appareil pour la garder.' : 'Téléchargez-les sur votre appareil pour les garder.'}</p>
             {onglet !== 'medias' && (
-              <Button variant="link" className="h-auto p-0" onClick={() => setParams({ onglet: 'medias' }, { replace: true })}>
+              <Button
+                variant="link"
+                className="h-auto p-0"
+                onClick={() => {
+                  setDernierOnglet('medias');
+                  setParams({ onglet: 'medias' }, { replace: true });
+                }}
+              >
                 Voir mes vidéos
               </Button>
             )}
@@ -265,7 +275,13 @@ export function CreationsView() {
         </Alert>
       )}
 
-      <Tabs value={onglet} onValueChange={(next) => setParams(next === 'medias' ? { onglet: 'medias' } : {}, { replace: true })}>
+      <Tabs
+        value={onglet}
+        onValueChange={(next) => {
+          setDernierOnglet(next === 'medias' ? 'medias' : 'textes');
+          setParams(next === 'medias' ? { onglet: 'medias' } : {}, { replace: true });
+        }}
+      >
         {/* Deux colonnes sur téléphone : côte à côte, les deux libellés débordaient de l'écran. */}
         <TabsList className="grid h-auto w-full grid-cols-2 sm:inline-flex sm:w-auto">
           <TabsTrigger value="textes" className="h-auto min-w-0 py-1.5 whitespace-normal">
