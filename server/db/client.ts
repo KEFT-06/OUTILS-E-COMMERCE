@@ -1,6 +1,6 @@
 import { mkdirSync } from 'node:fs';
 import { join, resolve } from 'node:path';
-import type { SQL } from 'drizzle-orm';
+import { type SQL, sql } from 'drizzle-orm';
 import type { PgDatabase, PgQueryResultHKT } from 'drizzle-orm/pg-core';
 import { env, isProd } from '@server/env';
 import * as schema from '@server/db/schema';
@@ -50,6 +50,7 @@ const MIGRATIONS_FOLDER = join(process.cwd(), 'server', 'db', 'migrations');
 
 let database: Database | null = null;
 let closeConnection: (() => Promise<void>) | null = null;
+let renewConnection: (() => void) | null = null;
 let kind: 'postgres' | 'embedded' | null = null;
 
 export function getDb(): Database {
@@ -89,27 +90,36 @@ export async function initDatabase(
     const { migrate } = await import('drizzle-orm/postgres-js/migrator');
 
     const isLocal = /@(localhost|127\.0\.0\.1)[:/]/.test(url);
-    const client = postgres(url, {
-      max: maxConnections,
-      prepare: false,
-      ssl: isLocal ? false : 'require',
-      onnotice: () => undefined,
-      /*
-        Une base injoignable doit échouer vite, pas faire attendre.
+    const open = () =>
+      postgres(url, {
+        max: maxConnections,
+        prepare: false,
+        ssl: isLocal ? false : 'require',
+        onnotice: () => undefined,
+        /*
+          Une base injoignable doit échouer vite, pas faire attendre.
 
-        Sans délai, une adresse qui ne répond pas — un hôte joignable seulement en IPv6
-        depuis un hébergeur qui n'a que de l'IPv4, par exemple — laissait la requête
-        pendue une demi-minute : le visiteur voyait une page qui tourne indéfiniment, et
-        la surveillance elle-même n'obtenait pas de réponse à interpréter. Dix secondes
-        suffisent largement à une connexion saine, et au-delà mieux vaut un 503 net.
-      */
-      connect_timeout: isLocal ? 0 : 10,
-    });
+          Sans délai, une adresse qui ne répond pas — un hôte joignable seulement en IPv6
+          depuis un hébergeur qui n'a que de l'IPv4, par exemple — laissait la requête
+          pendue une demi-minute : le visiteur voyait une page qui tourne indéfiniment, et
+          la surveillance elle-même n'obtenait pas de réponse à interpréter. Dix secondes
+          suffisent largement à une connexion saine, et au-delà mieux vaut un 503 net.
+        */
+        connect_timeout: isLocal ? 0 : 10,
+      });
+    let client = open();
     const db = drizzle(client, { schema });
     if (runMigrations) await migrate(db, { migrationsFolder: MIGRATIONS_FOLDER });
 
     database = db as unknown as Database;
     closeConnection = () => client.end();
+    renewConnection = () => {
+      const silent = client;
+      client = open();
+      database = drizzle(client, { schema }) as unknown as Database;
+      // Sans attendre la fin de ses requêtes : une connexion muette ne rendrait jamais la main.
+      void silent.end({ timeout: 0 }).catch(() => undefined);
+    };
     kind = 'postgres';
     return database;
   }
@@ -137,9 +147,37 @@ export async function initDatabase(
   return database;
 }
 
+/** La base répond-elle dans le délai donné ? Ne lève jamais : une base muette vaut « non ». */
+export async function databaseAnswers(withinMs: number): Promise<boolean> {
+  if (!database) return false;
+  let timer: NodeJS.Timeout | undefined;
+  try {
+    return await Promise.race([
+      queryRows(sql`select 1`).then(
+        () => true,
+        () => false,
+      ),
+      new Promise<boolean>((resolve) => {
+        timer = setTimeout(() => resolve(false), withinMs);
+      }),
+    ]);
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+/**
+ * Abandonne les connexions ouvertes et en prépare de neuves ; les requêtes restées pendues sur
+ * les anciennes échouent aussitôt au lieu d'attendre. Sans objet pour la base embarquée.
+ */
+export function renewDatabase(): void {
+  renewConnection?.();
+}
+
 export async function closeDatabase(): Promise<void> {
   await closeConnection?.();
   database = null;
   closeConnection = null;
+  renewConnection = null;
   kind = null;
 }

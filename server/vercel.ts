@@ -2,6 +2,7 @@ import { join } from 'node:path';
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import { createApp } from '@server/app';
 import { initDatabase } from '@server/db/client';
+import { createVigil } from '@server/db/vigil';
 import { env } from '@server/env';
 import { bootstrapFirstAdmin } from '@server/services/admin/bootstrap';
 
@@ -14,7 +15,8 @@ import { bootstrapFirstAdmin } from '@server/services/admin/bootstrap';
  *  - Les migrations ne sont pas jouées ici. Plusieurs instances peuvent démarrer en même
  *    temps et lanceraient la même migration ensemble ; elles passent une seule fois
  *    pendant la construction (`npm run db:migrate`).
- *  - Une seule connexion à PostgreSQL par instance : le pooler les compte toutes.
+ *  - Une seule connexion à PostgreSQL par instance : le pooler les compte toutes. Elle peut
+ *    mourir pendant le sommeil de l'instance : celle-ci la vérifie à son réveil (db/vigil.ts).
  *  - Aucun balayage périodique : rien ne tourne entre deux requêtes. Les travaux
  *    interrompus repartent au suivi suivant (services/analysis/jobs.ts).
  *  - Les fichiers du site sont distribués par le réseau de l'hébergeur ; seul le HTML
@@ -29,6 +31,7 @@ import { bootstrapFirstAdmin } from '@server/services/admin/bootstrap';
 const CLIENT_DIR = env.CLIENT_DIR ?? join(process.cwd(), 'dist', 'app-shell');
 
 const app = createApp({ clientDir: CLIENT_DIR, serveStaticFiles: false });
+const vigil = createVigil();
 
 /**
  * Préparation partagée par toutes les requêtes d'une même instance. En cas d'échec, la
@@ -67,6 +70,8 @@ export default async function handler(request: IncomingMessage, response: Server
   }
   try {
     await prepare();
+    // Une instance qui a dormi vérifie sa connexion avant de servir (server/db/vigil.ts).
+    await vigil.awake();
   } catch (error) {
     console.error('[démarrage] base de données inaccessible :', error instanceof Error ? error.message : error);
     response.statusCode = 503;
@@ -75,5 +80,8 @@ export default async function handler(request: IncomingMessage, response: Server
     response.end(JSON.stringify({ error: { code: 'DATABASE_UNAVAILABLE', message: 'Le service est momentanément indisponible.' } }));
     return;
   }
+  const leave = vigil.enter();
+  response.once('finish', leave);
+  response.once('close', leave);
   app(request as never, response as never);
 }
