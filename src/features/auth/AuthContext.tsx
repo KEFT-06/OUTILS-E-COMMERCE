@@ -36,6 +36,16 @@ interface AuthContextType {
 }
 
 const HEARTBEAT_MS = 2 * 60_000;
+/** Délai d'un essai de lecture de la session : large pour une réponse de quelques octets, même sur un réseau lent. */
+const SESSION_CHECK_MS = 12_000;
+
+/** La réponse, ou un refus si elle n'est pas arrivée dans le délai. */
+function answeredWithin<T>(request: Promise<T>, withinMs: number): Promise<T> {
+  return new Promise<T>((resolve, reject) => {
+    const timer = window.setTimeout(() => reject(new Error('sans réponse')), withinMs);
+    request.then(resolve, reject).finally(() => window.clearTimeout(timer));
+  });
+}
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
@@ -59,12 +69,14 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     // Premier chargement : un refus passager (limite de débit, réseau coupé) ne doit pas renvoyer
     // vers la page de connexion un visiteur dont la session est valide. Trois essais, puis la
     // page s'affiche avec l'état obtenu.
+    // Chaque essai a son délai : le 11/10/2026, une demande restée sans réponse a laissé l'écran
+    // sur « Vérification de votre session… » jusqu'à ce que l'hébergeur la coupe, cinq minutes après.
     void (async () => {
       for (const waitMs of [0, 1_500, 4_000]) {
         if (waitMs > 0) await new Promise((resolve) => setTimeout(resolve, waitMs));
         if (cancelled) return;
         try {
-          const { account: current } = await apiRequest<{ account: Account | null }>('/api/auth/me');
+          const { account: current } = await answeredWithin(apiRequest<{ account: Account | null }>('/api/auth/me'), SESSION_CHECK_MS);
           if (!cancelled) setAccount(current);
           break;
         } catch {

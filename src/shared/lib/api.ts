@@ -28,7 +28,42 @@ function takeEarlyResponse(path: string): Promise<Response> | null {
   return early;
 }
 
+/** Pannes passagères du serveur : une lecture qui y tombe est redemandée une fois. */
+const PASSING_FAILURES = new Set(['INTERNAL_ERROR', 'DATABASE_UNAVAILABLE', 'NETWORK_ERROR']);
+/** Au-delà, le visiteur a déjà attendu : on ne lui fait pas attendre une seconde demande en silence. */
+const QUICK_FAILURE_MS = 20_000;
+const SECOND_TRY_AFTER_MS = 600;
+
+function passingFailure(error: unknown): boolean {
+  return error instanceof ApiError && (PASSING_FAILURES.has(error.code ?? '') || error.status === 502 || error.status === 504);
+}
+
+/**
+ * Une LECTURE tombée sur une panne passagère est redemandée une fois, sans rien montrer.
+ *
+ * Constat du 11/10/2026 en production : sur une cinquantaine d'écrans visités, deux lectures ont
+ * rendu une erreur interne, puis tout a répondu normalement. Le visiteur n'a pas à voir cela, ni à
+ * recommencer lui-même. Seules les lectures sont concernées : une action (création, paiement,
+ * génération) n'est jamais rejouée à l'insu de celui qui l'a lancée.
+ */
 export async function apiRequest<T>(
+  path: string,
+  options: { method?: Method; body?: unknown; signal?: AbortSignal } = {},
+): Promise<T> {
+  const reading = (!options.method || options.method === 'GET') && options.body === undefined;
+  if (!reading) return sendRequest<T>(path, options);
+  const started = Date.now();
+  try {
+    return await sendRequest<T>(path, options);
+  } catch (error) {
+    if (!passingFailure(error) || Date.now() - started > QUICK_FAILURE_MS || options.signal?.aborted) throw error;
+    await new Promise((resolve) => setTimeout(resolve, SECOND_TRY_AFTER_MS));
+    if (options.signal?.aborted) throw error;
+    return sendRequest<T>(path, options);
+  }
+}
+
+async function sendRequest<T>(
   path: string,
   options: { method?: Method; body?: unknown; signal?: AbortSignal } = {},
 ): Promise<T> {
