@@ -18,7 +18,7 @@ import { closeTestApp, createTestApp } from './support/helpers';
  *   · quoi qu'il arrive au maquettiste ou au moteur, l'auteur a sa couverture, pour un point.
  */
 
-type Kind = 'design' | 'proof' | 'scene';
+type Kind = 'design' | 'proof' | 'revise' | 'scene';
 interface Answer {
   status: number;
   text: string;
@@ -42,6 +42,9 @@ const PNG = Buffer.from('89504e470d0a1a0a0000000d4948445200000001000000010806000
 const SCENE =
   'A young woman in a bright apron lifts golden fritters from a wide pan on a small charcoal stove, just outside a school gate at mid-morning. Children in uniform gather at the right edge of the frame. Low sun from the left, warm ochre, deep green and white. Seen from waist height, three steps back; above her, a plain pale wall fills the upper third.';
 const RELECTURE_PROPRE = JSON.stringify({ titleCorrect: true, misspelled: [], stray: [] });
+/** La scène telle que le directeur artistique la réécrit quand un panneau y a fait naître un texte. */
+const SCENE_REFAITE =
+  'Close on a young woman in a bright apron lifting golden fritters from a wide pan on a charcoal stove. Behind her, a plain ochre wall and an open metal gate, softly blurred. Low sun from the left, warm ochre and deep green, seen from waist height.';
 
 /** Ce que rend le maquettiste : bonne maquette, plus deux lignes que la fiche ne permet pas d'écrire. */
 const MAQUETTE = {
@@ -81,7 +84,7 @@ const fauxServices = createServer((req, res) => {
 
     if (url.pathname === '/claude/v1/messages' && req.method === 'POST') {
       const system = body.system as string;
-      const kind: Kind = system.includes('cover designer') ? 'design' : system.includes('proofread') ? 'proof' : 'scene';
+      const kind: Kind = system.includes('cover designer') ? 'design' : system.includes('proofread') ? 'proof' : system.includes('added writing that nobody ordered') ? 'revise' : 'scene';
       const content = (body.messages as { content: string | { type: string; text?: string }[] }[])[0]!.content;
       const config = body.output_config as { effort?: string; format?: { type?: string } } | undefined;
       demandes.push({
@@ -133,7 +136,7 @@ after(async () => {
 });
 
 beforeEach(() => {
-  reponses = { design: ok(JSON.stringify(MAQUETTE)), proof: ok(RELECTURE_PROPRE), scene: ok(SCENE) };
+  reponses = { design: ok(JSON.stringify(MAQUETTE)), proof: ok(RELECTURE_PROPRE), revise: ok(SCENE_REFAITE), scene: ok(SCENE) };
   relectures = [];
   renduRefuse = null;
   demandes.length = 0;
@@ -314,7 +317,11 @@ describe('Couverture d’un ebook — complète, relue, pour un point', () => {
     assert.doesNotMatch(rendus[0]!.prompt, /CORRECTION/);
     assert.match(rendus[1]!.prompt, /CORRECTION — an earlier rendering of this cover was rejected/);
     assert.match(rendus[1]!.prompt, /must not appear: "PRIMARY SCHOOL"/);
-    assert.ok(rendus[1]!.prompt.startsWith(rendus[0]!.prompt), 'la même commande, le défaut en plus');
+    // Interdire ne suffit pas : la scène qui a fait naître le panneau est réécrite avant le second rendu.
+    const reecriture = demandesDe('revise')[0]!;
+    assert.ok(reecriture.prompt.includes(SCENE) && reecriture.prompt.includes('"PRIMARY SCHOOL"'), 'le directeur artistique reçoit la scène et le texte apparu');
+    assert.ok(rendus[1]!.prompt.includes(SCENE_REFAITE) && !rendus[1]!.prompt.includes(SCENE), 'le second rendu part de la scène réécrite');
+    assert.match(rendus[1]!.prompt, /"VENDRE SES BEIGNETS"/, 'les textes commandés, eux, ne changent pas');
     assert.equal(demandesDe('proof').length, 2, 'le second rendu est relu lui aussi');
     assert.equal(await solde(agent), avant - 1, 'le second rendu n’est pas facturé à l’auteur');
   });
@@ -322,7 +329,7 @@ describe('Couverture d’un ebook — complète, relue, pour un point', () => {
   it('fait la couverture complète sans maquettiste : le titre et les chapitres de l’auteur suffisent', async () => {
     const { agent } = await signInWithPlan(app, 'autrice-sans-maquettiste@exemple.test', 'pro');
     const avant = await solde(agent);
-    reponses = { design: REFUS, proof: REFUS, scene: REFUS };
+    reponses = { design: REFUS, proof: REFUS, revise: REFUS, scene: REFUS };
 
     const { body } = await agent.post('/api/covers').send(OUVRAGE).expect(201);
     assert.equal(body.cover.layout, 'designed');

@@ -10,7 +10,7 @@ import { generateGeminiImage, geminiImagesConfigured } from '@server/services/ai
 import { generateImage } from '@server/services/ai/image';
 import type { ImageResult } from '@server/services/ai/imageTypes';
 import { coverArtDirection } from '@server/services/covers/artDirection';
-import { type DesignedBook, buildDesignedCoverPrompt, designCover } from '@server/services/covers/design';
+import { type DesignedBook, buildDesignedCoverPrompt, designCover, reviseScene } from '@server/services/covers/design';
 import { correctionNote, proofScore, proofreadCover } from '@server/services/covers/proof';
 import { findOwnedGeneration, runBilledGeneration, settleGeneration } from '@server/services/generations';
 import { countryName } from '@server/shared/countries';
@@ -24,7 +24,8 @@ import { countryName } from '@server/shared/countries';
  *   · Un EBOOK reçoit la couverture complète de la maison (covers/design.ts) : un livre en
  *     relief, son titre, ses points forts, son bandeau. Le maquettiste remplit la maquette d'après
  *     la fiche de l'ouvrage, le moteur d'images rend le livre, le relecteur (covers/proof.ts) lit
- *     l'image et la fait refaire une fois si un mot est faux ou ajouté.
+ *     l'image et la fait refaire une fois si un mot est faux ou ajouté — avec une scène réécrite
+ *     quand c'est elle qui a fait naître le texte en trop.
  *
  *   · Un GUIDE MULTILINGUE garde une illustration sans texte : il s'exporte dans plusieurs
  *     langues, et son titre est posé par la mise en page dans celle de chaque export. La direction
@@ -172,7 +173,13 @@ async function renderDesignedCover(book: DesignedBook): Promise<{ image: ImageRe
   const proof = left() > 50_000 ? await proofreadCover(first, design, Math.min(40_000, left() - 10_000)) : null;
   if (!proof || proofScore(proof) === 0 || left() < 80_000) return { image: first, prompt };
 
-  const corrected = `${prompt}\n\n${correctionNote(proof)}`;
+  /*
+    Un texte ajouté vient de la scène : tant qu'elle contient ce qui porte l'écriture (un panneau,
+    une devanture, un lieu nommé), le moteur l'écrit de nouveau, même prévenu. La scène est donc
+    réécrite avant le second rendu ; la note de correction, elle, vaut pour les mots mal copiés.
+  */
+  const revised = proof.stray.length > 0 && left() > 105_000 ? await reviseScene(design.scene, proof.stray, 20_000) : null;
+  const corrected = `${revised ? buildDesignedCoverPrompt({ ...design, scene: revised }, { market: book.market }) : prompt}\n\n${correctionNote(proof)}`;
   const second = await render(corrected, Math.min(90_000, left() - 40_000));
   if (!second) return { image: first, prompt };
   const again = left() > 35_000 ? await proofreadCover(second, design, Math.min(40_000, left() - 10_000)) : null;

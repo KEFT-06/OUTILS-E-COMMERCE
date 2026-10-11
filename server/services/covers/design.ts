@@ -212,7 +212,7 @@ export const COVER_DESIGNER_SYSTEM = [
   '- seal: the text of a round gold seal, in capitals, 60 characters at most: the one concrete thing that sets this work apart, such as "MODÈLES PRATIQUES POUR TOUTES LES SITUATIONS" or "MÉTHODE TESTÉE SUR LE TERRAIN". Leave it empty when the file gives you nothing concrete to say.',
   '- footer: exactly 3 short claims for the strip along the bottom, in capitals, 22 characters at most each, each with a pictogram. They describe how the work reads ("SIMPLE ET CLAIR", "ÉTAPE PAR ÉTAPE", "PRÊT À APPLIQUER"), not what the reader will earn.',
   `- palette: one of ${PALETTE_IDS.map((id) => `"${id}"`).join(', ')}. Choose by subject: navy-gold for business and practical trades, black-gold for law, money and premium subjects, night-cyan for digital and technology, forest-gold for farming, food, health and nature, burgundy-gold for beauty, cooking, family and relationships.`,
-  '- scene: the photorealistic picture in the middle of the cover, described in English in 40 to 70 words, in the present tense. One concrete moment or still life from the reader’s own world and from what this work teaches — the trade, the tools, the place, the gesture — so that a buyer recognises their situation at a glance. Name the light and the framing. People and places belong to the readers’ country as it is today: ordinary, contemporary, dignified. Generic business symbols (handshakes in the void, light bulbs, rockets, chess pieces, piles of coins) say nothing about this work. The only text on the cover is yours, so keep writing out of the scene: no signboards, banners, posters or shop fronts at all, and any screen, document, banknote or label that must be there is blank or out of focus. When the author says what they would like to see, build the scene around that wish.',
+  '- scene: the photorealistic picture in the middle of the cover, described in English in 40 to 70 words, in the present tense. One concrete moment or still life from the reader’s own world and from what this work teaches — the trade, the tools, the place, the gesture — so that a buyer recognises their situation at a glance. Name the light and the framing. People and places belong to the readers’ country as it is today: ordinary, contemporary, dignified. Generic business symbols (handshakes in the void, light bulbs, rockets, chess pieces, piles of coins) say nothing about this work. The only text on the cover is yours, so keep writing out of the scene: no signboards, banners, posters or shop fronts at all, and any screen, document, banknote or label that must be there is blank or out of focus. For the same reason, never name an institution, a shop or a town as the place — an image model writes any name it is given, on the nearest wall. Describe what is seen instead: "a plain ochre wall and an open metal gate", not "a primary school in Douala". When the author says what they would like to see, build the scene around that wish.',
   '',
   'These covers are shown in adverts, and both the advertising platforms and the studio’s own compliance check reject a cover that overpromises. So:',
   '- Write no figure — an amount of money, a percentage, a number of days or of customers — unless that exact figure appears in the work’s file.',
@@ -345,6 +345,38 @@ export async function designCover(book: DesignedBook): Promise<{ design: CoverDe
   } catch {
     // Déjà journalisé par le service, ou réponse illisible : la maquette nue fait une couverture.
     return { design: plainDesign(book), directed: false };
+  }
+}
+
+/**
+ * Réécriture de la scène après un texte ajouté par le moteur d'images.
+ *
+ * Essai réel du 11/10/2026 : la scène disait « devant le portail d'une école primaire à Douala ».
+ * Le moteur a peint un panneau « PRIMARY SCHOOL — DOUALA » ; refait avec la consigne de ne pas
+ * l'écrire, il l'a peint encore. Interdire ne suffit pas : tant que la scène contient ce qui porte
+ * l'écriture, elle revient. Le second rendu part donc d'une scène dont on a retiré cet objet.
+ */
+export const SCENE_REVISER_SYSTEM = [
+  'You direct the photograph in the middle of a book cover for Smart Creator. An image model painted the scene you are given, and it added writing that nobody ordered — usually on a signboard, a shop front, a poster, a wall or a screen that the scene implied. The cover carries its own texts; the photograph must carry none.',
+  'Rewrite the scene so that this writing cannot appear: move closer to the subject, change the angle, or replace the surface that carried the writing with a plain one — an unmarked wall, foliage, open sky. Do not name an institution, a shop or a town as the place, because an image model writes any name it is given: describe what is seen instead. Keep the subject, the gesture, the light, and what the scene says about the work.',
+  'Answer with the scene only: 40 to 70 words, in English, in the present tense.',
+].join('\n\n');
+
+/** La scène réécrite, ou `null` si elle ne peut pas l'être maintenant. Ne lève jamais. */
+export async function reviseScene(scene: string, stray: readonly string[], timeoutMs: number): Promise<string | null> {
+  if (!claudeConfigured() || stray.length === 0) return null;
+  try {
+    const answer = await askClaude({
+      system: SCENE_REVISER_SYSTEM,
+      prompt: `Scene:\n${scene}\n\nWriting that appeared in the picture and must not: ${stray.map((text) => `"${text.replace(/"/g, '')}"`).join(', ')}`,
+      maxTokens: 3000,
+      timeoutMs,
+      retries: 0,
+    });
+    const revised = answer.replace(/["“”*_`#]/g, '').replace(/\s+/g, ' ').trim();
+    return revised.length >= 60 ? cutAtWord(revised, SCENE_MAX) : null;
+  } catch {
+    return null;
   }
 }
 
