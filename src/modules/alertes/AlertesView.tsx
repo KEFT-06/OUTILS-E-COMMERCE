@@ -12,7 +12,8 @@ import { useMoney, useUserCurrency } from '@/shared/lib/money';
 import { cn } from '@/shared/lib/utils';
 import { resetAlertsUnread } from '@/shared/stores/useAlertsUnread';
 import { blankProduct, useCustomProducts } from '@/shared/stores/useCustomProducts';
-import type { AlertItem, AlertLevel } from '@/shared/types/radar';
+import type { AlertItem, AlertLevel, AlertWatch } from '@/shared/types/radar';
+import { etatDeLaVeille } from '@/modules/alertes/veille';
 import { Button } from '@/shared/ui/button';
 import { Card, CardContent } from '@/shared/ui/card';
 import { Empty, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from '@/shared/ui/empty';
@@ -144,22 +145,48 @@ function AlertCard({ alert }: { alert: AlertItem }) {
   );
 }
 
+/** Relectures discrètes après un échec, de plus en plus espacées ; ensuite, toutes les trente secondes. */
+const RELECTURES_MS = [3_000, 8_000, 20_000];
+
 export function AlertesView() {
   const [alerts, setAlerts] = useCachedState<AlertItem[]>('/api/alerts');
+  const [watch, setWatch] = useState<AlertWatch | null>(null);
+  const [lent, setLent] = useState(false);
   const [filtre, setFiltre] = useState<Filtre>('tout');
 
   useEffect(() => {
-    apiRequest<{ alerts: AlertItem[] }>('/api/alerts')
-      .then(({ alerts: fil }) => {
-        setAlerts(fil);
-        // Le fil est ouvert : la cloche s'éteint. Les marques « Nouveau » restent le temps de la lecture.
-        if (fil.some((alert) => alert.unread)) {
-          void apiRequest('/api/alerts/seen', { method: 'POST' })
-            .then(resetAlertsUnread)
-            .catch(() => undefined);
-        }
-      })
-      .catch(() => setAlerts((previous) => previous ?? []));
+    let quitte = false;
+    let minuteur: number | undefined;
+    const lire = (essai: number) => {
+      apiRequest<{ alerts: AlertItem[]; watch?: AlertWatch }>('/api/alerts')
+        .then(({ alerts: fil, watch: veille }) => {
+          if (quitte) return;
+          setAlerts(fil);
+          setWatch(veille ?? null);
+          setLent(false);
+          // Le fil est ouvert : la cloche s'éteint. Les marques « Nouveau » restent le temps de la lecture.
+          if (fil.some((alert) => alert.unread)) {
+            void apiRequest('/api/alerts/seen', { method: 'POST' })
+              .then(resetAlertsUnread)
+              .catch(() => undefined);
+          }
+        })
+        .catch(() => {
+          /*
+            Une lecture qui échoue n'est pas un fil vide. L'écran affichait « Aucune alerte pour
+            l'instant » à la place d'une lecture ratée : il garde maintenant ce qu'il savait, ou
+            reste en attente, et relit de lui-même.
+          */
+          if (quitte) return;
+          if (essai >= 1) setLent(true);
+          minuteur = window.setTimeout(() => lire(essai + 1), RELECTURES_MS[essai] ?? 30_000);
+        });
+    };
+    lire(0);
+    return () => {
+      quitte = true;
+      window.clearTimeout(minuteur);
+    };
   }, [setAlerts]);
 
   // Du plus récent au plus ancien ; le même jour, le plus pressant d'abord.
@@ -207,7 +234,8 @@ export function AlertesView() {
       </ToggleGroup>
 
       {alerts === null && (
-        <div className="space-y-3">
+        <div className="space-y-3" role="status">
+          {lent && <p className="text-sm text-muted-foreground">Le fil des alertes met plus de temps que d’habitude à arriver ; il s’affichera ici de lui-même.</p>}
           <Skeleton className="h-32 rounded-xl" />
           <Skeleton className="h-32 rounded-xl" />
         </div>
@@ -220,7 +248,7 @@ export function AlertesView() {
               <Bell />
             </EmptyMedia>
             <EmptyTitle>{filtre === 'tout' ? 'Aucune alerte pour l’instant' : `Aucune alerte « ${NIVEAUX[filtre].filtre.toLowerCase()} » pour l’instant`}</EmptyTitle>
-            <EmptyDescription>Les alertes arrivent ici dès qu’un produit décolle ou qu’un concurrent bouge.</EmptyDescription>
+            <EmptyDescription>{etatDeLaVeille(watch)}</EmptyDescription>
           </EmptyHeader>
         </Empty>
       )}

@@ -33,7 +33,7 @@ describe('État des services', () => {
     };
 
     const byId = Object.fromEntries(report.services.map((service) => [service.id, service]));
-    assert.deepEqual(Object.keys(byId).sort(), ['ad-collection', 'chariow', 'claude', 'database', 'email', 'gamma', 'gemini', 'images', 'perplexity', 'radar', 'sebpay', 'stripe', 'veo', 'video-archive']);
+    assert.deepEqual(Object.keys(byId).sort(), ['ad-collection', 'chariow', 'claude', 'database', 'email', 'gamma', 'gemini', 'images', 'market-reading', 'perplexity', 'radar', 'sebpay', 'stripe', 'veo', 'video-archive']);
 
     assert.equal(byId.database!.state, 'warning', 'base embarquée : pas en ligne');
     // Le mode de connexion se lit dans l'adresse, sans rien afficher du mot de passe.

@@ -1,6 +1,7 @@
 import { and, desc, eq, sql } from 'drizzle-orm';
 import { databaseKind, getDb } from '@server/db/client';
-import { adSearches, generations, spiedAds, storybooks, watches } from '@server/db/schema';
+import { adSearches, alerts, generations, spiedAds, storybooks, watches } from '@server/db/schema';
+import { alertWatch } from '@server/services/alerts';
 import { env, isProd, isServerless, providers } from '@server/env';
 import { lastClaudeOutcome } from '@server/services/ai/claude';
 import { lastGoogleRefusal } from '@server/services/ai/googleRefusal';
@@ -542,6 +543,38 @@ async function checkAdCollection(): Promise<ServiceCheck> {
   return { ...base, state: heures !== null && heures <= 72 ? 'warning' : 'error', detail: `${detail} Le mur vieillit : plus rien n’y est versé.`, action: remede };
 }
 
+/**
+ * Relevé du marché : les ventes des boutiques de l'index sont-elles lues chaque jour ?
+ *
+ * C'est lui qui produit les alertes, et elles se calculent d'un jour sur l'autre. Du 07 au
+ * 11/10/2026, il ne relisait plus qu'une poignée de boutiques par nuit : le fil des alertes
+ * affichait « aucune alerte » et rien, ici, ne disait pourquoi. Le contrôle regarde les relevés
+ * eux-mêmes — un passage du réveil qui n'a rien lu ne compte pas.
+ */
+async function checkMarketReading(): Promise<ServiceCheck> {
+  const base = { id: 'market-reading', name: 'Relevé du marché', role: 'Lit chaque jour les ventes des boutiques repérées ; les alertes se calculent sur ces relevés' };
+  const [watch, [fil]] = await Promise.all([
+    alertWatch(),
+    getDb().select({ total: sql<number>`count(*)`, derniere: sql<Date | null>`max(${alerts.occurredAt})` }).from(alerts),
+  ]);
+  const alertes = Number(fil?.total ?? 0);
+  const suite = alertes > 0 && fil?.derniere ? ` ${alertes} alerte${alertes > 1 ? 's' : ''} au fil, la dernière le ${new Date(fil.derniere).toLocaleDateString('fr-FR', { timeZone: 'UTC' })}.` : ' Aucune alerte au fil.';
+  const remede =
+    'Vérifier, chez l’hébergeur, que la tâche planifiée « /api/cron/marche » s’exécute chaque nuit et se termine sans erreur (journaux de la fonction). ' +
+    'Elle relève les boutiques par tranches et se relance elle-même tant qu’il en reste.';
+  if (watch.stores === 0) return { ...base, state: 'warning', detail: `Aucune boutique n’est encore dans l’index du marché.${suite}`, action: remede };
+
+  const dernier = watch.readings[0];
+  if (!dernier) return { ...base, state: 'error', detail: `${watch.stores} boutiques dans l’index, aucune relevée depuis deux semaines.${suite}`, action: remede };
+  const age = Math.round((Date.parse(`${new Date().toISOString().slice(0, 10)}T00:00:00Z`) - Date.parse(`${dernier.day}T00:00:00Z`)) / 86_400_000);
+  const quand = age <= 0 ? 'aujourd’hui' : age === 1 ? 'hier' : `il y a ${age} jours`;
+  const detail = `${watch.stores} boutiques dans l’index ; dernier relevé ${quand} : ${dernier.stores} boutique${dernier.stores > 1 ? 's' : ''} lue${dernier.stores > 1 ? 's' : ''}.${suite}`;
+  if (age > 2) return { ...base, state: 'error', detail: `${detail} Sans relevé d’un jour sur l’autre, aucune alerte ne peut se déclencher.`, action: remede };
+  // Moins d'une boutique sur deux relue : le relevé tourne, mais ne fait pas le tour.
+  if (age > 1 || dernier.stores * 2 < watch.stores) return { ...base, state: 'warning', detail: `${detail} Le relevé ne fait pas le tour des boutiques chaque jour.`, action: remede };
+  return { ...base, state: 'ok', detail, action: null };
+}
+
 async function checkRadar(): Promise<ServiceCheck> {
   const base = { id: 'radar', name: 'Radar', role: 'Relevé quotidien des boutiques surveillées, résumés et découverte' };
 
@@ -668,6 +701,7 @@ export async function checkServices(options: { refresh?: boolean } = {}): Promis
     checkVideoArchive(),
     checkChariow(),
     checkRadar(),
+    checkMarketReading(),
     checkAdCollection(),
     checkStripe(),
     checkSebpay(serverIp),

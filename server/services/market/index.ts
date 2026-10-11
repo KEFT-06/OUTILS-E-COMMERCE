@@ -32,7 +32,24 @@ const PAUSE_MS = 400;
 /** Une boutique repérée est relevée au plus une fois par jour. */
 const REINDEX_AFTER_MS = 20 * 3_600_000;
 
+/**
+ * Temps accordé au relevé d'UNE boutique. La vitrine est celle d'un tiers : une qui traîne (vingt
+ * pages de catalogue à vingt secondes chacune au pire) ne doit pas emporter le relevé de toutes
+ * les autres. Au-delà, elle est comptée en échec et la file avance.
+ */
+const STORE_CAP_MS = 45_000;
+/** En dessous de ce reste de temps, on n'entame pas une boutique de plus : elle attend le maillon suivant. */
+const STORE_MIN_MS = 15_000;
+
 const pause = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
+
+/** Le résultat, ou un échec si le travail n'a pas fini dans le délai. */
+function within<T>(work: Promise<T>, ms: number): Promise<T> {
+  return new Promise<T>((resolve, reject) => {
+    const timer = setTimeout(() => reject(new Error(`relevé trop long (plus de ${Math.round(ms / 1000)} s)`)), ms);
+    work.then(resolve, reject).finally(() => clearTimeout(timer));
+  });
+}
 
 /** Jour d'un instant en temps universel, « 2026-10-07 » : la clé d'un point de ventes quotidien. */
 export const dayOf = (date: Date) => date.toISOString().slice(0, 10);
@@ -183,7 +200,12 @@ export async function dueDiscoveredStores(now = new Date()) {
   return file;
 }
 
-export async function indexDiscoveredStores(budgetMs: number, now = new Date()): Promise<MarketIndexOutcome> {
+export async function indexDiscoveredStores(
+  budgetMs: number,
+  now = new Date(),
+  limits: { storeCapMs?: number; storeMinMs?: number } = {},
+): Promise<MarketIndexOutcome> {
+  const { storeCapMs = STORE_CAP_MS, storeMinMs = STORE_MIN_MS } = limits;
   const db = getDb();
   const file = await dueDiscoveredStores(now);
 
@@ -191,15 +213,25 @@ export async function indexDiscoveredStores(budgetMs: number, now = new Date()):
   const outcome: MarketIndexOutcome = { indexed: 0, failed: 0, launched: 0, remaining: file.length };
 
   for (const [rang, store] of file.entries()) {
-    if (Date.now() >= deadline) break;
+    /*
+      Le temps se vérifie AVANT d'entamer une boutique, et chaque boutique a son délai. Du 07 au
+      11/10/2026, la boucle ne regardait l'heure qu'entre deux boutiques : une seule vitrine lente
+      la faisait dépasser le temps de la requête, l'hébergeur coupait, et ni les alertes ni la
+      suite du relevé — placées après elle — n'étaient jamais atteintes. Constat en production :
+      36 boutiques sur 40 non relues depuis cinq jours, aucune alerte.
+    */
+    if (deadline - Date.now() < storeMinMs) break;
     if (rang > 0) await pause(PAUSE_MS);
     outcome.remaining -= 1;
     try {
-      // L'identifiant « store_… » se lit une fois sur la page de la boutique, puis il est gardé.
-      const target = store.storeExternalId
-        ? { externalId: store.storeExternalId, label: store.label }
-        : await chariowStoreSource.resolve(store.host);
-      const observations = await chariowStoreSource.observe(target.externalId);
+      const { target, observations } = await within(
+        (async () => {
+          // L'identifiant « store_… » se lit une fois sur la page de la boutique, puis il est gardé.
+          const known = store.storeExternalId ? { externalId: store.storeExternalId, label: store.label } : await chariowStoreSource.resolve(store.host);
+          return { target: known, observations: await chariowStoreSource.observe(known.externalId) };
+        })(),
+        storeCapMs,
+      );
       const { launched } = await indexStoreCatalog({ externalId: target.externalId, host: store.host, label: target.label ?? store.label }, observations, now);
       await db
         .update(discoveredStores)

@@ -200,7 +200,12 @@ cronRouter.get(
       return null;
     });
 
-    const index = await indexDiscoveredStores(230_000).catch((error: unknown) => {
+    /*
+      Le relevé tient dans MARKET_RUN_MS, délai de la dernière boutique compris : ce qui vient
+      après lui — les alertes, puis la suite — est donc toujours atteint. Et si le relevé échoue
+      en entier, la suite part quand même : un maillon neuf a plus de chances qu'un réveil perdu.
+    */
+    const index = await indexDiscoveredStores(MARKET_RUN_MS).catch((error: unknown) => {
       console.warn('[cron] index du marché :', error instanceof Error ? error.message : error);
       return null;
     });
@@ -209,7 +214,7 @@ cronRouter.get(
       return null;
     });
     // Des boutiques attendent encore leur relevé du jour : le site s'en charge lui-même, à la suite.
-    if (index && index.remaining > 0) await chainMarketIndex(1);
+    if (!index || index.remaining > 0) await chainMarketIndex(1);
     res.json({ redactions, referencement, index, alertes });
   }),
 );
@@ -223,19 +228,29 @@ cronRouter.get(
   dépense : au plus MARKET_MAX_LINKS maillons par jour.
 */
 const MARKET_MAX_LINKS = 14;
+/**
+ * Temps de relevé par appel. La requête en a 300 ; une boutique entamée juste avant la fin peut
+ * en prendre 45 de plus (server/services/market) : 190 laisse de quoi calculer les alertes et
+ * passer la main, toujours.
+ */
+const MARKET_RUN_MS = 190_000;
 
 async function chainMarketIndex(maillon: number): Promise<void> {
   if (env.NODE_ENV === 'test' || !isServerless || !env.CRON_SECRET || maillon > MARKET_MAX_LINKS) return;
-  try {
-    const response = await fetch(`${env.APP_URL.replace(/\/+$/, '')}/api/cron/marche/suite`, {
-      method: 'POST',
-      headers: { Authorization: `Bearer ${env.CRON_SECRET}`, 'Content-Type': 'application/json' },
-      body: JSON.stringify({ maillon }),
-      signal: AbortSignal.timeout(15_000),
-    });
-    if (!response.ok) console.warn(`[cron] suite de l’index du marché refusée (${response.status})`);
-  } catch (error) {
-    console.warn('[cron] suite de l’index du marché non partie :', error instanceof Error ? error.message : error);
+  // Deux essais : un appel perdu arrêtait le relevé de toute la journée.
+  for (const essai of [1, 2]) {
+    try {
+      const response = await fetch(`${env.APP_URL.replace(/\/+$/, '')}/api/cron/marche/suite`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${env.CRON_SECRET}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ maillon }),
+        signal: AbortSignal.timeout(15_000),
+      });
+      if (response.ok) return;
+      console.warn(`[cron] suite de l’index du marché refusée (${response.status}), essai ${essai}`);
+    } catch (error) {
+      console.warn(`[cron] suite de l’index du marché non partie, essai ${essai} :`, error instanceof Error ? error.message : error);
+    }
   }
 }
 
@@ -250,8 +265,8 @@ cronRouter.post(
     const { maillon } = parsed.data;
     res.status(202).json({ accepted: true, maillon });
     runInBackground(async () => {
-      const index = await indexDiscoveredStores(230_000);
-      await detectAlerts();
+      const index = await indexDiscoveredStores(MARKET_RUN_MS);
+      await detectAlerts().catch((error: unknown) => console.warn('[cron] alertes :', error instanceof Error ? error.message : error));
       console.info(`[cron] index du marché, maillon ${maillon} : ${index.indexed} relevées, ${index.failed} en échec, ${index.remaining} en attente`);
       if (index.remaining > 0) await chainMarketIndex(maillon + 1);
     }, 'index du marché, suite');

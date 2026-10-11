@@ -316,6 +316,12 @@ export interface StorePreview {
 export type AlertKind = 'winner' | 'niche_trend' | 'ad_stopped' | 'first_traction' | 'daily_scale' | 'flash_scale' | 'stockout';
 export type AlertLevel = 'info' | 'opportunity' | 'major';
 
+/** Ce qui alimente le fil des alertes : boutiques sous veille, et jours récents où leurs ventes ont été relevées. */
+export interface AlertWatch {
+  stores: number;
+  readings: { day: string; stores: number }[];
+}
+
 /** Alerte du fil : ventes du jour d'un produit, lancement flash, publicité installée arrêtée, tendance de niche. */
 export interface AlertItem {
   id: string;

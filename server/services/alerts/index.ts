@@ -277,6 +277,32 @@ export async function listAlerts(userId: string, limit = 60): Promise<AlertView[
 }
 
 /** Alertes arrivées depuis la dernière ouverture du fil : le chiffre de la cloche. */
+/** Ce qui alimente le fil : les boutiques dont les ventes sont relevées, et quand elles l'ont été. */
+export interface AlertWatch {
+  /** Boutiques de l'index du marché. */
+  stores: number;
+  /** Jours récents où des ventes ont été relevées, du plus récent au plus ancien, avec le nombre de boutiques lues. */
+  readings: { day: string; stores: number }[];
+}
+
+/**
+ * État de la veille, lu sur les relevés eux-mêmes — pas sur le passage du réveil : un passage
+ * qui n'a rien lu ne compte pas. Les alertes se calculent d'un jour sur l'autre ; « aucune
+ * alerte » ne veut dire « rien ne bouge » que si les boutiques ont bien été relevées.
+ */
+export async function alertWatch(now = new Date()): Promise<AlertWatch> {
+  const [index] = await getDb().select({ stores: sql<number>`count(distinct ${marketProducts.storeHost})` }).from(marketProducts);
+  const since = dayOf(new Date(now.getTime() - 13 * JOUR_MS));
+  const days = await getDb()
+    .select({ day: marketSalesDaily.day, stores: sql<number>`count(distinct ${marketProducts.storeHost})` })
+    .from(marketSalesDaily)
+    .innerJoin(marketProducts, eq(marketProducts.id, marketSalesDaily.productId))
+    .where(gte(marketSalesDaily.day, since))
+    .groupBy(marketSalesDaily.day)
+    .orderBy(desc(marketSalesDaily.day));
+  return { stores: Number(index?.stores ?? 0), readings: days.map((entry) => ({ day: entry.day, stores: Number(entry.stores) })) };
+}
+
 export async function countUnreadAlerts(userId: string): Promise<number> {
   const [user] = await getDb().select({ seenAt: users.alertsSeenAt }).from(users).where(eq(users.id, userId)).limit(1);
   const [row] = await getDb()
