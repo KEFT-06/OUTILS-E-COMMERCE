@@ -309,6 +309,13 @@
       "when": 1791691105517,
       "tag": "0043_recherche_par_le_collecteur",
       "breakpoints": true
+    },
+    {
+      "idx": 44,
+      "version": "7",
+      "when": 1791694531083,
+      "tag": "0044_parcours_audio",
+      "breakpoints": true
     }
   ]
 }

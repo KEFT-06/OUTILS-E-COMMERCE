@@ -165,9 +165,6 @@ export function AdminContentPage() {
                 <li key={row.format} className="flex items-baseline justify-between gap-3 py-2 text-sm first:pt-0 last:pb-0">
                   <span>
                     {labelOf(FILE_FORMAT_LABELS, row.format)}
-                    {row.format === 'mp3' && (
-                      <span className="block text-xs text-muted-foreground">Aucune génération audio n’existe encore dans Smart Creator.</span>
-                    )}
                   </span>
                   <span className="font-semibold tabular-nums">{row.files.toLocaleString('fr-FR')}</span>
                 </li>

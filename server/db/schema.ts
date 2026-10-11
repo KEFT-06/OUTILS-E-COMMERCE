@@ -47,6 +47,8 @@ export const GENERATION_KINDS = [
   'niche_analysis',
   'product_writing',
   'launch_kit_writing',
+  // Lecture à voix haute d'un module (parcours audio).
+  'audio',
 ] as const;
 
 export const PAYMENT_METHODS = ['mobile_money', 'card', 'bank_transfer', 'cash', 'chariow', 'other'] as const;
@@ -297,6 +299,37 @@ export const covers = pgTable(
     updatedAt: moment('updated_at').notNull().defaultNow(),
   },
   (table) => [index('covers_subject_idx').on(table.userId, table.subject, table.subjectId)],
+).enableRLS();
+
+/**
+ * Parcours audio : la lecture à voix haute d'un module d'un ouvrage, en MP3.
+ *
+ * Une piste par module (la suivante la remplace). Le fichier est au stockage de fichiers
+ * (`storagePath`) ; `data` ne sert que sur un serveur sans stockage, pour une piste courte.
+ */
+export const audioTracks = pgTable(
+  'audio_tracks',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    userId: uuid('user_id')
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
+    /** L'ouvrage : identifiant du produit dans le Studio. */
+    subjectId: text('subject_id').notNull(),
+    /** Rang du module dans l'ouvrage, à partir de 1. */
+    position: integer('position').notNull(),
+    title: text('title').notNull().default(''),
+    voice: text('voice').notNull(),
+    seconds: integer('seconds').notNull(),
+    bytes: integer('bytes').notNull(),
+    storagePath: text('storage_path'),
+    /** Fichier encodé en base64, faute de stockage de fichiers. */
+    data: text('data'),
+    createdAt: createdAt(),
+    /** Fin de conservation, celle des vidéos du palier ; null : sans limite. */
+    expiresAt: moment('expires_at'),
+  },
+  (table) => [index('audio_tracks_subject_idx').on(table.userId, table.subjectId, table.position), index('audio_tracks_expiry_idx').on(table.expiresAt)],
 ).enableRLS();
 
 /**

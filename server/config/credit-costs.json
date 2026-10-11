@@ -95,6 +95,14 @@
       "description": "Visuel unique au format demandé."
     },
     {
+      "id": "audio_reading",
+      "label": "Lecture audio d’un module",
+      "cost": 1,
+      "perUnit": 10,
+      "unitLabel": "minutes",
+      "description": "Un module de votre ouvrage lu à voix haute, avec la voix que vous choisissez, à écouter ici et à télécharger en MP3 pour le vendre. Compté par tranche de 10 minutes d’audio entamée ; la durée est annoncée avant de lancer. Points rendus si la lecture échoue."
+    },
+    {
       "id": "cover_generation",
       "label": "Couverture d'un ebook ou d'un guide",
       "cost": 1,

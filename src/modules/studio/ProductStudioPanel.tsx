@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { toast } from 'sonner';
 import { AlertTriangle, BookOpen, FileDown, FileText, PenSquare, Sparkles } from 'lucide-react';
+import { AudioCoursePanel } from '@/modules/studio/AudioCoursePanel';
 import { LongformEbookPanel } from '@/modules/studio/LongformEbookPanel';
 import { ProductExpertEditor } from '@/modules/studio/ProductExpertEditor';
 import { ProductPreviewPanel } from '@/modules/studio/ProductPreviewPanel';
@@ -300,6 +301,9 @@ export function ProductStudioPanel({ baseProduct, report, initialExpertOpen = fa
         {textReady && (
           <LongformEbookPanel product={product} market={report?.market ?? null} writing={writing} />
         )}
+
+        {/* L'ouvrage rédigé se fait aussi écouter : un module, une piste. */}
+        <AudioCoursePanel key={baseProduct.id} product={product} available={textReady} />
 
         {writtenPages !== null && (
           <Alert variant="info">

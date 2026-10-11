@@ -7,6 +7,7 @@ import { collectPerformanceContributions } from '@server/services/performanceLoo
 import { discoveryIsDue, harvestCollectionRuns, runDiscovery } from '@server/services/radar/discovery';
 import { purgeStaleThumbnails, storeMissingAvatars, storeMissingThumbnails } from '@server/services/espionnage/media';
 import { sweepSessions } from '@server/services/auth/sessions';
+import { purgeExpiredAudio } from '@server/services/audio';
 import { archivePendingVideos, purgeExpiredVideos } from '@server/services/creatives/archive';
 import { purgeStaleVideoUploads } from '@server/services/writing/videoUpload';
 import { continueEbookInBackground, resumeEbookJobs } from '@server/services/writing/ebookJobs';
@@ -147,6 +148,10 @@ cronRouter.get(
     const expired = await purgeExpiredVideos().catch((error: unknown) => {
       console.warn('[cron] effacement des vidéos échues :', error instanceof Error ? error.message : error);
       return null;
+    });
+    // Les pistes audio suivent la conservation des vidéos du palier : même passage.
+    await purgeExpiredAudio().catch((error: unknown) => {
+      console.warn('[cron] effacement des pistes audio échues :', error instanceof Error ? error.message : error);
     });
     const uploads = await purgeStaleVideoUploads().catch((error: unknown) => {
       console.warn('[cron] effacement des dépôts abandonnés :', error instanceof Error ? error.message : error);

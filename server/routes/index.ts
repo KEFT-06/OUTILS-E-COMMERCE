@@ -16,6 +16,7 @@ import { affiliationRouter, marketplacesRouter } from '@server/routes/marketplac
 import { marketRouter } from '@server/routes/market';
 import { publicRouter } from '@server/routes/public';
 import { radarRouter } from '@server/routes/radar';
+import { audioRouter } from '@server/routes/audio';
 import { referralRouter } from '@server/routes/referral';
 import { reportsRouter } from '@server/routes/reports';
 import { storybookRouter } from '@server/routes/storybook';
@@ -48,6 +49,7 @@ api.use('/workspace', workspaceRouter);
 api.use('/writing', writingRouter);
 api.use('/guides', guidesRouter);
 api.use('/covers', coversRouter);
+api.use('/audio', audioRouter);
 api.use('/reviews', reviewsRouter);
 api.use('/storybook', storybookRouter);
 api.use('/creatives', creativesRouter);

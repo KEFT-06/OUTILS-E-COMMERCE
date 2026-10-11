@@ -26,6 +26,8 @@ export type GenerationState = 'pending' | 'completed' | 'failed';
 export async function runBilledGeneration<T>(input: {
   auth: RequestAuth;
   actionId: string;
+  /** Quantité facturée, pour une action comptée par tranche (minutes d'audio) ; une tranche par défaut. */
+  units?: number;
   kind: GenerationKind;
   provider: string;
   run: () => Promise<T>;
@@ -37,7 +39,7 @@ export async function runBilledGeneration<T>(input: {
   request?: Record<string, unknown>;
 }): Promise<{ result: T; generation: GenerationRow }> {
   const { account } = input.auth;
-  const cost = await getActionCost(input.actionId);
+  const cost = await getActionCost(input.actionId, input.units ?? 1);
   const debit = await debitCredits({
     userId: account.user.id,
     cost,
