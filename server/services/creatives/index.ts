@@ -17,6 +17,7 @@ import {
 import { cloudflareImagesConfigured } from '@server/services/ai/cloudflareImage';
 import { geminiImagesConfigured } from '@server/services/ai/geminiImage';
 import { fetchArchivedVideo } from '@server/services/creatives/archive';
+import type { VisualBriefing } from '@server/services/creatives/artDirection';
 import { AD_FRAMEWORK_IDS, findAdFramework } from '@server/shared/adFrameworks';
 import { countryName } from '@server/shared/countries';
 
@@ -245,11 +246,33 @@ function buildPrompt(brief: VisualBrief | VideoBrief, options: { maxLength: numb
   return [...head, `Scene: ${scene}`, ...tail].join('\n').slice(0, options.maxLength);
 }
 
-/** Consigne et format envoyés au moteur d'images. Fonction pure, testable sans appel réseau. */
-export function buildVisualInput(brief: VisualBrief) {
+/**
+ * Consigne et format envoyés au moteur d'images. Fonction pure, testable sans appel réseau.
+ *
+ * `scene` : la scène écrite par la direction artistique (creatives/artDirection.ts). Elle prend la
+ * place de la description de l'auteur, jamais celle des garde-fous qui l'entourent.
+ */
+export function buildVisualInput(brief: VisualBrief, scene?: string | null) {
   return {
-    prompt: buildPrompt(brief, { maxLength: VISUAL_PROMPT_MAX }),
+    prompt: buildPrompt(scene ? { ...brief, sceneDescription: scene } : brief, { maxLength: VISUAL_PROMPT_MAX }),
     aspect_ratio: brief.format,
+  };
+}
+
+/** Le brief d'un visuel, tel que la direction artistique le reçoit. Fonction pure. */
+export function visualBriefingOf(brief: VisualBrief): VisualBriefing {
+  const framework = brief.purpose === 'content' ? null : findAdFramework(brief.adFramework);
+  return {
+    productName: brief.productName,
+    purpose: brief.purpose,
+    direction: AWARENESS_DIRECTION[brief.awarenessLevel],
+    beats: framework ? framework.steps.map((step, index) => brief.frameworkBeats?.[index]?.trim() || step.direction) : [],
+    audience: brief.audience,
+    idea: brief.sceneDescription,
+    style: brief.visualStyle,
+    market: countryName(brief.market, 'en'),
+    format: brief.format,
+    hasText: Boolean(brief.onScreenText),
   };
 }
 

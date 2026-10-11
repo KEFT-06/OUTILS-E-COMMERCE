@@ -8,6 +8,7 @@ import {
   type VideoBrief,
   type VisualBrief,
   buildVisualInput,
+  visualBriefingOf,
   creativeText,
   extendVideo,
   extensionSchema,
@@ -23,6 +24,7 @@ import {
   VIDEO_PROVIDER,
 } from '@server/services/creatives';
 import { VEO_KEEPS_DAYS, videoArchiveConfigured, videoRetentionDaysFor } from '@server/services/creatives/archive';
+import { visualArtDirection } from '@server/services/creatives/artDirection';
 import { createLocalVisual, listLocalVisuals, localVisualExists, sendLocalVisual } from '@server/services/creatives/local';
 import type { CreativeProvider, CreativeStatus } from '@server/services/creatives';
 import { falRequestIdSchema } from '@server/services/fal';
@@ -130,7 +132,11 @@ creativesRouter.post(
       actionId: 'image_generation',
       kind: 'image',
       provider: 'interne',
-      run: () => createLocalVisual(req.auth!, { prompt: buildVisualInput(brief).prompt, format: brief.format }),
+      run: async () => {
+        // La direction artistique écrit la scène ; si elle se tait, la description de l'auteur part telle quelle.
+        const scene = await visualArtDirection(visualBriefingOf(brief));
+        return createLocalVisual(req.auth!, { prompt: buildVisualInput(brief, scene).prompt, format: brief.format });
+      },
       describe: (image) => ({
         providerRef: image.requestId,
         state: 'completed',
