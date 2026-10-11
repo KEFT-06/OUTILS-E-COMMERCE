@@ -33,10 +33,16 @@ jobs:
       - name: Demander un passage de veille au site
         env:
           CRON_SECRET: ${{ secrets.CRON_SECRET }}
+          # Vrai ou faux, jamais la valeur : dit seulement si elle a été rangée au mauvais endroit.
+          RANGE_EN_VARIABLE: ${{ vars.CRON_SECRET != '' }}
           SITE: ${{ vars.COLLECTE_SITE || 'https://www.smartcreatorcm.com' }}
         run: |
           if [ -z "$CRON_SECRET" ]; then
-            echo "::error title=Veille continue::CRON_SECRET est absent des secrets du dépôt : ajoutez-le (Settings → Secrets and variables → Actions), avec la même valeur que sur le site."
+            if [ "$RANGE_EN_VARIABLE" = "true" ]; then
+              echo "::error title=Secret mal rangé::CRON_SECRET est enregistré comme VARIABLE du dépôt, pas comme SECRET : un atelier ne lit un secret que dans l'onglet Secrets. Settings → Secrets and variables → Actions → onglet Secrets → New repository secret, nom CRON_SECRET, même valeur que sur le site ; puis supprimez la variable."
+            else
+              echo "::error title=Secret absent::CRON_SECRET est absent des secrets du dépôt. Settings → Secrets and variables → Actions → onglet Secrets → New repository secret (et non un secret d'environnement), nom CRON_SECRET, même valeur que sur le site."
+            fi
             exit 1
           fi
           statut=$(curl -sS -o reponse.json -w '%{http_code}' --max-time 280 -H "Authorization: Bearer $CRON_SECRET" "$SITE/api/cron/veille" || echo "000")
