@@ -8,6 +8,7 @@ import { AnalysisProgress } from '@/modules/analyse/AnalysisProgress';
 import { PageHeader } from '@/shared/components/PageHeader';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/shared/ui/tabs';
 import { useCustomProducts } from '@/shared/stores/useCustomProducts';
+import { useRemovedProducts } from '@/shared/stores/useRemovedProducts';
 import type { DigitalProductIdea, MarketAnalysisReport } from '@/shared/types/analysis';
 import { Button } from '@/shared/ui/button';
 import { Empty, EmptyDescription, EmptyHeader, EmptyTitle } from '@/shared/ui/empty';
@@ -123,7 +124,8 @@ function RequireProducts({
 }) {
   const { currentReport, isLoadingReport, setAnalysisDialogOpen } = useWorkspace();
   const custom = useCustomProducts();
-  const products = [...(currentReport?.digitalProducts ?? []), ...custom.products];
+  const removed = useRemovedProducts();
+  const products = [...removed.keep(currentReport?.digitalProducts ?? []), ...custom.products];
 
   if (products.length > 0) return <>{children(products, currentReport)}</>;
   if (isLoadingReport || custom.status === 'loading') return <LoadingWorkspace />;

@@ -23,6 +23,8 @@ export const WORKSPACE_KINDS = {
   launch_kits: { shape: 'object', maxBytes: 512_000 },
   product_pages: { shape: 'object', maxBytes: 512_000 },
   niche_catalog: { shape: 'object', maxBytes: 256_000 },
+  /** Identifiants des produits d'analyse que le compte a supprimés de ses listes. */
+  removed_products: { shape: 'array', maxBytes: 64_000 },
 } as const;
 
 export type WorkspaceKind = keyof typeof WORKSPACE_KINDS;

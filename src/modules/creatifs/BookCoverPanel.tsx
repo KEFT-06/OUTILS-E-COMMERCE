@@ -11,6 +11,7 @@ import { ZoomableImage } from '@/shared/components/ZoomableImage';
 import { type CoverView, coversApi, isCompleteCover } from '@/shared/lib/covers';
 import { toFileSlug } from '@/shared/lib/pdfText';
 import { useCustomProducts } from '@/shared/stores/useCustomProducts';
+import { useRemovedProducts } from '@/shared/stores/useRemovedProducts';
 import { useProductDrafts } from '@/shared/stores/useProductDrafts';
 import { cn } from '@/shared/lib/utils';
 import { Button } from '@/shared/ui/button';
@@ -52,10 +53,11 @@ export function BookCoverPanel() {
   const { currentReport } = useWorkspace();
   const { account } = useAuth();
   const custom = useCustomProducts();
+  const removed = useRemovedProducts();
   const drafts = useProductDrafts();
 
   // Les produits du compte d'abord (les plus récents en tête), puis ceux de la niche analysée.
-  const products = [...custom.products, ...(currentReport?.digitalProducts ?? [])].map((product) => drafts.effective(product));
+  const products = [...custom.products, ...removed.keep(currentReport?.digitalProducts ?? [])].map((product) => drafts.effective(product));
 
   /** `null` : pas encore choisi — le premier produit du compte, ou un titre libre s'il n'y en a pas. */
   const [chosen, setChosen] = useState<string | null>(null);

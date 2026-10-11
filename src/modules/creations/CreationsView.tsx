@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
-import { AlarmClock, BookOpen, Clapperboard, FileText, Headphones, Languages, PenSquare, Search } from 'lucide-react';
+import { AlarmClock, BookOpen, Clapperboard, FileText, Headphones, Languages, PenSquare, Search, Trash2 } from 'lucide-react';
+import { toast } from 'sonner';
 import { formatAudioDuration } from '@server/shared/audio';
 import { useWorkspace } from '@/app/providers/WorkspaceProvider';
 import { MyVideosPanel } from '@/modules/creatifs/MyVideosPanel';
@@ -13,14 +14,17 @@ import { useCachedState } from '@/shared/lib/apiCache';
 import { audioApi } from '@/shared/lib/audio';
 import { formatDateFr } from '@/shared/lib/formatDate';
 import { useCustomProducts } from '@/shared/stores/useCustomProducts';
+import { useDeleteProduct } from '@/shared/stores/useDeleteProduct';
 import { type ProductCover, useProductCovers } from '@/shared/stores/useProductCovers';
 import { useProductDrafts } from '@/shared/stores/useProductDrafts';
+import { useRemovedProducts, withoutRemoved } from '@/shared/stores/useRemovedProducts';
 import { refreshExpiringVideos } from '@/shared/stores/useExpiringVideos';
 import type { DigitalProductIdea } from '@/shared/types/analysis';
 import { Alert, AlertDescription, AlertTitle } from '@/shared/ui/alert';
 import { Badge } from '@/shared/ui/badge';
 import { Button } from '@/shared/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/shared/ui/card';
+import { Dialog, DialogClose, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/shared/ui/dialog';
 import { Empty, EmptyDescription, EmptyHeader, EmptyTitle } from '@/shared/ui/empty';
 import { Input } from '@/shared/ui/input';
 import { Skeleton } from '@/shared/ui/skeleton';
@@ -58,7 +62,19 @@ const departVideo = (product: DigitalProductIdea) => ({
   },
 });
 
-function ProductRow({ product, written, cover, audio }: { product: DigitalProductIdea; written: boolean; cover: ProductCover | undefined; audio: { tracks: number; seconds: number } | undefined }) {
+function ProductRow({
+  product,
+  written,
+  cover,
+  audio,
+  onDelete,
+}: {
+  product: DigitalProductIdea;
+  written: boolean;
+  cover: ProductCover | undefined;
+  audio: { tracks: number; seconds: number } | undefined;
+  onDelete: (product: DigitalProductIdea) => void;
+}) {
   const navigate = useNavigate();
   return (
     <li className="flex gap-4 rounded-lg border bg-card p-3">
@@ -91,6 +107,10 @@ function ProductRow({ product, written, cover, audio }: { product: DigitalProduc
           <Button size="sm" variant="outline" onClick={() => void navigate('/app/creatifs', { state: departVideo(product) })}>
             <Clapperboard />
             Générer la vidéo associée
+          </Button>
+          <Button size="sm" variant="ghost" className="text-muted-foreground hover:text-destructive" aria-label={`Supprimer « ${product.title} »`} onClick={() => onDelete(product)}>
+            <Trash2 />
+            Supprimer
           </Button>
         </div>
       </div>
@@ -146,6 +166,16 @@ export function CreationsView() {
   const { currentReport, isLoadingReport } = useWorkspace();
   const custom = useCustomProducts();
   const drafts = useProductDrafts();
+  const removed = useRemovedProducts();
+  const deleteProduct = useDeleteProduct();
+  // L'ouvrage dont la suppression est demandée, le temps de la confirmer.
+  const [aSupprimer, setASupprimer] = useState<DigitalProductIdea | null>(null);
+  const supprimer = () => {
+    if (!aSupprimer) return;
+    deleteProduct(aSupprimer);
+    toast.success(`« ${aSupprimer.title} » est supprimé`);
+    setASupprimer(null);
+  };
   const covers = useProductCovers();
   const [guides, setGuides] = useCachedState<{ guides: GuideSummary[] }>('/api/guides');
   const [videos, setVideos] = useState<VideoEcheance[]>([]);
@@ -171,13 +201,13 @@ export function CreationsView() {
   }, [setGuides]);
 
   const produits = useMemo(() => {
-    const tous = [...custom.products, ...(currentReport?.digitalProducts ?? [])];
+    const tous = [...custom.products, ...withoutRemoved(currentReport?.digitalProducts ?? [], removed.ids)];
     const mot = recherche.trim().toLowerCase();
     return (mot ? tous.filter((product) => product.title.toLowerCase().includes(mot)) : tous).map((product) => ({
       product: drafts.effective(product),
       written: drafts.hasDraft(product.id),
     }));
-  }, [custom.products, currentReport, drafts, recherche]);
+  }, [custom.products, currentReport, drafts, recherche, removed.ids]);
 
   const guidesVisibles = useMemo(() => {
     const mot = recherche.trim().toLowerCase();
@@ -194,6 +224,26 @@ export function CreationsView() {
 
   return (
     <div className="space-y-6">
+      <Dialog open={aSupprimer !== null} onOpenChange={(open) => !open && setASupprimer(null)}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Supprimer « {aSupprimer?.title} » ?</DialogTitle>
+            <DialogDescription>
+              Sa fiche, son texte, sa couverture et ses pistes audio seront effacés de votre compte. Les kits et pages produits
+              qui en partent ne s’afficheront plus. Cette suppression est définitive.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter className="gap-2 sm:gap-2">
+            <DialogClose asChild>
+              <Button variant="outline">Annuler</Button>
+            </DialogClose>
+            <Button variant="destructive" onClick={supprimer}>
+              <Trash2 />
+              Supprimer
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
       <PageHeader eyebrow="Créer" title="Mes créations" description="Tout ce que vous avez produit, au même endroit : vos textes, vos vidéos et vos visuels." />
 
       {bientot.length > 0 && (
@@ -263,7 +313,7 @@ export function CreationsView() {
               ) : (
                 <ul className="grid grid-cols-1 gap-3 lg:grid-cols-2">
                   {produits.map(({ product, written }) => (
-                    <ProductRow key={product.id} product={product} written={written} cover={covers[product.id]} audio={audio[product.id]} />
+                    <ProductRow key={product.id} product={product} written={written} cover={covers[product.id]} audio={audio[product.id]} onDelete={setASupprimer} />
                   ))}
                 </ul>
               )}

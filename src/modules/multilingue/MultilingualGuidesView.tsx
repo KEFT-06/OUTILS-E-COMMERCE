@@ -15,6 +15,7 @@ import { PageHeader } from '@/shared/components/PageHeader';
 import { ApiError, toApiError } from '@/shared/lib/apiError';
 import { formatDateFr } from '@/shared/lib/formatDate';
 import { useCustomProducts } from '@/shared/stores/useCustomProducts';
+import { useRemovedProducts } from '@/shared/stores/useRemovedProducts';
 import { useProductDrafts } from '@/shared/stores/useProductDrafts';
 import type { DigitalProductIdea } from '@/shared/types/analysis';
 import { Alert, AlertDescription } from '@/shared/ui/alert';
@@ -64,7 +65,8 @@ function CreateGuideDialog({
   const { currentReport } = useWorkspace();
   const drafts = useProductDrafts();
   const custom = useCustomProducts();
-  const products = [...(currentReport?.digitalProducts ?? []), ...custom.products].map((product) => drafts.effective(product));
+  const removed = useRemovedProducts();
+  const products = [...removed.keep(currentReport?.digitalProducts ?? []), ...custom.products].map((product) => drafts.effective(product));
 
   /*
     « Traduire », depuis Mes créations : on arrive avec l'ouvrage déjà choisi et le formulaire

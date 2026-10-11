@@ -91,6 +91,19 @@ describe('Brouillons de l’espace de travail', () => {
     const { agent: other } = await signUp(app, { name: 'Autre Catalogue', email: 'autre-catalogue@exemple.com' });
     assert.equal((await other.get('/api/workspace/niche_catalog').expect(200)).body.data, null, 'le catalogue d’un compte ne se voit pas d’un autre');
   });
+
+  it('retient les produits d’analyse que le compte a supprimés de ses listes', async () => {
+    const { agent } = await signUp(app, { name: 'Awa Supprime', email: 'supprime-ebook@exemple.com' });
+    assert.equal((await agent.get('/api/workspace/removed_products').expect(200)).body.data, null);
+
+    // Un ebook proposé par une analyse ne peut pas être retiré du rapport : son identifiant est noté ici.
+    await agent.put('/api/workspace/removed_products').send({ data: ['idee-ebook-1', 'idee-ebook-2'] }).expect(200);
+    assert.deepEqual((await agent.get('/api/workspace/removed_products').expect(200)).body.data, ['idee-ebook-1', 'idee-ebook-2']);
+    await agent.put('/api/workspace/removed_products').send({ data: { pas: 'une liste' } }).expect(400);
+
+    const { agent: other } = await signUp(app, { name: 'Autre Supprime', email: 'autre-supprime@exemple.com' });
+    assert.equal((await other.get('/api/workspace/removed_products').expect(200)).body.data, null, 'ce qu’un compte supprime ne disparaît pas chez un autre');
+  });
 });
 
 describe('Historique des niches analysées', () => {

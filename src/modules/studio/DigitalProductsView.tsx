@@ -35,7 +35,9 @@ import { roundPrice } from '@server/shared/currency';
 import { useMoney } from '@/shared/lib/money';
 import { safeHttpUrl } from '@/shared/lib/safeUrl';
 import { blankProduct, useCustomProducts } from '@/shared/stores/useCustomProducts';
+import { useDeleteProduct } from '@/shared/stores/useDeleteProduct';
 import { useProductDrafts } from '@/shared/stores/useProductDrafts';
+import { useRemovedProducts, withoutRemoved } from '@/shared/stores/useRemovedProducts';
 import { useProviders } from '@/shared/hooks/useProviders';
 import { cn } from '@/shared/lib/utils';
 import type { TextProductResult, VideoProductResult, WritingFinding } from '@/shared/lib/writing';
@@ -93,7 +95,10 @@ export function DigitalProductsView({ report, onSelectProductForAd, onAnalyzeNic
   const { account } = useAuth();
   const { analysisJob, analyzeNiche, reports, selectReport } = useWorkspace();
 
-  const products = useMemo(() => [...(report?.digitalProducts ?? []), ...custom.products], [report, custom.products]);
+  const removed = useRemovedProducts();
+  const deleteProduct = useDeleteProduct();
+  // Les produits de l'analyse en cours, moins ceux que le compte a supprimés, puis ceux créés hors analyse.
+  const products = useMemo(() => [...withoutRemoved(report?.digitalProducts ?? [], removed.ids), ...custom.products], [report, custom.products, removed.ids]);
   // Produit créé depuis une alerte (« Créer un produit similaire ») : il s'ouvre directement.
   const demande = (useLocation().state as { produit?: unknown } | null)?.produit;
   const [selectedId, setSelectedId] = useState<string | null>(typeof demande === 'string' ? demande : null);
@@ -116,7 +121,6 @@ export function DigitalProductsView({ report, onSelectProductForAd, onAnalyzeNic
   const [adCost, setAdCost] = useState<number | null>(null);
   const [videoOpen, setVideoOpen] = useState(false);
   const [textOpen, setTextOpen] = useState(false);
-  const [deleteOpen, setDeleteOpen] = useState(false);
   const [findings, setFindings] = useState<WritingFinding[]>([]);
 
   useEffect(() => {
@@ -188,13 +192,14 @@ export function DigitalProductsView({ report, onSelectProductForAd, onAnalyzeNic
     toast.success('Produit tiré de la vidéo', { description: 'Relisez sa structure et ses modules avant de l’exporter.' });
   };
 
-  const removeSelected = () => {
-    if (!baseProduct) return;
-    custom.remove(baseProduct.id);
-    if (drafts.hasDraft(baseProduct.id)) drafts.discardDraft(baseProduct.id);
-    setSelectedId(null);
-    setDeleteOpen(false);
-    toast.success('Produit supprimé');
+  // L'ouvrage dont la suppression est demandée : celui d'une carte de la liste, ou celui qui est ouvert.
+  const [toDelete, setToDelete] = useState<DigitalProductIdea | null>(null);
+  const removeAsked = () => {
+    if (!toDelete) return;
+    deleteProduct(toDelete);
+    if (toDelete.id === baseProduct?.id) setSelectedId(null);
+    setToDelete(null);
+    toast.success(`« ${toDelete.title} » est supprimé`);
   };
 
   const videoReason = providers && !providers.text ? 'La rédaction automatique est momentanément indisponible.' : undefined;
@@ -330,14 +335,14 @@ export function DigitalProductsView({ report, onSelectProductForAd, onAnalyzeNic
           const Icon = FORMAT_ICONS[product.type as keyof typeof FORMAT_ICONS] ?? Package;
           const badge = originLabel(candidate);
           return (
+            <div key={candidate.id} className="relative flex">
             <button
-              key={candidate.id}
               type="button"
               role="radio"
               aria-checked={isSelected}
               onClick={() => selectProduct(candidate)}
               className={cn(
-                'flex gap-4 rounded-xl border bg-card p-4 text-left shadow-xs transition-colors hover:border-primary/50',
+                'flex w-full gap-4 rounded-xl border bg-card p-4 pb-12 text-left shadow-xs transition-colors hover:border-primary/50',
                 isSelected && 'border-primary ring-2 ring-primary/25',
               )}
             >
@@ -386,6 +391,18 @@ export function DigitalProductsView({ report, onSelectProductForAd, onAnalyzeNic
               </span>
               </span>
             </button>
+            <Button
+              type="button"
+              size="sm"
+              variant="ghost"
+              className="absolute right-2 bottom-2 text-muted-foreground hover:text-destructive"
+              aria-label={`Supprimer « ${product.title} »`}
+              onClick={() => setToDelete(product)}
+            >
+              <Trash2 />
+              Supprimer
+            </Button>
+            </div>
           );
         })}
       </div>
@@ -501,14 +518,12 @@ export function DigitalProductsView({ report, onSelectProductForAd, onAnalyzeNic
               </div>
             )}
 
-            {isCustom && (
-              <div className="flex justify-end border-t pt-4">
-                <Button variant="ghost" className="text-muted-foreground" onClick={() => setDeleteOpen(true)}>
-                  <Trash2 />
-                  Supprimer ce produit
-                </Button>
-              </div>
-            )}
+            <div className="flex justify-end border-t pt-4">
+              <Button variant="ghost" className="text-muted-foreground hover:text-destructive" onClick={() => setToDelete(selectedProduct)}>
+                <Trash2 />
+                Supprimer ce produit
+              </Button>
+            </div>
           </CardContent>
         </Card>
 
@@ -680,20 +695,21 @@ export function DigitalProductsView({ report, onSelectProductForAd, onAnalyzeNic
 
       {videoDialog}
 
-      <Dialog open={deleteOpen} onOpenChange={setDeleteOpen}>
+      <Dialog open={toDelete !== null} onOpenChange={(open) => !open && setToDelete(null)}>
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
-            <DialogTitle>Supprimer ce produit ?</DialogTitle>
+            <DialogTitle>Supprimer « {toDelete?.title} » ?</DialogTitle>
             <DialogDescription>
-              « {selectedProduct.title} » et ses retouches seront effacés de votre compte. Les kits et pages produits qui en
-              partent ne s’afficheront plus.
+              Sa fiche, son texte, sa couverture et ses pistes audio seront effacés de votre compte. Les kits et pages produits
+              qui en partent ne s’afficheront plus. Cette suppression est définitive.
             </DialogDescription>
           </DialogHeader>
           <DialogFooter className="gap-2 sm:gap-2">
             <DialogClose asChild>
               <Button variant="outline">Annuler</Button>
             </DialogClose>
-            <Button variant="destructive" onClick={removeSelected}>
+            <Button variant="destructive" onClick={removeAsked}>
+              <Trash2 />
               Supprimer
             </Button>
           </DialogFooter>
