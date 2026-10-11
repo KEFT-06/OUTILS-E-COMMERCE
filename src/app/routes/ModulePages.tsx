@@ -313,7 +313,12 @@ export function CreatifsPage() {
       {isLoadingReport && !currentReport ? (
         <Skeleton className="h-48 rounded-xl" />
       ) : (
-        <MetaVideoStudioView campaigns={currentReport?.adCampaigns ?? []} provenance={currentReport?.dataProvenance?.adCampaigns} />
+        <MetaVideoStudioView
+          campaigns={currentReport?.adCampaigns ?? []}
+          provenance={currentReport?.dataProvenance?.adCampaigns}
+          audience={currentReport?.audience?.profile}
+          market={currentReport?.market}
+        />
       )}
     </div>
   );

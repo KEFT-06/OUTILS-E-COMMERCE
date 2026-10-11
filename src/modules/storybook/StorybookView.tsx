@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
-import { AlertTriangle, BookOpen, CheckCircle2, Download, PenLine, Sparkles } from 'lucide-react';
+import { useNavigate } from 'react-router-dom';
+import { AlertTriangle, BookOpen, CheckCircle2, Clapperboard, Download, PenLine, Sparkles } from 'lucide-react';
 import { useCreditGate } from '@/app/providers/CreditGateProvider';
 import { PageHeader } from '@/shared/components/PageHeader';
 import { ApiError, readApiError, toApiError } from '@/shared/lib/apiError';
@@ -8,6 +9,7 @@ import { useAuth } from '@/features/auth/AuthContext';
 import { CountryCombobox } from '@/shared/components/CountryCombobox';
 import { guessCountryCode } from '@/shared/lib/geo';
 import { type StoryDraft, type StorybookBrief, type StorybookStatus, storybookPdfPath, storybookPicturePath } from '@/shared/types/storybook';
+import { VIDEO_SCREEN, videoFromStorybook } from '@/modules/creatifs/videoStart';
 import { StorybookLibrary } from '@/modules/storybook/StorybookLibrary';
 import { StoryPreviewPanel } from '@/modules/storybook/StoryPreviewPanel';
 import { Alert, AlertDescription, AlertTitle } from '@/shared/ui/alert';
@@ -51,6 +53,7 @@ const INITIAL_BRIEF: StorybookBrief = {
 
 export function StorybookView() {
   const { runWithCredits, costTable } = useCreditGate();
+  const navigate = useNavigate();
   /*
     Le prix vient de la grille servie par le serveur, jamais d’une constante recopiée ici :
     un tarif affiché sur un bouton et un tarif facturé qui divergent est la pire des
@@ -470,6 +473,15 @@ export function StorybookView() {
                   Télécharger le PDF
                 </a>
               </Button>
+              {story && (
+                <Button
+                  variant="outline"
+                  onClick={() => void navigate(VIDEO_SCREEN, { state: videoFromStorybook({ title: title ?? story.title, story, language: brief.language, country: brief.country }) })}
+                >
+                  <Clapperboard />
+                  Générer une vidéo pour le vendre
+                </Button>
+              )}
             </div>
           </CardContent>
         </Card>

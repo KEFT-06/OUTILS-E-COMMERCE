@@ -1,3 +1,4 @@
+import { type VideoLanguageCode, isVideoLanguage } from '@server/shared/languages';
 import type { AwarenessLevel, CreativeFormat, CreativeKind } from '@/shared/types/creatives';
 
 /**
@@ -35,6 +36,8 @@ export interface Brouillon {
   onScreenText: string;
   visualStyle: string;
   duration: VideoDuration;
+  /** Langue de la vidéo : celle de tout ce qui s'y entend. */
+  language: VideoLanguageCode;
 }
 
 const texte = (valeur: unknown, max: number) => (typeof valeur === 'string' ? valeur.slice(0, max) : '');
@@ -71,6 +74,8 @@ export function assainirBrouillon(brut: unknown): Partial<Brouillon> {
     onScreenText: texte(b.onScreenText, 120),
     visualStyle: texte(b.visualStyle, 300),
     duration,
+    // Une langue inconnue n'est pas restaurée : le serveur la refuserait, sur un brief que l'auteur croit valide.
+    ...(isVideoLanguage(b.language) ? { language: b.language } : {}),
   };
 }
 

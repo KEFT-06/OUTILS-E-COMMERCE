@@ -200,7 +200,7 @@ creativesRouter.post(
     const refus = extensionRefusal(parent);
     if (refus) throw new AppError(409, refus, 'VIDEO_NOT_EXTENDABLE');
 
-    const { sceneDescription } = req.body as { sceneDescription: string };
+    const { sceneDescription, language } = req.body as { sceneDescription: string; language?: string };
     await assertCompliantBrief(sceneDescription, 'La scène décrite contient des formulations non conformes : corrigez-la avant de prolonger la vidéo.');
     if (!veoConfigured()) throw providerUnavailable('rendu vidéo');
 
@@ -209,7 +209,7 @@ creativesRouter.post(
       actionId: 'video_extension',
       kind: 'video',
       provider: VIDEO_PROVIDER,
-      run: () => extendVideo(parsedId.data, sceneDescription),
+      run: () => extendVideo(parsedId.data, sceneDescription, language),
       describe: (status) => ({ providerRef: status.requestId, state: generationStateOf(status.status), fileFormat: fileFormatOf(status) }),
       video: { parentId: parent.id, durationSeconds: (parent.durationSeconds ?? 8) + VEO_EXTENSION_SECONDS, resolution: VEO_EXTENSION_RESOLUTION },
     });

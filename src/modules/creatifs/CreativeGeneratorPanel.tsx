@@ -7,10 +7,11 @@ import { apiRequest } from '@/shared/lib/api';
 import { ApiError, readApiError, toApiError } from '@/shared/lib/apiError';
 import { MAX_POLL_MISSES, lostTrackMessage, pollStatus } from '@/shared/lib/polling';
 import { AWARENESS_OPTIONS } from '@/shared/lib/awareness';
-import { findAdFramework } from '@server/shared/adFrameworks';
+import { findAdFramework, isAdFrameworkAvailable } from '@server/shared/adFrameworks';
+import { VIDEO_LANGUAGES, type VideoLanguageCode } from '@server/shared/languages';
 import { useAuth } from '@/features/auth/AuthContext';
 import { AdFrameworkPicker } from '@/modules/creatifs/AdFrameworkPicker';
-import { type AdReference, type AdStudy, readAdReference, readProductStart } from '@/modules/creatifs/adReference';
+import { type AdReference, type AdStudy, type ProductStart, readAdReference, readProductStart } from '@/modules/creatifs/adReference';
 import { CREATIVE_ATTESTATIONS } from '@/modules/creatifs/attestations';
 import { launchCreative } from '@/modules/creatifs/launchCreative';
 import { BookCoverPanel } from '@/modules/creatifs/BookCoverPanel';
@@ -29,6 +30,7 @@ import { Field, FieldDescription, FieldLabel } from '@/shared/ui/field';
 import { Input } from '@/shared/ui/input';
 import { Label } from '@/shared/ui/label';
 import { Progress } from '@/shared/ui/progress';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/shared/ui/select';
 import { Spinner } from '@/shared/ui/spinner';
 import { Textarea } from '@/shared/ui/textarea';
 
@@ -103,13 +105,36 @@ export function CreativeGeneratorPanel({
     de l'ouvrage — son titre, son public — sans rien ressaisir. Le reste du brouillon est remis à
     zéro : une scène écrite pour un autre produit n'a rien à faire ici.
   */
-  const [depart] = useState(() => readProductStart(location.state));
+  const [depart, setDepart] = useState(() => readProductStart(location.state));
+  const { account } = useAuth();
+  const frameworkLimit = account ? account.limits.adFrameworks : 0;
+  /**
+   * Le brief d'une vidéo, d'après ce dont on part. Une méthode que le palier n'ouvre pas n'est pas
+   * proposée : le serveur la refuserait, sur un brief que l'auteur n'a pas choisi.
+   */
+  const briefDe = (start: ProductStart, previous: Partial<Brouillon>): Partial<Brouillon> => {
+    const methode = start.methode && isAdFrameworkAvailable(start.methode, frameworkLimit) ? start.methode : null;
+    return {
+      market: start.marche ?? previous.market,
+      format: start.format ?? (previous.format && VIDEO_FORMATS.includes(previous.format) ? previous.format : '9:16'),
+      language: start.langue ?? previous.language,
+      kind: 'video',
+      purpose: 'ad',
+      productName: start.titre,
+      audience: start.public,
+      onScreenText: start.promesse,
+      sceneDescription: start.scene,
+      adFramework: methode,
+      frameworkBeats: methode ? start.temps : [],
+      awarenessLevel: start.niveau,
+    };
+  };
   const [initial] = useState<Partial<Brouillon>>(() =>
     reference
       ? // Le produit reste celui de l'auteur : le titre d'une annonce est celui d'un autre vendeur, pas le nom de son produit.
         { ...brouillon, kind: 'video', purpose: 'ad', productName: brouillon.productName ?? '' }
       : depart
-        ? { market: brouillon.market, format: brouillon.format, kind: 'video', purpose: 'ad', productName: depart.titre, audience: depart.public, onScreenText: depart.promesse.slice(0, 80) }
+        ? briefDe(depart, brouillon)
         : brouillon,
   );
 
@@ -119,8 +144,9 @@ export function CreativeGeneratorPanel({
   const [productName, setProductName] = useState(initial.productName ?? '');
   const [awarenessLevel, setAwarenessLevel] = useState<AwarenessLevel | null>(initial.awarenessLevel ?? null);
   const [format, setFormat] = useState<CreativeFormat>(initial.format ?? '9:16');
-  const { account } = useAuth();
   const [market, setMarket] = useState(() => initial.market ?? account?.country ?? guessCountryCode() ?? 'CI');
+  /** Langue de la vidéo. Le français par défaut : c'est celle de la plupart des auteurs, et le moteur ne la devine pas. */
+  const [language, setLanguage] = useState<VideoLanguageCode>(initial.language ?? 'fr');
   const [purpose, setPurpose] = useState<'ad' | 'content'>(initial.purpose ?? 'ad');
   const [adFramework, setAdFramework] = useState<string | null>(initial.adFramework ?? null);
   const [frameworkBeats, setFrameworkBeats] = useState<string[]>(initial.frameworkBeats ?? []);
@@ -129,6 +155,40 @@ export function CreativeGeneratorPanel({
   const [onScreenText, setOnScreenText] = useState(initial.onScreenText ?? '');
   const [visualStyle, setVisualStyle] = useState(initial.visualStyle ?? '');
   const [duration, setDuration] = useState<VideoDuration>(initial.duration ?? 6);
+
+  /*
+    « Créer cette vidéo », cliqué sur un script affiché plus bas sur CE même écran : le panneau est
+    déjà monté, l'état de navigation change sans lui. On remplit donc le brief à chaque nouvelle
+    arrivée, et on le ramène sous les yeux.
+  */
+  const panneau = useRef<HTMLDivElement>(null);
+  const arrivee = useRef(location.key);
+  useEffect(() => {
+    if (arrivee.current === location.key) return;
+    arrivee.current = location.key;
+    const start = readProductStart(location.state);
+    if (!start) return;
+    const brief = briefDe(start, { market, format, language });
+    setDepart(start);
+    setReference(null);
+    setBookMode(false);
+    setKind('video');
+    setPurpose('ad');
+    setProductName(brief.productName ?? '');
+    setAudience(brief.audience ?? '');
+    setOnScreenText(brief.onScreenText ?? '');
+    setSceneDescription(brief.sceneDescription ?? '');
+    setAdFramework(brief.adFramework ?? null);
+    setFrameworkBeats(brief.frameworkBeats ?? []);
+    setAwarenessLevel(brief.awarenessLevel ?? null);
+    if (brief.market) setMarket(brief.market);
+    if (brief.format) setFormat(brief.format);
+    if (brief.language) setLanguage(brief.language);
+    panneau.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    // Ne réagit qu'à une nouvelle arrivée : les réglages du moment sont lus, pas suivis.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [location.key]);
+
   /** Ce que l'outil a vu dans la vidéo de la publicité de référence. */
   const [etude, setEtude] = useState<AdStudy | null>(null);
   const [etudeEnCours, setEtudeEnCours] = useState(false);
@@ -185,13 +245,14 @@ export function CreativeGeneratorPanel({
       onScreenText,
       visualStyle,
       duration,
+      language,
     };
     try {
       window.localStorage.setItem(CLE_BROUILLON, JSON.stringify(brouillon));
     } catch {
       // Stockage indisponible : le formulaire marche, il ne survivra simplement pas à un rechargement.
     }
-  }, [kind, productName, awarenessLevel, format, market, purpose, adFramework, frameworkBeats, audience, sceneDescription, onScreenText, visualStyle, duration]);
+  }, [kind, productName, awarenessLevel, format, market, purpose, adFramework, frameworkBeats, audience, sceneDescription, onScreenText, visualStyle, duration, language]);
 
   /** Repartir d'une page blanche, sur demande explicite : un brouillon ne s'efface pas tout seul. */
   const nouveauBrief = () => {
@@ -203,6 +264,7 @@ export function CreativeGeneratorPanel({
     setSceneDescription('');
     setOnScreenText('');
     setVisualStyle('');
+    setDepart(null);
     try {
       window.localStorage.removeItem(CLE_BROUILLON);
     } catch {
@@ -304,7 +366,7 @@ export function CreativeGeneratorPanel({
           const submitted = await fetch(`/api/creatives/videos/${encodeURIComponent(parent)}/extend`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ sceneDescription: sceneSuivante.trim() }),
+            body: JSON.stringify({ sceneDescription: sceneSuivante.trim(), language }),
           });
           if (!submitted.ok) throw await readApiError(submitted, `La prolongation a échoué (${submitted.status}).`);
           const status = await suivre((await submitted.json()) as CreativeStatus, 'video');
@@ -346,7 +408,7 @@ export function CreativeGeneratorPanel({
       ...(audience.trim() ? { audience: audience.trim() } : {}),
       ...(onScreenText.trim() ? { onScreenText: onScreenText.trim() } : {}),
       ...(visualStyle.trim() ? { visualStyle: visualStyle.trim() } : {}),
-      ...(generationKind === 'video' ? { duration: longue ? 8 : duration, ...(longue ? { extendable: true } : {}) } : {}),
+      ...(generationKind === 'video' ? { duration: longue ? 8 : duration, language, ...(longue ? { extendable: true } : {}) } : {}),
     };
 
     setError(null);
@@ -389,7 +451,7 @@ export function CreativeGeneratorPanel({
     cn('flex-1 whitespace-normal', active && 'border-primary bg-accent text-accent-foreground hover:bg-accent');
 
   return (
-    <Card>
+    <Card ref={panneau} className="scroll-mt-20">
       <CardHeader>
         <CardTitle className="text-lg">{bookMode ? 'Créer la couverture d’un livre' : 'Générer un visuel ou une vidéo'}</CardTitle>
         <CardDescription>
@@ -499,6 +561,15 @@ export function CreativeGeneratorPanel({
               <Button type="button" variant="link" className="h-auto p-0" onClick={() => setReference(null)}>
                 Retirer la référence
               </Button>
+            </AlertDescription>
+          </Alert>
+        )}
+        {depart?.origine && !reference && (
+          <Alert variant="info">
+            <Sparkles />
+            <AlertTitle>Votre brief est prêt</AlertTitle>
+            <AlertDescription>
+              Il est rempli d’après {depart.origine}. Relisez-le, changez ce que vous voulez, puis générez la vidéo.
             </AlertDescription>
           </Alert>
         )}
@@ -644,8 +715,27 @@ export function CreativeGeneratorPanel({
               />
             </Field>
 
+            {kind === 'video' && (
+              <Field>
+                <FieldLabel htmlFor="creative-language">Langue de la vidéo</FieldLabel>
+                <Select value={language} onValueChange={(value) => setLanguage(value as VideoLanguageCode)} disabled={isGenerating}>
+                  <SelectTrigger id="creative-language" className="w-full">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {VIDEO_LANGUAGES.map((entry) => (
+                      <SelectItem key={entry.code} value={entry.code}>
+                        {entry.fr}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                <FieldDescription>Tout ce qui se dit dans la vidéo est dans cette langue.</FieldDescription>
+              </Field>
+            )}
+
             {kind === 'video' ? (
-              <fieldset className="space-y-2">
+              <fieldset className="space-y-2 sm:col-span-2">
                 <legend className="mb-2 text-sm font-medium">Durée</legend>
                 <div className="flex flex-wrap gap-1.5">
                   {VIDEO_DURATIONS.map((value) => (

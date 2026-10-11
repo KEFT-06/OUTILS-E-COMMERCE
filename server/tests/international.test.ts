@@ -246,5 +246,36 @@ describe('Méthodes publicitaires', () => {
     assert.doesNotMatch(prompt, /\d\. (Attention|Interest|Desire|Action)/);
     assert.match(prompt, /United States/);
     assert.match(prompt, /No real brand logos/);
+    assert.doesNotMatch(prompt, /Language:/, 'sans langue choisie, rien n’est imposé au moteur');
+  });
+
+  it('dit au moteur la langue de la vidéo, même quand la scène doit être raccourcie', async () => {
+    const { buildExtensionPrompt, buildVideoInput, extensionSchema, videoBriefSchema } = await import('@server/services/creatives');
+    const brief = {
+      productName: 'Formation Excel',
+      awarenessLevel: 'solution_aware',
+      format: '9:16',
+      market: 'CM',
+      sceneDescription: 'x'.repeat(1500),
+      duration: 8,
+      purpose: 'ad',
+      adFramework: 'aida',
+    };
+
+    const { prompt } = buildVideoInput(videoBriefSchema.parse({ ...brief, language: 'fr' }));
+    assert.ok(prompt.length <= 2500, `consigne de ${prompt.length} caractères`);
+    assert.match(prompt, /Language: everything heard in the video — voice-over, dialogue, any spoken word — is in French/);
+    assert.match(prompt, /No other language is heard\.$/, 'la langue fait partie des garde-fous : elle part en entier');
+    assert.match(buildVideoInput(videoBriefSchema.parse({ ...brief, language: 'pt' })).prompt, /is in Portuguese/);
+
+    // Une langue qu'on traduit mais qu'aucune vidéo ne propose est refusée avant tout rendu.
+    assert.equal(videoBriefSchema.safeParse({ ...brief, language: 'wo' }).success, false);
+    assert.equal(videoBriefSchema.safeParse({ ...brief, language: 'klingon' }).success, false);
+
+    // Une vidéo prolongée continue dans la même langue.
+    assert.match(buildExtensionPrompt('elle referme son ordinateur', 'es'), /Everything heard is in Spanish/);
+    assert.doesNotMatch(buildExtensionPrompt('elle referme son ordinateur'), /Everything heard/);
+    assert.equal(extensionSchema.safeParse({ sceneDescription: 'elle sourit', language: 'es' }).success, true);
+    assert.equal(extensionSchema.safeParse({ sceneDescription: 'elle sourit', language: 'wo' }).success, false);
   });
 });

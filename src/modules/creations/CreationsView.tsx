@@ -6,6 +6,7 @@ import { formatAudioDuration } from '@server/shared/audio';
 import { useWorkspace } from '@/app/providers/WorkspaceProvider';
 import { MyVideosPanel } from '@/modules/creatifs/MyVideosPanel';
 import { MyVisualsPanel } from '@/modules/creatifs/MyVisualsPanel';
+import { screenLine } from '@/modules/creatifs/videoStart';
 import { CoversCard, ReportsCard, StorybooksCard } from '@/modules/creations/OtherCreations';
 import type { GuideSummary } from '@/modules/multilingue/guidesApi';
 import { BookCover } from '@/shared/components/BookCover';
@@ -58,7 +59,7 @@ const DEUX_JOURS_MS = 48 * 3_600_000;
 const departVideo = (product: DigitalProductIdea) => ({
   produit: {
     titre: product.title,
-    promesse: product.transformationPromise ?? '',
+    promesse: screenLine(product.transformationPromise, product.title),
     public: product.targetAudience ?? '',
   },
 });

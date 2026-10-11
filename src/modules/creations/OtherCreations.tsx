@@ -1,7 +1,9 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { BarChart3, BookImage, Download, FileText, Image as ImageIcon, Languages, PenSquare } from 'lucide-react';
+import { BarChart3, BookImage, Clapperboard, Download, FileText, Image as ImageIcon, Languages, PenSquare } from 'lucide-react';
+import { countryName } from '@server/shared/countries';
 import { useWorkspace } from '@/app/providers/WorkspaceProvider';
+import { VIDEO_SCREEN, videoFromStorybook } from '@/modules/creatifs/videoStart';
 import type { GuideSummary } from '@/modules/multilingue/guidesApi';
 import { apiRequest } from '@/shared/lib/api';
 import { useCachedState } from '@/shared/lib/apiCache';
@@ -61,7 +63,7 @@ export function ReportsCard({ recherche }: { recherche: string }) {
                       {report.nicheName}
                     </p>
                     <p className="text-xs text-muted-foreground">
-                      {report.market ? `${report.market} · ` : ''}analysé le {formatDateFr(report.createdAt)}
+                      {report.market ? `${countryName(report.market)} · ` : ''}analysé le {formatDateFr(report.createdAt)}
                     </p>
                   </div>
                   <div className="flex flex-wrap gap-2">
@@ -176,6 +178,10 @@ export function StorybooksCard({ recherche }: { recherche: string }) {
                           <Button size="sm" variant="outline" onClick={() => void navigate('/app/multilingue', { state: { conte: entry.id } })}>
                             <Languages />
                             Traduire
+                          </Button>
+                          <Button size="sm" variant="outline" onClick={() => void navigate(VIDEO_SCREEN, { state: videoFromStorybook(entry) })}>
+                            <Clapperboard />
+                            Générer la vidéo
                           </Button>
                         </>
                       )}

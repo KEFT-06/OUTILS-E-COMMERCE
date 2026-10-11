@@ -82,3 +82,20 @@ export function isLanguageCode(value: string): boolean {
 export function languageName(code: string): string {
   return findLanguage(code)?.fr ?? code;
 }
+
+/**
+ * Langues proposées pour une vidéo : celle de la voix, et celle de tout ce qui s'y dit.
+ *
+ * Liste volontairement plus courte que celle des traductions. Un texte traduit se relit ; une voix
+ * mal prononcée ne se corrige pas, et la vidéo est déjà payée. Seules figurent les grandes langues,
+ * le français d'abord puisque c'est celle de la plupart des auteurs du site.
+ */
+export const VIDEO_LANGUAGE_CODES = ['fr', 'en', 'es', 'pt', 'ar', 'de', 'it', 'hi', 'zh', 'ru', 'id'] as const;
+
+export type VideoLanguageCode = (typeof VIDEO_LANGUAGE_CODES)[number];
+
+export const VIDEO_LANGUAGES: readonly Language[] = VIDEO_LANGUAGE_CODES.map((code) => findLanguage(code)!);
+
+export function isVideoLanguage(value: unknown): value is VideoLanguageCode {
+  return typeof value === 'string' && (VIDEO_LANGUAGE_CODES as readonly string[]).includes(value);
+}

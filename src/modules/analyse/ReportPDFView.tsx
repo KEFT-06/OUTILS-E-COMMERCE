@@ -1,5 +1,5 @@
 import { useEffect, useState, type ComponentType } from 'react';
-import { useLocation } from 'react-router-dom';
+import { useLocation, useNavigate } from 'react-router-dom';
 import { toast } from 'sonner';
 import {
   BarChart3,
@@ -32,6 +32,7 @@ import { Button } from '@/shared/ui/button';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/shared/ui/tabs';
 import { RatesVisual } from '@/modules/analyse/RatesVisual';
 import { WrittenReportPanel } from '@/modules/analyse/WrittenReportPanel';
+import { VIDEO_SCREEN, videoFromScript } from '@/modules/creatifs/videoStart';
 import { useScreenMemory } from '@/shared/lib/apiCache';
 
 /**
@@ -73,6 +74,7 @@ function Empty({ children }: { children: string }) {
 
 export function ReportPDFView({ report }: ReportPDFViewProps) {
   const location = useLocation();
+  const navigate = useNavigate();
   const money = useMoney();
   // Toujours un verdict : celui du rapport, ou celui que ses niveaux donnent.
   const verdict = settledVerdict(report);
@@ -332,6 +334,15 @@ export function ReportPDFView({ report }: ReportPDFViewProps) {
                   <Badge variant="outline">{ad.aspectRatio}</Badge>
                   <Badge variant="outline">{ad.durationSeconds} s</Badge>
                   <span className="text-sm font-semibold">{ad.targetProductTitle}</span>
+                  {/* Le script devient le brief de sa vidéo : rien à ressaisir. */}
+                  <Button
+                    size="sm"
+                    className="ml-auto print:hidden"
+                    onClick={() => void navigate(VIDEO_SCREEN, { state: videoFromScript(ad, { audience: report.audience?.profile, market: report.market }) })}
+                  >
+                    <Clapperboard />
+                    Créer cette vidéo
+                  </Button>
                 </div>
                 <p className="rounded-xl bg-foreground px-4 py-3 font-display text-lg font-bold text-background">« {ad.hookHeadline} »</p>
                 <ol className="space-y-3">

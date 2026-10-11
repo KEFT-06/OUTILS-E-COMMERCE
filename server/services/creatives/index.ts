@@ -20,6 +20,7 @@ import { fetchArchivedVideo } from '@server/services/creatives/archive';
 import type { VisualBriefing } from '@server/services/creatives/artDirection';
 import { AD_FRAMEWORK_IDS, findAdFramework } from '@server/shared/adFrameworks';
 import { countryName } from '@server/shared/countries';
+import { VIDEO_LANGUAGE_CODES, findLanguage } from '@server/shared/languages';
 
 /**
  * Créatifs publicitaires : visuels et vidéos — feuille de route 4.1, 4.2 et 4.4.
@@ -142,6 +143,8 @@ export const videoBriefSchema = z.object({
   format: z.enum(VEO_FORMATS),
   sceneDescription: z.string().trim().min(3).max(1500),
   duration: z.union([z.literal(4), z.literal(6), z.literal(8)]),
+  /** Langue de la vidéo : celle de tout ce qui s'y entend. Absente : rien n'est imposé au moteur. */
+  language: z.enum(VIDEO_LANGUAGE_CODES).optional(),
   /**
    * Premier plan d'une vidéo longue, à prolonger ensuite par étapes de 7 s. Google ne prolonge
    * qu'une vidéo en 720p : ce plan y est donc rendu, en 8 secondes.
@@ -210,6 +213,17 @@ function frameworkLines(brief: VisualBrief | VideoBrief, durationSeconds?: numbe
 }
 
 /**
+ * Langue de la vidéo, choisie par l'auteur. Rien n'était dit au moteur : il parlait la langue qu'il
+ * voulait — souvent l'anglais, pour un public qui ne le parle pas. La ligne fait partie des
+ * garde-fous : elle part toujours, même quand la scène doit être raccourcie.
+ */
+function spokenLanguageLines(brief: VisualBrief | VideoBrief): string[] {
+  const language = 'language' in brief ? findLanguage(brief.language) : undefined;
+  if (!language) return [];
+  return [`Language: everything heard in the video — voice-over, dialogue, any spoken word — is in ${language.en}, spoken naturally by a native speaker. No other language is heard.`];
+}
+
+/**
  * Consigne complète envoyée au modèle. Si elle dépasse sa limite, c'est la
  * description de scène qui est raccourcie : les garde-fous (marques, texte,
  * stéréotypes) partent toujours.
@@ -237,6 +251,7 @@ function buildPrompt(brief: VisualBrief | VideoBrief, options: { maxLength: numb
     ...(options.durationSeconds
       ? [`Duration: ${options.durationSeconds} seconds, smooth camera movement, the beats flowing naturally within one continuous take.`]
       : []),
+    ...spokenLanguageLines(brief),
   ];
 
   const fixed = [...head, ...tail].join('\n').length + '\nScene: '.length;
@@ -379,18 +394,24 @@ export async function submitVideo(brief: VideoBrief, options: { safe?: boolean }
 }
 
 /** Scène suivante d'une vidéo longue, décrite par l'auteur. */
-export const extensionSchema = z.object({ sceneDescription: z.string().trim().min(3).max(800) });
+export const extensionSchema = z.object({
+  sceneDescription: z.string().trim().min(3).max(800),
+  /** Langue de la vidéo qu'on prolonge : la suite se dit dans la même. */
+  language: z.enum(VIDEO_LANGUAGE_CODES).optional(),
+});
 
 /**
  * Consigne d'une prolongation. Les deux garde-fous des créatifs y sont repris mot pour mot :
  * une prolongation n'accepte pas de consigne négative documentée, et sans eux le modèle
  * ajoute de lui-même texte et logos (constaté sur les images, voir services/ai/image.ts).
  */
-export function buildExtensionPrompt(scene: string): string {
+export function buildExtensionPrompt(scene: string, language?: string): string {
+  const spoken = findLanguage(language);
   return [
     `Continue the previous shot seamlessly: ${scene}`,
     'Keep the same characters, setting, lighting and camera style as the end of the previous shot.',
     'No text, no logos, no watermarks. No real brand logos.',
+    ...(spoken ? [`Everything heard is in ${spoken.en}, as in the previous shot. No other language is heard.`] : []),
   ].join(' ');
 }
 
@@ -399,7 +420,7 @@ export function buildExtensionPrompt(scene: string): string {
  * La copie archivée est lue d'abord (elle ne dépend pas de la conservation de Google), puis
  * l'original chez Google à défaut.
  */
-export async function extendVideo(parentRequestId: string, scene: string): Promise<CreativeStatus> {
+export async function extendVideo(parentRequestId: string, scene: string, language?: string): Promise<CreativeStatus> {
   let source = await fetchArchivedVideo(parentRequestId);
   if (!source) {
     const parent = await getVeoGeneration(parentRequestId);
@@ -409,7 +430,7 @@ export async function extendVideo(parentRequestId: string, scene: string): Promi
     source = await fetchVeoMedia(parent.mediaUrl);
   }
   const video = Buffer.from(await source.arrayBuffer());
-  return veoToClientStatus(await submitVeoExtension({ prompt: buildExtensionPrompt(scene), video }));
+  return veoToClientStatus(await submitVeoExtension({ prompt: buildExtensionPrompt(scene, language), video }));
 }
 
 /**

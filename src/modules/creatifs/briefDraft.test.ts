@@ -38,6 +38,13 @@ describe('Brouillon du brief des créatifs', () => {
     assert.deepEqual(assainirBrouillon(null), {});
   });
 
+  it('garde la langue de la vidéo, et écarte une langue que le serveur refuserait', () => {
+    assert.equal(assainirBrouillon({ kind: 'video', language: 'en' }).language, 'en');
+    // Le wolof se traduit, mais ne figure pas parmi les langues d'une vidéo.
+    assert.equal('language' in assainirBrouillon({ kind: 'video', language: 'wo' }), false);
+    assert.equal('language' in assainirBrouillon({ kind: 'video' }), false, 'un brouillon d’avant ce choix laisse l’écran proposer sa langue par défaut');
+  });
+
   it('écarte un code pays mal formé plutôt que de l’envoyer au serveur', () => {
     assert.equal('market' in assainirBrouillon({ market: 'france' }), false);
     assert.equal(assainirBrouillon({ market: 'CM' }).market, 'CM');
