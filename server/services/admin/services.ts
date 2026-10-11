@@ -562,16 +562,20 @@ async function checkMarketReading(): Promise<ServiceCheck> {
   const alertes = Number(fil?.total ?? 0);
   const fils = alertes > 0 && fil?.derniere ? ` ${alertes} alerte${alertes > 1 ? 's' : ''} au fil, la dernière le ${new Date(fil.derniere).toLocaleDateString('fr-FR', { timeZone: 'UTC' })}.` : ' Aucune alerte au fil.';
   // Le dernier passage tel qu'il s'est raconté : combien de boutiques lues, combien en échec, et pourquoi.
-  const compte = (passage?.details ?? null) as { source?: string; indexed?: number | null; failed?: number | null; remaining?: number | null; reasons?: { reason: string; stores: number }[] } | null;
+  const compte = (passage?.details ?? null) as { source?: string; indexed?: number | null; failed?: number | null; remaining?: number | null; halted?: boolean; reasons?: { reason: string; stores: number }[] } | null;
   const cause = compte?.reasons?.[0] ? ` Échec le plus fréquent : « ${compte.reasons[0].reason} » (${compte.reasons[0].stores}).` : '';
   const dernierPassage =
     passage && compte
       ? ` Dernier passage (${compte.source ?? 'réveil'}, ${passage.createdAt.toLocaleString('fr-FR', { timeZone: 'UTC', day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })} TU) : ${compte.indexed ?? '?'} relevée(s), ${compte.failed ?? '?'} en échec, ${compte.remaining ?? '?'} en attente.${cause}`
       : ' Aucun passage du relevé n’a encore laissé de compte rendu.';
   const suite = `${fils}${dernierPassage}`;
-  const remede =
-    'Vérifier, chez l’hébergeur, que la tâche planifiée « /api/cron/marche » s’exécute chaque nuit et se termine sans erreur (journaux de la fonction). ' +
-    'Elle relève les boutiques par tranches et se relance elle-même tant qu’il en reste.';
+  // Le dernier passage s'est arrêté sur des refus : ce n'est pas le relevé qui manque de passer, c'est la plateforme qui ne répond plus au serveur.
+  const refuse = Boolean(compte?.halted);
+  const remede = refuse
+    ? 'La plateforme des vitrines refuse les lectures du serveur. Le relevé réessaie à chaque passage, cinq boutiques au plus, sans insister, et reprendra de lui-même dès qu’elle répondra. ' +
+      'Si le refus dure, il faut un accord avec la plateforme : aucun réglage du site ne le lève.'
+    : 'Vérifier que l’atelier « Veille continue » du dépôt GitHub tourne (toutes les demi-heures) et que le secret CRON_SECRET y est renseigné, avec la même valeur que sur le site. ' +
+      'À défaut, seule la tâche planifiée de l’hébergeur relève les boutiques, une fois par nuit.';
   if (watch.stores === 0) return { ...base, state: 'warning', detail: `Aucune boutique n’est encore dans l’index du marché.${suite}`, action: remede };
 
   const dernier = watch.readings[0];

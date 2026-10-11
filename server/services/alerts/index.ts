@@ -1,4 +1,4 @@
-import { and, count, desc, eq, gt, gte, inArray, isNotNull, isNull, sql } from 'drizzle-orm';
+import { and, asc, count, desc, eq, gt, gte, inArray, isNotNull, isNull, lte, sql } from 'drizzle-orm';
 import { alias } from 'drizzle-orm/pg-core';
 import { getDb } from '@server/db/client';
 import { alerts, marketProducts, marketSalesDaily, spiedAds, users, type ALERT_KINDS, type ALERT_LEVELS } from '@server/db/schema';
@@ -31,6 +31,18 @@ import { dayOf, nicheKeywords } from '@server/services/market';
  *     contrôle qui la dit inactive compte.
  *   · TENDANCE DE NICHE (info) — plusieurs boutiques différentes lancent, dans la même fenêtre,
  *     un produit qui porte le même mot distinctif.
+ *
+ * Deux enfin se lisent sur le mur publicitaire seul. Les ventes d'une boutique ne se relèvent
+ * que si sa vitrine répond ; ses publicités, elles, sont publiques et relevées en continu. Ces
+ * règles tiennent donc le fil vivant même quand un relevé de ventes manque :
+ *
+ *   · PUBLICITÉ QUI DURE (signal à 30 jours, opportunité à 60 et 90) — une annonce encore active
+ *     passe un cap de diffusion. Personne ne paie deux mois une annonce qui ne rapporte pas.
+ *   · MONTÉE EN PUISSANCE (opportunité) — une boutique lance quatre publicités nouvelles ou plus
+ *     en trois jours : elle teste, ou elle a trouvé ce qui se vend.
+ *
+ * L'une comme l'autre ne parlent que d'annonces VUES ces trois derniers jours : un mur qui n'a
+ * pas été relevé ne déclenche rien.
  *
  * Une alerte par constatation : `dedupeKey` empêche qu'un second passage la répète.
  */
@@ -241,9 +253,96 @@ async function stoppedAds(now: Date): Promise<NewAlert[]> {
   });
 }
 
+/** Caps de diffusion signalés, du plus long au plus court : une annonce qui en passe deux d'un coup ne dit que le plus long. */
+const LONGEVITY_DAYS = [90, 60, 30] as const;
+/** Fenêtre autour d'un cap : le relevé passe plusieurs fois par jour, mais une panne d'une journée ne doit pas faire manquer le cap. */
+const LONGEVITY_WINDOW_MS = 36 * 3_600_000;
+/** Au plus tant d'alertes par cap et par passage, les annonces aux plus nombreuses versions d'abord : le fil signale, il n'inventorie pas. */
+const LONGEVITY_PER_STEP = 6;
+/** Publicités nouvelles en trois jours à partir desquelles une boutique « monte en puissance ». */
+const RAMP_NEW_ADS = 4;
+const RAMP_STORES_PER_RUN = 6;
+/** Une annonce n'est tenue pour vue que si une collecte l'a relevée ces derniers jours. */
+const SEEN_WITHIN_MS = 3 * JOUR_MS;
+
+/** Publicités encore actives qui passent un cap de diffusion. */
+async function longRunningAds(now: Date): Promise<NewAlert[]> {
+  const seenSince = new Date(now.getTime() - SEEN_WITHIN_MS);
+  const found: NewAlert[] = [];
+  const told = new Set<string>();
+  for (const days of LONGEVITY_DAYS) {
+    const cap = new Date(now.getTime() - days * JOUR_MS);
+    const rows = await getDb()
+      .select()
+      .from(spiedAds)
+      .where(and(eq(spiedAds.active, true), gte(spiedAds.lastSeenAt, seenSince), isNotNull(spiedAds.startedAt), gte(spiedAds.startedAt, new Date(cap.getTime() - LONGEVITY_WINDOW_MS)), lte(spiedAds.startedAt, cap)))
+      .orderBy(desc(spiedAds.variants), asc(spiedAds.startedAt))
+      .limit(LONGEVITY_PER_STEP);
+    for (const row of rows) {
+      if (told.has(row.externalId)) continue;
+      told.add(row.externalId);
+      const annonceur = row.advertiser ?? row.storeHost;
+      const versions = row.variants > 1 ? `, en ${row.variants} versions` : '';
+      const sujet = row.title?.trim() ? ` : « ${row.title.trim().slice(0, 90)} »` : '';
+      found.push({
+        kind: 'ad_longevity',
+        level: days >= 60 ? 'opportunity' : 'info',
+        title: 'Publicité qui dure',
+        body: `${annonceur} diffuse la même publicité depuis ${days} jours${versions}${sujet}. Une annonce payée aussi longtemps est une annonce qui rapporte.`,
+        payload: { storeHost: row.storeHost, storeLabel: annonceur, advertiser: annonceur, adId: row.id, pageId: row.pageId, days, title: row.title, productName: row.title },
+        dedupeKey: `ad_longevity:${row.externalId}:${days}`,
+      });
+    }
+  }
+  return found;
+}
+
+/** Boutiques qui lancent plusieurs publicités nouvelles en trois jours. */
+async function rampingStores(now: Date): Promise<NewAlert[]> {
+  const seenSince = new Date(now.getTime() - SEEN_WITHIN_MS);
+  const recent = new Date(now.getTime() - 3 * JOUR_MS).toISOString();
+  const fresh = sql<number>`count(*) filter (where ${spiedAds.startedAt} >= ${recent}::timestamptz)`;
+  const rows = await getDb()
+    .select({
+      host: spiedAds.storeHost,
+      advertiser: sql<string | null>`max(${spiedAds.advertiser})`,
+      fresh,
+      running: sql<number>`count(*) filter (where ${spiedAds.startedAt} < ${recent}::timestamptz)`,
+    })
+    .from(spiedAds)
+    .where(and(eq(spiedAds.active, true), gte(spiedAds.lastSeenAt, seenSince), isNotNull(spiedAds.startedAt)))
+    .groupBy(spiedAds.storeHost)
+    .having(sql`${fresh} >= ${RAMP_NEW_ADS}`)
+    .orderBy(desc(fresh))
+    .limit(RAMP_STORES_PER_RUN);
+
+  // Une alerte par boutique et par semaine : le même élan ne se signale pas à chaque passage.
+  const semaine = Math.floor(now.getTime() / (7 * JOUR_MS));
+  return rows.map((row) => {
+    const lancees = Number(row.fresh);
+    const installees = Number(row.running);
+    const boutique = row.advertiser ?? row.host;
+    return {
+      kind: 'store_ramp' as const,
+      level: 'opportunity' as const,
+      title: 'Montée en puissance',
+      body: `${boutique} a lancé ${lancees} publicités nouvelles en trois jours${installees > 0 ? `, en plus de ${installees} déjà en cours` : ''}. Un vendeur qui multiplie ses annonces teste — ou a trouvé — ce qui se vend.`,
+      payload: { storeHost: row.host, storeLabel: boutique, advertiser: boutique, newAds: lancees, runningAds: installees },
+      dedupeKey: `store_ramp:${row.host}:${semaine}`,
+    };
+  });
+}
+
 /** Applique les règles et enregistre ce qui est nouveau. Renvoie les alertes créées à ce passage. */
 export async function detectNewAlerts(now = new Date()): Promise<(NewAlert & { id: string })[]> {
-  const found = [...(await dailyRules(now)), ...(await winners(now)), ...(await nicheTrends(now)), ...(await stoppedAds(now))];
+  const found = [
+    ...(await dailyRules(now)),
+    ...(await winners(now)),
+    ...(await nicheTrends(now)),
+    ...(await stoppedAds(now)),
+    ...(await longRunningAds(now)),
+    ...(await rampingStores(now)),
+  ];
   if (found.length === 0) return [];
   const created = await getDb()
     .insert(alerts)
@@ -301,6 +400,43 @@ export async function alertWatch(now = new Date()): Promise<AlertWatch> {
     .groupBy(marketSalesDaily.day)
     .orderBy(desc(marketSalesDaily.day));
   return { stores: Number(index?.stores ?? 0), readings: days.map((entry) => ({ day: entry.day, stores: Number(entry.stores) })) };
+}
+
+/**
+ * État de la veille en quelques chiffres, pour le compte rendu d'un passage : rien qui nomme une
+ * boutique ou un compte. Lu par l'atelier de veille, qui l'affiche.
+ */
+export async function watchState(now = new Date()): Promise<{
+  boutiques: number;
+  boutiquesReleveesAujourdhui: number;
+  dernierReleveDeVentes: string | null;
+  annonces: number;
+  annoncesVuesDepuis24h: number;
+  derniereAnnonceVue: string | null;
+  alertesAuFil: number;
+  alertesDepuis24h: number;
+}> {
+  const hier = new Date(now.getTime() - JOUR_MS);
+  const [watch, [mur], [fil]] = await Promise.all([
+    alertWatch(now),
+    getDb()
+      .select({ total: count(), fraiches: sql<number>`count(*) filter (where ${spiedAds.lastSeenAt} >= ${hier.toISOString()}::timestamptz)`, derniere: sql<Date | string | null>`max(${spiedAds.lastSeenAt})` })
+      .from(spiedAds),
+    getDb()
+      .select({ total: count(), recentes: sql<number>`count(*) filter (where ${alerts.occurredAt} >= ${hier.toISOString()}::timestamptz)` })
+      .from(alerts),
+  ]);
+  const aujourdhui = watch.readings.find((reading) => reading.day === dayOf(now));
+  return {
+    boutiques: watch.stores,
+    boutiquesReleveesAujourdhui: aujourdhui?.stores ?? 0,
+    dernierReleveDeVentes: watch.readings[0]?.day ?? null,
+    annonces: Number(mur?.total ?? 0),
+    annoncesVuesDepuis24h: Number(mur?.fraiches ?? 0),
+    derniereAnnonceVue: mur?.derniere ? new Date(mur.derniere).toISOString() : null,
+    alertesAuFil: Number(fil?.total ?? 0),
+    alertesDepuis24h: Number(fil?.recentes ?? 0),
+  };
 }
 
 export async function countUnreadAlerts(userId: string): Promise<number> {

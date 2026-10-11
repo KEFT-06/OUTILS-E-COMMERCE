@@ -2,7 +2,7 @@ import { and, asc, desc, eq, inArray, isNull, lt, or, sql } from 'drizzle-orm';
 import { getDb } from '@server/db/client';
 import { sansAccents } from '@server/db/search';
 import { discoveredStores, marketProducts, marketSalesDaily, spiedAds } from '@server/db/schema';
-import { chariowStoreSource } from '@server/services/radar/sources/chariowStore';
+import { chariowStoreSource, sourceFailureOf } from '@server/services/radar/sources/chariowStore';
 import type { RadarObservation } from '@server/services/radar/types';
 import { adsOfProduct, loadStoreAds, productUrl } from '@server/services/market/productAds';
 import { recordAudit } from '@server/services/audit';
@@ -41,6 +41,12 @@ const REINDEX_AFTER_MS = 20 * 3_600_000;
 const STORE_CAP_MS = 45_000;
 /** En dessous de ce reste de temps, on n'entame pas une boutique de plus : elle attend le maillon suivant. */
 const STORE_MIN_MS = 15_000;
+/**
+ * Vitrines sans réponse à la suite au-delà desquelles le passage s'arrête. Ce n'est plus une
+ * boutique en panne, c'est la plateforme qui refuse : insister sur les deux cents suivantes ne
+ * relèverait rien et ressemblerait à une attaque. Le passage suivant réessaiera.
+ */
+const REFUSALS_BEFORE_HALT = 5;
 
 const pause = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
 
@@ -172,6 +178,8 @@ export interface MarketIndexOutcome {
   remaining: number;
   /** Motifs d'échec de ce passage, avec le nombre de boutiques touchées par chacun. */
   reasons: Record<string, number>;
+  /** La plateforme refusait : le passage s'est arrêté de lui-même au lieu d'insister. */
+  halted?: boolean;
 }
 
 /**
@@ -214,6 +222,7 @@ export async function indexDiscoveredStores(
 
   const deadline = Date.now() + budgetMs;
   const outcome: MarketIndexOutcome = { indexed: 0, failed: 0, launched: 0, remaining: file.length, reasons: {} };
+  let refusals = 0;
 
   for (const [rang, store] of file.entries()) {
     /*
@@ -242,13 +251,20 @@ export async function indexDiscoveredStores(
         .where(eq(discoveredStores.id, store.id));
       outcome.indexed += 1;
       outcome.launched += launched;
+      refusals = 0;
     } catch (error) {
       outcome.failed += 1;
       // La cause, sans le nom de la boutique : c'est le motif qui se compte, d'un passage à l'autre.
-      const reason = (error instanceof Error ? error.message : String(error)).replace(/\s+/g, ' ').slice(0, 90);
+      const cause = sourceFailureOf(error);
+      const reason = (cause ? `vitrine sans réponse : ${cause}` : error instanceof Error ? error.message : String(error)).replace(/\s+/g, ' ').slice(0, 90);
       outcome.reasons[reason] = (outcome.reasons[reason] ?? 0) + 1;
       console.warn('[marché] relevé impossible :', store.host, error instanceof Error ? error.message : error);
       await db.update(discoveredStores).set({ indexedAt: now }).where(eq(discoveredStores.id, store.id));
+      refusals = cause ? refusals + 1 : 0;
+      if (refusals >= REFUSALS_BEFORE_HALT) {
+        outcome.halted = true;
+        break;
+      }
     }
   }
   return outcome;
@@ -270,7 +286,7 @@ export async function reportMarketRun(source: string, outcome: MarketIndexOutcom
   await recordAudit({
     actor: { id: null, email: 'réveil quotidien' },
     action: MARKET_RUN_AUDIT_ACTION,
-    details: { source, indexed: outcome?.indexed ?? null, failed: outcome?.failed ?? null, remaining: outcome?.remaining ?? null, launched: outcome?.launched ?? null, alertes, reasons },
+    details: { source, indexed: outcome?.indexed ?? null, failed: outcome?.failed ?? null, remaining: outcome?.remaining ?? null, launched: outcome?.launched ?? null, halted: outcome?.halted ?? false, alertes, reasons },
     client: { ipAddress: null, userAgent: 'réveil quotidien' },
   }).catch((error: unknown) => console.warn('[marché] compte rendu non enregistré :', error instanceof Error ? error.message : error));
 }

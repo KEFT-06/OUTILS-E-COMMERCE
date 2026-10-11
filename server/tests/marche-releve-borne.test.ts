@@ -19,6 +19,9 @@ import { closeTestApp, createAdmin, createTestApp } from './support/helpers';
 const LENTE = 'store_vitrinelente';
 const SAINE = 'store_vitrinesaine';
 const prises = new Set<Socket>();
+const SECRET = 'secret-de-veille-de-test';
+/** Demandes reçues par la plateforme qui refuse : ce qu'on lui a fait subir. */
+let refusRecus = 0;
 
 const fausseVitrine = createServer((req, res) => {
   const url = new URL(req.url ?? '/', 'http://vitrine.test');
@@ -26,6 +29,12 @@ const fausseVitrine = createServer((req, res) => {
     res.writeHead(status, { 'content-type': 'application/json' });
     res.end(JSON.stringify(body));
   };
+  // La plateforme qui refuse le serveur : une protection placée devant elle répond à sa place.
+  if (url.pathname.startsWith('/storefront/store_refus')) {
+    refusRecus += 1;
+    res.writeHead(403, { 'content-type': 'text/html', server: 'cloudflare', 'cf-mitigated': 'challenge' });
+    return res.end('<html>Attention Required</html>');
+  }
   // La vitrine lente accepte la demande et ne répond jamais.
   if (url.pathname.startsWith(`/storefront/${LENTE}/`)) return;
   if (url.pathname === `/storefront/${SAINE}/products`) {
@@ -48,7 +57,7 @@ let app: Express;
 
 before(async () => {
   await new Promise<void>((resolve) => fausseVitrine.listen(0, '127.0.0.1', resolve));
-  app = await createTestApp({ CHARIOW_STOREFRONT_URL: `http://127.0.0.1:${(fausseVitrine.address() as AddressInfo).port}` });
+  app = await createTestApp({ CHARIOW_STOREFRONT_URL: `http://127.0.0.1:${(fausseVitrine.address() as AddressInfo).port}`, CRON_SECRET: SECRET });
 });
 
 after(async () => {
@@ -99,6 +108,50 @@ describe('Relevé du marché — une vitrine lente n’emporte pas les autres', 
     assert.ok(bilan.remaining >= 1, 'elle reste due');
     const [store] = await getDb().select().from(discoveredStores).where(eq(discoveredStores.host, 'attente.mychariow.com'));
     assert.equal(store?.indexedAt, null);
+  });
+});
+
+describe('Relevé du marché — quand la plateforme refuse, le passage s’arrête au lieu d’insister', () => {
+  it('cinq refus à la suite : le passage s’arrête, dit pourquoi, et laisse les autres boutiques pour plus tard', async () => {
+    const { indexDiscoveredStores } = await import('@server/services/market');
+    const { getDb } = await import('@server/db/client');
+    const { discoveredStores } = await import('@server/db/schema');
+    const bientot = new Date(Date.now() + 60_000);
+    // Huit boutiques jamais relevées, en tête de file : la plateforme les refuse toutes.
+    await getDb()
+      .insert(discoveredStores)
+      .values(Array.from({ length: 8 }, (_, rang) => ({ host: `refus-${rang}.mychariow.com`, storeExternalId: `store_refus${rang}xyz`, lastSeenAt: bientot, indexedAt: null })));
+
+    refusRecus = 0;
+    const bilan = await indexDiscoveredStores(30_000, new Date(), { storeMinMs: 1_000 });
+    assert.equal(bilan.halted, true, 'le passage s’est arrêté de lui-même');
+    assert.deepEqual([bilan.indexed, bilan.failed], [0, 5]);
+    assert.ok(bilan.remaining >= 3, `les autres attendent le passage suivant (${bilan.remaining})`);
+    assert.equal(refusRecus, 5, 'cinq demandes, pas une de plus : on n’insiste pas sur une plateforme qui refuse');
+    // La cause telle que l'administration la lira : le statut, et qui a répondu.
+    assert.deepEqual(bilan.reasons, { 'vitrine sans réponse : réponse 403 (cloudflare, protection)': 5 });
+  });
+
+  it('le passage de veille continue : refusé sans le secret, et un compte rendu chiffré avec', async () => {
+    const { default: request } = await import('supertest');
+    await request(app).get('/api/cron/veille').expect(401);
+    await request(app).get('/api/cron/veille').set('Authorization', 'Bearer mauvais-secret').expect(401);
+
+    const passage = await request(app).get('/api/cron/veille').set('Authorization', `Bearer ${SECRET}`).expect(200);
+    const corps = passage.body as {
+      surveillances: { due: number; swept: number } | null;
+      releves: { indexed: number; failed: number; remaining: number; reasons: Record<string, number> } | null;
+      alertes: number | null;
+      etat: { boutiques: number; boutiquesReleveesAujourdhui: number; dernierReleveDeVentes: string | null; annonces: number; alertesAuFil: number } | null;
+    };
+    // Les trois boutiques refusées restantes, puis celle qui attendait depuis le test précédent : relevée.
+    assert.deepEqual([corps.releves?.indexed, corps.releves?.failed, corps.releves?.remaining], [1, 3, 0]);
+    assert.equal(corps.surveillances?.due, 0);
+    assert.equal(corps.alertes, 0);
+    assert.equal(corps.etat?.boutiquesReleveesAujourdhui, 1);
+    assert.equal(corps.etat?.dernierReleveDeVentes, new Date().toISOString().slice(0, 10));
+    // Un compte rendu chiffré : ni nom de boutique, ni adresse.
+    assert.doesNotMatch(JSON.stringify(corps), /mychariow|saine|refus-\d/);
   });
 });
 

@@ -15,7 +15,7 @@ import { submitToIndexNow } from '@server/services/seo/indexNow';
 import { sweepPendingGenerations } from '@server/services/generations/sweeper';
 import { sweepDueWatches } from '@server/services/radar/sweeper';
 import { z } from 'zod';
-import { detectAlerts } from '@server/services/alerts';
+import { detectAlerts, watchState } from '@server/services/alerts';
 import { settleDueCommissions } from '@server/services/referral';
 import { collectorPlan, ingestLibraryRecords, recordCollectorRun } from '@server/services/espionnage/library';
 import { pendingCollectorSearches, pourCollectorSearch } from '@server/services/espionnage/search';
@@ -174,6 +174,46 @@ cronRouter.get(
     });
 
     res.json({ generations, sessions, sweep, digests, harvest, discovery, performance, videos, expired, uploads, thumbnails, avatars, staleThumbnails });
+  }),
+);
+
+/** Temps de relevé par passage de veille : court, puisqu'il revient toutes les demi-heures. */
+const WATCH_RUN_MS = 110_000;
+
+/**
+ * Passage de VEILLE CONTINUE, appelé toutes les demi-heures par l'atelier « Veille continue »
+ * (.github/workflows/veille.yml).
+ *
+ * Demande du propriétaire, 11/10/2026 : « je veux que ça tourne en continu, que ce soit pour le
+ * radar, les alertes, l'espionnage ». L'hébergeur ne réveille le site qu'une fois par jour : le
+ * radar ne relevait donc qu'à 03 h, les alertes ne se calculaient qu'à 04 h, et une nuit ratée
+ * laissait le fil vide jusqu'au lendemain. Ce passage fait, en petit et souvent, ce que les deux
+ * réveils font en gros et une fois : les surveillances dues, les boutiques de l'index dont le
+ * relevé du jour est dû, puis les alertes sur ce qui vient d'être relevé — ventes et publicités.
+ *
+ * Il rend un compte rendu chiffré, sans nom de boutique ni de compte : l'atelier l'affiche.
+ */
+cronRouter.get(
+  '/veille',
+  asyncRoute(async (req, res) => {
+    if (!env.CRON_SECRET) throw new AppError(503, 'Le déclencheur périodique n’est pas configuré sur ce serveur.', 'CRON_NOT_CONFIGURED');
+    if (!secretIsValid(req)) throw new AppError(401, 'Déclencheur refusé.', 'CRON_DENIED');
+
+    const surveillances = await sweepDueWatches(new Date(), 60_000).catch((error: unknown) => {
+      console.warn('[veille] surveillances :', error instanceof Error ? error.message : error);
+      return null;
+    });
+    const releves = await indexDiscoveredStores(WATCH_RUN_MS).catch((error: unknown) => {
+      console.warn('[veille] index du marché :', error instanceof Error ? error.message : error);
+      return null;
+    });
+    const alertes = await detectAlerts().catch((error: unknown) => {
+      console.warn('[veille] alertes :', error instanceof Error ? error.message : error);
+      return null;
+    });
+    await reportMarketRun('veille continue', releves, alertes);
+    const etat = await watchState().catch(() => null);
+    res.json({ surveillances, releves, alertes, etat });
   }),
 );
 

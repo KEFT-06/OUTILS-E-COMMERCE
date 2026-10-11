@@ -1,0 +1,56 @@
+# Veille continue : toutes les demi-heures, le site relève les boutiques sous surveillance et celles
+# de l'index du marché dont le relevé du jour est dû, puis calcule les alertes sur ce qu'il vient
+# de relever — ventes et publicités.
+#
+# L'hébergeur ne réveille le site qu'une fois par jour. Cet atelier est ce qui le fait tourner
+# toute la journée : il n'exécute rien lui-même, il appelle le site (une demande, quelques
+# secondes) et affiche le compte rendu chiffré qu'il reçoit — aucun nom de boutique ni de compte.
+#
+# Il lui faut le secret CRON_SECRET du dépôt (Settings → Secrets and variables → Actions),
+# identique à celui du site.
+name: Veille continue
+
+on:
+  schedule:
+    - cron: '7,37 * * * *'
+  workflow_dispatch:
+
+concurrency:
+  group: veille
+  cancel-in-progress: false
+
+permissions: {}
+
+jobs:
+  veille:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - name: Demander un passage de veille au site
+        env:
+          CRON_SECRET: ${{ secrets.CRON_SECRET }}
+          SITE: ${{ vars.COLLECTE_SITE || 'https://www.smartcreatorcm.com' }}
+        run: |
+          if [ -z "$CRON_SECRET" ]; then
+            echo "::error title=Veille continue::CRON_SECRET est absent des secrets du dépôt : ajoutez-le (Settings → Secrets and variables → Actions), avec la même valeur que sur le site."
+            exit 1
+          fi
+          statut=$(curl -sS -o reponse.json -w '%{http_code}' --max-time 280 -H "Authorization: Bearer $CRON_SECRET" "$SITE/api/cron/veille" || echo "000")
+          if [ "$statut" != "200" ]; then
+            echo "::error title=Veille continue::Le site a répondu $statut au passage de veille."
+            exit 1
+          fi
+          node -e '
+            const r = JSON.parse(require("fs").readFileSync("reponse.json", "utf8"));
+            const releves = r.releves, etat = r.etat ?? {}, s = r.surveillances;
+            const causes = Object.entries(releves?.reasons ?? {}).sort((a, b) => b[1] - a[1]).slice(0, 2).map(([cause, n]) => `${cause} ×${n}`).join(" ; ");
+            const lignes = [
+              releves ? `boutiques : ${releves.indexed} relevées, ${releves.failed} en échec, ${releves.remaining} en attente${releves.halted ? " — passage arrêté, la plateforme refuse" : ""}` : "boutiques : relevé impossible",
+              causes ? `causes : ${causes}` : null,
+              s ? `surveillances : ${s.swept ?? 0} relevées sur ${s.due ?? 0} dues` : null,
+              `alertes : ${r.alertes ?? "?"} nouvelles, ${etat.alertesDepuis24h ?? "?"} en 24 h, ${etat.alertesAuFil ?? "?"} au fil`,
+              `ventes : ${etat.boutiquesReleveesAujourdhui ?? "?"} boutiques relevées aujourd’hui sur ${etat.boutiques ?? "?"} ; dernier relevé ${etat.dernierReleveDeVentes ?? "aucun"}`,
+              `publicités : ${etat.annonces ?? "?"} sur le mur, ${etat.annoncesVuesDepuis24h ?? "?"} vues en 24 h ; dernière vue ${String(etat.derniereAnnonceVue ?? "jamais").slice(0, 16)}`,
+            ].filter(Boolean);
+            console.log(`::notice title=Veille continue::${lignes.join(" | ")}`);
+          '

@@ -39,10 +39,17 @@ const TIMEOUT_MS = 20_000;
 const MAX_HTML_BYTES = 2_000_000;
 /** Pages de catalogue suivies au plus : borne le travail sur une très grosse boutique. */
 const MAX_PAGES = 20;
+/*
+  La lecture des fiches a été divisée par trois le 11/10/2026. Depuis le 07/10, chaque boutique
+  se faisait lire jusqu'à 120 fiches, quatre à la fois, toutes les nuits : des milliers de
+  demandes en quelques minutes depuis une seule adresse. La plateforme a cessé de répondre au
+  serveur dans les jours qui ont suivi. Rien ne prouve le lien — mais une vitrine est celle d'un
+  tiers, et un relevé qui la ménage est le seul qui dure.
+*/
 /** Fiches produit lues au plus par relevé : au-delà, le catalogue est couvert en plusieurs jours. */
-const DETAILS_MAX = 120;
+const DETAILS_MAX = 40;
 /** Fiches lues en même temps : la vitrine est celle d'un tiers, on ne la sollicite pas en rafale. */
-const DETAILS_CONCURRENCY = 4;
+const DETAILS_CONCURRENCY = 2;
 /** Temps accordé à la lecture des fiches d'une boutique. */
 const DETAILS_BUDGET_MS = 25_000;
 const USER_AGENT = 'SmartCreatorRadar/1.0 (+veille concurrentielle ; une visite par jour)';
@@ -97,10 +104,25 @@ const catalogSchema = z.object({
  * La vitrine ne répond pas. Le motif (« réponse 500 », « délai dépassé ») va au journal du
  * serveur : devant un client, il n'explique rien et ne lui donne rien à faire.
  */
+/** Ce que la plateforme a répondu, gardé à côté de l'erreur : jamais envoyé à un client, lu par l'administration. */
+const SOURCE_FAILURES = new WeakMap<object, string>();
+
+/** La cause technique d'une vitrine sans réponse (« réponse 403 (cloudflare) », « délai dépassé »), ou null. */
+export const sourceFailureOf = (error: unknown): string | null => (typeof error === 'object' && error !== null ? (SOURCE_FAILURES.get(error) ?? null) : null);
+
 const unreachable = (detail: string) => {
   console.warn(`[radar] vitrine sans réponse : ${detail}`);
-  return new AppError(502, 'La vitrine de cette boutique ne répond pas en ce moment.', 'RADAR_SOURCE_UNAVAILABLE');
+  const error = new AppError(502, 'La vitrine de cette boutique ne répond pas en ce moment.', 'RADAR_SOURCE_UNAVAILABLE');
+  SOURCE_FAILURES.set(error, detail);
+  return error;
 };
+
+/** Le statut d'un refus, avec ce qui dit QUI refuse : le service de la plateforme, ou une protection placée devant lui. */
+function refusal(response: Response): string {
+  const server = response.headers.get('server')?.trim().slice(0, 30);
+  const guarded = response.headers.get('cf-mitigated') ? ', protection' : '';
+  return `réponse ${response.status}${server ? ` (${server}${guarded})` : ''}`;
+}
 
 /**
  * Hôte d'une vitrine tel que nos relevés l'enregistrent (minuscules, en .com), d'après ce que
@@ -178,7 +200,7 @@ async function fetchText(url: URL): Promise<string> {
   if (response.status === 404) {
     throw new AppError(404, 'Cette boutique n’existe pas, ou n’est plus en ligne.', 'RADAR_TARGET_NOT_FOUND');
   }
-  if (!response.ok) throw unreachable(`réponse ${response.status}`);
+  if (!response.ok) throw unreachable(refusal(response));
 
   const buffer = await response.arrayBuffer();
   if (buffer.byteLength > MAX_HTML_BYTES) throw unreachable('page trop volumineuse');
@@ -201,7 +223,7 @@ async function fetchJson(url: string): Promise<unknown> {
   if (response.status === 429) {
     throw new AppError(429, 'La plateforme limite les consultations : le radar réessaiera.', 'RADAR_SOURCE_RATE_LIMITED');
   }
-  if (!response.ok) throw unreachable(`réponse ${response.status}`);
+  if (!response.ok) throw unreachable(refusal(response));
 
   try {
     return (await response.json()) as unknown;

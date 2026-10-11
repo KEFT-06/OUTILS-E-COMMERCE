@@ -1312,9 +1312,11 @@ export const marketSalesDaily = pgTable(
  * winner : lancement flash (30 ventes en 3 jours) · first_traction : 5 ventes dans la journée ·
  * daily_scale : 10 ventes et plus dans la journée · flash_scale : de 5 au plus à 25 et plus en un
  * jour · stockout : zéro vente après une forte journée, publicité toujours active ·
- * ad_stopped : publicité installée désactivée · niche_trend : plusieurs boutiques sur un même sujet.
+ * ad_stopped : publicité installée désactivée · niche_trend : plusieurs boutiques sur un même sujet ·
+ * ad_longevity : une publicité passe 30, 60 ou 90 jours de diffusion · store_ramp : une boutique
+ * lance plusieurs publicités nouvelles en trois jours.
  */
-export const ALERT_KINDS = ['winner', 'niche_trend', 'ad_stopped', 'first_traction', 'daily_scale', 'flash_scale', 'stockout'] as const;
+export const ALERT_KINDS = ['winner', 'niche_trend', 'ad_stopped', 'first_traction', 'daily_scale', 'flash_scale', 'stockout', 'ad_longevity', 'store_ramp'] as const;
 export const ALERT_LEVELS = ['info', 'opportunity', 'major'] as const;
 
 export const alerts = pgTable(

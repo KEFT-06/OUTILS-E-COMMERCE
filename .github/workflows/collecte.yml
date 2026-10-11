@@ -1,18 +1,18 @@
 # Collecteur maison : lit la bibliothèque publicitaire publique avec un navigateur piloté
-# (Crawlee + Playwright) et verse ce qu'il trouve au site, chaque nuit, sans frais de collecte.
+# (Crawlee + Playwright) et verse ce qu'il trouve au site, toutes les quatre heures, sans frais
+# de collecte : le mur d'Espionnage et les alertes tirées des publicités suivent la journée.
 #
 # Il passe aussi à la demande (workflow_dispatch, entrée « demandes ») : le site le lance quand un
 # client cherche un mot que la lecture payante ne sert pas, et il ne lit alors que ces recherches.
 #
 # Pour qu'il VERSE ses relevés, ajouter dans le dépôt (Settings → Secrets and variables → Actions)
-# le secret CRON_SECRET, identique à celui du site. Sans lui, le passage n'est qu'un essai :
-# il lit, compte, et ne verse rien.
+# le secret CRON_SECRET, identique à celui du site. Sans lui, le passage échoue et GitHub prévient.
 name: Collecte des publicités
 
 on:
   schedule:
-    # Tous les jours à 01 h 30 UTC, avant le relevé du radar (03 h) et l'index du marché (04 h).
-    - cron: '30 1 * * *'
+    # Six passages par jour. Demande du propriétaire, 11/10/2026 : « je veux que ça tourne en continu ».
+    - cron: '20 1,5,9,13,17,21 * * *'
   workflow_dispatch:
     inputs:
       demandes:

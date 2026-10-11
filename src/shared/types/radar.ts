@@ -313,7 +313,7 @@ export interface StorePreview {
   limit: number | null;
 }
 
-export type AlertKind = 'winner' | 'niche_trend' | 'ad_stopped' | 'first_traction' | 'daily_scale' | 'flash_scale' | 'stockout';
+export type AlertKind = 'winner' | 'niche_trend' | 'ad_stopped' | 'first_traction' | 'daily_scale' | 'flash_scale' | 'stockout' | 'ad_longevity' | 'store_ramp';
 export type AlertLevel = 'info' | 'opportunity' | 'major';
 
 /** Ce qui alimente le fil des alertes : boutiques sous veille, et jours récents où leurs ventes ont été relevées. */
