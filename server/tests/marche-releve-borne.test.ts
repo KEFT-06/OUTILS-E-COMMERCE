@@ -4,7 +4,7 @@ import type { AddressInfo, Socket } from 'node:net';
 import { after, before, describe, it } from 'node:test';
 import type { Express } from 'express';
 import { signInWithPlan } from './support/analysis-fixtures';
-import { closeTestApp, createTestApp } from './support/helpers';
+import { closeTestApp, createAdmin, createTestApp } from './support/helpers';
 
 /**
  * Le relevé de nuit tient dans son temps, et le fil des alertes dit ce qui est sous veille.
@@ -75,6 +75,8 @@ describe('Relevé du marché — une vitrine lente n’emporte pas les autres', 
     const bilan = await indexDiscoveredStores(20_000, now, { storeCapMs: 400, storeMinMs: 1_000 });
     assert.deepEqual({ relevees: bilan.indexed, echecs: bilan.failed, attente: bilan.remaining }, { relevees: 1, echecs: 1, attente: 0 });
     assert.ok(Date.now() - depart < 8_000, `le relevé rend la main (${Date.now() - depart} ms) au lieu d’attendre la vitrine lente`);
+    assert.deepEqual(Object.values(bilan.reasons), [1]);
+    assert.match(Object.keys(bilan.reasons)[0] ?? '', /relevé trop long/, 'le motif de l’échec est gardé, sans le nom de la boutique');
 
     const [produit] = await getDb().select().from(marketProducts).where(eq(marketProducts.storeHost, 'saine.mychariow.com'));
     assert.equal(produit?.salesCount, 42, 'la boutique suivante est bien relevée, ventes comprises');
@@ -97,6 +99,20 @@ describe('Relevé du marché — une vitrine lente n’emporte pas les autres', 
     assert.ok(bilan.remaining >= 1, 'elle reste due');
     const [store] = await getDb().select().from(discoveredStores).where(eq(discoveredStores.host, 'attente.mychariow.com'));
     assert.equal(store?.indexedAt, null);
+  });
+});
+
+describe('Relevé du marché — chaque passage laisse son compte rendu', () => {
+  it('l’état des services dit ce que le dernier passage a lu, ce qui a échoué et pourquoi', async () => {
+    const { reportMarketRun } = await import('@server/services/market');
+    await reportMarketRun('réveil de la nuit', { indexed: 12, failed: 30, launched: 0, remaining: 171, reasons: { 'relevé trop long (plus de 45 s)': 27, 'La vitrine de cette boutique est injoignable.': 3 } }, 0);
+
+    const { agent } = await createAdmin(app, 'admin-marche@smartcreator.test');
+    const services = ((await agent.get('/api/admin/services').expect(200)).body as { services: { id: string; state: string; detail: string; action: string | null }[] }).services;
+    const releve = services.find((service) => service.id === 'market-reading')!;
+    assert.match(releve.detail, /Dernier passage \(réveil de la nuit, .* TU\) : 12 relevée\(s\), 30 en échec, 171 en attente\./);
+    assert.match(releve.detail, /Échec le plus fréquent : « relevé trop long \(plus de 45 s\) » \(27\)\./);
+    assert.match(releve.detail, /dernier relevé aujourd’hui : 1 boutique lue/, 'et ce qui a réellement été relevé, compté sur les relevés eux-mêmes');
   });
 });
 

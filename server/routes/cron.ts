@@ -19,7 +19,7 @@ import { detectAlerts } from '@server/services/alerts';
 import { settleDueCommissions } from '@server/services/referral';
 import { collectorPlan, ingestLibraryRecords, recordCollectorRun } from '@server/services/espionnage/library';
 import { pendingCollectorSearches, pourCollectorSearch } from '@server/services/espionnage/search';
-import { indexDiscoveredStores } from '@server/services/market';
+import { indexDiscoveredStores, reportMarketRun } from '@server/services/market';
 import { runInBackground } from '@server/shared/backgroundWork';
 
 /**
@@ -214,6 +214,7 @@ cronRouter.get(
       return null;
     });
     // Des boutiques attendent encore leur relevé du jour : le site s'en charge lui-même, à la suite.
+    await reportMarketRun('réveil de la nuit', index, alertes);
     if (!index || index.remaining > 0) await chainMarketIndex(1);
     res.json({ redactions, referencement, index, alertes });
   }),
@@ -266,7 +267,11 @@ cronRouter.post(
     res.status(202).json({ accepted: true, maillon });
     runInBackground(async () => {
       const index = await indexDiscoveredStores(MARKET_RUN_MS);
-      await detectAlerts().catch((error: unknown) => console.warn('[cron] alertes :', error instanceof Error ? error.message : error));
+      const alertes = await detectAlerts().catch((error: unknown) => {
+        console.warn('[cron] alertes :', error instanceof Error ? error.message : error);
+        return null;
+      });
+      await reportMarketRun(`suite, maillon ${maillon}`, index, alertes);
       console.info(`[cron] index du marché, maillon ${maillon} : ${index.indexed} relevées, ${index.failed} en échec, ${index.remaining} en attente`);
       if (index.remaining > 0) await chainMarketIndex(maillon + 1);
     }, 'index du marché, suite');

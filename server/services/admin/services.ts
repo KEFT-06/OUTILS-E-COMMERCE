@@ -1,7 +1,8 @@
 import { and, desc, eq, sql } from 'drizzle-orm';
 import { databaseKind, getDb } from '@server/db/client';
-import { adSearches, alerts, generations, spiedAds, storybooks, watches } from '@server/db/schema';
+import { adSearches, alerts, auditLogs, generations, spiedAds, storybooks, watches } from '@server/db/schema';
 import { alertWatch } from '@server/services/alerts';
+import { MARKET_RUN_AUDIT_ACTION } from '@server/services/market';
 import { env, isProd, isServerless, providers } from '@server/env';
 import { lastClaudeOutcome } from '@server/services/ai/claude';
 import { lastGoogleRefusal } from '@server/services/ai/googleRefusal';
@@ -553,12 +554,21 @@ async function checkAdCollection(): Promise<ServiceCheck> {
  */
 async function checkMarketReading(): Promise<ServiceCheck> {
   const base = { id: 'market-reading', name: 'Relevé du marché', role: 'Lit chaque jour les ventes des boutiques repérées ; les alertes se calculent sur ces relevés' };
-  const [watch, [fil]] = await Promise.all([
+  const [watch, [fil], [passage]] = await Promise.all([
     alertWatch(),
     getDb().select({ total: sql<number>`count(*)`, derniere: sql<Date | null>`max(${alerts.occurredAt})` }).from(alerts),
+    getDb().select().from(auditLogs).where(eq(auditLogs.action, MARKET_RUN_AUDIT_ACTION)).orderBy(desc(auditLogs.createdAt)).limit(1),
   ]);
   const alertes = Number(fil?.total ?? 0);
-  const suite = alertes > 0 && fil?.derniere ? ` ${alertes} alerte${alertes > 1 ? 's' : ''} au fil, la dernière le ${new Date(fil.derniere).toLocaleDateString('fr-FR', { timeZone: 'UTC' })}.` : ' Aucune alerte au fil.';
+  const fils = alertes > 0 && fil?.derniere ? ` ${alertes} alerte${alertes > 1 ? 's' : ''} au fil, la dernière le ${new Date(fil.derniere).toLocaleDateString('fr-FR', { timeZone: 'UTC' })}.` : ' Aucune alerte au fil.';
+  // Le dernier passage tel qu'il s'est raconté : combien de boutiques lues, combien en échec, et pourquoi.
+  const compte = (passage?.details ?? null) as { source?: string; indexed?: number | null; failed?: number | null; remaining?: number | null; reasons?: { reason: string; stores: number }[] } | null;
+  const cause = compte?.reasons?.[0] ? ` Échec le plus fréquent : « ${compte.reasons[0].reason} » (${compte.reasons[0].stores}).` : '';
+  const dernierPassage =
+    passage && compte
+      ? ` Dernier passage (${compte.source ?? 'réveil'}, ${passage.createdAt.toLocaleString('fr-FR', { timeZone: 'UTC', day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })} TU) : ${compte.indexed ?? '?'} relevée(s), ${compte.failed ?? '?'} en échec, ${compte.remaining ?? '?'} en attente.${cause}`
+      : ' Aucun passage du relevé n’a encore laissé de compte rendu.';
+  const suite = `${fils}${dernierPassage}`;
   const remede =
     'Vérifier, chez l’hébergeur, que la tâche planifiée « /api/cron/marche » s’exécute chaque nuit et se termine sans erreur (journaux de la fonction). ' +
     'Elle relève les boutiques par tranches et se relance elle-même tant qu’il en reste.';

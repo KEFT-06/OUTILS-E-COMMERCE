@@ -5,6 +5,7 @@ import { discoveredStores, marketProducts, marketSalesDaily, spiedAds } from '@s
 import { chariowStoreSource } from '@server/services/radar/sources/chariowStore';
 import type { RadarObservation } from '@server/services/radar/types';
 import { adsOfProduct, loadStoreAds, productUrl } from '@server/services/market/productAds';
+import { recordAudit } from '@server/services/audit';
 import { runInBackground } from '@server/shared/backgroundWork';
 
 /**
@@ -169,6 +170,8 @@ export interface MarketIndexOutcome {
   launched: number;
   /** Boutiques repérées qui attendent encore leur relevé du jour. */
   remaining: number;
+  /** Motifs d'échec de ce passage, avec le nombre de boutiques touchées par chacun. */
+  reasons: Record<string, number>;
 }
 
 /**
@@ -210,7 +213,7 @@ export async function indexDiscoveredStores(
   const file = await dueDiscoveredStores(now);
 
   const deadline = Date.now() + budgetMs;
-  const outcome: MarketIndexOutcome = { indexed: 0, failed: 0, launched: 0, remaining: file.length };
+  const outcome: MarketIndexOutcome = { indexed: 0, failed: 0, launched: 0, remaining: file.length, reasons: {} };
 
   for (const [rang, store] of file.entries()) {
     /*
@@ -241,11 +244,35 @@ export async function indexDiscoveredStores(
       outcome.launched += launched;
     } catch (error) {
       outcome.failed += 1;
+      // La cause, sans le nom de la boutique : c'est le motif qui se compte, d'un passage à l'autre.
+      const reason = (error instanceof Error ? error.message : String(error)).replace(/\s+/g, ' ').slice(0, 90);
+      outcome.reasons[reason] = (outcome.reasons[reason] ?? 0) + 1;
       console.warn('[marché] relevé impossible :', store.host, error instanceof Error ? error.message : error);
       await db.update(discoveredStores).set({ indexedAt: now }).where(eq(discoveredStores.id, store.id));
     }
   }
   return outcome;
+}
+
+/** Nom, au journal, du compte rendu d'un passage du relevé du marché. */
+export const MARKET_RUN_AUDIT_ACTION = 'market.index.run';
+
+/**
+ * Compte rendu d'un passage, au journal. Du 07 au 11/10/2026 le relevé ne faisait plus le tour
+ * des boutiques et rien ne le disait à personne : ses chiffres ne partaient que dans les journaux
+ * de l'hébergeur. La page « État des services » lit maintenant le dernier. Ne lève jamais.
+ */
+export async function reportMarketRun(source: string, outcome: MarketIndexOutcome | null, alertes: number | null): Promise<void> {
+  const reasons = Object.entries(outcome?.reasons ?? {})
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, 3)
+    .map(([reason, stores]) => ({ reason, stores }));
+  await recordAudit({
+    actor: { id: null, email: 'réveil quotidien' },
+    action: MARKET_RUN_AUDIT_ACTION,
+    details: { source, indexed: outcome?.indexed ?? null, failed: outcome?.failed ?? null, remaining: outcome?.remaining ?? null, launched: outcome?.launched ?? null, alertes, reasons },
+    client: { ipAddress: null, userAgent: 'réveil quotidien' },
+  }).catch((error: unknown) => console.warn('[marché] compte rendu non enregistré :', error instanceof Error ? error.message : error));
 }
 
 let lastBackgroundIndex = 0;
