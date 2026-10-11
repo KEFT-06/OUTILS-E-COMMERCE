@@ -497,7 +497,12 @@ function CheckoutButtons({ plan }: { plan: PlanDefinition }) {
 function PlansCard({ account }: { account: Account }) {
   const { catalog, error } = usePlans(account.country);
   const providers = useProviders();
-  const online = providers?.payments ?? false;
+  /*
+    Le paiement n'est « en ligne » pour un client que s'il encaisse vraiment. Tant que le serveur est
+    en mode test, la page de paiement refuse toute vraie carte : seule l'équipe y va, avec la carte
+    d'essai. Le client, lui, lit comment obtenir son palier en attendant.
+  */
+  const online = Boolean(providers?.payments) && (providers?.paymentMode !== 'test' || account.isStaff);
 
   return (
     <Card id="paliers" className="scroll-mt-24">
