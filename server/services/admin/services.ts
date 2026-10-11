@@ -1,6 +1,6 @@
 import { and, desc, eq, sql } from 'drizzle-orm';
 import { databaseKind, getDb } from '@server/db/client';
-import { generations, storybooks, watches } from '@server/db/schema';
+import { adSearches, generations, spiedAds, storybooks, watches } from '@server/db/schema';
 import { env, isProd, providers } from '@server/env';
 import { lastClaudeOutcome } from '@server/services/ai/claude';
 import { lastGoogleRefusal } from '@server/services/ai/googleRefusal';
@@ -479,6 +479,37 @@ async function checkSebpay(serverIp: string | null): Promise<ServiceCheck> {
  *     radar est inerte alors que tout paraît en place ;
  *  3. la collecte payante est-elle joignable et son jeton accepté ?
  */
+/**
+ * Collecte des publicités : le mur est-il encore alimenté ?
+ *
+ * Ce contrôle regarde le RÉSULTAT — la dernière annonce relevée —, pas la configuration. Du 06 au
+ * 11/10/2026, la lecture payante refusait le serveur et l'atelier du collecteur tournait sans son
+ * secret : tout était « configuré », rien n'arrivait, et aucune ligne de cette page ne le disait.
+ */
+async function checkAdCollection(): Promise<ServiceCheck> {
+  const base = { id: 'ad-collection', name: 'Collecte des publicités', role: 'Alimente le mur d’Espionnage et complète les recherches (collecteur maison, lecture payante en appoint)' };
+  const [[mur], [attente]] = await Promise.all([
+    getDb().select({ total: sql<number>`count(*)`, derniere: sql<Date | null>`max(${spiedAds.lastSeenAt})` }).from(spiedAds),
+    getDb()
+      .select({ total: sql<number>`count(*)` })
+      .from(adSearches)
+      .where(eq(adSearches.collector, 'pending')),
+  ]);
+  const total = Number(mur?.total ?? 0);
+  const enAttente = Number(attente?.total ?? 0);
+  const recherches = enAttente > 0 ? ` ${enAttente} recherche${enAttente > 1 ? 's' : ''} de clients attend${enAttente > 1 ? 'ent' : ''} sa lecture.` : '';
+  const remede =
+    'Vérifier que le secret CRON_SECRET du dépôt GitHub (Settings → Secrets and variables → Actions) porte la même valeur que celui du site : ' +
+    'sans lui, l’atelier « Collecte des publicités » ne verse rien. À défaut, lancer « npm run collecte » depuis un poste.';
+  if (total === 0) return { ...base, state: 'warning', detail: `Le mur est vide : aucune annonce n’a encore été relevée.${recherches}`, action: remede };
+
+  const heures = mur?.derniere ? Math.floor((Date.now() - new Date(mur.derniere).getTime()) / 3_600_000) : null;
+  const depuis = heures === null ? 'date inconnue' : heures < 48 ? `il y a ${heures} h` : `il y a ${Math.floor(heures / 24)} jours`;
+  const detail = `${total.toLocaleString('fr-FR')} annonces sur le mur, la dernière relevée ${depuis}.${recherches}`;
+  if (heures !== null && heures <= 36) return { ...base, state: 'ok', detail, action: null };
+  return { ...base, state: heures !== null && heures <= 72 ? 'warning' : 'error', detail: `${detail} Le mur vieillit : plus rien n’y est versé.`, action: remede };
+}
+
 async function checkRadar(): Promise<ServiceCheck> {
   const base = { id: 'radar', name: 'Radar', role: 'Relevé quotidien des boutiques surveillées, résumés et découverte' };
 
@@ -605,6 +636,7 @@ export async function checkServices(options: { refresh?: boolean } = {}): Promis
     checkVideoArchive(),
     checkChariow(),
     checkRadar(),
+    checkAdCollection(),
     checkStripe(),
     checkSebpay(serverIp),
     checkEmail(),

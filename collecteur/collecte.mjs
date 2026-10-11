@@ -55,6 +55,21 @@ const SECRET = process.env.CRON_SECRET ?? '';
 const ESSAI = option('essai', false) === true || !SECRET;
 /** Passage court : les recherches des clients en attente, et rien d'autre. */
 const DEMANDES = option('demandes', false) === true;
+
+/*
+  Dans l'atelier GitHub, un passage sans secret n'est pas un essai : c'est une panne. Du 06 au
+  11/10/2026, l'atelier a « réussi » chaque nuit en trente secondes sans rien verser — le secret
+  n'était pas dans le dépôt —, et le mur a vieilli de cinq jours sans que personne le voie. Il
+  échoue maintenant, pour que GitHub prévienne le propriétaire.
+*/
+if (!SECRET && process.env.GITHUB_ACTIONS && option('essai', false) !== true) {
+  console.error(
+    'CRON_SECRET est absent des secrets du dépôt : ce passage ne verserait rien au site.\n' +
+      'Ajoutez-le dans GitHub → Settings → Secrets and variables → Actions → New repository secret,\n' +
+      'nom CRON_SECRET, avec la même valeur que la variable CRON_SECRET du site.',
+  );
+  process.exit(1);
+}
 const NAVIGATEUR = String(option('navigateur', process.env.COLLECTE_NAVIGATEUR ?? (process.platform === 'win32' ? 'msedge' : 'chromium')));
 const LOT = 40;
 

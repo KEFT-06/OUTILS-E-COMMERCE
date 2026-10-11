@@ -33,9 +33,12 @@ describe('État des services', () => {
     };
 
     const byId = Object.fromEntries(report.services.map((service) => [service.id, service]));
-    assert.deepEqual(Object.keys(byId).sort(), ['chariow', 'claude', 'database', 'email', 'gamma', 'gemini', 'images', 'perplexity', 'radar', 'sebpay', 'stripe', 'veo', 'video-archive']);
+    assert.deepEqual(Object.keys(byId).sort(), ['ad-collection', 'chariow', 'claude', 'database', 'email', 'gamma', 'gemini', 'images', 'perplexity', 'radar', 'sebpay', 'stripe', 'veo', 'video-archive']);
 
     assert.equal(byId.database!.state, 'warning', 'base embarquée : pas en ligne');
+    // Le mur vide se voit, avec le geste à faire : c'est le RÉSULTAT de la collecte qui est regardé, pas sa configuration.
+    assert.equal(byId['ad-collection']!.state, 'warning');
+    assert.match(byId['ad-collection']!.action ?? '', /secret CRON_SECRET du dépôt GitHub/);
     assert.match(byId.database!.action ?? '', /Session pooler/);
     assert.equal(byId.perplexity!.state, 'error', 'sans Perplexity, l’analyse est refusée');
     assert.equal(byId.gamma!.state, 'off');
