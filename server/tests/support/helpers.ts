@@ -60,6 +60,9 @@ export async function createTestApp(overrides: Record<string, string> = {}): Pro
     EMAIL_API_KEY: '',
     EMAIL_FROM: '',
     EMAIL_API_URL: '',
+    // Jamais d'atelier GitHub lancé par une suite de tests.
+    COLLECTOR_DISPATCH_TOKEN: '',
+    GITHUB_API_URL: 'http://127.0.0.1:9',
     STRIPE_API_KEY: '',
     STRIPE_WEBHOOK_SECRET: '',
     STRIPE_API_URL: 'http://127.0.0.1:9',

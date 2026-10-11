@@ -1494,6 +1494,11 @@ export const adSearches = pgTable(
     resultsLimit: integer('results_limit').notNull(),
     adsFound: integer('ads_found'),
     error: text('error'),
+    /**
+     * Recherche confiée au collecteur maison : pending tant qu'il ne l'a pas lue, done ensuite.
+     * null : recherche servie par la lecture payante.
+     */
+    collector: text('collector'),
     createdAt: createdAt(),
     finishedAt: moment('finished_at'),
   },

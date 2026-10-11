@@ -189,6 +189,11 @@ export interface AdSearch {
   ads: LibraryAd[];
   hiddenByPlan: number;
   platformAds: number;
+  /**
+   * La liste vient de nos relevés et la bibliothèque est relue pour ce mot : elle va se compléter.
+   * soon : dans quelques minutes ; tonight : dans la nuit. null ou absent : liste finale.
+   */
+  refreshing?: 'soon' | 'tonight' | null;
 }
 
 export interface AdSearchOverview {

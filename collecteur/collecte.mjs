@@ -12,6 +12,8 @@
  *   node collecte.mjs                    passage complet : mots-clés × pays, autres plateformes (Maketou, Shopify)
  *                                        dans les pays visés, puis contrôle des annonces anciennes
  *   node collecte.mjs --essai            lit sans rien verser, et dit ce qu'il a trouvé
+ *   node collecte.mjs --demandes         ne lit que les recherches des clients en attente (passage court,
+ *                                        lancé par le site quand la lecture payante ne sert pas une recherche)
  *   node collecte.mjs --mots=mychariow --pays=CM,CI --max=300
  *
  * Réglages (variables d'environnement, ou fichier .env à la racine du dépôt) :
@@ -51,6 +53,8 @@ const option = (name, fallback = null) => {
 const SITE = String(option('site', process.env.COLLECTE_SITE ?? 'https://www.smartcreatorcm.com')).replace(/\/+$/, '');
 const SECRET = process.env.CRON_SECRET ?? '';
 const ESSAI = option('essai', false) === true || !SECRET;
+/** Passage court : les recherches des clients en attente, et rien d'autre. */
+const DEMANDES = option('demandes', false) === true;
 const NAVIGATEUR = String(option('navigateur', process.env.COLLECTE_NAVIGATEUR ?? (process.platform === 'win32' ? 'msedge' : 'chromium')));
 const LOT = 40;
 
@@ -83,7 +87,7 @@ async function site(path, init = {}) {
 
 /** Plan du passage : celui du site quand on a son secret, sinon un plan d'essai. */
 async function plan() {
-  const defaut = { queries: ['mychariow', 'chariow'], countries: ['ALL'], maxPerQuery: 600, toVerify: [] };
+  const defaut = { queries: ['mychariow', 'chariow'], countries: ['ALL'], maxPerQuery: 600, toVerify: [], searches: [] };
   let fromSite = defaut;
   if (SECRET) {
     try {
@@ -96,7 +100,11 @@ async function plan() {
   // Des mots ou des pays donnés à la main décrivent tout le passage : les recherches du site ne s'y ajoutent pas.
   const aLaMain = list(option('mots')) !== null || list(option('pays')) !== null;
   const extra = fromSite.extra ?? { queries: [], countries: [], maxPerQuery: 150 };
+  // Recherches des clients que la lecture payante n'a pas servies : lues avant tout le reste.
+  const searches = aLaMain ? [] : (fromSite.searches ?? []);
+  if (DEMANDES) return { queries: [], countries: [], maxPerQuery: 0, extra: { queries: [], countries: [], maxPerQuery: 0 }, toVerify: [], searches };
   return {
+    searches,
     queries: list(option('mots')) ?? fromSite.queries,
     countries: (list(option('pays')) ?? fromSite.countries).map((code) => code.toUpperCase()),
     maxPerQuery: Number(option('max', fromSite.maxPerQuery)) || 600,
@@ -167,7 +175,7 @@ function harvest(text, into) {
   }
 }
 
-const totals = { lues: 0, versees: 0, gardees: 0, boutiquesNouvelles: 0, controlees: 0, arretees: 0, echecs: 0 };
+const totals = { lues: 0, versees: 0, gardees: 0, boutiquesNouvelles: 0, controlees: 0, arretees: 0, echecs: 0, demandes: 0 };
 
 /** Où mènent les annonces lues, par famille d'adresses (« *.mychariow.shop ») : le compte rendu d'un essai. */
 const destinations = new Map();
@@ -199,14 +207,37 @@ async function verser(items, country, done = false, summary = undefined) {
   }
 }
 
+/**
+ * Verse les annonces lues pour la recherche d'un client : elles la complètent, et celles qui
+ * mènent à une boutique suivie rejoignent aussi le mur. Le dernier lot dit que la recherche est lue,
+ * même vide — elle n'attendra pas un autre passage.
+ */
+async function verserDemande(items, country, searchId) {
+  if (ESSAI) return;
+  for (let start = 0; start === 0 || start < items.length; start += LOT) {
+    const outcome = await site('/api/cron/collecte', {
+      method: 'POST',
+      body: JSON.stringify({ country, items: items.slice(start, start + LOT), search: { id: searchId, first: start === 0, done: start + LOT >= items.length } }),
+    });
+    totals.versees += Math.min(LOT, Math.max(0, items.length - start));
+    totals.gardees += outcome.adsKept ?? 0;
+    totals.boutiquesNouvelles += outcome.storesNew ?? 0;
+  }
+}
+
 const programme = await plan();
+if (DEMANDES && programme.searches.length === 0) {
+  console.log('Aucune recherche en attente : rien à lire.');
+  process.exit(0);
+}
 log.info(
   `${ESSAI ? 'ESSAI (rien n’est versé)' : `Versement vers ${SITE}`} — ${programme.queries.length} mot(s)-clé(s) × ${programme.countries.length} pays, ` +
     `${programme.maxPerQuery} annonces au plus par recherche` +
     (programme.extra.queries.length > 0
       ? ` ; autres plateformes : ${programme.extra.queries.length} mot(s) × ${programme.extra.countries.length} pays, ${programme.extra.maxPerQuery} au plus`
       : '') +
-    ` ; ${programme.toVerify.length} annonce(s) ancienne(s) à contrôler.`,
+    ` ; ${programme.toVerify.length} annonce(s) ancienne(s) à contrôler` +
+    ` ; ${programme.searches.length} recherche(s) de clients en attente.`,
 );
 
 // Rien n'est gardé sur le disque : ni file d'attente, ni captures.
@@ -240,7 +271,7 @@ const crawler = new PlaywrightCrawler({
     },
   ],
   async requestHandler({ page, request }) {
-    const { kind, country, query, max, id } = request.userData;
+    const { kind, country, query, max, id, searchId } = request.userData;
     const found = request.userData.found;
     await page.waitForSelector('body', { state: 'attached', timeout: 60_000 });
     await page.waitForTimeout(6_000);
@@ -281,8 +312,13 @@ const crawler = new PlaywrightCrawler({
     }
     ads.forEach(noteDestination);
     totals.lues += ads.length;
-    log.info(`« ${query} » · ${country} : ${ads.length} annonce(s) lue(s).`);
-    await verser(ads, country);
+    log.info(`« ${query} » · ${country} : ${ads.length} annonce(s) lue(s)${kind === 'demande' ? ' pour la recherche d’un client' : ''}.`);
+    if (kind === 'demande') {
+      totals.demandes += 1;
+      await verserDemande(ads, country, searchId);
+    } else {
+      await verser(ads, country);
+    }
   },
   failedRequestHandler({ request }, error) {
     totals.echecs += 1;
@@ -291,6 +327,12 @@ const crawler = new PlaywrightCrawler({
 });
 
 const requetes = [
+  // Les clients d'abord : quelqu'un attend ces résultats.
+  ...programme.searches.map((search) => ({
+    url: searchUrl(search.query, search.country),
+    uniqueKey: `demande:${search.id}`,
+    userData: { kind: 'demande', searchId: search.id, query: search.query, country: search.country, max: search.max ?? 60 },
+  })),
   ...programme.queries.flatMap((query) =>
     programme.countries.map((country) => ({
       url: searchUrl(query, country),
@@ -314,7 +356,8 @@ await crawler.run(requetes);
 const duree = Math.round((Date.now() - debut) / 1000);
 
 // Dernier versement, vide : il inscrit le passage au journal du site et recalcule les alertes.
-if (!ESSAI) await verser([], 'ALL', true, { ...totals, dureeSecondes: duree, pays: programme.countries, mots: programme.queries });
+// Un passage court n'est pas un relevé : il ne s'inscrit pas, et ne retarde pas celui de la nuit.
+if (!ESSAI && !DEMANDES) await verser([], 'ALL', true, { ...totals, dureeSecondes: duree, pays: programme.countries, mots: programme.queries });
 
 console.log(
   `\nTerminé en ${duree} s — ${totals.lues} annonces lues` +
@@ -327,4 +370,6 @@ if (ESSAI && destinations.size > 0) {
   const top = [...destinations.entries()].sort((a, b) => b[1] - a[1]).slice(0, 12);
   console.log(`Destinations : ${top.map(([family, count]) => `${family} × ${count}`).join(', ')}.`);
 }
-process.exit(totals.lues === 0 && totals.controlees === 0 ? 1 : 0);
+if (totals.demandes > 0) console.log(`${totals.demandes} recherche(s) de clients lue(s).`);
+// Un passage court qui ne lit rien n'est pas une panne : le mot cherché peut n'avoir aucune publicité en cours.
+process.exit(!DEMANDES && totals.lues === 0 && totals.controlees === 0 ? 1 : 0);

@@ -302,6 +302,13 @@
       "when": 1791423539728,
       "tag": "0042_couverture_complete",
       "breakpoints": true
+    },
+    {
+      "idx": 43,
+      "version": "7",
+      "when": 1791691105517,
+      "tag": "0043_recherche_par_le_collecteur",
+      "breakpoints": true
     }
   ]
 }

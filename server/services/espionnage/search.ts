@@ -1,4 +1,4 @@
-import { and, count, desc, eq, gte, inArray, isNotNull, sql } from 'drizzle-orm';
+import { and, asc, count, desc, eq, gte, inArray, isNotNull, lt, or, sql } from 'drizzle-orm';
 import { z } from 'zod';
 import { getDb } from '@server/db/client';
 import { sansAccents } from '@server/db/search';
@@ -7,6 +7,9 @@ import { env, providers } from '@server/env';
 import { AppError } from '@server/middleware';
 import type { RequestAuth } from '@server/middleware/auth';
 import { effectiveLimits } from '@server/services/accounts';
+import { listSpiedAds } from '@server/services/espionnage';
+import { collectorDispatchConfigured, requestCollectorPassage } from '@server/services/espionnage/dispatch';
+import { fromLibraryRecord } from '@server/services/espionnage/library';
 import { readAnyMetaAd } from '@server/services/espionnage/parse';
 import { followableOnRadar } from '@server/shared/storefronts';
 import {
@@ -36,9 +39,23 @@ import {
  *
  * Les annonces qui mènent à une boutique de la plateforme rejoignent aussi le mur : une donnée
  * payée pour une recherche sert deux fois.
+ *
+ * LA RECHERCHE NE DÉPEND PAS DE LA SEULE LECTURE PAYANTE. Le 11/10/2026, le compte de collecte
+ * refusait le serveur : chaque recherche finissait en « Recherche impossible — le service de
+ * collecte publicitaire refuse l'accès du serveur », alors que le site a son propre collecteur
+ * (dossier collecteur/, Crawlee + Playwright) et un mur de plusieurs milliers d'annonces déjà
+ * relevées. Quand la lecture payante manque — pas branchée, refusée, à sec, plafond atteint —, la
+ * recherche change de source au lieu d'échouer :
+ *   1. elle répond tout de suite avec ce que nos relevés contiennent pour ce mot ;
+ *   2. elle est confiée au collecteur, qui relit la bibliothèque pour ce mot et complète la liste
+ *      — en quelques minutes s'il peut être appelé à la demande, sinon à son passage de la nuit.
  */
 
 const SEARCH_STALE_MS = 15 * 60_000;
+/** Au-delà, une recherche confiée au collecteur n'attend plus : ce qu'elle a trouvé dans nos relevés reste sa réponse. */
+const COLLECTOR_WAIT_MS = 36 * 3_600_000;
+/** Un passage demandé il y a moins longtemps prendra aussi les recherches arrivées depuis : inutile d'en demander un autre. */
+const DISPATCH_WINDOW_MS = 60_000;
 /** Une récolte dure quelques secondes ; au-delà de ce délai depuis le lancement, elle a été coupée. */
 const HARVEST_STALE_MS = 4 * 60_000;
 
@@ -69,7 +86,8 @@ export interface LibraryAdView {
   advertiser: string | null;
   mediaUrl: string | null;
   mediaKind: string | null;
-  thumbnailUrl: null;
+  /** Aperçu conservé chez nous, pour une annonce tirée de nos relevés ; null sinon. */
+  thumbnailUrl: string | null;
   startedAt: string | null;
   runningDays: number | null;
   daysSinceSeen: number;
@@ -104,6 +122,11 @@ export interface AdSearchView {
   hiddenByPlan: number;
   /** Annonces qui mènent à une boutique de la plateforme, parmi celles trouvées. */
   platformAds: number;
+  /**
+   * La liste vient de nos relevés, et le collecteur relit la bibliothèque pour ce mot : elle va se
+   * compléter. soon : dans quelques minutes ; tonight : à son passage de la nuit. null : liste finale.
+   */
+  refreshing: 'soon' | 'tonight' | null;
 }
 
 export interface SearchQuota {
@@ -126,7 +149,7 @@ function adViewOf(fields: NonNullable<ReturnType<typeof readAnyMetaAd>>, searche
     externalId: fields.externalId,
     storeHost: fields.storeHost,
     landingUrl: fields.landingUrl,
-    title: fields.title ?? null,
+    title: fields.title && !/\{\{[^}]*\}\}/.test(fields.title) ? fields.title : null,
     bodyText: fields.bodyText ?? null,
     advertiser: fields.advertiser ?? null,
     mediaUrl: fields.mediaUrl ?? null,
@@ -172,8 +195,12 @@ async function viewOf(row: SearchRow, auth: RequestAuth, fromCache: boolean): Pr
     ads,
     hiddenByPlan: all.length - ads.length,
     platformAds: all.filter((ad) => followableOnRadar(ad.storeHost)).length,
+    refreshing: awaitsCollector(row) ? (collectorDispatchConfigured() ? 'soon' : 'tonight') : null,
   };
 }
+
+/** La recherche attend-elle encore la lecture du collecteur ? */
+const awaitsCollector = (row: SearchRow, now = new Date()) => row.collector === 'pending' && now.getTime() - row.createdAt.getTime() < COLLECTOR_WAIT_MS;
 
 /** Quota du compte et reste du plafond du serveur, pour ce mois-ci. */
 export async function searchQuota(auth: RequestAuth, now = new Date()): Promise<SearchQuota> {
@@ -181,7 +208,7 @@ export async function searchQuota(auth: RequestAuth, now = new Date()): Promise<
   const [mine] = await getDb()
     .select({ n: count() })
     .from(adSearches)
-    .where(and(eq(adSearches.requestedBy, auth.account.user.id), gte(adSearches.createdAt, month), isNotNull(adSearches.providerRunId)));
+    .where(and(eq(adSearches.requestedBy, auth.account.user.id), gte(adSearches.createdAt, month), or(isNotNull(adSearches.providerRunId), isNotNull(adSearches.collector))));
   const [server] = await getDb()
     .select({ ads: sql<number>`coalesce(sum(${adSearches.resultsLimit}), 0)` })
     .from(adSearches)
@@ -195,13 +222,50 @@ export async function searchQuota(auth: RequestAuth, now = new Date()): Promise<
 }
 
 /**
- * Lance une recherche, ou relit la même faite depuis moins de 24 heures. Les refus de quota
+ * Réponse tirée de nos relevés, et recherche confiée au collecteur. Ce que le mur contient pour
+ * ce mot part tout de suite ; la lecture fraîche de la bibliothèque le remplacera à son arrivée.
+ */
+async function serveFromOurBase(row: SearchRow, auth: RequestAuth, request: AdSearchRequest, now: Date): Promise<AdSearchView> {
+  const ours = await listSpiedAds(
+    { search: request.query, ...(request.country === 'ALL' ? {} : { country: request.country }), etat: 'active', sort: 'oldest', limit: env.SPY_SEARCH_RESULTS },
+    null,
+    now,
+  )
+    .then((view) => view.ads)
+    .catch((error: unknown) => {
+      console.warn('[recherche] lecture de nos relevés impossible :', error instanceof Error ? error.message : error);
+      return [];
+    });
+
+  await getDb().delete(adSearchResults).where(eq(adSearchResults.searchId, row.id));
+  if (ours.length > 0) {
+    await getDb()
+      .insert(adSearchResults)
+      .values(ours.map((ad, position) => ({ searchId: row.id, position, ad: { ...ad, id: `${row.id}-${position}` } as unknown as Record<string, unknown> })));
+  }
+  // Un passage déjà demandé dans la minute prendra aussi cette recherche.
+  const [earlier] = await getDb()
+    .select({ id: adSearches.id })
+    .from(adSearches)
+    .where(and(eq(adSearches.collector, 'pending'), gte(adSearches.createdAt, new Date(now.getTime() - DISPATCH_WINDOW_MS))))
+    .limit(1);
+  const [served] = await getDb()
+    .update(adSearches)
+    .set({ status: 'done', adsFound: ours.length, error: null, collector: 'pending', providerRunId: null, datasetId: null, finishedAt: now })
+    .where(eq(adSearches.id, row.id))
+    .returning();
+  if (!earlier) void requestCollectorPassage();
+  return viewOf(served ?? row, auth, false);
+}
+
+/**
+ * Lance une recherche, ou relit la même faite depuis moins de 24 heures. Les refus du palier
  * passent AVANT tout appel au fournisseur : une recherche refusée ne coûte rien.
+ *
+ * La lecture payante d'abord, quand elle est branchée et qu'il lui reste du budget ce mois-ci ;
+ * sinon, ou si elle se dérobe au lancement, nos relevés et notre collecteur (voir l'en-tête).
  */
 export async function startAdSearch(auth: RequestAuth, request: AdSearchRequest, now = new Date()): Promise<AdSearchView> {
-  if (!providers.apify) {
-    throw new AppError(503, 'La recherche dans la bibliothèque publicitaire n’est pas configurée sur ce serveur.', 'SPY_SEARCH_NOT_CONFIGURED');
-  }
   const key = searchKey(request.query);
   if (key.length < 2) throw new AppError(400, 'Tapez au moins deux caractères.', 'SPY_SEARCH_INVALID');
 
@@ -235,18 +299,14 @@ export async function startAdSearch(auth: RequestAuth, request: AdSearchRequest,
       'SPY_SEARCH_QUOTA',
     );
   }
-  if (quota.serverLeft <= 0) {
-    throw new AppError(
-      429,
-      'Le plafond mensuel de recherches nouvelles du service est atteint. Les recherches déjà faites restent consultables ; les nouvelles reprennent le mois prochain.',
-      'SPY_SEARCH_BUDGET',
-    );
-  }
 
   const [row] = await getDb()
     .insert(adSearches)
     .values({ query: request.query, queryKey: key, country: request.country, requestedBy: auth.account.user.id, resultsLimit: env.SPY_SEARCH_RESULTS })
     .returning();
+
+  // Le plafond mensuel du serveur borne la DÉPENSE : une fois atteint, la recherche passe par nos relevés, qui ne coûtent rien.
+  if (!providers.apify || quota.serverLeft <= 0) return serveFromOurBase(row!, auth, request, now);
 
   try {
     const response = await apifyFetch(apifyUrl(`/acts/${env.APIFY_ADS_ACTOR}/runs`), {
@@ -268,12 +328,79 @@ export async function startAdSearch(auth: RequestAuth, request: AdSearchRequest,
       .returning();
     return viewOf(started!, auth, false);
   } catch (error) {
+    // Compte refusé, réserve épuisée, service muet : ce n'est pas l'affaire de celui qui cherche.
+    console.warn('[recherche] lecture payante indisponible, la recherche passe par nos relevés :', error instanceof AppError ? error.code : error);
+    return serveFromOurBase(row!, auth, request, now);
+  }
+}
+
+/** Recherches que le collecteur doit lire à son prochain passage, les plus anciennes d'abord. */
+export async function pendingCollectorSearches(now = new Date(), limit = 12): Promise<{ id: string; query: string; country: string; max: number }[]> {
+  const rows = await getDb()
+    .select({ id: adSearches.id, query: adSearches.query, country: adSearches.country })
+    .from(adSearches)
+    .where(and(eq(adSearches.collector, 'pending'), gte(adSearches.createdAt, new Date(now.getTime() - COLLECTOR_WAIT_MS))))
+    .orderBy(asc(adSearches.createdAt))
+    .limit(limit);
+  return rows.map((row) => ({ ...row, max: env.SPY_SEARCH_RESULTS }));
+}
+
+/** Rang à partir duquel sont rangées, dans une recherche, les annonces tirées de nos relevés : après la lecture fraîche. */
+const OURS_FROM = 10_000;
+
+/**
+ * Versement, par le collecteur, d'un lot d'annonces lues dans la bibliothèque pour une recherche.
+ *
+ * La lecture fraîche passe en tête ; ce que nos relevés avaient donné reste À LA SUITE, sans
+ * doublon. Essai réel du 11/10/2026 : pour « formation », nos relevés rendaient dix boutiques du
+ * marché de l'auteur, la bibliothèque dix écoles du monde entier — remplacer les unes par les
+ * autres retirait justement les concurrents qu'il cherche. `first` : premier lot ; `done` :
+ * dernier lot, la recherche n'attend plus (même si la lecture revient vide).
+ */
+export async function pourCollectorSearch(input: { id: string; items: unknown[]; first: boolean; done: boolean }, now = new Date()): Promise<{ stored: number } | null> {
+  const [row] = await getDb().select().from(adSearches).where(eq(adSearches.id, input.id)).limit(1);
+  if (!row || row.collector !== 'pending') return null;
+
+  // Premier lot : ce qui est déjà là vient de nos relevés, et cède les premiers rangs.
+  if (input.first) {
+    await getDb()
+      .update(adSearchResults)
+      .set({ position: sql`${adSearchResults.position} + ${OURS_FROM}` })
+      .where(and(eq(adSearchResults.searchId, row.id), lt(adSearchResults.position, OURS_FROM)));
+  }
+  const read = await getDb()
+    .select({ ad: adSearchResults.ad })
+    .from(adSearchResults)
+    .where(and(eq(adSearchResults.searchId, row.id), lt(adSearchResults.position, OURS_FROM)));
+  const seen = new Set(read.map((entry) => (entry.ad as unknown as LibraryAdView).externalId));
+  const fresh = input.items
+    .map((item) => readAnyMetaAd(fromLibraryRecord(item), now))
+    .filter((ad): ad is NonNullable<typeof ad> => ad !== null && !seen.has(ad.externalId) && Boolean(seen.add(ad.externalId)))
+    .slice(0, Math.max(0, row.resultsLimit - read.length));
+
+  if (fresh.length > 0) {
+    await getDb()
+      .insert(adSearchResults)
+      .values(fresh.map((ad, index) => ({ searchId: row.id, position: read.length + index, ad: adViewOf(ad, now, read.length + index, row.id) as unknown as Record<string, unknown> })));
+    // Une annonce de nos relevés que la lecture fraîche a retrouvée n'est pas montrée deux fois.
+    await getDb()
+      .delete(adSearchResults)
+      .where(
+        and(
+          eq(adSearchResults.searchId, row.id),
+          gte(adSearchResults.position, OURS_FROM),
+          inArray(sql<string>`${adSearchResults.ad}->>'externalId'`, fresh.map((ad) => ad.externalId)),
+        ),
+      );
+  }
+  if (input.done || fresh.length > 0) {
+    const [{ total } = { total: 0 }] = await getDb().select({ total: count() }).from(adSearchResults).where(eq(adSearchResults.searchId, row.id));
     await getDb()
       .update(adSearches)
-      .set({ status: 'failed', error: error instanceof AppError ? error.message : 'Lancement impossible.', finishedAt: new Date() })
-      .where(eq(adSearches.id, row!.id));
-    throw error;
+      .set({ adsFound: Number(total), ...(input.done ? { collector: 'done', finishedAt: now } : {}) })
+      .where(eq(adSearches.id, row.id));
   }
+  return { stored: fresh.length };
 }
 
 /** Relève le passage d'une recherche en cours et verse son résultat quand il est terminé. */

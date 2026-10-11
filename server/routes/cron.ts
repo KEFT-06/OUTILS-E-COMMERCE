@@ -17,6 +17,7 @@ import { z } from 'zod';
 import { detectAlerts } from '@server/services/alerts';
 import { settleDueCommissions } from '@server/services/referral';
 import { collectorPlan, ingestLibraryRecords, recordCollectorRun } from '@server/services/espionnage/library';
+import { pendingCollectorSearches, pourCollectorSearch } from '@server/services/espionnage/search';
 import { indexDiscoveredStores } from '@server/services/market';
 import { runInBackground } from '@server/shared/backgroundWork';
 
@@ -283,7 +284,8 @@ cronRouter.get(
   '/collecte',
   asyncRoute(async (req, res) => {
     requireCollector(req);
-    res.json(await collectorPlan());
+    // Les recherches des clients en attente : le collecteur les lit avant tout le reste.
+    res.json({ ...(await collectorPlan()), searches: await pendingCollectorSearches() });
   }),
 );
 
@@ -294,6 +296,8 @@ const collecteSchema = z.object({
   /** Dernier lot d'un passage : il est inscrit au journal, et les alertes sont recalculées. */
   done: z.boolean().default(false),
   summary: z.record(z.string(), z.unknown()).optional(),
+  /** Lot lu pour la recherche d'un client : il la complète, en plus de rejoindre le mur. */
+  search: z.object({ id: z.string().uuid(), first: z.boolean().default(false), done: z.boolean().default(false) }).optional(),
 });
 
 /** Versement d'un lot d'annonces lues dans la bibliothèque publique. */
@@ -303,13 +307,14 @@ cronRouter.post(
     requireCollector(req);
     const parsed = collecteSchema.safeParse(req.body);
     if (!parsed.success) throw new AppError(400, 'Lot d’annonces illisible.', 'COLLECT_INVALID');
-    const { country, items, done, summary } = parsed.data;
+    const { country, items, done, summary, search } = parsed.data;
     const outcome = await ingestLibraryRecords(items, country === 'ALL' ? null : country);
+    const searched = search ? await pourCollectorSearch({ ...search, items }) : null;
     let alertes: number | null = null;
     if (done) {
       await recordCollectorRun(summary ?? {});
       alertes = await detectAlerts().catch(() => null);
     }
-    res.json({ ...outcome, alertes });
+    res.json({ ...outcome, alertes, ...(searched ? { searchStored: searched.stored } : {}) });
   }),
 );

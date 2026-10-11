@@ -12,7 +12,8 @@ import { closeTestApp, createTestApp } from './support/helpers';
  *  - une recherche rend les publicités de TOUS les comptes qui utilisent le mot, pas seulement
  *    celles de la plateforme — et celles de la plateforme rejoignent aussi le mur ;
  *  - la même recherche, par un autre compte, dans les 24 heures, est relue sans nouvel appel payé ;
- *  - les refus (palier, quota, plafond du serveur) tombent AVANT tout appel au fournisseur.
+ *  - les refus du palier tombent AVANT tout appel au fournisseur, et le plafond du serveur borne la
+ *    dépense sans arrêter la recherche (voir recherche-collecteur.test.ts).
  */
 
 const JOUR = 86_400;
@@ -153,7 +154,7 @@ describe('Espionnage — recherche comme sur Meta', () => {
     assert.equal(lancements.length, avant);
   });
 
-  it('borne les recherches nouvelles au quota du palier, puis au plafond mensuel du serveur', async () => {
+  it('borne les recherches nouvelles au quota du palier, et la dépense au plafond mensuel du serveur', async () => {
     const { agent: plus } = await signInWithPlan(app, 'chercheur-plus@exemple.test', 'plus');
     for (const mot of ['formation excel', 'coran enfants', 'guide pdf']) {
       await plus.post('/api/espionnage/searches').send({ query: mot }).expect(202);
@@ -166,9 +167,10 @@ describe('Espionnage — recherche comme sur Meta', () => {
     // Quatre recherches faites sur cinq : le compte Pro en lance une, puis bute sur le plafond.
     const { agent: pro } = await signInWithPlan(app, 'chercheur-pro-2@exemple.test', 'pro');
     await pro.post('/api/espionnage/searches').send({ query: 'cinquième mot' }).expect(202);
-    const plafond = await pro.post('/api/espionnage/searches').send({ query: 'sixième mot' }).expect(429);
-    assert.equal(plafond.body.error.code, 'SPY_SEARCH_BUDGET');
-    assert.equal(lancements.length, avant + 1);
+    // Plafond du serveur atteint : la DÉPENSE s'arrête, pas la recherche — elle passe par nos relevés et notre collecteur.
+    const plafond = await pro.post('/api/espionnage/searches').send({ query: 'sixième mot' }).expect(202);
+    assert.deepEqual([plafond.body.search.status, plafond.body.search.refreshing], ['done', 'tonight']);
+    assert.equal(lancements.length, avant + 1, 'aucun appel payé de plus');
   });
 
   it('reprend une récolte coupée en route au lieu de tourner sans fin', async () => {

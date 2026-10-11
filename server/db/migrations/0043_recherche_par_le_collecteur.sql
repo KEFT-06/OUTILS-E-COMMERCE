@@ -1,0 +1,1 @@
+ALTER TABLE "ad_searches" ADD COLUMN "collector" text;

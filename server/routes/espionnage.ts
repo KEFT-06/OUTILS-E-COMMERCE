@@ -1,6 +1,5 @@
 import { Router } from 'express';
 import { z } from 'zod';
-import { providers } from '@server/env';
 import { asyncRoute, routeLimiter, validateBody } from '@server/middleware';
 import { requireAuth } from '@server/middleware/auth';
 import { effectiveLimits } from '@server/services/accounts';
@@ -123,7 +122,7 @@ espionnageRouter.post(
 espionnageRouter.get(
   '/searches',
   asyncRoute(async (req, res) => {
-    res.json({ recent: await recentAdSearches(), quota: await searchQuota(req.auth!), configured: providers.apify });
+    res.json({ recent: await recentAdSearches(), quota: await searchQuota(req.auth!), configured: true });
   }),
 );
 

@@ -113,6 +113,29 @@ export function MetaSearchPanel() {
     void chargerApercu();
   }, [chargerApercu]);
 
+  /*
+    Recherche servie par nos relevés pendant que la bibliothèque est relue : la liste se complète
+    d'elle-même, sans rien demander. Relue toutes les vingt secondes, un quart d'heure au plus —
+    au-delà, la lecture fraîche attendra la prochaine visite, la recherche reste consultable.
+  */
+  const aCompleter = recherche?.status === "done" && recherche.refreshing === "soon" ? recherche.id : null;
+  useEffect(() => {
+    if (!aCompleter) return;
+    const id = aCompleter;
+    let tours = 0;
+    const minuteur = setInterval(() => {
+      tours += 1;
+      if (tours > 45) return clearInterval(minuteur);
+      void apiRequest<{ search: AdSearch }>(`/api/espionnage/searches/${id}`)
+        .then(({ search }) => {
+          setRecherche((actuelle) => (actuelle?.id === id ? search : actuelle));
+          if (!search.refreshing) void chargerApercu();
+        })
+        .catch(() => undefined);
+    }, 20_000);
+    return () => clearInterval(minuteur);
+  }, [aCompleter, chargerApercu]);
+
   // Suivi d'une recherche en cours : relue toutes les quatre secondes jusqu'au résultat.
   useEffect(() => {
     if (recherche?.status !== "running") return;
@@ -401,6 +424,17 @@ export function MetaSearchPanel() {
                   ? ` · recherche partagée ${formatRelativeFr(recherche.createdAt)}`
                   : ""}
               </p>
+              {recherche.refreshing && (
+                <p className="mt-1 flex items-start gap-1.5 text-sm text-muted-foreground" role="status">
+                  <Loader2 className={recherche.refreshing === "soon" ? "mt-0.5 size-4 shrink-0 animate-spin" : "hidden"} aria-hidden="true" />
+                  <span>
+                    Ces publicités viennent de nos relevés.{" "}
+                    {recherche.refreshing === "soon"
+                      ? "La bibliothèque publicitaire est relue en ce moment pour ce mot : la liste se complétera ici d’elle-même, dans quelques minutes."
+                      : "La bibliothèque publicitaire sera relue pour ce mot cette nuit : la liste complète vous attendra ici demain."}
+                  </span>
+                </p>
+              )}
             </div>
             <div className="flex items-center gap-2">
               <Switch

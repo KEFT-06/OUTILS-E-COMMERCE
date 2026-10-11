@@ -316,6 +316,26 @@ const schema = z.object({
    * mode test, sk_live_… en réel). STRIPE_WEBHOOK_SECRET : secret de signature du webhook
    * /api/billing/webhook (whsec_…), recommandé pour ne manquer aucun paiement.
    */
+  /**
+   * Collecteur maison à la demande. COLLECTOR_DISPATCH_TOKEN : jeton GitHub autorisé à lancer les
+   * ateliers du dépôt (fine-grained, « Actions : lecture et écriture » sur ce seul dépôt). Avec lui,
+   * une recherche que la lecture payante ne sert pas est relue par le collecteur en quelques minutes ;
+   * sans lui, elle l'est au passage de la nuit.
+   */
+  COLLECTOR_DISPATCH_TOKEN: z.string().min(1).optional(),
+  COLLECTOR_REPOSITORY: z
+    .string()
+    .regex(/^[\w.-]+\/[\w.-]+$/)
+    .default('KEFT-06/OUTILS-E-COMMERCE'),
+  COLLECTOR_WORKFLOW: z
+    .string()
+    .regex(/^[\w.-]+$/)
+    .default('collecte.yml'),
+  COLLECTOR_REF: z
+    .string()
+    .regex(/^[\w./-]+$/)
+    .default('lot1-socle-de-confiance'),
+  GITHUB_API_URL: z.string().url().default('https://api.github.com'),
   STRIPE_API_KEY: z.string().min(1).optional(),
   STRIPE_WEBHOOK_SECRET: z.string().min(1).optional(),
   STRIPE_API_URL: z.string().url().default('https://api.stripe.com'),

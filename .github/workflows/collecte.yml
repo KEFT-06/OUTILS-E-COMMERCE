@@ -1,6 +1,9 @@
 # Collecteur maison : lit la bibliothèque publicitaire publique avec un navigateur piloté
 # (Crawlee + Playwright) et verse ce qu'il trouve au site, chaque nuit, sans frais de collecte.
 #
+# Il passe aussi à la demande (workflow_dispatch, entrée « demandes ») : le site le lance quand un
+# client cherche un mot que la lecture payante ne sert pas, et il ne lit alors que ces recherches.
+#
 # Pour qu'il VERSE ses relevés, ajouter dans le dépôt (Settings → Secrets and variables → Actions)
 # le secret CRON_SECRET, identique à celui du site. Sans lui, le passage n'est qu'un essai :
 # il lit, compte, et ne verse rien.
@@ -11,6 +14,12 @@ on:
     # Tous les jours à 01 h 30 UTC, avant le relevé du radar (03 h) et l'index du marché (04 h).
     - cron: '30 1 * * *'
   workflow_dispatch:
+    inputs:
+      demandes:
+        # Lancé par le site quand un client cherche un mot que la lecture payante ne sert pas.
+        description: 'Passage court : seulement les recherches des clients en attente (oui / non)'
+        required: false
+        default: 'non'
 
 concurrency:
   group: collecte
@@ -37,4 +46,4 @@ jobs:
           CRON_SECRET: ${{ secrets.CRON_SECRET }}
           COLLECTE_SITE: ${{ vars.COLLECTE_SITE || 'https://www.smartcreatorcm.com' }}
           COLLECTE_NAVIGATEUR: chromium
-        run: node collecteur/collecte.mjs
+        run: node collecteur/collecte.mjs ${{ inputs.demandes == 'oui' && '--demandes' || '' }}
