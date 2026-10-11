@@ -8,7 +8,8 @@ import { databaseAnswers, releaseDatabase, renewDatabase } from '@server/db/clie
  * restée sans réponse 300 secondes, jusqu'à ce que l'hébergeur la coupe (504), alors que la
  * connexion au site s'était faite en 0,24 s. Le même matin, des écrans sont restés sur
  * « Vérification de votre session… » et des lectures ont rendu une erreur 500. Une sonde l'a
- * reproduit : après trois à cinq minutes de repos, une lecture sur cinq restait sans réponse.
+ * reproduit : après trois à cinq minutes de repos, la lecture de la session est restée sans
+ * réponse ou a échoué dans deux passages sur sept.
  *
  * L'hébergeur endort une instance entre deux requêtes. Sa connexion à la base, elle, peut mourir
  * pendant ce sommeil sans que rien ne le lui dise : au réveil, la requête part dans le vide et

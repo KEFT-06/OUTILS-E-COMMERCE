@@ -93,8 +93,8 @@ export interface KeywordScope {
  *
  * Demande du propriétaire, 11/10/2026 : « si je recherche les publicités chariow je dois voir les
  * publicités chariow uniquement et non d'autres publicités d'autres sites ». Cherché comme un mot,
- * « chariow » rendait toute annonce dont le TEXTE le citait — 38 sur 50 menaient ailleurs — et
- * manquait les boutiques Chariow, qui ne l'écrivent pas : elles se reconnaissent à leur adresse.
+ * « chariow » rendait toute annonce dont le TEXTE le citait — y compris celles qui mènent ailleurs —
+ * et manquait les boutiques Chariow, qui ne l'écrivent pas : elles se reconnaissent à leur adresse.
  */
 export function keywordScope(query: string): KeywordScope {
   const words = query.trim().split(/\s+/).filter(Boolean);
