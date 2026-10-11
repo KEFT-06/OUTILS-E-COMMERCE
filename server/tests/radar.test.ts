@@ -66,6 +66,13 @@ const fausseVitrine = createServer((req, res) => {
     return;
   }
 
+  // Vitrine que personne n'a visitée récemment : sa page répond 500 à un serveur.
+  if (url.pathname === '/muette') {
+    res.writeHead(500, { 'content-type': 'text/html' });
+    res.end('Internal Server Error');
+    return;
+  }
+
   if (url.pathname === '/' || url.pathname === '') {
     res.writeHead(200, { 'content-type': 'text/html; charset=utf-8' });
     res.end(PAGE);
@@ -319,5 +326,32 @@ describe('Radar — surveillance continue', () => {
     // serveur n'importe quelle machine, y compris sur le réseau interne de l'hébergeur.
     const refus = await agent.post('/api/radar/watches').send({ target: 'https://exemple.test/interne' }).expect(400);
     assert.equal(refus.body.error.code, 'RADAR_SOURCE_UNSUPPORTED');
+  });
+
+  /*
+    Signalé le 11/10/2026 : « La vitrine de cette boutique est injoignable (réponse 500) ». La page
+    d'une vitrine ne répond pas à un serveur tant que personne ne l'a visitée récemment — mais elle
+    ne sert qu'à trouver l'identifiant de la boutique, que nos relevés connaissent déjà le plus souvent.
+  */
+  it('ajoute une boutique déjà connue de nos relevés sans redemander la page de sa vitrine', async () => {
+    const { getDb } = await import('@server/db/client');
+    const { discoveredStores } = await import('@server/db/schema');
+    await getDb().insert(discoveredStores).values({ host: 'boutique-connue.mychariow.com', label: 'Boutique connue', storeExternalId: BOUTIQUE, adCount: 4 });
+    catalogue = [{ id: 'prd_connu', name: 'Guide déjà relevé', prix: 5_000, ventes: 7 }];
+
+    const { agent } = await signInWithPlan(app, 'radar-connue@exemple.test', 'pro');
+    // Sous test, toute vitrine hors de la boucle locale est refusée : cet ajout ne peut réussir que par nos relevés.
+    const ajout = await agent.post('/api/radar/watches').send({ target: 'https://Boutique-Connue.mychariow.shop/prd_connu' }).expect(201);
+    assert.equal(ajout.body.watch.label, 'Boutique connue');
+    assert.equal(ajout.body.firstSweep.observed, 1, 'son catalogue est relevé tout de suite, par son identifiant');
+    assert.equal(ajout.body.watch.totalSales, 7);
+  });
+
+  it('dit quoi faire, sans jargon, pour une boutique inconnue dont la vitrine ne répond pas', async () => {
+    const { agent } = await signInWithPlan(app, 'radar-muette@exemple.test', 'pro');
+    const refus = await agent.post('/api/radar/watches').send({ target: `${base}/muette` }).expect(503);
+    assert.equal(refus.body.error.code, 'RADAR_SOURCE_UNAVAILABLE');
+    assert.match(refus.body.error.message, /Ouvrez-la une fois dans votre navigateur, puis ajoutez-la ici/);
+    assert.doesNotMatch(refus.body.error.message, /500|réponse|injoignable/, 'le motif technique reste au journal du serveur');
   });
 });

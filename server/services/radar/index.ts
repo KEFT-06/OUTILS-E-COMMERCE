@@ -1,9 +1,11 @@
 import { and, count, desc, eq, gte, inArray, isNull, sql } from 'drizzle-orm';
 import { getDb, isUniqueViolation } from '@server/db/client';
-import { spiedAds, users, watchEvents, watchItems, watches, type WatchRow } from '@server/db/schema';
+import { discoveredStores, marketProducts, spiedAds, users, watchEvents, watchItems, watches, type WatchRow } from '@server/db/schema';
 import { AppError } from '@server/middleware';
 import { adsOfProduct, loadStoreAds, productUrl } from '@server/services/market/productAds';
 import { sourceFor } from '@server/services/radar/sources';
+import { storefrontHostOf } from '@server/services/radar/sources/chariowStore';
+import type { RadarTarget } from '@server/services/radar/types';
 import { sweepWatch, type SweepOutcome } from '@server/services/radar/sweep';
 
 /**
@@ -111,6 +113,35 @@ async function requireWatch(userId: string, watchId: string): Promise<WatchRow> 
 }
 
 /**
+ * La boutique saisie, telle que nos relevés la connaissent déjà — ou null.
+ *
+ * Pour trouver l'identifiant d'une boutique, il faut lire la page de sa vitrine ; or cette page
+ * ne répond pas à un serveur tant que personne ne l'a visitée récemment (« la vitrine de cette
+ * boutique est injoignable (réponse 500) », signalé le 11/10/2026). La plupart des boutiques
+ * qu'on ajoute viennent pourtant de NOS écrans — mur des publicités, niches, fiche d'une boutique —
+ * et leur identifiant est déjà dans l'index du marché : inutile de redemander la page.
+ */
+async function knownStore(input: string): Promise<RadarTarget | null> {
+  const host = storefrontHostOf(input);
+  if (!host) return null;
+  const [discovered] = await getDb()
+    .select({ externalId: discoveredStores.storeExternalId, label: discoveredStores.label })
+    .from(discoveredStores)
+    .where(eq(discoveredStores.host, host))
+    .limit(1);
+  const [indexed] = discovered?.externalId
+    ? []
+    : await getDb()
+        .select({ externalId: marketProducts.storeExternalId, label: marketProducts.storeLabel })
+        .from(marketProducts)
+        .where(eq(marketProducts.storeHost, host))
+        .limit(1);
+  const externalId = discovered?.externalId ?? indexed?.externalId;
+  if (!externalId) return null;
+  return { source: 'chariow_store', externalId: externalId.toLowerCase(), label: discovered?.label?.trim() || indexed?.label?.trim() || host, url: `https://${host}` };
+}
+
+/**
  * Met une boutique sous surveillance. Le premier relevé part tout de suite : sans lui
  * l'écran resterait vide jusqu'au lendemain, et l'utilisateur croirait à une panne.
  */
@@ -128,7 +159,20 @@ export async function addWatch(
     );
   }
 
-  const target = await sourceFor('chariow_store').resolve(input);
+  // Nos relevés d'abord ; la page de la vitrine seulement pour une boutique que nous n'avons jamais vue.
+  const target =
+    (await knownStore(input).catch(() => null)) ??
+    (await sourceFor('chariow_store')
+      .resolve(input)
+      .catch((error: unknown) => {
+        if (!(error instanceof AppError) || error.code !== 'RADAR_SOURCE_UNAVAILABLE') throw error;
+        // Boutique inconnue de nos relevés ET page muette : dire quoi faire, pas ce qui a cassé.
+        throw new AppError(
+          503,
+          'La vitrine de cette boutique ne répond pas encore au radar. Ouvrez-la une fois dans votre navigateur, puis ajoutez-la ici : elle sera lue aussitôt.',
+          'RADAR_SOURCE_UNAVAILABLE',
+        );
+      }));
 
   const inserted = await getDb().transaction(async (tx) => {
     if (limit !== null) {

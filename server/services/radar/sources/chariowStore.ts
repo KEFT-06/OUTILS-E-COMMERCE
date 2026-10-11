@@ -93,8 +93,31 @@ const catalogSchema = z.object({
     .optional(),
 });
 
-const unreachable = (detail: string) =>
-  new AppError(502, `La vitrine de cette boutique est injoignable (${detail}).`, 'RADAR_SOURCE_UNAVAILABLE');
+/**
+ * La vitrine ne répond pas. Le motif (« réponse 500 », « délai dépassé ») va au journal du
+ * serveur : devant un client, il n'explique rien et ne lui donne rien à faire.
+ */
+const unreachable = (detail: string) => {
+  console.warn(`[radar] vitrine sans réponse : ${detail}`);
+  return new AppError(502, 'La vitrine de cette boutique ne répond pas en ce moment.', 'RADAR_SOURCE_UNAVAILABLE');
+};
+
+/**
+ * Hôte d'une vitrine tel que nos relevés l'enregistrent (minuscules, en .com), d'après ce que
+ * l'utilisateur a saisi. null : ce n'est pas l'adresse d'une vitrine (identifiant donné tel quel,
+ * saisie illisible) — rien à chercher dans nos relevés.
+ */
+export function storefrontHostOf(input: string): string | null {
+  const trimmed = input.trim();
+  if (!trimmed || /^store_[a-z0-9]{6,24}$/i.test(trimmed)) return null;
+  try {
+    const url = new URL(/^https?:\/\//i.test(trimmed) ? trimmed : `https://${trimmed.replace(/^\/+/, '')}`);
+    const host = (url.hostname.includes('.') ? url.hostname : `${url.hostname}.mychariow.com`).toLowerCase();
+    return STOREFRONT_HOSTS.test(host) ? host.replace(/\.mychariow\.shop$/, '.mychariow.com') : null;
+  } catch {
+    return null;
+  }
+}
 
 /**
  * Transforme une saisie en adresse de vitrine. Accepte un lien complet, un
