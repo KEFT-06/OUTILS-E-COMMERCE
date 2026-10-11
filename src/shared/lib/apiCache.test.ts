@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
-import { cacheEpoch, forgetResponses, lastKnown, remember } from '@/shared/lib/apiCache';
+import { MAX_ENTRIES, cacheEpoch, forgetResponses, lastKnown, remember } from '@/shared/lib/apiCache';
 
 /**
  * Mémoire des écrans.
@@ -26,9 +26,13 @@ describe('Mémoire des écrans', () => {
 
   it('ne grossit pas sans fin : les adresses les plus anciennes sont oubliées', () => {
     forgetResponses();
-    for (let n = 0; n < 120; n += 1) remember(`/api/espionnage?page=${n}`, { n });
+    // La limite elle-même n'est pas recopiée ici : elle a changé quand la mémoire a reçu aussi ce que l'on FAIT sur un écran.
+    const total = MAX_ENTRIES + 40;
+    for (let n = 0; n < total; n += 1) remember(`/api/espionnage?page=${n}`, { n });
     assert.equal(lastKnown('/api/espionnage?page=0'), null, 'la plus ancienne est partie');
-    assert.deepEqual(lastKnown('/api/espionnage?page=119'), { n: 119 }, 'la plus récente est là');
+    assert.equal(lastKnown('/api/espionnage?page=39'), null, 'tout ce qui dépasse la limite aussi');
+    assert.deepEqual(lastKnown('/api/espionnage?page=40'), { n: 40 }, 'la première encore dans la limite est là');
+    assert.deepEqual(lastKnown(`/api/espionnage?page=${total - 1}`), { n: total - 1 }, 'la plus récente est là');
   });
 
   it('se vide au changement de compte', () => {

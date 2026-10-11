@@ -15,7 +15,7 @@ import { useCallback, useState, type Dispatch, type SetStateAction } from 'react
  */
 
 /** Au-delà, les entrées les plus anciennes sont oubliées (filtres essayés puis abandonnés). */
-const MAX_ENTRIES = 240;
+export const MAX_ENTRIES = 240;
 
 const responses = new Map<string, unknown>();
 /** Avance à chaque changement de compte. */
