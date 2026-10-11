@@ -8,7 +8,7 @@ import { AnalysisProgress } from '@/modules/analyse/AnalysisProgress';
 import { PageHeader } from '@/shared/components/PageHeader';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/shared/ui/tabs';
 import { useCustomProducts } from '@/shared/stores/useCustomProducts';
-import { useRemovedProducts } from '@/shared/stores/useRemovedProducts';
+import { useAccountProducts } from '@/shared/stores/useAccountProducts';
 import type { DigitalProductIdea, MarketAnalysisReport } from '@/shared/types/analysis';
 import { Button } from '@/shared/ui/button';
 import { Empty, EmptyDescription, EmptyHeader, EmptyTitle } from '@/shared/ui/empty';
@@ -124,8 +124,7 @@ function RequireProducts({
 }) {
   const { currentReport, isLoadingReport, setAnalysisDialogOpen } = useWorkspace();
   const custom = useCustomProducts();
-  const removed = useRemovedProducts();
-  const products = [...removed.keep(currentReport?.digitalProducts ?? []), ...custom.products];
+  const products = useAccountProducts(currentReport).all;
 
   if (products.length > 0) return <>{children(products, currentReport)}</>;
   if (isLoadingReport || custom.status === 'loading') return <LoadingWorkspace />;
@@ -352,7 +351,7 @@ export function DistributionPage() {
 }
 
 /**
- * Deux affiliations, deux onglets : le parrainage de Smart Creator (on recommande le site, on
+ * « Smart Gain » — deux façons de gagner, deux onglets : le parrainage de Smart Creator (on recommande le site, on
  * touche une commission), et les affiliés de sa propre boutique (ceux qui vendent ses produits).
  */
 export function AffiliationPage() {
@@ -370,7 +369,7 @@ export function AffiliationPage() {
           </TabsTrigger>
         </TabsList>
         <TabsContent value="parrainage" className="space-y-6">
-          <PageHeader eyebrow="Vendre" title="Parrainage" description="Recommandez Smart Creator et touchez une commission sur les paiements des personnes que vous amenez." />
+          <PageHeader eyebrow="Vendre" title="Smart Gain" description="Recommandez Smart Creator et touchez une commission sur les paiements des personnes que vous amenez." />
           <ReferralPanel />
         </TabsContent>
         <TabsContent value="boutique">

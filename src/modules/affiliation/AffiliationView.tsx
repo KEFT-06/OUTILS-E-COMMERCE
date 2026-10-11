@@ -146,7 +146,7 @@ export function AffiliationView() {
     <div className="space-y-6">
       <PageHeader
         eyebrow="Vendre"
-        title="Affiliation"
+        title="Smart Gain · affiliés de ma boutique"
         description="Liens de campagne traçables, suivi de vos affiliés Chariow et invitations."
       />
 

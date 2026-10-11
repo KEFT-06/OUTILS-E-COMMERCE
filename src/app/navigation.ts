@@ -211,8 +211,9 @@ export const MODULES: readonly ModuleEntry[] = [
     id: 'affiliation',
     path: '/app/affiliation',
     group: 'vendre',
-    label: { fr: 'Affiliation', en: 'Affiliation' },
-    description: { fr: 'Liens UTM, suivi et invitations', en: 'UTM links, tracking and invitations' },
+    // « Smart Gain » : le nom voulu par le propriétaire (11/10/2026) pour ce que le compte gagne en recommandant.
+    label: { fr: 'Smart Gain', en: 'Smart Gain' },
+    description: { fr: 'Parrainage, liens de campagne et affiliés', en: 'Referrals, campaign links and affiliates' },
     icon: Users,
     ready: true,
   },
