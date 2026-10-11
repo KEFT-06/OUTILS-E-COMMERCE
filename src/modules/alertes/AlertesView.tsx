@@ -211,7 +211,7 @@ export function AlertesView() {
       <PageHeader
         eyebrow="Voir"
         title="Alertes"
-        description="Ce que vos concurrents ont fait aujourd’hui : produits qui décollent, ventes qui s’envolent ou s’effondrent, publicités installées qui s’arrêtent."
+        description="Ce que vos concurrents ont fait aujourd’hui : produits qui décollent, ventes qui s’envolent ou s’effondrent, publicités qui durent ou qui s’arrêtent, boutiques qui multiplient leurs annonces."
       />
 
       <ToggleGroup

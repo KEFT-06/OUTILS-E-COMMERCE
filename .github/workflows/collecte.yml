@@ -20,6 +20,10 @@ on:
         description: 'Passage court : seulement les recherches des clients en attente (oui / non)'
         required: false
         default: 'non'
+  # Un passage aussi quand cet atelier change : son effet se vérifie tout de suite, sans attendre l'horaire.
+  push:
+    branches: [lot1-socle-de-confiance]
+    paths: ['.github/workflows/collecte.yml']
 
 concurrency:
   group: collecte

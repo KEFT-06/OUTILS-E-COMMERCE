@@ -14,6 +14,10 @@ on:
   schedule:
     - cron: '7,37 * * * *'
   workflow_dispatch:
+  # Un passage aussi quand cet atelier change : son effet se vérifie tout de suite, sans attendre l'horaire.
+  push:
+    branches: [lot1-socle-de-confiance]
+    paths: ['.github/workflows/veille.yml']
 
 concurrency:
   group: veille
