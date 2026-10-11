@@ -104,6 +104,15 @@ const schema = z.object({
   // et renvoie 503 avec un message explicite si elle manque.
   GEMINI_API_KEY: z.string().min(1).optional(),
   GEMINI_API_URL: z.string().url().default('https://generativelanguage.googleapis.com'),
+  /** Lecture à voix haute des chapitres (parcours audio). Le second modèle prend le relais si le premier sature. */
+  GEMINI_TTS_MODEL: z
+    .string()
+    .regex(/^[\w.-]+$/)
+    .default('gemini-3.8-flash-tts'),
+  GEMINI_TTS_FALLBACK_MODEL: z
+    .string()
+    .regex(/^[\w.-]+$/)
+    .default('gemini-3.8-flash-lite-tts'),
   /**
    * Direction artistique des couvertures (Anthropic) : elle écrit la scène que le moteur d'images
    * peint. Optionnelle — sans elle, la consigne est composée par le serveur, comme auparavant.
