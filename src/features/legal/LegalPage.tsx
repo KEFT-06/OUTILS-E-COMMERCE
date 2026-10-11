@@ -146,7 +146,9 @@ function Confidentialite() {
           </li>
           <li>
             <strong>Paiements</strong> : palier, montant, devise, date et référence du paiement. Le numéro de carte est
-            saisi sur la page de Stripe et n’arrive jamais sur nos serveurs.
+            saisi sur la page de Stripe et n’arrive jamais sur nos serveurs. Pour un paiement par Mobile Money, nous
+            gardons l’opérateur choisi et les deux derniers chiffres du numéro ; le numéro entier est transmis au
+            prestataire de paiement le temps de la demande, et n’est pas conservé chez nous.
           </li>
           <li>
             <strong>Clé Chariow personnelle</strong> : chiffrée sur le serveur, jamais renvoyée au navigateur ; seuls ses
@@ -183,7 +185,11 @@ function Confidentialite() {
             Chariow : avec votre propre clé, la consultation de votre catalogue, de vos ventes et de vos affiliés, et les
             adresses e-mail que vous saisissez pour inviter des affiliés — Chariow leur envoie alors un e-mail ;
           </li>
-          <li>Stripe : votre adresse e-mail, l’identifiant de votre compte, le palier et le montant, lors d’un paiement ;</li>
+          <li>Stripe : votre adresse e-mail, l’identifiant de votre compte, le palier et le montant, lors d’un paiement par carte ;</li>
+          <li>
+            SebPay : le numéro Mobile Money que vous indiquez, l’opérateur, le pays, le montant et la référence du
+            paiement, lors d’un paiement par Mobile Money — c’est lui qui envoie la demande sur votre téléphone ;
+          </li>
           <li>
             Service d’envoi d’e-mails (Brevo ou Resend) : votre adresse et le contenu des e-mails de sécurité (lien de
             nouveau mot de passe, confirmation d’adresse, alerte de changement de mot de passe).
@@ -288,9 +294,10 @@ function Conditions() {
       </Section>
       <Section title="Paiement">
         <p>
-          Les paliers se paient par carte sur la page sécurisée de Stripe, pour 1 mois ou 1 an. Le palier s’active dès que
-          Stripe confirme le paiement. Il n’y a pas de renouvellement automatique : aucun prélèvement n’a lieu sans un
-          nouveau paiement de votre part.
+          Les paliers se paient pour 1 mois ou 1 an, par carte sur la page sécurisée de Stripe, ou par Mobile Money là
+          où il est ouvert : la demande arrive sur votre téléphone et vous la validez avec votre code secret, que nous
+          ne voyons jamais. Le palier s’active dès que le prestataire confirme le paiement. Il n’y a pas de
+          renouvellement automatique : aucun prélèvement n’a lieu sans un nouveau paiement de votre part.
         </p>
         <p>
           Rétractation et remboursement : <ToComplete>conditions de rétractation et de remboursement</ToComplete>

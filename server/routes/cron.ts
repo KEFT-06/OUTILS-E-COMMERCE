@@ -14,6 +14,7 @@ import { continueEbookInBackground, resumeEbookJobs } from '@server/services/wri
 import { submitToIndexNow } from '@server/services/seo/indexNow';
 import { sweepPendingGenerations } from '@server/services/generations/sweeper';
 import { sweepDueWatches } from '@server/services/radar/sweeper';
+import { resumeMobileCheckouts } from '@server/services/billing/mobile';
 import { z } from 'zod';
 import { detectAlerts, watchState } from '@server/services/alerts';
 import { settleDueCommissions } from '@server/services/referral';
@@ -99,6 +100,10 @@ cronRouter.get(
       return null;
     });
 
+    // Paiements Mobile Money validés après que le client a quitté l'écran : leur palier s'active ici au plus tard.
+    await resumeMobileCheckouts({ limit: 20 }).catch((error: unknown) => {
+      console.warn('[cron] paiements Mobile Money :', error instanceof Error ? error.message : error);
+    });
     const sweep = await sweepDueWatches();
     const digests = await sendDueRadarDigests();
     // Parrainage : fin du délai de garde, les commissions dont le paiement tient sont validées.
@@ -199,6 +204,11 @@ cronRouter.get(
     if (!env.CRON_SECRET) throw new AppError(503, 'Le déclencheur périodique n’est pas configuré sur ce serveur.', 'CRON_NOT_CONFIGURED');
     if (!secretIsValid(req)) throw new AppError(401, 'Déclencheur refusé.', 'CRON_DENIED');
 
+    // D'abord l'argent : un paiement Mobile Money validé hors écran n'attend pas le lendemain.
+    const paiements = await resumeMobileCheckouts({ limit: 20 }).catch((error: unknown) => {
+      console.warn('[veille] paiements Mobile Money :', error instanceof Error ? error.message : error);
+      return null;
+    });
     const surveillances = await sweepDueWatches(new Date(), 60_000).catch((error: unknown) => {
       console.warn('[veille] surveillances :', error instanceof Error ? error.message : error);
       return null;
@@ -213,7 +223,7 @@ cronRouter.get(
     });
     await reportMarketRun('veille continue', releves, alertes);
     const etat = await watchState().catch(() => null);
-    res.json({ surveillances, releves, alertes, etat });
+    res.json({ surveillances, releves, alertes, etat, paiements });
   }),
 );
 

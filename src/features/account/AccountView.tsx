@@ -5,8 +5,10 @@ import { Controller, useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 import { toast } from 'sonner';
-import { ArrowRight, Bookmark, Check, CreditCard, FlaskConical, Database, Download, History, KeyRound, LogOut, MonitorSmartphone, Pencil, PlugZap, ShieldCheck, Trash2, TriangleAlert, X, Zap } from 'lucide-react';
+import { ArrowRight, Bookmark, Check, CreditCard, FlaskConical, Database, Smartphone, Download, History, KeyRound, LogOut, MonitorSmartphone, Pencil, PlugZap, ShieldCheck, Trash2, TriangleAlert, X, Zap } from 'lucide-react';
 import { useCreditGate } from '@/app/providers/CreditGateProvider';
+import { PaymentDialog } from '@/features/account/PaymentDialog';
+import { type PaymentMethods, type PaymentPeriod, billingApi } from '@/features/account/paymentMethods';
 import { initialsOf, useAuth } from '@/features/auth/AuthContext';
 import { PASSWORD_MIN_LENGTH, PasswordHints, PasswordInput } from '@/features/auth/PasswordInput';
 import { SecondFactorChooser, SecurityCodeForm } from '@/features/auth/SecurityCodeForm';
@@ -464,45 +466,60 @@ function SavedNichesCard({ account, onSelect }: { account: Account; onSelect: (n
   );
 }
 
-/** Paiement d'un palier par carte : la page de paiement est celle de Stripe, le montant est fixé par le serveur. */
-function CheckoutButtons({ plan }: { plan: PlanDefinition }) {
-  const [busy, setBusy] = useState<'month' | 'year' | null>(null);
-
-  const pay = async (period: 'month' | 'year') => {
-    setBusy(period);
-    try {
-      const { url } = await apiRequest<{ url: string }>('/api/billing/checkout', { method: 'POST', body: { plan: plan.id, period } });
-      if (new URL(url).protocol !== 'https:') throw new Error('Adresse de paiement invalide.');
-      window.location.assign(url);
-    } catch (caught) {
-      toast.error('Le paiement n’a pas pu démarrer', { description: toApiError(caught, 'Le serveur n’a pas répondu.').message });
-      setBusy(null);
-    }
-  };
+/**
+ * Paiement d'un palier : la durée se choisit ici, le moyen de paiement dans la fenêtre qui s'ouvre
+ * (Mobile Money ou carte). Le montant est fixé par le serveur.
+ */
+function CheckoutButtons({ plan, mobile }: { plan: PlanDefinition; mobile: boolean }) {
+  const [period, setPeriod] = useState<PaymentPeriod | null>(null);
 
   return (
     <div className="grid gap-2">
-      <Button className="w-full" onClick={() => void pay('month')} disabled={busy !== null}>
-        {busy === 'month' ? <Spinner /> : <CreditCard />}
+      <Button className="w-full" onClick={() => setPeriod('month')}>
+        {mobile ? <Smartphone /> : <CreditCard />}
         Payer 1 mois
       </Button>
-      <Button variant="outline" className="w-full" onClick={() => void pay('year')} disabled={busy !== null}>
-        {busy === 'year' && <Spinner />}
+      <Button variant="outline" className="w-full" onClick={() => setPeriod('year')}>
         Payer 1 an
       </Button>
+      {period && <PaymentDialog plan={plan} period={period} onClose={() => setPeriod(null)} />}
     </div>
   );
+}
+
+/** Les moyens de paiement ouverts à ce compte. null : pas encore lus. */
+function usePaymentMethods(country: string | null): PaymentMethods | null {
+  const [methods, setMethods] = useCachedState<PaymentMethods>(`/api/billing/methods#${country ?? ''}`);
+  useEffect(() => {
+    let cancelled = false;
+    billingApi
+      .methods()
+      .then((found) => {
+        if (!cancelled) setMethods(found);
+      })
+      // Lecture ratée : on garde ce qu'on savait ; l'écran ne propose simplement rien de plus.
+      .catch(() => undefined);
+    return () => {
+      cancelled = true;
+    };
+  }, [country, setMethods]);
+  return methods;
 }
 
 function PlansCard({ account }: { account: Account }) {
   const { catalog, error } = usePlans(account.country);
   const providers = useProviders();
+  const methods = usePaymentMethods(account.country);
   /*
     Le paiement n'est « en ligne » pour un client que s'il encaisse vraiment. Tant que le serveur est
     en mode test, la page de paiement refuse toute vraie carte : seule l'équipe y va, avec la carte
-    d'essai. Le client, lui, lit comment obtenir son palier en attendant.
+    d'essai. Le client, lui, lit comment obtenir son palier en attendant. Même règle pour le Mobile
+    Money en bac à sable — et il n'est proposé que si le pays du compte a des opérateurs ouverts.
   */
-  const online = Boolean(providers?.payments) && (providers?.paymentMode !== 'test' || account.isStaff);
+  const card = methods ? methods.card.available : Boolean(providers?.payments) && (providers?.paymentMode !== 'test' || account.isStaff);
+  const mobile = Boolean(methods?.mobile.available);
+  const online = card || mobile;
+  const means = mobile && card ? 'Paiement sécurisé par Mobile Money ou par carte bancaire.' : mobile ? 'Paiement sécurisé par Mobile Money.' : 'Paiement sécurisé par carte bancaire.';
 
   return (
     <Card id="paliers" className="scroll-mt-24">
@@ -511,7 +528,7 @@ function PlansCard({ account }: { account: Account }) {
           <h2>Paliers d’abonnement</h2>
         </CardTitle>
         <CardDescription>
-          Prix en {catalog?.currency ?? account.currency}.{online && ' Paiement sécurisé par carte bancaire.'}
+          Prix en {catalog?.currency ?? account.currency}.{online && ` ${means}`}
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-4">
@@ -523,6 +540,13 @@ function PlansCard({ account }: { account: Account }) {
               Aucune carte réelle n’est débitée. Pour essayer : carte 4242 4242 4242 4242, une date d’expiration future et
               n’importe quel code.
             </AlertDescription>
+          </Alert>
+        )}
+        {methods?.mobile.mode === 'test' && account.isStaff && (
+          <Alert variant="info">
+            <FlaskConical />
+            <AlertTitle>Mobile Money en bac à sable</AlertTitle>
+            <AlertDescription>Aucun argent réel ne circule. Les clients ne voient pas ce moyen de paiement tant que les clés de production ne sont pas en place.</AlertDescription>
           </Alert>
         )}
         {error ? (
@@ -547,7 +571,7 @@ function PlansCard({ account }: { account: Account }) {
                 return (
                   <div className="space-y-2">
                     {isCurrent && <p className="text-center text-sm font-medium text-brand-green-text">Palier actuel : prolongez-le</p>}
-                    <CheckoutButtons plan={plan} />
+                    <CheckoutButtons plan={plan} mobile={mobile} />
                   </div>
                 );
               }
@@ -1756,10 +1780,30 @@ function usePaymentReturn() {
   }, [outcome, sessionId, refresh, setParams]);
 }
 
+/** Reprend, une fois par visite, les paiements Mobile Money validés après que l'écran a été quitté. */
+function useMobilePaymentResume() {
+  const { refresh } = useAuth();
+  const done = useRef(false);
+  useEffect(() => {
+    if (done.current) return;
+    done.current = true;
+    billingApi
+      .resume()
+      .then(async ({ activated }) => {
+        if (activated === 0) return;
+        await refresh();
+        toast.success('Paiement reçu', { description: 'Votre palier est actif.' });
+      })
+      // Sans réponse, rien n'est perdu : la veille du serveur reprend ces paiements de son côté.
+      .catch(() => undefined);
+  }, [refresh]);
+}
+
 export function AccountView({ onSelectSavedNiche }: AccountViewProps) {
   const { account } = useAuth();
   const location = useLocation();
   usePaymentReturn();
+  useMobilePaymentResume();
 
   useEffect(() => {
     if (!location.hash) return;

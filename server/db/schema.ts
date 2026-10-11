@@ -908,14 +908,24 @@ export const passwordTokens = pgTable(
 ).enableRLS();
 
 /**
- * Demandes de paiement en ligne (sessions Stripe Checkout). Le montant est fixé par le
- * serveur ; le palier n'est activé qu'une fois la session confirmée payée par Stripe.
+ * Demandes de paiement en ligne : sessions Stripe Checkout (carte) et collectes SebPay (Mobile
+ * Money). Le montant est fixé par le serveur ; le palier n'est activé qu'une fois le paiement
+ * confirmé par le prestataire lui-même.
  */
 export const paymentCheckouts = pgTable(
   'payment_checkouts',
   {
-    /** Identifiant de la session chez Stripe. */
+    /** Identifiant de la session chez Stripe ; notre référence pour une collecte Mobile Money. */
     id: text('id').primaryKey(),
+    /** stripe · sebpay */
+    provider: text('provider').notNull().default('stripe'),
+    /** Mobile Money : opérateur choisi et pays du numéro. */
+    operator: text('operator'),
+    country: text('country'),
+    /** Mobile Money : les deux derniers chiffres du numéro, pour que le client et l'équipe s'y retrouvent. Le numéro entier n'est pas gardé. */
+    phoneHint: text('phone_hint'),
+    /** Identifiant de la transaction chez le prestataire, quand il diffère de `id`. */
+    providerRef: text('provider_ref'),
     userId: uuid('user_id')
       .notNull()
       .references(() => users.id, { onDelete: 'cascade' }),
@@ -923,7 +933,7 @@ export const paymentCheckouts = pgTable(
     periodMonths: integer('period_months').notNull(),
     currency: text('currency').notNull(),
     amountMinor: integer('amount_minor').notNull(),
-    /** open · paid · expired */
+    /** open · paid · expired · failed (refusé par l'opérateur ou par le client) */
     status: text('status').notNull().default('open'),
     paymentId: uuid('payment_id'),
     createdAt: createdAt(),

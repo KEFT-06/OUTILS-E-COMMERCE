@@ -330,6 +330,13 @@
       "when": 1791744871850,
       "tag": "0046_origine_d_un_guide",
       "breakpoints": true
+    },
+    {
+      "idx": 47,
+      "version": "7",
+      "when": 1791747824077,
+      "tag": "0047_paiement_mobile_money",
+      "breakpoints": true
     }
   ]
 }

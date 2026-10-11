@@ -5,6 +5,7 @@ import { alertWatch } from '@server/services/alerts';
 import { MARKET_RUN_AUDIT_ACTION } from '@server/services/market';
 import { env, isProd, isServerless, providers } from '@server/env';
 import { lastClaudeOutcome } from '@server/services/ai/claude';
+import { sebpayMode } from '@server/services/billing/sebpay';
 import { lastGoogleRefusal } from '@server/services/ai/googleRefusal';
 import { lastImageOutcome } from '@server/services/ai/image';
 import { videoArchiveConfigured } from '@server/services/creatives/archive';
@@ -469,7 +470,7 @@ async function checkStripe(): Promise<ServiceCheck> {
 }
 
 async function checkSebpay(serverIp: string | null): Promise<ServiceCheck> {
-  const base = { id: 'sebpay', name: 'SebPay', role: 'Mobile Money (paiement des paliers, à brancher)' };
+  const base = { id: 'sebpay', name: 'SebPay', role: 'Mobile Money (paiement des paliers)' };
   if (!env.SEBPAY_PUBLIC_KEY || !env.SEBPAY_SECRET_KEY) return { ...base, state: 'off', detail: 'Aucune clé.', action: null };
   const result = await probe(`${trimmed(env.SEBPAY_API_URL)}/countries`, {
     'X-Public-Key': env.SEBPAY_PUBLIC_KEY,
@@ -487,15 +488,37 @@ async function checkSebpay(serverIp: string | null): Promise<ServiceCheck> {
         : 'Autoriser l’adresse IP du serveur dans le tableau de bord SebPay.',
     };
   }
-  if (result.status === 401 || result.status === 403) return refused(base, 'SEBPAY_PUBLIC_KEY et SEBPAY_SECRET_KEY');
+  /*
+    SebPay répond « Invalid or inactive API keys » dans deux cas qu'il ne distingue pas : des clés
+    mal recopiées, ou des clés de production d'un compte marchand dont la vérification d'identité
+    n'est pas terminée (constaté le 11/10/2026). Les deux pistes sont donc données.
+  */
+  if (result.status === 401 || result.status === 403) {
+    return {
+      ...base,
+      state: 'error',
+      detail: 'Clés refusées : mal recopiées, ou compte marchand pas encore activé pour la production.',
+      action:
+        'Dans le tableau de bord SebPay : vérifier que le compte est activé (vérification d’identité terminée), puis recopier la clé publique et la clé secrète dans SEBPAY_PUBLIC_KEY et SEBPAY_SECRET_KEY.',
+    };
+  }
   if (result.status === 200) {
     const countries = JSON.stringify(result.body ?? '');
     const cameroon = /"CM"|Cameroun|Cameroon/i.test(countries);
+    // En bac à sable, aucun argent réel ne circule : le Mobile Money reste réservé à l'équipe, comme la carte en mode test.
+    if (sebpayMode() === 'test') {
+      return {
+        ...base,
+        state: 'warning',
+        detail: 'Clés de test (bac à sable) : aucun argent réel. Les clients ne voient pas le Mobile Money ; l’équipe peut l’essayer.',
+        action: 'Pour encaisser : remplacer les clés par les clés de production (pk_live_… et sk_live_…) du tableau de bord SebPay.',
+      };
+    }
     return {
       ...base,
       state: cameroon ? 'ok' : 'warning',
       detail: cameroon
-        ? 'Clés acceptées · Cameroun disponible.'
+        ? 'Paiements Mobile Money réels actifs · Cameroun disponible.'
         : 'Clés acceptées, mais le Cameroun n’apparaît pas dans les pays du compte.',
       action: cameroon ? null : 'Demander au support SebPay l’ouverture du Cameroun (MTN, Orange, XAF).',
     };

@@ -18,6 +18,8 @@ export interface ServerProviders {
   googleAuth: boolean;
   /** test : aucune carte réelle débitée ; null : paiement non configuré. */
   paymentMode: 'test' | 'live' | null;
+  /** Mobile Money : test (bac à sable), live, ou null quand il n'est pas configuré. */
+  mobileMoneyMode: 'test' | 'live' | null;
 }
 
 const KNOWN = 'fournisseurs';
@@ -31,7 +33,7 @@ export function useProviders(): ServerProviders | null {
     let cancelled = false;
     fetch('/api/health')
       .then((response) => (response.ok ? response.json() : null))
-      .then((data: { providers?: Record<string, boolean>; paymentMode?: 'test' | 'live' | null } | null) => {
+      .then((data: { providers?: Record<string, boolean>; paymentMode?: 'test' | 'live' | null; mobileMoneyMode?: 'test' | 'live' | null } | null) => {
         if (!cancelled && data?.providers) {
           const next: ServerProviders = {
             text: Boolean(data.providers.text),
@@ -44,6 +46,7 @@ export function useProviders(): ServerProviders | null {
             payments: Boolean(data.providers.payments),
             googleAuth: Boolean(data.providers.googleAuth),
             paymentMode: data.paymentMode ?? null,
+            mobileMoneyMode: data.mobileMoneyMode ?? null,
           };
           remember(KNOWN, next);
           setProviders(next);

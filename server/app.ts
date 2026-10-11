@@ -98,7 +98,7 @@ export function createApp(options: CreateAppOptions = {}) {
   // Webhook Stripe : corps brut, la signature porte sur les octets exacts reçus.
   const webhookBody = express.raw({ type: 'application/json', limit: '1mb' });
   app.use((req, res, next) =>
-    (req.path === '/api/billing/webhook' ? webhookBody : req.path.startsWith('/api/workspace/') ? workspaceJson : defaultJson)(req, res, next),
+    (req.path === '/api/billing/webhook' || req.path === '/api/billing/mobile/notify' ? webhookBody : req.path.startsWith('/api/workspace/') ? workspaceJson : defaultJson)(req, res, next),
   );
 
   /* ------------------------------------------------------------------------ */

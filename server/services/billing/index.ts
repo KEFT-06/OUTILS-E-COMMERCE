@@ -16,7 +16,8 @@ import { recordReferralCommission } from '@server/services/referral';
 import { formatMoney } from '@server/shared/currency';
 
 /**
- * Paiement en ligne des paliers (Stripe Checkout, carte bancaire).
+ * Paiement en ligne des paliers : carte bancaire (Stripe Checkout) ici, Mobile Money dans
+ * `billing/mobile.ts`. L'activation du palier, elle, est la même pour les deux (`activateCheckout`).
  *
  * Le serveur fixe seul le montant, d'après la grille des paliers et le pays du
  * compte. Le palier n'est activé qu'après confirmation par Stripe lui-même — au
@@ -96,9 +97,23 @@ export async function startCheckout(auth: RequestAuth, request: CheckoutRequest)
   return { url: session.url };
 }
 
-type CheckoutOutcome = { status: 'paid' | 'pending' | 'expired'; plan: PlanId; expiresAt: string | null };
+/** « failed » : refusé par l'opérateur ou par le client (Mobile Money). */
+export type CheckoutOutcome = { status: 'paid' | 'pending' | 'expired' | 'failed'; plan: PlanId; expiresAt: string | null };
 
-async function currentExpiry(userId: string): Promise<string | null> {
+export type CheckoutRow = typeof paymentCheckouts.$inferSelect;
+
+/** Par quel moyen le paiement est arrivé : ce qui s'écrit au registre et dans l'avis à l'équipe. */
+export interface PaidBy {
+  method: 'card' | 'mobile_money';
+  /** Note du registre des paiements. */
+  note: string;
+  /** Première ligne de l'avis à l'équipe. */
+  notice: string;
+  /** Ligne « Référence … » de l'avis à l'équipe. */
+  referenceLine: string;
+}
+
+export async function currentExpiry(userId: string): Promise<string | null> {
   const [row] = await getDb().select({ planExpiresAt: users.planExpiresAt }).from(users).where(eq(users.id, userId)).limit(1);
   return row?.planExpiresAt?.toISOString() ?? null;
 }
@@ -107,7 +122,8 @@ async function currentExpiry(userId: string): Promise<string | null> {
 export async function fulfillCheckout(sessionId: string): Promise<CheckoutOutcome> {
   const db = getDb();
   const [checkout] = await db.select().from(paymentCheckouts).where(eq(paymentCheckouts.id, sessionId)).limit(1);
-  if (!checkout) throw notFound();
+  // Une collecte Mobile Money ne se confirme pas ici : son état se lit chez son propre prestataire.
+  if (!checkout || checkout.provider !== 'stripe') throw notFound();
   if (checkout.status === 'paid') return { status: 'paid', plan: checkout.plan, expiresAt: await currentExpiry(checkout.userId) };
 
   const session = await retrieveCheckoutSession(sessionId);
@@ -123,6 +139,23 @@ export async function fulfillCheckout(sessionId: string): Promise<CheckoutOutcom
     throw new AppError(409, 'Ce paiement ne correspond pas à la demande enregistrée : contactez l’équipe Smart Creator.', 'PAYMENT_MISMATCH');
   }
 
+  return activateCheckout(checkout, {
+    method: 'card',
+    note: `Paiement en ligne par carte (Stripe${stripeMode() === 'test' ? ', mode test' : ''})`,
+    notice: `Paiement en ligne reçu${stripeMode() === 'test' ? ' (mode test : aucune carte réelle débitée)' : ''}.`,
+    referenceLine: `Référence Stripe : ${sessionId}`,
+  });
+}
+
+/**
+ * Active le palier d'une demande que le prestataire vient de confirmer payée : paiement au
+ * registre, palier et points, commission du parrain, avis à l'équipe. Une seule fois, quel que
+ * soit le nombre de confirmations qui se croisent : la demande passe de « open » à « paid » par
+ * une mise à jour conditionnelle.
+ */
+export async function activateCheckout(checkout: CheckoutRow, paidBy: PaidBy): Promise<CheckoutOutcome> {
+  const db = getDb();
+  const sessionId = checkout.id;
   const [plan, rates] = await Promise.all([getPlan(checkout.plan), getRates()]);
   const amount = fromMinorUnits(checkout.amountMinor, checkout.currency);
   const amountFcfa = Math.max(1, Math.round(convertAmount(amount, checkout.currency, 'XAF', rates) ?? 0));
@@ -151,9 +184,9 @@ export async function fulfillCheckout(sessionId: string): Promise<CheckoutOutcom
         currency: claimed.currency,
         amountMinor: claimed.amountMinor,
         amountFcfa,
-        method: 'card',
+        method: paidBy.method,
         reference: sessionId,
-        note: `Paiement en ligne par carte (Stripe${stripeMode() === 'test' ? ', mode test' : ''})`,
+        note: paidBy.note,
         paidAt: now,
         recordedBy: null,
       })
@@ -182,16 +215,16 @@ export async function fulfillCheckout(sessionId: string): Promise<CheckoutOutcom
         userId: user.id,
         email: user.email,
         client: { ipAddress: null, userAgent: null },
-        details: { plan: claimed.plan, periodMonths: claimed.periodMonths, currency: claimed.currency, amountMinor: claimed.amountMinor },
+        details: { plan: claimed.plan, periodMonths: claimed.periodMonths, currency: claimed.currency, amountMinor: claimed.amountMinor, method: paidBy.method },
       },
       tx,
     );
     notices.push([
-      `Paiement en ligne reçu${stripeMode() === 'test' ? ' (mode test : aucune carte réelle débitée)' : ''}.`,
+      paidBy.notice,
       `Montant : ${formatMoney(amount, claimed.currency)}`,
       `Palier : ${plan.label}, ${claimed.periodMonths === 1 ? '1 mois' : `${claimed.periodMonths} mois`}, jusqu’au ${formatDay(expiresAt)}`,
       `Compte : ${user.email}`,
-      `Référence Stripe : ${sessionId}`,
+      paidBy.referenceLine,
     ]);
     return { status: 'paid' as const, plan: claimed.plan, expiresAt: expiresAt.toISOString() };
   });

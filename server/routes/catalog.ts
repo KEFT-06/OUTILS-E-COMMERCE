@@ -4,6 +4,7 @@ import { sql } from 'drizzle-orm';
 import { queryRows } from '@server/db/client';
 import { providers } from '@server/env';
 import { AppError, asyncRoute } from '@server/middleware';
+import { sebpayMode } from '@server/services/billing/sebpay';
 import { stripeMode } from '@server/services/billing/stripe';
 import { BlueprintsUnavailableError, getCampaignBlueprints } from '@server/services/blueprints';
 import { getRulesMetadata } from '@server/services/compliance';
@@ -108,6 +109,8 @@ catalogRouter.get(
       },
       /** test : aucune carte réelle débitée. */
       paymentMode: stripeMode(),
+      /** Mobile Money : test (bac à sable), live, ou null quand il n'est pas configuré. */
+      mobileMoneyMode: sebpayMode(),
     });
   }),
 );
