@@ -8,10 +8,11 @@ import { composeCoverFor, downloadBookCover } from '@/shared/lib/downloadBookCov
 import { rememberProductCover } from '@/shared/stores/useProductCovers';
 import { CoverGenerator } from '@/shared/components/CoverGenerator';
 import { ZoomableImage } from '@/shared/components/ZoomableImage';
-import { type CoverView, coversApi } from '@/shared/lib/covers';
+import { type CoverView, coversApi, isCompleteCover } from '@/shared/lib/covers';
 import { toFileSlug } from '@/shared/lib/pdfText';
 import { useCustomProducts } from '@/shared/stores/useCustomProducts';
 import { useProductDrafts } from '@/shared/stores/useProductDrafts';
+import { cn } from '@/shared/lib/utils';
 import { Button } from '@/shared/ui/button';
 import { Field, FieldDescription, FieldLabel } from '@/shared/ui/field';
 import { Input } from '@/shared/ui/input';
@@ -22,11 +23,11 @@ import { Spinner } from '@/shared/ui/spinner';
  * Onglet « Livre » des Créatifs : la couverture d'un livre, prête à être publiée.
  *
  * Une couverture n'est pas un visuel publicitaire : elle n'a ni méthode, ni niveau de
- * conscience, ni format de placement. Elle a un titre, un sous-titre, un auteur et une
- * illustration. L'illustration est générée sans texte ; le titre est posé ensuite par la mise en
- * page, avec les vrais accents — puis l'ensemble se télécharge en une image.
+ * conscience, ni format de placement. Tant qu'elle n'est pas générée, elle est typographique :
+ * le titre, le sous-titre et l'auteur saisis ici, posés par la mise en page. Générée, elle est
+ * complète — livre en relief, titre et points forts dans l'image — et se télécharge telle quelle.
  *
- * Pour un produit du Studio, l'illustration est la même que celle du PDF de l'ebook : la
+ * Pour un produit du Studio, la couverture est la même que celle du PDF de l'ebook : la
  * générer ici la met aussi sur le livre, et inversement.
  */
 
@@ -76,15 +77,17 @@ export function BookCoverPanel() {
   const [downloading, setDownloading] = useState(false);
   const ready = cover?.status === 'ready' ? cover : null;
   const imageUrl = ready ? coversApi.imageUrl(ready) : null;
+  // Couverture complète : elle porte déjà son titre, on la montre et on la télécharge telle quelle.
+  const complete = isCompleteCover(ready);
   const title = texts.title.trim();
   const settledTexts = useDebounced(`${texts.title}\n${texts.subtitle}\n${author}`, 250);
 
   const label = product?.typeName;
-  // La couverture en grand, telle qu'elle sera téléchargée : sur son illustration, ou typographique.
+  // La couverture en grand, telle qu'elle ouvrira le PDF : complète et posée entière, sur son illustration, ou typographique.
   useEffect(() => {
     let cancelled = false;
     const [coverTitle = '', subtitle = '', coverAuthor = ''] = settledTexts.split('\n');
-    composeCoverFor({ imageUrl, text: { title: coverTitle, subtitle, author: coverAuthor, label }, seed: subjectId })
+    composeCoverFor({ imageUrl, complete, text: { title: coverTitle, subtitle, author: coverAuthor, label }, seed: subjectId })
       .then((canvas) => {
         if (!cancelled) setComposed(canvas.toDataURL('image/jpeg', 0.9));
       })
@@ -94,12 +97,12 @@ export function BookCoverPanel() {
     return () => {
       cancelled = true;
     };
-  }, [imageUrl, settledTexts, label, subjectId]);
+  }, [imageUrl, complete, settledTexts, label, subjectId]);
 
   const download = async () => {
     setDownloading(true);
     try {
-      await downloadBookCover({ imageUrl, text: { title, subtitle: texts.subtitle, author, label }, seed: subjectId });
+      await downloadBookCover({ imageUrl, complete, text: { title, subtitle: texts.subtitle, author, label }, seed: subjectId });
     } catch {
       toast.error('La couverture n’a pas pu être téléchargée', { description: 'Relancez le téléchargement.' });
     } finally {
@@ -110,7 +113,7 @@ export function BookCoverPanel() {
   return (
     <div className="grid gap-6 lg:grid-cols-[minmax(0,17rem)_minmax(0,1fr)]">
       <div className="order-2 space-y-3 lg:order-1">
-        <div className="mx-auto w-full max-w-[17rem] overflow-hidden rounded-lg border bg-slate-900 shadow-sm" style={{ aspectRatio: '1 / 1.414' }}>
+        <div className={cn('mx-auto w-full max-w-[17rem] overflow-hidden rounded-lg border shadow-sm', complete ? 'bg-white' : 'bg-slate-900')} style={{ aspectRatio: '1 / 1.414' }}>
           {composed ? (
             <ZoomableImage
               src={composed}
@@ -120,7 +123,7 @@ export function BookCoverPanel() {
             />
           ) : (
             // Le temps de la composer en grand : la même couverture, dessinée par la page.
-            <BookCover title={title || 'Le titre de votre livre'} subtitle={texts.subtitle} author={author} label={label} imageUrl={imageUrl} seed={subjectId} className="size-full rounded-none shadow-none ring-0" />
+            <BookCover title={title || 'Le titre de votre livre'} subtitle={texts.subtitle} author={author} label={label} imageUrl={imageUrl} complete={complete} seed={subjectId} className="size-full rounded-none shadow-none ring-0" />
           )}
         </div>
         <div className="mx-auto flex max-w-[17rem] flex-col gap-2">
@@ -128,7 +131,7 @@ export function BookCoverPanel() {
             {downloading ? <Spinner /> : <Download />}
             Télécharger la couverture
           </Button>
-          {imageUrl && (
+          {imageUrl && !complete && (
             <Button asChild variant="ghost" size="sm">
               <a href={imageUrl} download={`${toFileSlug(title, 'livre')}-illustration`}>
                 <ImageDown />
@@ -180,13 +183,23 @@ export function BookCoverPanel() {
             placeholder="La promesse du livre, en une phrase"
           />
         </Field>
-        <Field>
-          <FieldLabel htmlFor="livre-auteur">Auteur (facultatif)</FieldLabel>
-          <Input id="livre-auteur" value={author} onChange={(event) => setAuthor(event.target.value)} maxLength={80} placeholder="Votre nom ou celui de votre marque" />
-        </Field>
+        {/* Une couverture complète ne porte que le titre et ce que le livre contient : pas de nom à y ajouter. */}
+        {!complete && (
+          <Field>
+            <FieldLabel htmlFor="livre-auteur">Auteur (facultatif)</FieldLabel>
+            <Input id="livre-auteur" value={author} onChange={(event) => setAuthor(event.target.value)} maxLength={80} placeholder="Votre nom ou celui de votre marque" />
+          </Field>
+        )}
 
         <div className="space-y-3 border-t pt-4">
-          <p className="text-sm font-semibold">Illustration</p>
+          <div className="space-y-1">
+            <p className="text-sm font-semibold">Couverture complète</p>
+            <p className="text-sm leading-relaxed text-muted-foreground">
+              {complete
+                ? 'Titre ou sous-titre modifiés ? Régénérez-la : ils y sont inscrits.'
+                : 'Livre en relief, titre, points forts et bandeau : la couverture que l’on montre pour vendre.'}
+            </p>
+          </div>
           <CoverGenerator
             key={subjectId}
             subject="product"

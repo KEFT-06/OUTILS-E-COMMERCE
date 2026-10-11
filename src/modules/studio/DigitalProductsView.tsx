@@ -341,12 +341,13 @@ export function DigitalProductsView({ report, onSelectProductForAd, onAnalyzeNic
                 isSelected && 'border-primary ring-2 ring-primary/25',
               )}
             >
-              {/* La couverture de l'ouvrage, titre dessus : avec son illustration s'il en a une, typographique sinon. */}
+              {/* La couverture de l'ouvrage, titre dessus : sa couverture complète s'il en a une, typographique sinon. */}
               <BookCover
                 title={product.title}
                 subtitle={product.subtitle}
                 label={product.typeName}
-                imageUrl={covers[candidate.id]}
+                imageUrl={covers[candidate.id]?.url}
+                complete={covers[candidate.id]?.complete}
                 seed={candidate.id}
                 className="w-24 shrink-0 self-start sm:w-28"
               />

@@ -11,7 +11,7 @@ import { apiRequest } from '@/shared/lib/api';
 import { useCachedState } from '@/shared/lib/apiCache';
 import { formatDateFr } from '@/shared/lib/formatDate';
 import { useCustomProducts } from '@/shared/stores/useCustomProducts';
-import { useProductCovers } from '@/shared/stores/useProductCovers';
+import { type ProductCover, useProductCovers } from '@/shared/stores/useProductCovers';
 import { useProductDrafts } from '@/shared/stores/useProductDrafts';
 import { refreshExpiringVideos } from '@/shared/stores/useExpiringVideos';
 import type { DigitalProductIdea } from '@/shared/types/analysis';
@@ -56,11 +56,11 @@ const departVideo = (product: DigitalProductIdea) => ({
   },
 });
 
-function ProductRow({ product, written, cover }: { product: DigitalProductIdea; written: boolean; cover: string | undefined }) {
+function ProductRow({ product, written, cover }: { product: DigitalProductIdea; written: boolean; cover: ProductCover | undefined }) {
   const navigate = useNavigate();
   return (
     <li className="flex gap-4 rounded-lg border bg-card p-3">
-      <BookCover title={product.title} subtitle={product.subtitle} label={product.typeName} imageUrl={cover} seed={product.id} className="w-16 shrink-0 self-start sm:w-20" />
+      <BookCover title={product.title} subtitle={product.subtitle} label={product.typeName} imageUrl={cover?.url} complete={cover?.complete} seed={product.id} className="w-16 shrink-0 self-start sm:w-20" />
       <div className="flex min-w-0 flex-1 flex-col gap-2">
         <div className="min-w-0">
           <p className="line-clamp-2 font-medium" title={product.title}>

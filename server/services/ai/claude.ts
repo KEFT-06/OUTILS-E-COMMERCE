@@ -5,8 +5,8 @@ import { env } from '@server/env';
  * Claude (Anthropic) : le directeur artistique du site.
  *
  * Il ne produit ni image ni vidéo. Il ÉCRIT ce que le moteur d'images reçoit : il lit la fiche
- * d'un ouvrage — à qui il s'adresse, ce qu'il promet, ses chapitres — et en tire la scène à
- * peindre. Un moteur d'images rend ce qu'on lui décrit ; la différence entre une couverture
+ * d'un ouvrage — à qui il s'adresse, ce qu'il promet, ses chapitres — et en tire la maquette de
+ * sa couverture, ou la scène à peindre. Un moteur d'images rend ce qu'on lui décrit ; la différence entre une couverture
  * quelconque et une couverture qui parle de CE livre tient à cette description.
  *
  * SON ABSENCE N'EST JAMAIS UNE PANNE. Clé absente, service muet, réponse coupée ou refusée :
@@ -59,18 +59,34 @@ export async function askClaude(input: {
   maxTokens: number;
   /** Délai d'un essai. Il y en a deux au plus : compter le double avant de se passer de lui. */
   timeoutMs: number;
+  /** Essais supplémentaires après un premier échec passager. 1 par défaut ; 0 quand le temps est compté. */
+  retries?: number;
   /** Profondeur de réflexion. « low » : une consigne courte n'en demande pas davantage. */
   effort?: 'low' | 'medium' | 'high';
+  /** Forme imposée à la réponse : elle arrive alors en JSON, conforme à ce schéma. */
+  jsonSchema?: Record<string, unknown>;
+  /** Images à regarder avant de répondre (relecture d'une couverture rendue). */
+  images?: { mimeType: 'image/jpeg' | 'image/png' | 'image/webp'; bytes: Buffer }[];
 }): Promise<string> {
   try {
     if (!env.CLAUDE_API_KEY) throw new ClaudeError('NOT_CONFIGURED');
-    const client = new Anthropic({ apiKey: env.CLAUDE_API_KEY, baseURL: env.CLAUDE_API_URL, maxRetries: 1, timeout: input.timeoutMs });
+    const client = new Anthropic({ apiKey: env.CLAUDE_API_KEY, baseURL: env.CLAUDE_API_URL, maxRetries: input.retries ?? 1, timeout: input.timeoutMs });
     const response = await client.messages.create({
       model: env.CLAUDE_MODEL,
       max_tokens: input.maxTokens,
       system: input.system,
-      output_config: { effort: input.effort ?? 'low' },
-      messages: [{ role: 'user', content: input.prompt }],
+      output_config: { effort: input.effort ?? 'low', ...(input.jsonSchema ? { format: { type: 'json_schema' as const, schema: input.jsonSchema } } : {}) },
+      messages: [
+        {
+          role: 'user',
+          content: input.images?.length
+            ? [
+                ...input.images.map((image) => ({ type: 'image' as const, source: { type: 'base64' as const, media_type: image.mimeType, data: image.bytes.toString('base64') } })),
+                { type: 'text' as const, text: input.prompt },
+              ]
+            : input.prompt,
+        },
+      ],
     });
     if (response.stop_reason === 'refusal') throw new ClaudeError('REFUSED');
     if (response.stop_reason === 'max_tokens') throw new ClaudeError('TRUNCATED');

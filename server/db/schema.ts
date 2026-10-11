@@ -287,6 +287,12 @@ export const covers = pgTable(
     mimeType: text('mime_type'),
     /** Image encodée en base64. */
     data: text('data'),
+    /**
+     * designed : couverture complète rendue par le moteur d'images — livre en relief, titre et
+     * points forts compris ; elle se montre telle quelle. illustration : image sans texte, sur
+     * laquelle la mise en page pose le titre (guides multilingues, couvertures d'avant le 08/10/2026).
+     */
+    layout: text('layout').notNull().default('illustration'),
     createdAt: createdAt(),
     updatedAt: moment('updated_at').notNull().defaultNow(),
   },

@@ -5,9 +5,13 @@ import { cn } from '@/shared/lib/utils';
  * La couverture d'un ouvrage, à l'écran : le même dessin que le fichier à télécharger et que la
  * première page du PDF (shared/lib/bookCover).
  *
- * Tout ouvrage en a une, avec son titre dessus. Avec illustration, le titre est posé sur elle ;
- * sans, la couverture est typographique. Les tailles suivent la largeur de la couverture : la
- * même composition sert à la vignette d'une carte comme à l'aperçu en grand.
+ * Tout ouvrage en a une, avec son titre dessus. Trois cas :
+ *   · couverture complète (`complete`) : l'image EST la couverture — livre en relief, titre et
+ *     points forts compris. Elle se montre entière, sans rien poser dessus ;
+ *   · illustration : le titre est posé sur elle ;
+ *   · rien encore : la couverture est typographique.
+ * Les tailles suivent la largeur de la couverture : la même composition sert à la vignette d'une
+ * carte comme à l'aperçu en grand.
  */
 export function BookCover({
   title,
@@ -15,11 +19,14 @@ export function BookCover({
   author,
   label,
   imageUrl,
+  complete = false,
   seed,
   className,
 }: BookCoverText & {
-  /** Illustration de la couverture ; absente : couverture typographique. */
+  /** Image de la couverture ; absente : couverture typographique. */
   imageUrl?: string | null;
+  /** L'image porte déjà le titre : elle se montre telle quelle. */
+  complete?: boolean;
   /** Ce qui identifie l'ouvrage (son identifiant) : il garde toujours la même reliure. */
   seed: string;
   className?: string;
@@ -27,6 +34,20 @@ export function BookCover({
   const palette = coverPalette(seed);
   const shown = title.trim() || 'Sans titre';
   const unit = (fraction: number) => `${(fraction * 100).toFixed(2)}cqw`;
+
+  if (complete && imageUrl) {
+    return (
+      <div
+        role="img"
+        aria-label={`Couverture de « ${shown} »`}
+        // Fond blanc : celui de l'image, dont le livre porte déjà son ombre.
+        className={cn('relative isolate overflow-hidden rounded-[3px] bg-white ring-1 ring-black/10', className)}
+        style={{ aspectRatio: '1 / 1.414' }}
+      >
+        <img src={imageUrl} alt="" loading="lazy" className="absolute inset-0 size-full object-contain" />
+      </div>
+    );
+  }
 
   return (
     <div

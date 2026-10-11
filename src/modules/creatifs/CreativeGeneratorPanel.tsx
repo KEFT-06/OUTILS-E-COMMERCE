@@ -353,7 +353,7 @@ export function CreativeGeneratorPanel({
         <CardTitle className="text-lg">{bookMode ? 'Créer la couverture d’un livre' : 'Générer un visuel ou une vidéo'}</CardTitle>
         <CardDescription>
           {bookMode
-            ? 'Une illustration sur laquelle votre titre est posé proprement, prête à télécharger et à publier.'
+            ? 'La couverture complète de votre livre — relief, titre, points forts, bandeau — prête à télécharger et à montrer pour vendre.'
             : 'Une vidéo ou un visuel structuré par une méthode publicitaire, et orienté par le niveau de conscience de votre prospect.'}
         </CardDescription>
         <CardAction>

@@ -98,9 +98,10 @@ export async function loadCoverImage(url: string): Promise<HTMLImageElement> {
 
 /**
  * Compose la couverture. `image` : l'illustration, ou null pour une couverture typographique ;
- * `seed` : ce qui identifie l'ouvrage, pour lui donner toujours la même reliure.
+ * `seed` : ce qui identifie l'ouvrage, pour lui donner toujours la même reliure ; `complete` :
+ * l'image est déjà la couverture entière, titre compris — rien n'est écrit dessus.
  */
-export async function composeBookCover(image: HTMLImageElement | null, text: BookCoverText, seed = text.title): Promise<HTMLCanvasElement> {
+export async function composeBookCover(image: HTMLImageElement | null, text: BookCoverText, seed = text.title, complete = false): Promise<HTMLCanvasElement> {
   // La police du site peut ne pas être encore chargée : sans elle, le canevas écrirait en police de secours.
   await document.fonts?.load(font(800, 64)).catch(() => undefined);
 
@@ -112,6 +113,17 @@ export async function composeBookCover(image: HTMLImageElement | null, text: Boo
   const context = canvas.getContext('2d');
   if (!context) throw new Error('La couverture n’a pas pu être composée.');
   const palette = coverPalette(seed);
+
+  if (image && complete) {
+    // Couverture complète : elle porte son titre. Elle est posée entière sur une page blanche, son fond.
+    context.fillStyle = '#ffffff';
+    context.fillRect(0, 0, width, height);
+    const fit = Math.min(width / image.naturalWidth, height / image.naturalHeight);
+    const fitWidth = image.naturalWidth * fit;
+    const fitHeight = image.naturalHeight * fit;
+    context.drawImage(image, (width - fitWidth) / 2, (height - fitHeight) / 2, fitWidth, fitHeight);
+    return canvas;
+  }
 
   if (image) {
     // L'illustration couvre toute la page, recadrée autour de son centre.

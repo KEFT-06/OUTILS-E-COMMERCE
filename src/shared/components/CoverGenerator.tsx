@@ -13,11 +13,11 @@ import { Textarea } from '@/shared/ui/textarea';
 import { ToggleGroup, ToggleGroupItem } from '@/shared/ui/toggle-group';
 
 /**
- * Image de couverture générée par IA, pour le PDF d'un guide ou d'un ebook.
+ * Couverture d'un ebook ou d'un guide, générée à la demande et conservée sur le compte.
  *
- * L'image ne contient aucun texte : le titre est posé par la mise en page, dans
- * la langue de chaque export. Elle est conservée sur le compte, pas chez le
- * fournisseur, qui efface ses fichiers après quelques jours.
+ * Un ebook reçoit sa couverture complète : livre en relief, titre et points forts dans l'image.
+ * Un guide multilingue reçoit une illustration sans texte, dont l'auteur choisit la technique :
+ * son titre est posé par la mise en page, dans la langue de chaque export.
  */
 
 const STYLES = [
@@ -135,6 +135,7 @@ export function CoverGenerator({
           title,
           ...(subtitle?.trim() ? { subtitle: subtitle.trim().slice(0, 300) } : {}),
           ...(description.trim() ? { description: description.trim() } : {}),
+          ...(subject === 'guide' ? { style } : {}),
           ...(book?.audience?.trim() ? { audience: book.audience.trim().slice(0, 1000) } : {}),
           ...(book?.promise?.trim() ? { promise: book.promise.trim().slice(0, 1000) } : {}),
           ...(book?.chapters?.length
@@ -145,7 +146,6 @@ export function CoverGenerator({
                   .slice(0, 24),
               }
             : {}),
-          style,
         }),
       );
       if (!settled && created) apply(created.status === 'failed' ? cover : created);
@@ -204,7 +204,8 @@ export function CoverGenerator({
       </div>
 
       <div className="min-w-0 flex-1 space-y-3">
-        <div className="space-y-1.5">
+        {/* La technique ne se choisit que pour une illustration : la couverture complète d'un ebook suit la maquette de la maison. */}
+        <div className={cn('space-y-1.5', subject !== 'guide' && 'hidden')}>
           <Label id={`cover-style-${subjectId}`}>Style</Label>
           <ToggleGroup
             type="single"
@@ -237,7 +238,7 @@ export function CoverGenerator({
         <div className="flex flex-wrap gap-2">
           <Button type="button" size="sm" onClick={() => void generate()} disabled={busy || pending || title.trim().length < 2}>
             {busy ? <Spinner /> : ready ? <RefreshCw /> : <Sparkles />}
-            {ready ? 'Régénérer' : 'Générer la couverture'}
+            {busy && subject === 'product' ? 'Création de la couverture…' : ready ? 'Régénérer' : 'Générer la couverture'}
           </Button>
           {cover && !pending && (
             <Button type="button" size="sm" variant="ghost" onClick={() => void remove()} disabled={busy}>
@@ -246,6 +247,11 @@ export function CoverGenerator({
             </Button>
           )}
         </div>
+        {busy && subject === 'product' && (
+          <p className="text-sm leading-relaxed text-muted-foreground" role="status">
+            Maquette, rendu, puis relecture du titre lettre par lettre : comptez environ une minute. Vous pouvez continuer ailleurs, elle vous attendra ici.
+          </p>
+        )}
         {error && (
           <Alert variant="danger">
             <AlertDescription>{error}</AlertDescription>

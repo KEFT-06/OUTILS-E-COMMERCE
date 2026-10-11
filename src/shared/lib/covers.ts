@@ -12,6 +12,11 @@ export interface CoverView {
   subjectId: string;
   status: 'pending' | 'ready' | 'failed';
   mimeType: string | null;
+  /**
+   * designed : couverture complète — livre en relief, titre et points forts dans l'image ; elle se
+   * montre telle quelle. illustration : image sans texte, sur laquelle la mise en page pose le titre.
+   */
+  layout: 'designed' | 'illustration';
   createdAt: string;
   updatedAt: string;
 }
@@ -22,7 +27,8 @@ export interface CoverInput {
   title: string;
   subtitle?: string;
   description?: string;
-  style: 'illustration' | 'photo' | 'minimal';
+  /** Technique d'une illustration (guides) ; sans objet pour la couverture complète d'un ebook. */
+  style?: 'illustration' | 'photo' | 'minimal';
   /** Fiche de l'ouvrage : la scène de la couverture en est tirée. */
   audience?: string;
   promise?: string;
@@ -36,7 +42,12 @@ export interface CoverImage {
   bytes: Uint8Array;
   mimeType: string;
   dataUrl: string;
+  /** L'image porte déjà le titre : un export la pose telle quelle. */
+  complete: boolean;
 }
+
+/** La couverture porte-t-elle déjà son titre ? */
+export const isCompleteCover = (cover: Pick<CoverView, 'layout' | 'status'> | null | undefined): boolean => cover?.status === 'ready' && cover.layout === 'designed';
 
 export const coversApi = {
   latest: (subject: 'guide' | 'product', subjectId: string) =>
@@ -59,6 +70,6 @@ export const coversApi = {
     for (let index = 0; index < bytes.length; index += 0x8000) {
       binary += String.fromCharCode(...bytes.subarray(index, index + 0x8000));
     }
-    return { bytes, mimeType, dataUrl: `data:${mimeType};base64,${btoa(binary)}` };
+    return { bytes, mimeType, dataUrl: `data:${mimeType};base64,${btoa(binary)}`, complete: response.headers.get('x-cover-layout') === 'designed' };
   },
 };

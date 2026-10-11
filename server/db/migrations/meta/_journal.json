@@ -295,6 +295,13 @@
       "when": 1791402717707,
       "tag": "0041_etude_d_un_ouvrage",
       "breakpoints": true
+    },
+    {
+      "idx": 42,
+      "version": "7",
+      "when": 1791423539728,
+      "tag": "0042_couverture_complete",
+      "breakpoints": true
     }
   ]
 }

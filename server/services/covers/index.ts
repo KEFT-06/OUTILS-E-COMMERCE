@@ -3,23 +3,35 @@ import { and, desc, eq, ne } from 'drizzle-orm';
 import { z } from 'zod';
 import { getDb } from '@server/db/client';
 import { covers, guides } from '@server/db/schema';
+import { env } from '@server/env';
 import { AppError } from '@server/middleware';
 import type { RequestAuth } from '@server/middleware/auth';
+import { generateGeminiImage, geminiImagesConfigured } from '@server/services/ai/geminiImage';
 import { generateImage } from '@server/services/ai/image';
+import type { ImageResult } from '@server/services/ai/imageTypes';
 import { coverArtDirection } from '@server/services/covers/artDirection';
+import { type DesignedBook, buildDesignedCoverPrompt, designCover } from '@server/services/covers/design';
+import { correctionNote, proofScore, proofreadCover } from '@server/services/covers/proof';
 import { findOwnedGeneration, runBilledGeneration, settleGeneration } from '@server/services/generations';
 import { countryName } from '@server/shared/countries';
 
 /**
- * Images de couverture des guides et des ebooks du Studio.
+ * Couvertures des ebooks du Studio et des guides multilingues. L'image arrive dans la réponse et
+ * reste en base : elle est disponible à chaque nouvel export.
  *
- * Générées par le modèle d'image de Gemini (GEMINI_IMAGE_MODEL), sans aucun texte : le titre
- * est posé ensuite par la mise en page, dans la langue de chaque export. L'image arrive dans la
- * réponse et reste en base : elle est disponible à chaque nouvel export.
+ * DEUX FORMES, selon l'ouvrage.
  *
- * DEUX TEMPS. La direction artistique (covers/artDirection.ts) lit la fiche de l'ouvrage et écrit
- * la scène ; le moteur d'images la peint. Sans la première, la scène est composée ici, d'après
- * le titre : l'auteur a toujours sa couverture.
+ *   · Un EBOOK reçoit la couverture complète de la maison (covers/design.ts) : un livre en
+ *     relief, son titre, ses points forts, son bandeau. Le maquettiste remplit la maquette d'après
+ *     la fiche de l'ouvrage, le moteur d'images rend le livre, le relecteur (covers/proof.ts) lit
+ *     l'image et la fait refaire une fois si un mot est faux ou ajouté.
+ *
+ *   · Un GUIDE MULTILINGUE garde une illustration sans texte : il s'exporte dans plusieurs
+ *     langues, et son titre est posé par la mise en page dans celle de chaque export. La direction
+ *     artistique (covers/artDirection.ts) en écrit la scène.
+ *
+ * L'auteur a toujours sa couverture : si la couverture complète ne peut pas être faite maintenant,
+ * l'ebook reçoit une illustration, sur laquelle la mise en page pose son titre.
  */
 
 export const COVER_STYLES = ['illustration', 'photo', 'minimal'] as const;
@@ -89,6 +101,10 @@ export function buildCoverPrompt(
 
 type CoverRow = typeof covers.$inferSelect;
 
+/** Complète (elle porte son titre, on la montre telle quelle) ou illustration (le titre est posé dessus). */
+export type CoverLayout = 'designed' | 'illustration';
+const layoutOf = (value: string): CoverLayout => (value === 'designed' ? 'designed' : 'illustration');
+
 function serializeCover(row: CoverRow) {
   return {
     id: row.id,
@@ -96,6 +112,7 @@ function serializeCover(row: CoverRow) {
     subjectId: row.subjectId,
     status: row.status as 'pending' | 'ready' | 'failed',
     mimeType: row.mimeType,
+    layout: layoutOf(row.layout),
     createdAt: row.createdAt.toISOString(),
     updatedAt: row.updatedAt.toISOString(),
   };
@@ -126,24 +143,72 @@ async function guideHeadings(userId: string, guideId: string): Promise<string[]>
     .slice(0, 12);
 }
 
+/** Temps de toute la fabrication d'une couverture complète : l'hébergeur coupe la demande à 300 s. */
+const DESIGNED_BUDGET_MS = 250_000;
+
+/** Les deux premiers moteurs de la chaîne savent écrire ; le dernier recours dessine des lettres inventées. */
+const letteringModels = () => [...new Set([env.GEMINI_IMAGE_MODEL, ...env.GEMINI_IMAGE_FALLBACK_MODELS])].slice(0, 2);
+
+/**
+ * La couverture complète d'un ebook : maquette, rendu, relecture, et un second rendu si la
+ * relecture trouve un défaut. `null` quand elle ne peut pas être faite maintenant (moteur
+ * indisponible, rendu refusé) : l'appelant fait alors une illustration. Ne lève jamais.
+ *
+ * Chaque étape regarde le temps qui reste : la relecture et le second rendu sont un soin, pas
+ * une condition — plutôt une couverture non relue qu'une demande coupée par l'hébergeur.
+ */
+async function renderDesignedCover(book: DesignedBook): Promise<{ image: ImageResult; prompt: string } | null> {
+  if (!geminiImagesConfigured()) return null;
+  const started = Date.now();
+  const left = () => DESIGNED_BUDGET_MS - (Date.now() - started);
+  const render = (prompt: string, budgetMs: number) =>
+    generateGeminiImage({ prompt, aspectRatio: '2:3', imageSize: '2K', models: letteringModels(), budgetMs }).catch(() => null);
+
+  const { design } = await designCover(book);
+  const prompt = buildDesignedCoverPrompt(design, { market: book.market });
+  const first = await render(prompt, Math.min(100_000, left() - 20_000));
+  if (!first) return null;
+
+  const proof = left() > 50_000 ? await proofreadCover(first, design, Math.min(40_000, left() - 10_000)) : null;
+  if (!proof || proofScore(proof) === 0 || left() < 80_000) return { image: first, prompt };
+
+  const corrected = `${prompt}\n\n${correctionNote(proof)}`;
+  const second = await render(corrected, Math.min(90_000, left() - 40_000));
+  if (!second) return { image: first, prompt };
+  const again = left() > 35_000 ? await proofreadCover(second, design, Math.min(40_000, left() - 10_000)) : null;
+  // Sans seconde relecture, le second rendu est gardé : il a été fait en connaissant le défaut du premier.
+  return !again || proofScore(again) <= proofScore(proof) ? { image: second, prompt: corrected } : { image: first, prompt };
+}
+
 export async function createCover(auth: RequestAuth, input: CoverRequest): Promise<CoverView> {
   const market = countryName(auth.account.user.country) || null;
-  // La consigne de repli : celle qui part si la direction artistique ne répond pas.
-  let prompt = buildCoverPrompt({ ...input, market });
-  // Format portrait des exports (PDF, DOCX) : l'image n'y est pas déformée.
+  // Ce qui est enregistré avec l'image : la consigne partie, et la forme de la couverture obtenue.
+  const made: { prompt: string; layout: CoverLayout } = { prompt: buildCoverPrompt({ ...input, market }), layout: 'illustration' };
   const { result } = await runBilledGeneration({
     auth,
     actionId: 'cover_generation',
     kind: 'cover',
     provider: 'cloudflare',
-    /*
-      « premium » : une couverture est la première chose qu'on voit d'un produit, et la seule
-      qu'on voit avant de décider de l'ouvrir. Elle est aussi ce que l'auteur montre pour
-      vendre. Son auteur n'est donc pas son seul lecteur, contrairement à ce qu'on pouvait
-      croire tant qu'elle n'était qu'une page de garde.
-    */
     run: async () => {
       const chapters = input.chapters?.length ? input.chapters : input.subject === 'guide' ? await guideHeadings(auth.account.user.id, input.subjectId).catch(() => []) : [];
+
+      if (input.subject === 'product') {
+        const complete = await renderDesignedCover({
+          title: input.title,
+          subtitle: input.subtitle,
+          audience: input.audience,
+          promise: input.promise,
+          chapters,
+          wish: input.description,
+          market,
+        });
+        if (complete) {
+          made.prompt = complete.prompt;
+          made.layout = 'designed';
+          return complete.image;
+        }
+      }
+
       const scene = await coverArtDirection({
         title: input.title,
         subtitle: input.subtitle,
@@ -154,8 +219,12 @@ export async function createCover(auth: RequestAuth, input: CoverRequest): Promi
         market,
         medium: STYLE_DIRECTION[input.style],
       });
-      if (scene) prompt = buildCoverPrompt({ ...input, market, scene });
-      return generateImage({ prompt, aspectRatio: '9:16', tier: 'premium' });
+      if (scene) made.prompt = buildCoverPrompt({ ...input, market, scene });
+      /*
+        « premium » : une couverture est la première chose qu'on voit d'un produit, et ce que
+        l'auteur montre pour vendre. Format portrait des exports : l'image n'y est pas déformée.
+      */
+      return generateImage({ prompt: made.prompt, aspectRatio: '9:16', tier: 'premium' });
     },
     describe: (image) => ({ providerRef: null, state: 'completed', fileFormat: image.mimeType === 'image/jpeg' ? 'jpg' : image.mimeType.split('/')[1] }),
   });
@@ -167,10 +236,11 @@ export async function createCover(auth: RequestAuth, input: CoverRequest): Promi
         userId: auth.account.user.id,
         subject: input.subject,
         subjectId: input.subjectId,
-        prompt,
+        prompt: made.prompt,
         status: 'ready',
         mimeType: result.mimeType,
         data: result.bytes.toString('base64'),
+        layout: made.layout,
       })
       .returning();
     // Une seule couverture par sujet : la précédente est remplacée.
@@ -198,6 +268,7 @@ export async function listCovers(auth: RequestAuth, subject: string): Promise<Co
       subjectId: covers.subjectId,
       status: covers.status,
       mimeType: covers.mimeType,
+      layout: covers.layout,
       createdAt: covers.createdAt,
       updatedAt: covers.updatedAt,
     })
@@ -208,7 +279,7 @@ export async function listCovers(auth: RequestAuth, subject: string): Promise<Co
   const seen = new Set<string>();
   return rows
     .filter((row) => (seen.has(row.subjectId) ? false : (seen.add(row.subjectId), true)))
-    .map((row) => ({ ...row, status: 'ready' as const, createdAt: row.createdAt.toISOString(), updatedAt: row.updatedAt.toISOString() }));
+    .map((row) => ({ ...row, status: 'ready' as const, layout: layoutOf(row.layout), createdAt: row.createdAt.toISOString(), updatedAt: row.updatedAt.toISOString() }));
 }
 
 /** Dernière couverture d'un guide ou d'un produit (prête, ou en cours). */
@@ -247,6 +318,8 @@ export async function sendCoverImage(auth: RequestAuth, coverId: string | undefi
   }
   const bytes = Buffer.from(row.data, 'base64');
   res.setHeader('Content-Type', row.mimeType);
+  // Les exports la lisent par cette route : ils doivent savoir si elle porte déjà son titre.
+  res.setHeader('X-Cover-Layout', layoutOf(row.layout));
   res.setHeader('Content-Length', String(bytes.length));
   res.setHeader('Cache-Control', 'private, max-age=3600');
   res.end(bytes);

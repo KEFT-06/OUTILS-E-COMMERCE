@@ -10,7 +10,7 @@ import { CoverGenerator } from '@/shared/components/CoverGenerator';
 import { downloadBookCover } from '@/shared/lib/downloadBookCover';
 import { rememberProductCover } from '@/shared/stores/useProductCovers';
 import { WritingFindings } from '@/shared/components/WritingFindings';
-import { type CoverView, coversApi } from '@/shared/lib/covers';
+import { type CoverView, coversApi, isCompleteCover } from '@/shared/lib/covers';
 import {
   ProductExportBlockedError,
   type ProductExportFormat,
@@ -242,6 +242,7 @@ export function ProductStudioPanel({ baseProduct, report, initialExpertOpen = fa
                 subtitle={product.subtitle}
                 label={product.typeName}
                 imageUrl={cover?.status === 'ready' ? coversApi.imageUrl(cover) : null}
+                complete={isCompleteCover(cover)}
                 seed={baseProduct.id}
               />
               <Button
@@ -254,6 +255,7 @@ export function ProductStudioPanel({ baseProduct, report, initialExpertOpen = fa
                   setDownloadingCover(true);
                   void downloadBookCover({
                     imageUrl: cover?.status === 'ready' ? coversApi.imageUrl(cover) : null,
+                    complete: isCompleteCover(cover),
                     text: { title: product.title, subtitle: product.subtitle, label: product.typeName },
                     seed: baseProduct.id,
                   })
@@ -267,8 +269,8 @@ export function ProductStudioPanel({ baseProduct, report, initialExpertOpen = fa
             </div>
             <div className="min-w-0 flex-1 space-y-2">
               <p className="text-sm leading-relaxed text-muted-foreground">
-                Cette couverture ouvre le PDF et le DOCX, et accompagne le produit partout sur le site. Ajoutez-lui une illustration :
-                le titre reste posé dessus.
+                Cette couverture ouvre le PDF et le DOCX, et accompagne le produit partout sur le site. Générez sa version complète :
+                livre en relief, titre, points forts et bandeau, prête à montrer pour vendre.
               </p>
               <CoverGenerator
                 key={baseProduct.id}

@@ -1,6 +1,6 @@
 import { useEffect, useSyncExternalStore } from 'react';
 import { useAuth } from '@/features/auth/AuthContext';
-import { type CoverView, coversApi } from '@/shared/lib/covers';
+import { type CoverView, coversApi, isCompleteCover } from '@/shared/lib/covers';
 
 /**
  * Illustrations de couverture des produits du compte, lues une fois pour tous les écrans.
@@ -9,8 +9,8 @@ import { type CoverView, coversApi } from '@/shared/lib/covers';
  * retours pour afficher une liste. Les illustrations sont lues d'un coup, gardées le temps de la
  * session, et mises à jour dès qu'une couverture est générée ou retirée.
  *
- * Un produit sans illustration n'est pas « sans couverture » : il porte une couverture
- * typographique (shared/components/BookCover). Cette liste ne dit que lesquels ont une image.
+ * Un produit sans image n'est pas « sans couverture » : il porte une couverture typographique
+ * (shared/components/BookCover). Cette liste ne dit que lesquels ont une image, et laquelle.
  */
 
 let owner: string | null = null;
@@ -57,13 +57,19 @@ export function rememberProductCover(subjectId: string, cover: CoverView | null)
   emit();
 }
 
-/** Adresse de l'illustration de chaque produit qui en a une, par identifiant de produit. */
-export function useProductCovers(): Record<string, string> {
+/** L'image de couverture d'un produit, et ce qu'elle est : complète (elle porte son titre) ou illustration. */
+export interface ProductCover {
+  url: string;
+  complete: boolean;
+}
+
+/** L'image de couverture de chaque produit qui en a une, par identifiant de produit. */
+export function useProductCovers(): Record<string, ProductCover> {
   const { account } = useAuth();
   const accountId = account?.id ?? null;
   const current = useSyncExternalStore(subscribe, snapshot);
   useEffect(() => {
     if (accountId) load(accountId);
   }, [accountId]);
-  return Object.fromEntries(Object.entries(current).map(([subjectId, cover]) => [subjectId, coversApi.imageUrl(cover)]));
+  return Object.fromEntries(Object.entries(current).map(([subjectId, cover]) => [subjectId, { url: coversApi.imageUrl(cover), complete: isCompleteCover(cover) }]));
 }

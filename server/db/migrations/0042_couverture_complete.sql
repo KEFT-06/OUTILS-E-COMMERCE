@@ -1,0 +1,1 @@
+ALTER TABLE "covers" ADD COLUMN "layout" text DEFAULT 'illustration' NOT NULL;

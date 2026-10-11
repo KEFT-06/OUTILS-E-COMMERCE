@@ -114,14 +114,15 @@ export async function exportProduct(
   }
 
   /*
-    Tout ouvrage part avec sa couverture, celle qui se voit à l'écran : son illustration sous le
-    titre s'il en a une, une couverture typographique sinon. Sans illustration, le document
+    Tout ouvrage part avec sa couverture, celle qui se voit à l'écran : sa couverture complète,
+    son illustration sous le titre, ou une couverture typographique. Sans illustration, le document
     commençait par une page de titre nue ; avec, par une image surmontée d'un bandeau qui n'était
     pas la couverture montrée ailleurs. Si la composition échoue, le document part sans elle.
   */
   const illustration = coverId ? await coversApi.image(coverId).catch(() => null) : null;
   const cover = await composeCoverFor({
     imageUrl: illustration?.dataUrl ?? null,
+    complete: illustration?.complete,
     text: { title: productDocument.title, subtitle: productDocument.subtitle, label: productDocument.typeName },
     seed: product.id,
   })

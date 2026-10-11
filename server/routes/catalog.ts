@@ -10,6 +10,7 @@ import { getRulesMetadata } from '@server/services/compliance';
 import { asComplianceRouteError } from '@server/services/compliance/guard';
 import { imagesConfigured } from '@server/services/creatives';
 import { CreditConfigUnavailableError, getCostTable } from '@server/services/credits';
+import { claudeConfigured } from '@server/services/ai/claude';
 import { veoConfigured } from '@server/services/veo';
 import { convertAmount, currencyForCountry, getRates, isSupportedCurrency } from '@server/services/currency';
 import { LaunchKitUnavailableError, getLaunchKitConfig } from '@server/services/launchKit';
@@ -100,6 +101,8 @@ catalogRouter.get(
         email: providers.email,
         payments: providers.payments,
         googleAuth: providers.googleAuth,
+        // Maquette et relecture des couvertures : sans elle, une couverture se fait quand même, plus simple.
+        artDirection: claudeConfigured(),
         // Collecte et recherche publicitaires (Apify) : sans elle, l'espionnage ne se remplit pas.
         adLibrary: providers.apify,
       },

@@ -96,9 +96,9 @@
     },
     {
       "id": "cover_generation",
-      "label": "Image de couverture d'un guide ou d'un ebook",
+      "label": "Couverture d'un ebook ou d'un guide",
       "cost": 1,
-      "description": "Illustration de couverture générée pour l'export PDF, conservée sur votre compte. Points rendus si la génération échoue."
+      "description": "Pour un ebook : sa couverture complète — livre en relief, titre, points forts, bandeau —, relue avant de vous être remise et prête à montrer pour vendre. Pour un guide multilingue : une illustration, sur laquelle le titre est posé dans chaque langue. Conservée sur votre compte. Points rendus si la génération échoue."
     },
     {
       "id": "guide_translation",
