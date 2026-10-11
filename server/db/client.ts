@@ -51,6 +51,7 @@ const MIGRATIONS_FOLDER = join(process.cwd(), 'server', 'db', 'migrations');
 let database: Database | null = null;
 let closeConnection: (() => Promise<void>) | null = null;
 let renewConnection: (() => void) | null = null;
+let releaseConnection: (() => void) | null = null;
 let kind: 'postgres' | 'embedded' | null = null;
 
 export function getDb(): Database {
@@ -134,6 +135,14 @@ export async function initDatabase(
       // Sans attendre la fin de ses requêtes : une connexion muette ne rendrait jamais la main.
       void silent.end({ timeout: 0 }).catch(() => undefined);
     };
+    releaseConnection = () => {
+      const idle = client;
+      client = open();
+      drizzle(client);
+      // En douceur : ce qui est encore en cours sur l'ancienne finit, puis elle se ferme. Le client
+      // neuf n'ouvre rien tant qu'aucune requête n'arrive.
+      void idle.end().catch(() => undefined);
+    };
     kind = 'postgres';
     return database;
   }
@@ -188,10 +197,19 @@ export function renewDatabase(): void {
   renewConnection?.();
 }
 
+/**
+ * Rend les connexions à la base : la prochaine requête en ouvrira une neuve. Pour une instance
+ * qui n'a plus rien à servir (server/db/vigil.ts). Sans objet pour la base embarquée.
+ */
+export function releaseDatabase(): void {
+  releaseConnection?.();
+}
+
 export async function closeDatabase(): Promise<void> {
   await closeConnection?.();
   database = null;
   closeConnection = null;
   renewConnection = null;
+  releaseConnection = null;
   kind = null;
 }

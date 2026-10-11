@@ -1,5 +1,5 @@
 import type { IncomingMessage, ServerResponse } from 'node:http';
-import { databaseAnswers, renewDatabase } from '@server/db/client';
+import { databaseAnswers, releaseDatabase, renewDatabase } from '@server/db/client';
 
 /**
  * Veille de la connexion à la base, en hébergement sans serveur.
@@ -15,7 +15,17 @@ import { databaseAnswers, renewDatabase } from '@server/db/client';
  * attend une réponse qui ne viendra pas. Avec une seule connexion par instance, tout ce qui
  * arrive ensuite fait la queue derrière elle.
  *
- * Deux parades, l'une avant de servir, l'autre pendant :
+ * La sonde du 11/10 a montré plus que des connexions mortes : après le remplacement d'une
+ * connexion pendue, la NEUVE a mis plus de dix secondes à s'ouvrir. Par moments, la base n'en
+ * accorde plus — ce qui arrive quand trop d'instances endormies gardent chacune la leur : chaque
+ * mise en ligne en laisse derrière elle, et leur nombre est plafonné. D'où la règle de fond :
+ *
+ *   · AU REPOS (`releaseIfIdle`) : une instance qui n'a plus rien à servir rend sa connexion. Elle
+ *     n'emporte rien dans son sommeil — ni place occupée dans la base, ni connexion qui mourra
+ *     sans prévenir — et en ouvre une neuve à la requête suivante (quelques dizaines de
+ *     millisecondes : la base est dans la même région).
+ *
+ * Et deux parades, l'une avant de servir, l'autre pendant :
  *
  *   · AU RÉVEIL (`createVigil`) : une instance qui a dormi interroge la base avant de servir, avec
  *     un délai court ; sans réponse, elle abandonne ses connexions et en ouvre de neuves. Le repos
@@ -31,8 +41,8 @@ import { databaseAnswers, renewDatabase } from '@server/db/client';
  *     (src/shared/lib/api.ts), et l'instance est guérie pour tous ceux qui suivent.
  */
 
-/** Ce que la veille a fait avant de servir : rien, une sonde qui a répondu, ou un remplacement. */
-export type WakeOutcome = 'none' | 'alive' | 'renewed';
+/** Ce que la veille a fait avant de servir : rien, une sonde qui a répondu, un remplacement — ou rien à vérifier, la connexion ayant été rendue. */
+export type WakeOutcome = 'none' | 'alive' | 'renewed' | 'fresh';
 
 export interface VigilOptions {
   /** Repos au-delà duquel la connexion est vérifiée avant de servir. */
@@ -41,6 +51,11 @@ export interface VigilOptions {
   probeMs?: number;
   answers?: (withinMs: number) => Promise<boolean>;
   renew?: () => void;
+  /** Repos au bout duquel l'instance rend sa connexion. */
+  idleMs?: number;
+  release?: () => void;
+  /** Travaux encore en cours hors requêtes (arrière-plan) : tant qu'il y en a, rien n'est rendu. */
+  otherWork?: () => number;
   now?: () => number;
 }
 
@@ -49,10 +64,15 @@ export interface Vigil {
   awake(): Promise<WakeOutcome>;
   /** Une requête commence ; la fonction rendue s'appelle quand elle finit. */
   enter(): () => void;
+  /** Rend la connexion si plus rien n'est en cours depuis `idleMs`. Vrai si elle vient d'être rendue. */
+  releaseIfIdle(): boolean;
 }
 
 export function createVigil(options: VigilOptions = {}): Vigil {
   const { restMs = 15_000, probeMs = 2_500, answers = databaseAnswers, renew = renewDatabase, now = Date.now } = options;
+  const { idleMs = 1_400, release = releaseDatabase, otherWork = () => 0 } = options;
+  /** La connexion a été rendue et rien n'est arrivé depuis : il n'y a rien à sonder. */
+  let released = false;
   let busy = 0;
   let quietSince = now();
   let check: Promise<WakeOutcome> | null = null;
@@ -61,6 +81,7 @@ export function createVigil(options: VigilOptions = {}): Vigil {
     awake() {
       // Plusieurs requêtes arrivent ensemble au réveil : une seule vérification pour toutes.
       if (check) return check;
+      if (released) return Promise.resolve('fresh');
       if (busy > 0 || now() - quietSince < restMs) return Promise.resolve('none');
       check = (async (): Promise<WakeOutcome> => {
         if (await answers(probeMs)) return 'alive';
@@ -77,6 +98,7 @@ export function createVigil(options: VigilOptions = {}): Vigil {
     },
     enter() {
       busy += 1;
+      released = false;
       let left = false;
       return () => {
         if (left) return;
@@ -84,6 +106,12 @@ export function createVigil(options: VigilOptions = {}): Vigil {
         busy -= 1;
         quietSince = now();
       };
+    },
+    releaseIfIdle() {
+      if (released || busy > 0 || check || otherWork() > 0 || now() - quietSince < idleMs) return false;
+      released = true;
+      release();
+      return true;
     },
   };
 }

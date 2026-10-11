@@ -15,10 +15,20 @@ import { waitUntil } from '@vercel/functions';
  * il est coupé. Les traitements plus longs avancent par tranches, chaque tranche tenant
  * dans ce budget, et reprennent au suivi suivant.
  */
+let running = 0;
+
+/** Travaux d'arrière-plan en cours sur cette instance : tant qu'il y en a, elle n'est pas au repos. */
+export const backgroundWorkRunning = (): number => running;
+
 export function runInBackground(work: () => Promise<void>, label: string): void {
-  const started = work().catch((error: unknown) => {
-    console.error(`[arrière-plan] ${label} a échoué :`, error);
-  });
+  running += 1;
+  const started = work()
+    .catch((error: unknown) => {
+      console.error(`[arrière-plan] ${label} a échoué :`, error);
+    })
+    .finally(() => {
+      running -= 1;
+    });
   try {
     waitUntil(started);
   } catch {

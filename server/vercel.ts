@@ -1,10 +1,12 @@
 import { join } from 'node:path';
 import type { IncomingMessage, ServerResponse } from 'node:http';
+import { waitUntil } from '@vercel/functions';
 import { createApp } from '@server/app';
 import { initDatabase } from '@server/db/client';
 import { createVigil, guardQuickRead } from '@server/db/vigil';
 import { env } from '@server/env';
 import { bootstrapFirstAdmin } from '@server/services/admin/bootstrap';
+import { backgroundWorkRunning } from '@server/shared/backgroundWork';
 
 /**
  * Point d'entrée pour un hébergement sans serveur (Vercel).
@@ -16,7 +18,8 @@ import { bootstrapFirstAdmin } from '@server/services/admin/bootstrap';
  *    temps et lanceraient la même migration ensemble ; elles passent une seule fois
  *    pendant la construction (`npm run db:migrate`).
  *  - Une seule connexion à PostgreSQL par instance : le pooler les compte toutes. Elle peut
- *    mourir pendant le sommeil de l'instance : celle-ci la vérifie à son réveil (db/vigil.ts).
+ *    mourir pendant le sommeil de l'instance, et y occuper une place de la base pour rien :
+ *    l'instance la rend dès qu'elle n'a plus rien à servir (db/vigil.ts).
  *  - Aucun balayage périodique : rien ne tourne entre deux requêtes. Les travaux
  *    interrompus repartent au suivi suivant (services/analysis/jobs.ts).
  *  - Les fichiers du site sont distribués par le réseau de l'hébergeur ; seul le HTML
@@ -31,7 +34,9 @@ import { bootstrapFirstAdmin } from '@server/services/admin/bootstrap';
 const CLIENT_DIR = env.CLIENT_DIR ?? join(process.cwd(), 'dist', 'app-shell');
 
 const app = createApp({ clientDir: CLIENT_DIR, serveStaticFiles: false });
-const vigil = createVigil();
+const vigil = createVigil({ otherWork: backgroundWorkRunning });
+/** Repos au bout duquel une instance rend sa connexion à la base. */
+const IDLE_RELEASE_MS = 1_500;
 
 /**
  * Préparation partagée par toutes les requêtes d'une même instance. En cas d'échec, la
@@ -52,6 +57,32 @@ function prepare(): Promise<void> {
     throw error;
   });
   return ready;
+}
+
+/**
+ * Une fois la réponse partie, l'instance reste éveillée un instant ; si rien d'autre n'est arrivé,
+ * elle rend sa connexion avant de s'endormir. L'hébergeur est prévenu tout de suite, dans le fil
+ * de la requête, qu'il reste ce geste à finir.
+ */
+function releaseWhenIdle(response: ServerResponse): void {
+  const settled = new Promise<void>((resolve) => {
+    let scheduled = false;
+    const afterResponse = () => {
+      if (scheduled) return;
+      scheduled = true;
+      setTimeout(() => {
+        vigil.releaseIfIdle();
+        resolve();
+      }, IDLE_RELEASE_MS);
+    };
+    response.once('finish', afterResponse);
+    response.once('close', afterResponse);
+  });
+  try {
+    waitUntil(settled);
+  } catch {
+    // Hors hébergement sans serveur : le processus reste vivant.
+  }
 }
 
 export default async function handler(request: IncomingMessage, response: ServerResponse): Promise<void> {
@@ -76,7 +107,7 @@ export default async function handler(request: IncomingMessage, response: Server
     guard.stage('veille');
     const outcome = await vigil.awake();
     // Ce que la veille a fait se lit de l'extérieur, réponse par réponse : c'est ce qui dit si elle sert.
-    if (outcome !== 'none' && !response.headersSent) response.setHeader('Server-Timing', `base;desc="${outcome === 'alive' ? 'sonde' : 'remplacee'}"`);
+    if (outcome !== 'none' && !response.headersSent) response.setHeader('Server-Timing', `base;desc="${outcome === 'alive' ? 'sonde' : outcome === 'fresh' ? 'neuve' : 'remplacee'}"`);
   } catch (error) {
     if (response.headersSent) return;
     console.error('[démarrage] base de données inaccessible :', error instanceof Error ? error.message : error);
@@ -92,5 +123,6 @@ export default async function handler(request: IncomingMessage, response: Server
   const leave = vigil.enter();
   response.once('finish', leave);
   response.once('close', leave);
+  releaseWhenIdle(response);
   app(request as never, response as never);
 }

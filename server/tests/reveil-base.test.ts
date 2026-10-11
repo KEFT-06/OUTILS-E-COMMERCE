@@ -19,10 +19,16 @@ describe('veille au réveil', () => {
   async function veille(repond: () => Promise<boolean>) {
     const { createVigil } = await import('@server/db/vigil');
     const gestes = { sondes: 0, remplacements: 0 };
+    const repos = { rendues: 0, travaux: 0 };
     let heure = 0;
     const vigil = createVigil({
       restMs: 15_000,
       probeMs: 50,
+      idleMs: 1_400,
+      release: () => {
+        repos.rendues += 1;
+      },
+      otherWork: () => repos.travaux,
       now: () => heure,
       answers: () => {
         gestes.sondes += 1;
@@ -32,8 +38,35 @@ describe('veille au réveil', () => {
         gestes.remplacements += 1;
       },
     });
-    return { vigil, gestes, avancer: (ms: number) => (heure += ms) };
+    return { vigil, gestes, repos, avancer: (ms: number) => (heure += ms) };
   }
+
+  it('au repos, l’instance rend sa connexion — une fois, et jamais pendant qu’un travail est en cours', async () => {
+    const { vigil, gestes, repos, avancer } = await veille(async () => true);
+    const fin = vigil.enter();
+    assert.equal(vigil.releaseIfIdle(), false, 'une requête est en cours');
+    fin();
+    assert.equal(vigil.releaseIfIdle(), false, 'elle vient de finir : une autre peut suivre dans l’instant');
+
+    avancer(2_000);
+    repos.travaux = 1;
+    assert.equal(vigil.releaseIfIdle(), false, 'un travail d’arrière-plan tourne encore sur cette instance');
+    repos.travaux = 0;
+    assert.equal(vigil.releaseIfIdle(), true);
+    assert.equal(vigil.releaseIfIdle(), false, 'rien à rendre deux fois');
+    assert.equal(repos.rendues, 1);
+
+    // Au réveil, même des heures plus tard : rien à sonder, la connexion sera neuve.
+    avancer(3 * 3_600_000);
+    assert.equal(await vigil.awake(), 'fresh');
+    assert.deepEqual(gestes, { sondes: 0, remplacements: 0 });
+
+    // La requête suivante en ouvre une ; au repos, elle est rendue de nouveau.
+    vigil.enter()();
+    avancer(2_000);
+    assert.equal(vigil.releaseIfIdle(), true);
+    assert.equal(repos.rendues, 2);
+  });
 
   it('une instance qui vient de servir ne sonde pas ; après un repos, une seule sonde pour toutes les requêtes', async () => {
     const { vigil, gestes, avancer } = await veille(async () => true);
@@ -170,7 +203,7 @@ describe('le vrai pilote, contre une base qui ne répond plus', () => {
 
   it('la requête pendue échoue dès le remplacement, et l’accès déjà obtenu sert encore', async () => {
     await createTestApp();
-    const { closeDatabase, databaseAnswers, getDb, initDatabase, queryRows, renewDatabase } = await import('@server/db/client');
+    const { closeDatabase, databaseAnswers, getDb, initDatabase, queryRows, releaseDatabase, renewDatabase } = await import('@server/db/client');
     await closeDatabase();
     await new Promise<void>((resolve) => muet.listen(0, '127.0.0.1', resolve));
     const port = (muet.address() as AddressInfo).port;
@@ -203,6 +236,14 @@ describe('le vrai pilote, contre une base qui ne répond plus', () => {
     assert.ok(prises.length > avant, 'une connexion neuve a été ouverte pour l’accès gardé');
     renewDatabase();
     assert.match(String(await apres), /^échouée/, 'et non refusée d’emblée : elle était bien partie vers la base');
+
+    // Une instance au repos rend sa connexion : la requête suivante en ouvre une neuve, par le même accès.
+    const avantRepos = prises.length;
+    releaseDatabase();
+    assert.equal(getDb(), garde);
+    void queryRows(sql`select 1`, garde).catch(() => undefined);
+    await new Promise((resolve) => setTimeout(resolve, 400));
+    assert.ok(prises.length > avantRepos, 'après le repos, une connexion neuve est ouverte à la première requête');
     renewDatabase();
     await closeDatabase();
   });
