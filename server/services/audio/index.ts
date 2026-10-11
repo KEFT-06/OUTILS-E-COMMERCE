@@ -171,6 +171,22 @@ export async function listAudioTracks(auth: RequestAuth, subjectId: string): Pro
   return rows.map(viewOf);
 }
 
+/** Pour chaque ouvrage du compte qui a des pistes : combien, et pour quelle durée. */
+export async function audioSummary(auth: RequestAuth): Promise<{ subjectId: string; tracks: number; seconds: number }[]> {
+  const rows = await getDb()
+    .select({ subjectId: audioTracks.subjectId, seconds: audioTracks.seconds })
+    .from(audioTracks)
+    .where(eq(audioTracks.userId, auth.account.user.id));
+  const bySubject = new Map<string, { subjectId: string; tracks: number; seconds: number }>();
+  for (const row of rows) {
+    const entry = bySubject.get(row.subjectId) ?? { subjectId: row.subjectId, tracks: 0, seconds: 0 };
+    entry.tracks += 1;
+    entry.seconds += row.seconds;
+    bySubject.set(row.subjectId, entry);
+  }
+  return [...bySubject.values()];
+}
+
 const trackIdSchema = z.string().uuid();
 const notFound = () => new AppError(404, 'Piste audio introuvable sur votre compte.', 'AUDIO_TRACK_NOT_FOUND');
 

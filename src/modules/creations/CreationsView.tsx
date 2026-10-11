@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
-import { AlarmClock, BookOpen, Clapperboard, FileText, Languages, PenSquare, Search } from 'lucide-react';
+import { AlarmClock, BookOpen, Clapperboard, FileText, Headphones, Languages, PenSquare, Search } from 'lucide-react';
+import { formatAudioDuration } from '@server/shared/audio';
 import { useWorkspace } from '@/app/providers/WorkspaceProvider';
 import { MyVideosPanel } from '@/modules/creatifs/MyVideosPanel';
 import { MyVisualsPanel } from '@/modules/creatifs/MyVisualsPanel';
@@ -9,6 +10,7 @@ import { BookCover } from '@/shared/components/BookCover';
 import { PageHeader } from '@/shared/components/PageHeader';
 import { apiRequest } from '@/shared/lib/api';
 import { useCachedState } from '@/shared/lib/apiCache';
+import { audioApi } from '@/shared/lib/audio';
 import { formatDateFr } from '@/shared/lib/formatDate';
 import { useCustomProducts } from '@/shared/stores/useCustomProducts';
 import { type ProductCover, useProductCovers } from '@/shared/stores/useProductCovers';
@@ -56,7 +58,7 @@ const departVideo = (product: DigitalProductIdea) => ({
   },
 });
 
-function ProductRow({ product, written, cover }: { product: DigitalProductIdea; written: boolean; cover: ProductCover | undefined }) {
+function ProductRow({ product, written, cover, audio }: { product: DigitalProductIdea; written: boolean; cover: ProductCover | undefined; audio: { tracks: number; seconds: number } | undefined }) {
   const navigate = useNavigate();
   return (
     <li className="flex gap-4 rounded-lg border bg-card p-3">
@@ -69,6 +71,12 @@ function ProductRow({ product, written, cover }: { product: DigitalProductIdea; 
           <p className="flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-muted-foreground">
             {product.typeName}
             <Badge variant={written ? 'secondary' : 'outline'}>{written ? 'Rédigé' : 'À rédiger'}</Badge>
+            {audio && (
+              <span className="inline-flex items-center gap-1">
+                <Headphones className="size-3.5" aria-hidden="true" />
+                {audio.tracks} piste{audio.tracks > 1 ? 's' : ''} audio · {formatAudioDuration(audio.seconds)}
+              </span>
+            )}
           </p>
         </div>
         <div className="flex flex-wrap gap-2">
@@ -141,6 +149,15 @@ export function CreationsView() {
   const covers = useProductCovers();
   const [guides, setGuides] = useCachedState<{ guides: GuideSummary[] }>('/api/guides');
   const [videos, setVideos] = useState<VideoEcheance[]>([]);
+  /** Parcours audio de chaque ouvrage qui en a un : nombre de pistes et durée. */
+  const [audio, setAudio] = useState<Record<string, { tracks: number; seconds: number }>>({});
+
+  useEffect(() => {
+    audioApi
+      .summary()
+      .then((subjects) => setAudio(Object.fromEntries(subjects.map((subject) => [subject.subjectId, subject]))))
+      .catch(() => undefined);
+  }, []);
 
   useEffect(() => {
     apiRequest<{ guides: GuideSummary[] }>('/api/guides')
@@ -246,7 +263,7 @@ export function CreationsView() {
               ) : (
                 <ul className="grid grid-cols-1 gap-3 lg:grid-cols-2">
                   {produits.map(({ product, written }) => (
-                    <ProductRow key={product.id} product={product} written={written} cover={covers[product.id]} />
+                    <ProductRow key={product.id} product={product} written={written} cover={covers[product.id]} audio={audio[product.id]} />
                   ))}
                 </ul>
               )}

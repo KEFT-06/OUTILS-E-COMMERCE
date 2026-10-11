@@ -2,13 +2,21 @@ import { Router } from 'express';
 import { z } from 'zod';
 import { AppError, aiLimiter, asyncRoute, validateBody } from '@server/middleware';
 import { requireAuth, requireFeature } from '@server/middleware/auth';
-import { type AudioRequest, audioRequestSchema, createAudioTrack, deleteAudioTrack, listAudioTracks, sendAudioTrack } from '@server/services/audio';
+import { type AudioRequest, audioRequestSchema, audioSummary, createAudioTrack, deleteAudioTrack, listAudioTracks, sendAudioTrack } from '@server/services/audio';
 
 /** Parcours audio : les modules d'un ouvrage lus à voix haute, à écouter et à télécharger en MP3 (services/audio). */
 
 export const audioRouter = Router();
 
 audioRouter.use(requireAuth);
+
+/** Les ouvrages du compte qui ont un parcours audio, pour « Mes créations ». */
+audioRouter.get(
+  '/summary',
+  asyncRoute(async (req, res) => {
+    res.json({ subjects: await audioSummary(req.auth!) });
+  }),
+);
 
 /** Les pistes d'un ouvrage, dans l'ordre de ses modules. */
 audioRouter.get(

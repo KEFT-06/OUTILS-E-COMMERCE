@@ -3,6 +3,8 @@ import { apiRequest } from '@/shared/lib/api';
 
 /** Parcours audio : les modules d'un ouvrage lus à voix haute (server/services/audio). */
 export const audioApi = {
+  /** Les ouvrages du compte qui ont des pistes : combien, et pour quelle durée. */
+  summary: () => apiRequest<{ subjects: { subjectId: string; tracks: number; seconds: number }[] }>('/api/audio/summary').then((response) => response.subjects),
   list: (subjectId: string) => apiRequest<{ tracks: AudioTrack[] }>(`/api/audio/tracks?subjectId=${encodeURIComponent(subjectId)}`).then((response) => response.tracks),
   create: (input: { subjectId: string; position: number; title: string; text: string; voice: AudioVoiceId }) =>
     apiRequest<{ track: AudioTrack }>('/api/audio/tracks', { method: 'POST', body: input }).then((response) => response.track),

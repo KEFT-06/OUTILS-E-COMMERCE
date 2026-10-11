@@ -136,6 +136,10 @@ describe('Parcours audio — un module, une piste', () => {
     const pistes = (await agent.get(`/api/audio/tracks?subjectId=${MODULE.subjectId}`).expect(200)).body.tracks as { id: string; position: number }[];
     assert.deepEqual(pistes.map((track) => [track.position, track.id]), [[1, relue.id], [3, troisieme.id]], 'une piste par module, la dernière lue');
     await agent.get(`/api/audio/tracks/${premiere.id}/file`).expect(404);
+    // « Mes créations » sait quels ouvrages ont un parcours audio, et de quelle durée.
+    const resume = (await agent.get('/api/audio/summary').expect(200)).body.subjects as { subjectId: string; tracks: number; seconds: number }[];
+    assert.deepEqual(resume.map((subject) => [subject.subjectId, subject.tracks]), [[MODULE.subjectId, 2]]);
+    assert.ok(resume[0]!.seconds > 10);
 
     await agent.delete(`/api/audio/tracks/${troisieme.id}`).expect(204);
     assert.equal((await agent.get(`/api/audio/tracks?subjectId=${MODULE.subjectId}`).expect(200)).body.tracks.length, 1);
