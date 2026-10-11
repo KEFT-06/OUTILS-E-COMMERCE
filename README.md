@@ -257,7 +257,7 @@ pas mesurer et la seule route qui dépense : **section 16**.
 - Les migrations de `server/db/migrations/` s'appliquent au démarrage du serveur.
 - Après une modification de `server/db/schema.ts` : `npm run db:generate -- --name <nom>`.
 - **Passer sur Supabase** : créer le projet (région Paris), copier la chaîne de connexion
-  (*Connect → Session pooler*) dans `DATABASE_URL`, renseigner `DATA_ENCRYPTION_KEY`
+  (*Connect → Transaction pooler*, port 6543) dans `DATABASE_URL`, renseigner `DATA_ENCRYPTION_KEY`
   (`openssl rand -hex 32`, à sauvegarder hors de Git : la perdre rend illisibles les secrets
   d'application d'authentification et les clés Chariow), redémarrer, puis relancer
   `npm run admin:create` sur la base vide.
@@ -548,7 +548,9 @@ déploiement automatique à chaque envoi sur la branche `main`.
 
 1. **Code** : un dépôt GitHub **privé** contenant ce projet (`.env` et `.data/` n'y partent jamais).
 2. **Base** : sur supabase.com, créer un projet en région *West EU (Paris)*, puis copier la chaîne
-   *Connect → Session pooler*, mot de passe de la base inclus. Les tables se créent au premier démarrage.
+   *Connect → Transaction pooler* (port 6543), mot de passe de la base inclus : sur un hébergement sans
+   serveur, le mode « session » (port 5432) réserve une place de la base à chaque instance du site,
+   même endormie, et finit par en refuser. Les tables se créent au premier démarrage.
 3. **Clé de chiffrement de production** : dans un terminal,
    `node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"`. La garder dans un
    gestionnaire de mots de passe : la perdre rend illisibles les seconds facteurs et les clés Chariow.

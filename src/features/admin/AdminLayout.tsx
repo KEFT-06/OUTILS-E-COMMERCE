@@ -93,7 +93,8 @@ export function AdminLayout() {
   return (
     <div className="space-y-6">
       <nav aria-label="Sections de l’administration" className="-mx-1 overflow-x-auto px-1 pb-1">
-        <ul className="flex w-max gap-1 rounded-lg border bg-muted/50 p-1">
+        {/* Onze sections : sur un écran large elles passent à la ligne — la dernière, « Sécurité », restait hors de vue. */}
+        <ul className="flex w-max gap-1 rounded-lg border bg-muted/50 p-1 lg:w-auto lg:flex-wrap">
           {sections.map((section) => {
             const Icon = section.icon;
             return (

@@ -36,10 +36,16 @@ describe('État des services', () => {
     assert.deepEqual(Object.keys(byId).sort(), ['ad-collection', 'chariow', 'claude', 'database', 'email', 'gamma', 'gemini', 'images', 'perplexity', 'radar', 'sebpay', 'stripe', 'veo', 'video-archive']);
 
     assert.equal(byId.database!.state, 'warning', 'base embarquée : pas en ligne');
+    // Le mode de connexion se lit dans l'adresse, sans rien afficher du mot de passe.
+    const { poolerModeOf } = await import('@server/services/admin/services');
+    assert.equal(poolerModeOf('postgresql://postgres.abc:secret@aws-0-eu-west-3.pooler.supabase.com:6543/postgres'), 'transaction');
+    assert.equal(poolerModeOf('postgresql://postgres.abc:secret@aws-0-eu-west-3.pooler.supabase.com:5432/postgres'), 'session');
+    assert.equal(poolerModeOf('postgresql://postgres:secret@db.abc.supabase.co:5432/postgres'), 'direct');
+    assert.equal(poolerModeOf('memory://'), null);
     // Le mur vide se voit, avec le geste à faire : c'est le RÉSULTAT de la collecte qui est regardé, pas sa configuration.
     assert.equal(byId['ad-collection']!.state, 'warning');
     assert.match(byId['ad-collection']!.action ?? '', /secret CRON_SECRET du dépôt GitHub/);
-    assert.match(byId.database!.action ?? '', /Session pooler/);
+    assert.match(byId.database!.action ?? '', /Transaction pooler/);
     assert.equal(byId.perplexity!.state, 'error', 'sans Perplexity, l’analyse est refusée');
     assert.equal(byId.gamma!.state, 'off');
     assert.equal(byId.claude!.state, 'off', 'sans clé, la direction artistique est simplement absente');

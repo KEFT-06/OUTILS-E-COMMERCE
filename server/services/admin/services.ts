@@ -1,7 +1,7 @@
 import { and, desc, eq, sql } from 'drizzle-orm';
 import { databaseKind, getDb } from '@server/db/client';
 import { adSearches, generations, spiedAds, storybooks, watches } from '@server/db/schema';
-import { env, isProd, providers } from '@server/env';
+import { env, isProd, isServerless, providers } from '@server/env';
 import { lastClaudeOutcome } from '@server/services/ai/claude';
 import { lastGoogleRefusal } from '@server/services/ai/googleRefusal';
 import { lastImageOutcome } from '@server/services/ai/image';
@@ -70,6 +70,22 @@ function refused(base: Omit<ServiceCheck, 'state' | 'detail' | 'action'>, variab
   };
 }
 
+/**
+ * Mode de connexion à Supabase, lu dans l'adresse : le port 6543 de son répartiteur ne prête une
+ * connexion à la base que le temps d'une requête (« transaction ») ; le port 5432 en réserve une à
+ * chaque client tant qu'il reste branché (« session »).
+ */
+export function poolerModeOf(url: string | undefined): 'transaction' | 'session' | 'direct' | null {
+  try {
+    const address = new URL(url ?? '');
+    if (!/^postgres(ql)?:$/.test(address.protocol)) return null;
+    if (!address.hostname.endsWith('.pooler.supabase.com')) return 'direct';
+    return address.port === '6543' ? 'transaction' : 'session';
+  } catch {
+    return null;
+  }
+}
+
 async function checkDatabase(): Promise<ServiceCheck> {
   const base = { id: 'database', name: 'Base de données', role: 'Comptes, rapports, contes, paiements' };
   try {
@@ -82,13 +98,29 @@ async function checkDatabase(): Promise<ServiceCheck> {
       action: 'Vérifier DATABASE_URL et que le projet Supabase n’est pas en pause.',
     };
   }
-  if (databaseKind() === 'postgres')
+  if (databaseKind() === 'postgres') {
+    /*
+      En hébergement sans serveur, chaque instance du site garde sa connexion, même endormie. En
+      mode « session », chacune y occupe une place de la base, et leur nombre est plafonné : les
+      suivantes sont refusées ou attendent. Constat du 11/10/2026 : lectures sans réponse et
+      erreurs internes par intermittence, après quelques minutes de repos.
+    */
+    if (isServerless && poolerModeOf(env.DATABASE_URL) === 'session') {
+      return {
+        ...base,
+        state: 'warning',
+        detail: 'PostgreSQL distant (Supabase), connecté en mode « session » : chaque instance du site y garde une place réservée, même endormie, et leur nombre est plafonné.',
+        action:
+          'Dans la variable DATABASE_URL de l’hébergeur, remplacer le port 5432 par 6543 (chaîne « Transaction pooler » de Supabase : Connect → Transaction pooler), puis redéployer.',
+      };
+    }
     return { ...base, state: 'ok', detail: 'PostgreSQL distant (Supabase) : données hébergées en ligne.', action: null };
+  }
   return {
     ...base,
     state: isProd ? 'error' : 'warning',
     detail: 'Base embarquée sur ce poste (développement) : les données ne sont pas en ligne.',
-    action: 'Renseigner DATABASE_URL avec la chaîne « Session pooler » de Supabase et le mot de passe de la base.',
+    action: 'Renseigner DATABASE_URL avec la chaîne « Transaction pooler » de Supabase (port 6543) et le mot de passe de la base.',
   };
 }
 
