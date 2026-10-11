@@ -182,6 +182,10 @@ export interface AdSearch {
   country: string;
   status: 'running' | 'done' | 'failed';
   adsFound: number | null;
+  /** La recherche nomme une plateforme : toutes ses annonces mènent à une boutique de celle-ci. */
+  storefront?: 'chariow' | 'maketou' | 'shopify' | null;
+  /** Le sujet cherché sur cette plateforme, ou null. */
+  subject?: string | null;
   error: string | null;
   createdAt: string;
   finishedAt: string | null;

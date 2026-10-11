@@ -11,7 +11,7 @@ import { listSpiedAds } from '@server/services/espionnage';
 import { collectorDispatchConfigured, requestCollectorPassage } from '@server/services/espionnage/dispatch';
 import { fromLibraryRecord } from '@server/services/espionnage/library';
 import { readAnyMetaAd, withoutPlaceholders } from '@server/services/espionnage/parse';
-import { followableOnRadar } from '@server/shared/storefronts';
+import { type Storefront, followableOnRadar, keywordScope, libraryTermOf, storefrontOfHost } from '@server/shared/storefronts';
 import {
   FAILED_RUN,
   adLibraryUrl,
@@ -39,6 +39,13 @@ import {
  *
  * Les annonces qui mènent à une boutique de la plateforme rejoignent aussi le mur : une donnée
  * payée pour une recherche sert deux fois.
+ *
+ * LE NOM D'UNE PLATEFORME DÉSIGNE SES BOUTIQUES. « chariow », « maketou », « shopify » — seuls ou
+ * avec un sujet, « formation chariow » — ne se cherchent pas comme un mot : la recherche rend les
+ * annonces qui MÈNENT à une boutique de cette plateforme, et elles seules (keywordScope,
+ * server/shared/storefronts.ts). Et chaque nombre montré est celui de la liste : le total d'une
+ * recherche se compte sur ses annonces enregistrées, la pastille d'une recherche récente sur ce
+ * que le compte qui la regarde en verra.
  *
  * LA RECHERCHE NE DÉPEND PAS DE LA SEULE LECTURE PAYANTE. Le 11/10/2026, le compte de collecte
  * refusait le serveur : chaque recherche finissait en « Recherche impossible — le service de
@@ -112,6 +119,10 @@ export interface AdSearchView {
   country: string;
   status: 'running' | 'done' | 'failed';
   adsFound: number | null;
+  /** La recherche nomme une plateforme : toutes ses annonces mènent à une boutique de celle-ci. */
+  storefront: Storefront | null;
+  /** Le sujet cherché sur cette plateforme (« formation » dans « formation chariow »), ou null. */
+  subject: string | null;
   error: string | null;
   createdAt: string;
   finishedAt: string | null;
@@ -174,12 +185,36 @@ function adViewOf(fields: NonNullable<ReturnType<typeof readAnyMetaAd>>, searche
   };
 }
 
-async function viewOf(row: SearchRow, auth: RequestAuth, fromCache: boolean): Promise<AdSearchView> {
-  const rows =
-    row.status === 'done'
-      ? await getDb().select({ ad: adSearchResults.ad }).from(adSearchResults).where(eq(adSearchResults.searchId, row.id)).orderBy(adSearchResults.position)
-      : [];
-  const all = rows.map((entry) => entry.ad as unknown as LibraryAdView);
+/** Les annonces enregistrées d'une recherche, dans l'ordre où elles se montrent. */
+async function storedAds(searchId: string): Promise<LibraryAdView[]> {
+  const rows = await getDb().select({ ad: adSearchResults.ad }).from(adSearchResults).where(eq(adSearchResults.searchId, searchId)).orderBy(adSearchResults.position);
+  return rows.map((entry) => entry.ad as unknown as LibraryAdView);
+}
+
+/** L'annonce mène-t-elle à une boutique de la plateforme que la recherche nomme ? Toujours vrai pour un mot-clé ordinaire. */
+const onRequestedStorefront = (query: string) => {
+  const { storefront } = keywordScope(query);
+  return (ad: { storeHost: string | null }) => !storefront || storefrontOfHost(ad.storeHost) === storefront;
+};
+
+/**
+ * La recherche et ses annonces, telles qu'elles doivent se montrer.
+ *
+ * Une recherche de plateforme enregistrée avant la règle « chariow = boutiques Chariow » garde des
+ * annonces qui mènent ailleurs : elle est refaite sur nos relevés, une fois, au lieu d'être
+ * montrée telle quelle jusqu'à l'expiration de son partage.
+ */
+async function settled(row: SearchRow, now: Date): Promise<{ row: SearchRow; all: LibraryAdView[] }> {
+  if (row.status !== 'done') return { row, all: [] };
+  const all = await storedAds(row.id);
+  if (all.every(onRequestedStorefront(row.query))) return { row, all };
+  const redone = await switchToOurBase(row, now, { dispatch: false });
+  return { row: redone, all: await storedAds(redone.id) };
+}
+
+async function viewOf(found: SearchRow, auth: RequestAuth, fromCache: boolean, now = new Date()): Promise<AdSearchView> {
+  const { row, all } = await settled(found, now);
+  const scope = keywordScope(row.query);
   const visible = effectiveLimits(auth.account).spiedAdsVisible;
   const ads = visible === null ? all : all.slice(0, visible);
   return {
@@ -187,7 +222,10 @@ async function viewOf(row: SearchRow, auth: RequestAuth, fromCache: boolean): Pr
     query: row.query,
     country: row.country,
     status: row.status === 'harvesting' ? 'running' : (row.status as AdSearchView['status']),
-    adsFound: row.adsFound,
+    // Compté sur la liste elle-même : le nombre annoncé ne peut pas s'en écarter.
+    adsFound: row.status === 'done' ? all.length : row.adsFound,
+    storefront: scope.storefront,
+    subject: scope.storefront && scope.subject ? scope.subject : null,
     error: row.error,
     createdAt: row.createdAt.toISOString(),
     finishedAt: row.finishedAt?.toISOString() ?? null,
@@ -225,9 +263,12 @@ export async function searchQuota(auth: RequestAuth, now = new Date()): Promise<
  * Réponse tirée de nos relevés, et recherche confiée au collecteur. Ce que le mur contient pour
  * ce mot part tout de suite ; la lecture fraîche de la bibliothèque le remplacera à son arrivée.
  */
-async function switchToOurBase(row: SearchRow, now: Date): Promise<SearchRow> {
+async function switchToOurBase(row: SearchRow, now: Date, options: { dispatch?: boolean } = {}): Promise<SearchRow> {
+  const scope = keywordScope(row.query);
+  // Une plateforme se reconnaît à l'adresse de la boutique, pas au texte de l'annonce.
+  const wanted = scope.storefront ? { storefront: scope.storefront, ...(scope.subject ? { search: scope.subject } : {}) } : { search: row.query };
   const ours = await listSpiedAds(
-    { search: row.query, ...(row.country === 'ALL' ? {} : { country: row.country }), etat: 'active', sort: 'oldest', limit: env.SPY_SEARCH_RESULTS },
+    { ...wanted, ...(row.country === 'ALL' ? {} : { country: row.country }), etat: 'active', sort: 'oldest', limit: env.SPY_SEARCH_RESULTS },
     null,
     now,
   )
@@ -254,7 +295,7 @@ async function switchToOurBase(row: SearchRow, now: Date): Promise<SearchRow> {
     .set({ status: 'done', adsFound: ours.length, error: null, collector: 'pending', providerRunId: null, datasetId: null, finishedAt: now })
     .where(eq(adSearches.id, row.id))
     .returning();
-  if (!earlier) void requestCollectorPassage();
+  if (!earlier && options.dispatch !== false) void requestCollectorPassage();
   return served ?? row;
 }
 
@@ -284,7 +325,7 @@ export async function startAdSearch(auth: RequestAuth, request: AdSearchRequest,
     )
     .orderBy(desc(adSearches.createdAt))
     .limit(1);
-  if (recent) return viewOf(recent, auth, true);
+  if (recent) return viewOf(recent, auth, true, now);
 
   const quota = await searchQuota(auth, now);
   if (quota.limit !== null && quota.limit === 0) {
@@ -314,7 +355,7 @@ export async function startAdSearch(auth: RequestAuth, request: AdSearchRequest,
     const response = await apifyFetch(apifyUrl(`/acts/${env.APIFY_ADS_ACTOR}/runs`), {
       method: 'POST',
       body: JSON.stringify({
-        startUrls: [{ url: adLibraryUrl(request.query, request.country) }],
+        startUrls: [{ url: adLibraryUrl(libraryTermOf(request.query), request.country) }],
         // Plafond facturé : la borne du coût de cette recherche.
         resultsLimit: env.SPY_SEARCH_RESULTS,
         activeStatus: 'active',
@@ -344,7 +385,8 @@ export async function pendingCollectorSearches(now = new Date(), limit = 12): Pr
     .where(and(eq(adSearches.collector, 'pending'), gte(adSearches.createdAt, new Date(now.getTime() - COLLECTOR_WAIT_MS))))
     .orderBy(asc(adSearches.createdAt))
     .limit(limit);
-  return rows.map((row) => ({ ...row, max: env.SPY_SEARCH_RESULTS }));
+  // Le mot que le collecteur tape dans la bibliothèque : pour une plateforme, l'adresse de ses boutiques.
+  return rows.map((row) => ({ ...row, query: libraryTermOf(row.query), max: env.SPY_SEARCH_RESULTS }));
 }
 
 /** Rang à partir duquel sont rangées, dans une recherche, les annonces tirées de nos relevés : après la lecture fraîche. */
@@ -375,9 +417,11 @@ export async function pourCollectorSearch(input: { id: string; items: unknown[];
     .from(adSearchResults)
     .where(and(eq(adSearchResults.searchId, row.id), lt(adSearchResults.position, OURS_FROM)));
   const seen = new Set(read.map((entry) => (entry.ad as unknown as LibraryAdView).externalId));
+  // La bibliothèque rend tout ce qui cite le mot : pour une plateforme, seules ses boutiques sont gardées.
+  const onPlatform = onRequestedStorefront(row.query);
   const fresh = input.items
     .map((item) => readAnyMetaAd(fromLibraryRecord(item), now))
-    .filter((ad): ad is NonNullable<typeof ad> => ad !== null && !seen.has(ad.externalId) && Boolean(seen.add(ad.externalId)))
+    .filter((ad): ad is NonNullable<typeof ad> => ad !== null && onPlatform(ad) && !seen.has(ad.externalId) && Boolean(seen.add(ad.externalId)))
     .slice(0, Math.max(0, row.resultsLimit - read.length));
 
   if (fresh.length > 0) {
@@ -439,9 +483,10 @@ async function advance(row: SearchRow, now: Date): Promise<SearchRow> {
       );
       if (!items.success) throw new Error('résultat illisible');
       const seen = new Set<string>();
+      const onPlatform = onRequestedStorefront(row.query);
       const ads = items.data
         .map((item) => readAnyMetaAd(item, now))
-        .filter((ad): ad is NonNullable<typeof ad> => ad !== null && !seen.has(ad.externalId) && Boolean(seen.add(ad.externalId)));
+        .filter((ad): ad is NonNullable<typeof ad> => ad !== null && onPlatform(ad) && !seen.has(ad.externalId) && Boolean(seen.add(ad.externalId)));
       await getDb().delete(adSearchResults).where(eq(adSearchResults.searchId, row.id));
       if (ads.length > 0) {
         await getDb()
@@ -483,11 +528,16 @@ export async function getAdSearch(auth: RequestAuth, id: string | undefined, now
   const [row] = await getDb().select().from(adSearches).where(eq(adSearches.id, parsed.data)).limit(1);
   if (!row) throw missing;
   const current = providers.apify ? await advance(row, now).catch(() => row) : row;
-  return viewOf(current, auth, current.requestedBy !== auth.account.user.id);
+  return viewOf(current, auth, current.requestedBy !== auth.account.user.id, now);
 }
 
-/** Recherches récentes du service : relues gratuitement, elles servent de point de départ. */
-export async function recentAdSearches(now = new Date(), limit = 12): Promise<{ id: string; query: string; country: string; adsFound: number; createdAt: string }[]> {
+/**
+ * Recherches récentes du service : relues gratuitement, elles servent de point de départ.
+ *
+ * Le nombre de chacune est celui que CE compte verra en l'ouvrant — ses annonces enregistrées,
+ * dans la limite de son palier —, pas un total relevé à un autre moment.
+ */
+export async function recentAdSearches(auth: RequestAuth, now = new Date(), limit = 12): Promise<{ id: string; query: string; country: string; adsFound: number; createdAt: string }[]> {
   const rows = await getDb()
     .select()
     .from(adSearches)
@@ -495,13 +545,28 @@ export async function recentAdSearches(now = new Date(), limit = 12): Promise<{ 
     .orderBy(desc(adSearches.createdAt))
     .limit(limit * 3);
   const seen = new Set<string>();
-  return rows
+  const recent = rows
     .filter((row) => {
       const key = `${row.queryKey}|${row.country}`;
       if (seen.has(key)) return false;
       seen.add(key);
       return true;
     })
-    .slice(0, limit)
-    .map((row) => ({ id: row.id, query: row.query, country: row.country, adsFound: row.adsFound ?? 0, createdAt: row.createdAt.toISOString() }));
+    .slice(0, limit);
+  if (recent.length === 0) return [];
+
+  const counted = await getDb()
+    .select({ id: adSearchResults.searchId, total: count() })
+    .from(adSearchResults)
+    .where(inArray(adSearchResults.searchId, recent.map((row) => row.id)))
+    .groupBy(adSearchResults.searchId);
+  const totals = new Map(counted.map((entry) => [entry.id, Number(entry.total)]));
+  const visible = effectiveLimits(auth.account).spiedAdsVisible;
+  const entries: { id: string; query: string; country: string; adsFound: number; createdAt: string }[] = [];
+  for (const row of recent) {
+    // Une recherche de plateforme d'avant la règle se remet d'aplomb ici aussi : sa pastille ne ment pas en attendant d'être ouverte.
+    const total = keywordScope(row.query).storefront ? (await settled(row, now)).all.length : (totals.get(row.id) ?? 0);
+    entries.push({ id: row.id, query: row.query, country: row.country, adsFound: visible === null ? total : Math.min(total, visible), createdAt: row.createdAt.toISOString() });
+  }
+  return entries;
 }

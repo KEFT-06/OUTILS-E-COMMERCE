@@ -60,5 +60,61 @@ export function storefrontOfHost(host: string | null | undefined): Storefront | 
   return null;
 }
 
+/* -------------------------------------------------------------------------- */
+/*  Ce qu'une recherche demande                                                */
+/* -------------------------------------------------------------------------- */
+
+/** Le nom d'une plateforme tel qu'on le tape : « chariow », « Mychariow », « chariow.com ». */
+const PLATFORM_WORD: Record<Storefront, RegExp> = {
+  chariow: /^(?:my)?chariow(?:\.[a-z]{2,12})?$/,
+  maketou: /^(?:my)?maketou(?:\.[a-z]{2,12})?$/,
+  shopify: /^(?:my)?shopify(?:\.[a-z]{2,12})?$/,
+};
+
+/** Mots qui accompagnent le nom d'une plateforme sans rien ajouter : « publicités chariow », « boutiques sur shopify ». */
+const FILLER = new Set(['pub', 'pubs', 'publicite', 'publicites', 'annonce', 'annonces', 'ads', 'boutique', 'boutiques', 'site', 'sites', 'sur', 'de', 'des', 'du', 'les', 'la', 'le', 'en', 'chez']);
+
+const plain = (word: string) =>
+  word
+    .normalize('NFD')
+    .replace(/\p{Diacritic}/gu, '')
+    .toLowerCase();
+
+export interface KeywordScope {
+  /** La plateforme nommée dans la recherche, ou null : un mot-clé ordinaire. */
+  storefront: Storefront | null;
+  /** Le sujet cherché une fois la plateforme mise de côté ; vide si la recherche ne nomme qu'elle. */
+  subject: string;
+}
+
+/**
+ * Ce qu'une recherche demande : une plateforme entière (« chariow »), une plateforme et un sujet
+ * (« formation chariow »), ou un mot-clé ordinaire.
+ *
+ * Demande du propriétaire, 11/10/2026 : « si je recherche les publicités chariow je dois voir les
+ * publicités chariow uniquement et non d'autres publicités d'autres sites ». Cherché comme un mot,
+ * « chariow » rendait toute annonce dont le TEXTE le citait — 38 sur 50 menaient ailleurs — et
+ * manquait les boutiques Chariow, qui ne l'écrivent pas : elles se reconnaissent à leur adresse.
+ */
+export function keywordScope(query: string): KeywordScope {
+  const words = query.trim().split(/\s+/).filter(Boolean);
+  for (const storefront of STOREFRONTS) {
+    const at = words.findIndex((word) => PLATFORM_WORD[storefront].test(plain(word)));
+    if (at < 0) continue;
+    const subject = words.filter((word, index) => index !== at && !FILLER.has(plain(word))).join(' ');
+    return { storefront, subject };
+  }
+  return { storefront: null, subject: query.trim() };
+}
+
+/**
+ * Le mot à chercher dans la bibliothèque publicitaire. Les boutiques d'une plateforme s'y trouvent
+ * par leur adresse (« mychariow »), pas par son nom, que leurs annonces n'écrivent pas.
+ */
+export function libraryTermOf(query: string): string {
+  const { storefront, subject } = keywordScope(query);
+  return storefront ? [`my${storefront}`, subject].filter(Boolean).join(' ') : query;
+}
+
 /** Le Radar ne relève que les vitrines Chariow : seules elles peuvent être ouvertes ou surveillées. */
 export const followableOnRadar = (host: string | null | undefined): boolean => storefrontOfHost(host) === 'chariow';

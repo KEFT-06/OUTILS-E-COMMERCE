@@ -9,8 +9,10 @@ import { closeTestApp, createTestApp } from './support/helpers';
 /**
  * Recherche par mot-clé dans la bibliothèque publicitaire, comme sur celle de Meta, contre un
  * faux Apify. Ce que ces tests verrouillent :
- *  - une recherche rend les publicités de TOUS les comptes qui utilisent le mot, pas seulement
- *    celles de la plateforme — et celles de la plateforme rejoignent aussi le mur ;
+ *  - une recherche par mot-clé rend les publicités de TOUS les comptes qui utilisent le mot, pas
+ *    seulement celles de la plateforme — et celles de la plateforme rejoignent aussi le mur ;
+ *  - le NOM d'une plateforme, lui, désigne ses boutiques : « chariow » ne rend que des publicités
+ *    Chariow (voir recherche-plateforme.test.ts) ;
  *  - la même recherche, par un autre compte, dans les 24 heures, est relue sans nouvel appel payé ;
  *  - les refus du palier tombent AVANT tout appel au fournisseur, et le plafond du serveur borne la
  *    dépense sans arrêter la recherche (voir recherche-collecteur.test.ts).
@@ -80,8 +82,8 @@ before(async () => {
     APIFY_API_URL: `http://127.0.0.1:${(faux.address() as AddressInfo).port}`,
     APIFY_ADS_ACTOR: 'apify~facebook-ads-scraper',
     SPY_SEARCH_RESULTS: '50',
-    // Plafond du serveur : cinq recherches nouvelles de cinquante publicités ce mois-ci.
-    SPY_SEARCH_MONTHLY_ADS: '250',
+    // Plafond du serveur : six recherches nouvelles de cinquante publicités ce mois-ci.
+    SPY_SEARCH_MONTHLY_ADS: '300',
   });
 });
 
@@ -94,6 +96,7 @@ type Search = {
   id: string;
   status: string;
   fromCache: boolean;
+  adsFound: number;
   platformAds: number;
   ads: { externalId: string; storeHost: string | null; advertiser: string | null; ctaText: string | null; runningDays: number | null }[];
 };
@@ -109,12 +112,12 @@ async function attendre(agent: Awaited<ReturnType<typeof signInWithPlan>>['agent
 describe('Espionnage — recherche comme sur Meta', () => {
   it('rend les publicités de tous les comptes qui utilisent le mot, et verse celles de la plateforme au mur', async () => {
     const { agent } = await signInWithPlan(app, 'chercheur-pro@exemple.test', 'pro');
-    const lance = await agent.post('/api/espionnage/searches').send({ query: 'Chariow', country: 'cm' }).expect(202);
+    const lance = await agent.post('/api/espionnage/searches').send({ query: 'Ebook', country: 'cm' }).expect(202);
     const debut = lance.body.search as Search;
     assert.equal(debut.status, 'running', 'une recherche nouvelle prend environ une minute');
     assert.equal(lancements.length, 1);
     const adresse = new URL(lancements[0]!.url);
-    assert.equal(adresse.searchParams.get('q'), 'Chariow');
+    assert.equal(adresse.searchParams.get('q'), 'Ebook');
     assert.equal(adresse.searchParams.get('country'), 'CM');
     assert.equal(lancements[0]!.resultsLimit, 50, 'plafond facturé par recherche');
 
@@ -135,7 +138,7 @@ describe('Espionnage — recherche comme sur Meta', () => {
   it('relit gratuitement la même recherche, pour tout compte, même au palier Gratuit', async () => {
     const avant = lancements.length;
     const { agent: gratuit } = await signInWithPlan(app, 'chercheur-gratuit@exemple.test', 'free');
-    const relue = (await gratuit.post('/api/espionnage/searches').send({ query: '  chariow ', country: 'CM' }).expect(202)).body.search as Search;
+    const relue = (await gratuit.post('/api/espionnage/searches').send({ query: '  ebook ', country: 'CM' }).expect(202)).body.search as Search;
     assert.equal(relue.fromCache, true);
     assert.equal(relue.status, 'done');
     assert.equal(relue.ads.length, 3);
@@ -145,13 +148,27 @@ describe('Espionnage — recherche comme sur Meta', () => {
       recent: { query: string }[];
       quota: { used: number; limit: number };
     };
-    assert.deepEqual(recent.map((r) => r.query), ['Chariow']);
+    assert.deepEqual(recent.map((r) => r.query), ['Ebook']);
     assert.deepEqual({ used: quota.used, limit: quota.limit }, { used: 0, limit: 0 });
 
     // Une recherche nouvelle, elle, n'est pas ouverte au palier Gratuit — et ne coûte rien.
     const refus = await gratuit.post('/api/espionnage/searches').send({ query: 'ebook cuisine' }).expect(403);
     assert.equal(refus.body.error.code, 'SPY_SEARCH_PLAN');
     assert.equal(lancements.length, avant);
+  });
+
+  it('« chariow » : la bibliothèque est interrogée sur l’adresse des boutiques, et seules leurs publicités sont gardées', async () => {
+    const { agent } = await signInWithPlan(app, 'chercheur-chariow@exemple.test', 'pro');
+    const debut = (await agent.post('/api/espionnage/searches').send({ query: 'Chariow', country: 'cm' }).expect(202)).body.search as Search;
+    assert.equal(new URL(lancements.at(-1)!.url).searchParams.get('q'), 'mychariow', 'une boutique Chariow se trouve par son adresse, pas par le mot');
+
+    const fin = await attendre(agent, debut.id);
+    assert.deepEqual(
+      fin.ads.map((ad) => ad.advertiser),
+      ['Kpougeet Formations'],
+      'ni la boutique indépendante ni Selar : ce ne sont pas des publicités Chariow',
+    );
+    assert.equal(fin.adsFound, 1, 'le nombre annoncé est celui de la liste');
   });
 
   it('borne les recherches nouvelles au quota du palier, et la dépense au plafond mensuel du serveur', async () => {
@@ -164,7 +181,7 @@ describe('Espionnage — recherche comme sur Meta', () => {
     assert.equal(quota.body.error.code, 'SPY_SEARCH_QUOTA', 'palier Plus : trois recherches nouvelles par mois');
     assert.equal(lancements.length, avant, 'refusée avant tout appel');
 
-    // Quatre recherches faites sur cinq : le compte Pro en lance une, puis bute sur le plafond.
+    // Cinq recherches faites sur six : le compte Pro en lance une, puis bute sur le plafond.
     const { agent: pro } = await signInWithPlan(app, 'chercheur-pro-2@exemple.test', 'pro');
     await pro.post('/api/espionnage/searches').send({ query: 'cinquième mot' }).expect(202);
     // Plafond du serveur atteint : la DÉPENSE s'arrête, pas la recherche — elle passe par nos relevés et notre collecteur.

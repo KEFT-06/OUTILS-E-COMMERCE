@@ -3,7 +3,7 @@ import { BrandIcon } from "@/shared/components/BrandIcon";
 import { Loader2, Search, Store, X } from "lucide-react";
 import { toast } from "sonner";
 import { countryName } from "@server/shared/countries";
-import { followableOnRadar } from "@server/shared/storefronts";
+import { STOREFRONT_LABELS, followableOnRadar } from "@server/shared/storefronts";
 import { AdCard, AdDetailsDialog } from "@/modules/espionnage/AdCard";
 import { apiRequest } from "@/shared/lib/api";
 import { useCachedState } from "@/shared/lib/apiCache";
@@ -260,9 +260,12 @@ export function MetaSearchPanel() {
   };
 
   const quota = apercu?.quota;
+  // Une recherche de plateforme ne montre déjà que ses boutiques : le filtre « Chariow » n'a de sens que pour un mot-clé.
+  const plateforme = recherche?.storefront ? STOREFRONT_LABELS[recherche.storefront] : null;
   const annonces = (recherche?.ads ?? [])
-    .filter((ad) => !seulementChariow || followableOnRadar(ad.storeHost))
+    .filter((ad) => plateforme !== null || !seulementChariow || followableOnRadar(ad.storeHost))
     .filter((ad) => !annonceur || ad.pageId === annonceur.pageId);
+  const versChariow = (recherche?.ads ?? []).filter((ad) => followableOnRadar(ad.storeHost)).length;
 
   return (
     <div className="space-y-5">
@@ -274,7 +277,9 @@ export function MetaSearchPanel() {
             <p className="text-sm text-muted-foreground">
               Comme sur la bibliothèque de Meta : tapez un mot-clé et voyez les
               publicités en cours de tous les comptes qui l’utilisent, avec leur
-              ancienneté, leur texte, leur visuel et leur lien.
+              ancienneté, leur texte, leur visuel et leur lien. Le nom d’une
+              plateforme — chariow, maketou, shopify — ne montre que les
+              publicités de ses boutiques.
             </p>
           </div>
         </div>
@@ -413,13 +418,18 @@ export function MetaSearchPanel() {
           <div className="flex flex-col gap-3 md:flex-row md:items-end md:justify-between">
             <div>
               <p className="font-display text-2xl font-extrabold tracking-tight tabular-nums">
-                {recherche.adsFound ?? 0} publicité
-                {(recherche.adsFound ?? 0) > 1 ? "s" : ""} en cours pour «{" "}
-                {recherche.query} »
+                {/* Le nombre est celui de la liste affichée dessous, filtres compris. */}
+                {annonces.length} publicité
+                {annonces.length > 1 ? "s" : ""} en cours{" "}
+                {plateforme
+                  ? `de boutiques ${plateforme}${recherche.subject ? ` pour « ${recherche.subject} »` : ""}`
+                  : `pour « ${recherche.query} »`}
               </p>
               <p className="text-sm text-muted-foreground">
-                {nomPays(recherche.country)} · dont {recherche.platformAds} vers
-                une boutique Chariow
+                {nomPays(recherche.country)}
+                {plateforme
+                  ? ` · toutes mènent à une boutique ${plateforme}`
+                  : ` · dont ${versChariow} vers une boutique Chariow`}
                 {recherche.fromCache
                   ? ` · recherche partagée ${formatRelativeFr(recherche.createdAt)}`
                   : ""}
@@ -430,22 +440,24 @@ export function MetaSearchPanel() {
                   <span>
                     Ces publicités viennent de nos relevés.{" "}
                     {recherche.refreshing === "soon"
-                      ? "La bibliothèque publicitaire est relue en ce moment pour ce mot : la liste se complétera ici d’elle-même, dans quelques minutes."
-                      : "La bibliothèque publicitaire sera relue pour ce mot cette nuit : la liste complète vous attendra ici demain."}
+                      ? "La bibliothèque publicitaire est relue en ce moment pour cette recherche : la liste se complétera ici d’elle-même, dans quelques minutes."
+                      : "La bibliothèque publicitaire sera relue pour cette recherche cette nuit : la liste complète vous attendra ici demain."}
                   </span>
                 </p>
               )}
             </div>
-            <div className="flex items-center gap-2">
-              <Switch
-                id="seulement-chariow"
-                checked={seulementChariow}
-                onCheckedChange={setSeulementChariow}
-              />
-              <Label htmlFor="seulement-chariow">
-                Seulement les boutiques Chariow
-              </Label>
-            </div>
+            {!plateforme && (
+              <div className="flex items-center gap-2">
+                <Switch
+                  id="seulement-chariow"
+                  checked={seulementChariow}
+                  onCheckedChange={setSeulementChariow}
+                />
+                <Label htmlFor="seulement-chariow">
+                  Seulement les boutiques Chariow
+                </Label>
+              </div>
+            )}
           </div>
 
           {annonceur && (
@@ -496,9 +508,11 @@ export function MetaSearchPanel() {
             </div>
           ) : (
             <p className="rounded-lg border border-dashed p-6 text-center text-sm text-muted-foreground">
-              {seulementChariow
-                ? "Aucune de ces publicités ne mène à une boutique Chariow. Retirez le filtre pour les voir toutes."
-                : "Aucune publicité en cours ne contient ce mot-clé dans ce pays. Essayez un mot plus large ou « Tous les pays »."}
+              {plateforme
+                ? `Aucune publicité en cours de boutique ${plateforme}${recherche.subject ? ` pour « ${recherche.subject} »` : ""} dans ce pays. Essayez « Tous les pays »${recherche.subject ? " ou un sujet plus large" : ""}.`
+                : seulementChariow
+                  ? "Aucune de ces publicités ne mène à une boutique Chariow. Retirez le filtre pour les voir toutes."
+                  : "Aucune publicité en cours ne contient ce mot-clé dans ce pays. Essayez un mot plus large ou « Tous les pays »."}
             </p>
           )}
         </div>

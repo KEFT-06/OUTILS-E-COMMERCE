@@ -134,7 +134,7 @@ espionnageRouter.post(
 espionnageRouter.get(
   '/searches',
   asyncRoute(async (req, res) => {
-    res.json({ recent: await recentAdSearches(), quota: await searchQuota(req.auth!), configured: true });
+    res.json({ recent: await recentAdSearches(req.auth!), quota: await searchQuota(req.auth!), configured: true });
   }),
 );
 
