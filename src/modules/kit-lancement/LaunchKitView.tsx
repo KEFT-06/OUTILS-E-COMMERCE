@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { toast } from 'sonner';
 import { AlertTriangle, Clapperboard, Download, ExternalLink, Info, Plus, Rocket, Sparkles, Trash2, Wand2, X } from 'lucide-react';
 import { useCreditGate } from '@/app/providers/CreditGateProvider';
+import { useAuth } from '@/features/auth/AuthContext';
 import { PageHeader } from '@/shared/components/PageHeader';
 import { WritingFindings } from '@/shared/components/WritingFindings';
 import { useProviders } from '@/shared/hooks/useProviders';
@@ -26,10 +27,11 @@ import { countryName } from '@server/shared/countries';
 import { CountryCombobox } from '@/shared/components/CountryCombobox';
 import { CountryFlag } from '@/shared/components/CountryFlag';
 import { safeHttpUrl } from '@/shared/lib/safeUrl';
-import { MAX_COPY_VARIANTS, emptyKitDraft, useLaunchKitDrafts } from '@/modules/kit-lancement/useLaunchKitDrafts';
+import { MAX_COPY_VARIANTS, useLaunchKitDrafts } from '@/modules/kit-lancement/useLaunchKitDrafts';
+import { completeKitDraft, launchKitDefaultsOf } from '@/shared/lib/analysisDefaults';
 import { useProductDrafts } from '@/shared/stores/useProductDrafts';
 import { cn } from '@/shared/lib/utils';
-import type { DigitalProductIdea } from '@/shared/types/analysis';
+import type { DigitalProductIdea, MarketAnalysisReport } from '@/shared/types/analysis';
 import type { ReportComplianceVerdict } from '@/shared/types/compliance';
 import type { AdCopyVariant, BeatText, KitObjective, LaunchKitConfig, LaunchKitDraft } from '@/shared/types/launchKit';
 import { Alert, AlertDescription, AlertTitle } from '@/shared/ui/alert';
@@ -70,10 +72,11 @@ function wordCount(text: string): number {
   return text.trim() ? text.trim().split(/\s+/).length : 0;
 }
 
-export function LaunchKitView({ products, market }: { products: DigitalProductIdea[]; market: string | null }) {
+export function LaunchKitView({ products, market, report = null }: { products: DigitalProductIdea[]; market: string | null; report?: MarketAnalysisReport | null }) {
   const productDrafts = useProductDrafts();
   const kitDrafts = useLaunchKitDrafts();
   const navigate = useNavigate();
+  const { account } = useAuth();
 
   const [config, setConfig, keepConfig] = useCachedState<LaunchKitConfig>('/api/launch-kit/config');
   const [loadError, setLoadError] = useState<ApiError | null>(null);
@@ -126,8 +129,23 @@ export function LaunchKitView({ products, market }: { products: DigitalProductId
   }
 
   const product = productDrafts.effective(baseProduct);
-  const draft = kitDrafts.get(product.id) ?? emptyKitDraft(product.id);
-  const update = (changes: Partial<LaunchKitDraft>) => kitDrafts.save({ ...draft, ...changes });
+  /*
+    Ce que l'ouvrage et le script de l'analyse permettent d'écrire sans rien demander : un premier
+    texte publicitaire, les scripts de chaque durée, le bouton conseillé pour le marché. Un kit
+    jamais ouvert s'ouvre ainsi rempli ; un kit déjà commencé garde ce que son auteur y a mis.
+  */
+  const proposed = launchKitDefaultsOf(product, {
+    report,
+    formats: config?.scriptFormats,
+    wordsPerSecond: config?.voiceOverWordsPerSecond,
+    platform: config?.ctaPlatforms[0],
+    // Sans pays dans l'analyse, on vend d'abord chez soi : le pays du compte.
+    market: market ?? account?.country ?? null,
+  });
+  const stored = kitDrafts.get(product.id);
+  // Déjà commencé : ses champs vides sont complétés une fois. Tant que les durées ne sont pas chargées, rien n'est marqué.
+  const draft = !stored ? proposed : stored.completed ? stored : completeKitDraft(stored, proposed);
+  const update = (changes: Partial<LaunchKitDraft>) => kitDrafts.save({ ...draft, ...changes, ...(config ? { completed: true } : {}) });
 
   const updateCopy = (index: number, changes: Partial<AdCopyVariant>) =>
     update({ copies: draft.copies.map((copy, i) => (i === index ? { ...copy, ...changes } : copy)) });
@@ -139,21 +157,8 @@ export function LaunchKitView({ products, market }: { products: DigitalProductId
     update({ scripts: { ...draft.scripts, [key]: { ...beats, [beatId]: { ...current, ...changes } } } });
   };
 
-  /** Pré-remplit la première variante depuis le produit réel, sans écraser une saisie. */
-  const prefillFromProduct = () => {
-    const [first, ...rest] = draft.copies;
-    if (!first) return;
-    update({
-      copies: [
-        {
-          primaryText: first.primaryText || product.transformationPromise,
-          headline: first.headline || product.title,
-          description: first.description || product.subtitle,
-        },
-        ...rest,
-      ],
-    });
-  };
+  /** Complète ce qui est resté vide — textes, scripts, marché — sans jamais écraser une saisie. */
+  const prefillFromProduct = () => update(completeKitDraft(draft, proposed));
 
   /** Un marché est ciblé dès qu'il figure dans la table, même sans bouton choisi. */
   const toggleMarket = (code: string) => {
@@ -342,7 +347,7 @@ export function LaunchKitView({ products, market }: { products: DigitalProductId
           <CardAction className="flex flex-wrap gap-2">
             <Button variant="outline" size="sm" onClick={prefillFromProduct}>
               <Wand2 />
-              Pré-remplir
+              Compléter les champs vides
             </Button>
             {draft.copies.length < MAX_COPY_VARIANTS && (
               <Button

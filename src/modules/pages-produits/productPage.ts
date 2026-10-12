@@ -81,20 +81,40 @@ export const PAGE_SECTIONS: readonly SectionSpec[] = [
 
 const DEFAULT_CTA = 'Obtenir le produit';
 
-export function emptyPageDraft(product: DigitalProductIdea): ProductPageDraft {
+/**
+ * La page telle qu'elle s'ouvre la première fois. `proposed` : ce que l'analyse sait de ce lecteur
+ * (sa difficulté) et une seconde accroche à comparer ; le lien de paiement, lui, ne se devine pas.
+ */
+export function emptyPageDraft(product: DigitalProductIdea, proposed: { headlineB?: string; ctaLabelB?: string; problem?: string } = {}): ProductPageDraft {
   return {
     productId: product.id,
     headlineA: product.title,
-    headlineB: '',
+    headlineB: proposed.headlineB ?? '',
     ctaLabelA: DEFAULT_CTA,
-    ctaLabelB: '',
+    ctaLabelB: proposed.headlineB ? (proposed.ctaLabelB ?? '') : '',
     checkoutUrl: '',
-    problem: '',
+    problem: proposed.problem ?? '',
     notFor: '',
     offerConditions: '',
-    price: '',
+    price: formatPrice(product),
     faq: [],
     images: {},
+  };
+}
+
+/**
+ * Une page déjà commencée, avec ses champs vides complétés — une seule fois. Rien de ce que
+ * l'auteur a écrit n'est touché ; une variante B n'est proposée que s'il n'en a commencé aucune.
+ */
+export function completePageDraft(draft: ProductPageDraft, product: DigitalProductIdea, proposed: { headlineB?: string; ctaLabelB?: string; problem?: string } = {}): ProductPageDraft {
+  if (draft.completed) return draft;
+  const offerB = !hasVariantB(draft) && Boolean(proposed.headlineB);
+  return {
+    ...draft,
+    headlineB: offerB ? proposed.headlineB! : draft.headlineB,
+    ctaLabelB: offerB ? (proposed.ctaLabelB ?? '') : draft.ctaLabelB,
+    problem: draft.problem.trim() ? draft.problem : (proposed.problem ?? ''),
+    price: draft.price?.trim() ? draft.price : formatPrice(product),
   };
 }
 

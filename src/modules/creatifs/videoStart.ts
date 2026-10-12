@@ -5,6 +5,9 @@ import type { DigitalProductIdea, MetaAdCampaign } from '@/shared/types/analysis
 import type { AwarenessLevel } from '@/shared/types/creatives';
 import type { BeatText, KitObjective, ScriptFormat } from '@/shared/types/launchKit';
 import type { StorybookEntry } from '@/shared/types/storybook';
+import { shorten } from '@/shared/lib/text';
+
+export { shorten };
 
 /**
  * « Créer une vidéo » depuis un script du dossier, un conte ou un kit de lancement.
@@ -20,15 +23,6 @@ import type { StorybookEntry } from '@/shared/types/storybook';
 
 /** Où mène chaque bouton « Créer une vidéo ». */
 export const VIDEO_SCREEN = '/app/creatifs';
-
-/** Coupe à la fin d'un mot, avec des points de suspension, plutôt qu'au milieu. */
-export function shorten(text: string, max: number): string {
-  const clean = text.replace(/\s+/g, ' ').trim();
-  if (clean.length <= max) return clean;
-  const cut = clean.slice(0, max - 1);
-  const space = cut.lastIndexOf(' ');
-  return `${(space > max * 0.6 ? cut.slice(0, space) : cut).replace(/[\s,;:.!?…–—-]+$/, '')}…`;
-}
 
 /** Longueur au-delà de laquelle une ligne ne se lit plus, incrustée dans une vidéo verticale. */
 const SCREEN_LINE_MAX = 80;

@@ -1,10 +1,12 @@
-import { lazy, Suspense, useState, type ReactNode } from 'react';
+import { lazy, Suspense, useMemo, useState, type ReactNode } from 'react';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { Compass, PenSquare, Sparkles } from 'lucide-react';
 import { ACCOUNT_PATH, pathOf, type ModuleId } from '@/app/navigation';
 import { useWorkspace } from '@/app/providers/WorkspaceProvider';
 import { AccountView } from '@/features/account/AccountView';
 import { AnalysisProgress } from '@/modules/analyse/AnalysisProgress';
+import { videoFromScript } from '@/modules/creatifs/videoStart';
+import { scriptFor } from '@/shared/lib/analysisDefaults';
 import { PageHeader } from '@/shared/components/PageHeader';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/shared/ui/tabs';
 import { useCustomProducts } from '@/shared/stores/useCustomProducts';
@@ -294,6 +296,11 @@ export function StudioPage() {
 
 export function CreatifsPage() {
   const { currentReport, isLoadingReport } = useWorkspace();
+  // Le brief que l'analyse ouverte permet de proposer : son premier script, avec son public et son pays.
+  const suggestion = useMemo(() => {
+    const script = scriptFor(currentReport);
+    return script ? videoFromScript(script, { audience: currentReport?.audience?.profile, market: currentReport?.market }).produit : null;
+  }, [currentReport]);
   const [visualsVersion, setVisualsVersion] = useState(0);
   const [videosVersion, setVideosVersion] = useState(0);
   return (
@@ -306,6 +313,7 @@ export function CreatifsPage() {
       <CreativeGeneratorPanel
         onVisualCreated={() => setVisualsVersion((version) => version + 1)}
         onVideoChanged={() => setVideosVersion((version) => version + 1)}
+        suggestion={suggestion}
       />
       <MyVideosPanel version={videosVersion} />
       <MyVisualsPanel version={visualsVersion} />
@@ -331,7 +339,7 @@ export function StorybookPage() {
 export function PagesProduitsPage() {
   return (
     <RequireProducts eyebrow="Créer" title="Pages produits" description="Pages de vente en 7 sections, à partir de vos produits.">
-      {(products) => <ProductPageBuilderView products={products} />}
+      {(products, report) => <ProductPageBuilderView products={products} report={report} />}
     </RequireProducts>
   );
 }
@@ -343,7 +351,7 @@ export function KitLancementPage() {
       title="Kit de lancement"
       description="Textes publicitaires, scripts et boutons d’appel à l’action par marché, pour l’un de vos produits."
     >
-      {(products, report) => <LaunchKitView products={products} market={report?.market ?? null} />}
+      {(products, report) => <LaunchKitView products={products} market={report?.market ?? null} report={report} />}
     </RequireProducts>
   );
 }

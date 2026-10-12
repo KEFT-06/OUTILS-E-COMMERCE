@@ -11,13 +11,14 @@ import { findAdFramework, isAdFrameworkAvailable } from '@server/shared/adFramew
 import { VIDEO_LANGUAGES, type VideoLanguageCode } from '@server/shared/languages';
 import { useAuth } from '@/features/auth/AuthContext';
 import { AdFrameworkPicker } from '@/modules/creatifs/AdFrameworkPicker';
-import { type AdReference, type AdStudy, type ProductStart, readAdReference, readProductStart } from '@/modules/creatifs/adReference';
+import { type AdReference, type AdStudy, type ProductStart, type ProductStartInput, readAdReference, readProductStart } from '@/modules/creatifs/adReference';
 import { CREATIVE_ATTESTATIONS } from '@/modules/creatifs/attestations';
 import { launchCreative } from '@/modules/creatifs/launchCreative';
 import { BookCoverPanel } from '@/modules/creatifs/BookCoverPanel';
 import { type Brouillon, CLE_BROUILLON, VIDEO_DURATIONS, VIDEO_FORMATS, type VideoDuration, lireBrouillon } from '@/modules/creatifs/briefDraft';
 import { CountryCombobox } from '@/shared/components/CountryCombobox';
 import { ZoomableImage } from '@/shared/components/ZoomableImage';
+import { useScreenMemory } from '@/shared/lib/apiCache';
 import { guessCountryCode } from '@/shared/lib/geo';
 import { cn } from '@/shared/lib/utils';
 import type { AwarenessLevel, CreativeFormat, CreativeKind, CreativeStatus } from '@/shared/types/creatives';
@@ -83,11 +84,13 @@ function retentionNotice(result: { mediaType: 'image' | 'video'; retentionDays?:
 /**
  * `onVisualCreated` : un visuel vient d'être enregistré — « Mes visuels » se recharge.
  * `onVideoChanged` : une vidéo vient d'être lancée ou de se terminer — « Mes vidéos » se recharge.
+ * `suggestion` : le brief que l'analyse ouverte permet de proposer, quand le formulaire est vide.
  */
 export function CreativeGeneratorPanel({
   onVisualCreated,
   onVideoChanged,
-}: { onVisualCreated?: () => void; onVideoChanged?: () => void } = {}) {
+  suggestion = null,
+}: { onVisualCreated?: () => void; onVideoChanged?: () => void; suggestion?: ProductStartInput | null } = {}) {
   const { runWithCredits, costTable } = useCreditGate();
   const extensionCost = costTable?.actions.find((action) => action.id === 'video_extension')?.cost ?? null;
 
@@ -188,6 +191,40 @@ export function CreativeGeneratorPanel({
     // Ne réagit qu'à une nouvelle arrivée : les réglages du moment sont lus, pas suivis.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [location.key]);
+
+  /*
+    Formulaire vide, et une analyse ouverte : le brief part de son premier script — produit,
+    public, scène, méthode et niveau de conscience (demande du propriétaire, 11/10/2026 :
+    « l'utilisateur ne fait que modifier »). Proposé une seule fois par script : ce que l'auteur
+    efface, ou un « Nouveau brief », reste vide. Le type choisi (visuel ou vidéo) n'est pas changé ;
+    pour un visuel, la scène est le premier plan du script, pas son déroulé.
+  */
+  const [propose, setPropose] = useScreenMemory<string | null>('prerempli.creatifs.brief', null);
+  useEffect(() => {
+    if (!suggestion || depart || reference) return;
+    const start = readProductStart({ produit: suggestion });
+    if (!start) return;
+    const signature = `${start.titre}|${start.scene}`;
+    if (propose === signature) return;
+    // Quelque chose est déjà écrit : c'est le brief de l'auteur, on n'y touche pas.
+    if (productName.trim() || sceneDescription.trim() || audience.trim() || onScreenText.trim()) return;
+    setPropose(signature);
+    const brief = briefDe(start, { market, format, language });
+    const firstShot = (start.scene.split('\n')[0] ?? '').replace(/^\d+\.\s*/, '');
+    setProductName(brief.productName ?? '');
+    setAudience(brief.audience ?? '');
+    setOnScreenText(brief.onScreenText ?? '');
+    setSceneDescription(kind === 'visual' ? firstShot.slice(0, 600) : (brief.sceneDescription ?? ''));
+    if (!adFramework && brief.adFramework) {
+      setAdFramework(brief.adFramework);
+      setFrameworkBeats(brief.frameworkBeats ?? []);
+    }
+    if (!awarenessLevel && brief.awarenessLevel) setAwarenessLevel(brief.awarenessLevel);
+    if (!visualStyle.trim()) setVisualStyle('Photo réaliste, lumière naturelle');
+    if (start.marche) setMarket(start.marche);
+    // Ne réagit qu'à une nouvelle proposition : l'état du formulaire est lu au moment où elle arrive.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [suggestion, propose]);
 
   /** Ce que l'outil a vu dans la vidéo de la publicité de référence. */
   const [etude, setEtude] = useState<AdStudy | null>(null);

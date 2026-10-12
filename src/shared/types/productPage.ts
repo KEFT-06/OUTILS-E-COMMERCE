@@ -31,4 +31,6 @@ export interface ProductPageDraft {
   price?: string;
   faq: FaqItem[];
   images: Partial<Record<SectionRole, string>>;
+  /** Les champs restés vides ont déjà été complétés une fois d'après l'analyse : ce que l'auteur efface ensuite reste effacé. */
+  completed?: boolean;
 }

@@ -21,6 +21,9 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Spinner } from '@/shared/ui/spinner';
 import { Textarea } from '@/shared/ui/textarea';
 import { useScreenMemory } from '@/shared/lib/apiCache';
+import { useWorkspace } from '@/app/providers/WorkspaceProvider';
+import { storybookBriefOf } from '@/shared/lib/analysisDefaults';
+import { usePrefill } from '@/shared/lib/prefill';
 
 /**
  * Storybook africain : le conte est rédigé, relu par son auteur, puis illustré une page à la
@@ -99,6 +102,14 @@ export function StorybookView() {
 
   const update = <K extends keyof StorybookBrief>(key: K, value: StorybookBrief[K]) =>
     setBrief((previous) => ({ ...previous, [key]: value }));
+
+  // Le brief s'ouvre prêt à lancer : un personnage, un thème tiré de la niche analysée, un style. Tout se change.
+  const { currentReport } = useWorkspace();
+  const propose = storybookBriefOf(currentReport);
+  usePrefill(brief.heroName, (value) => update('heroName', value), propose.heroName, 'storybook.prenom');
+  usePrefill(brief.heroDescription ?? '', (value) => update('heroDescription', value), propose.heroDescription, 'storybook.personnage');
+  usePrefill(brief.theme, (value) => update('theme', value), propose.theme, 'storybook.theme');
+  usePrefill(brief.visualStyle ?? '', (value) => update('visualStyle', value), propose.visualStyle, 'storybook.style');
 
   /*
     Nombre de pages : saisi en texte, borné en quittant le champ.
@@ -344,7 +355,7 @@ export function StorybookView() {
               </Field>
 
               <Field className="sm:col-span-2">
-                <FieldLabel htmlFor="story-culture">Éléments culturels à intégrer</FieldLabel>
+                <FieldLabel htmlFor="story-culture">Éléments culturels à intégrer (facultatif)</FieldLabel>
                 <Textarea
                   id="story-culture"
                   value={brief.culturalElements}
@@ -362,7 +373,7 @@ export function StorybookView() {
                   value={brief.visualStyle}
                   onChange={(event) => update('visualStyle', event.target.value)}
                   maxLength={300}
-                  placeholder="facultatif — ex. aquarelle aux couleurs chaudes"
+                  placeholder="ex. aquarelle aux couleurs chaudes"
                 />
               </Field>
             </div>

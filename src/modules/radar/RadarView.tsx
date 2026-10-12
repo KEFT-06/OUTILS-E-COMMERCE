@@ -30,6 +30,9 @@ import { SalesViewToggle, type SalesView } from '@/modules/radar/SalesViewToggle
 import { StorePreviewPanel } from '@/modules/radar/StorePreviewPanel';
 import { WatchItemsPanel } from '@/modules/radar/WatchItemsPanel';
 import { useScreenMemory } from '@/shared/lib/apiCache';
+import { useWorkspace } from '@/app/providers/WorkspaceProvider';
+import { followableCompetitorOf } from '@/shared/lib/analysisDefaults';
+import { usePrefill } from '@/shared/lib/prefill';
 
 /**
  * Radar — le seul écran du site qui se remplit sans que personne ne clique.
@@ -216,6 +219,8 @@ export function RadarView() {
   const [data, setData] = useCachedState<RadarDashboard>('/api/radar');
   const [loadError, setLoadError] = useState<ApiError | null>(null);
   const [target, setTarget] = useScreenMemory('radar.lien', '');
+  const { currentReport } = useWorkspace();
+  usePrefill(target, setTarget, followableCompetitorOf(currentReport), 'radar.lien');
   const [isAdding, setIsAdding] = useState(false);
   const [busyWatch, setBusyWatch] = useState<string | null>(null);
   /** Interrupteur du résumé par e-mail, tenu localement pour répondre au clic sans attendre. */

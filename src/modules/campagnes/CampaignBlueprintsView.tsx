@@ -3,7 +3,10 @@ import { BrandIcon } from '@/shared/components/BrandIcon';
 import { parseAmount } from '@/shared/lib/parseAmount';
 import { AlertTriangle, ExternalLink, Eye, Scissors, TrendingUp } from 'lucide-react';
 import { PageHeader } from '@/shared/components/PageHeader';
+import { usePricing } from '@/modules/studio/usePricing';
+import { campaignNumbersOf } from '@/shared/lib/analysisDefaults';
 import { useCachedState, useScreenMemory } from '@/shared/lib/apiCache';
+import { usePrefill } from '@/shared/lib/prefill';
 import { type ApiError, readApiError, toApiError } from '@/shared/lib/apiError';
 import { formatDateFr } from '@/shared/lib/formatDate';
 import { useUserCurrency } from '@/shared/lib/money';
@@ -55,6 +58,11 @@ export function CampaignBlueprintsView() {
   const [platformId, setPlatformId] = useScreenMemory('campagnes.plateforme', 'meta');
   const [budgetInput, setBudgetInput] = useScreenMemory('campagnes.budget', '');
   const [targetCpaInput, setTargetCpaInput] = useScreenMemory('campagnes.cout-cible', '');
+  // Budget et coût cible partent des repères du simulateur de rentabilité : les deux écrans disent la même chose.
+  const { pricing } = usePricing();
+  const numbers = campaignNumbersOf(pricing?.adCostPerAcquisition.default);
+  usePrefill(budgetInput, setBudgetInput, numbers?.budget, 'campagnes.budget');
+  usePrefill(targetCpaInput, setTargetCpaInput, numbers?.targetCpa, 'campagnes.cout-cible');
   // Budget dans la devise du pays de l'utilisateur, sans choix d'une autre : chacun ne voit que la sienne.
   const currency = useUserCurrency();
 

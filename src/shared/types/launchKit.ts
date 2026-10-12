@@ -62,4 +62,6 @@ export interface LaunchKitDraft {
   scripts: Record<string, Record<string, BeatText>>;
   /** Code marché → identifiant du bouton d'appel à l'action retenu. */
   ctaByMarket: Record<string, string>;
+  /** Les champs restés vides ont déjà été complétés une fois d'après l'analyse : ce que l'auteur efface ensuite reste effacé. */
+  completed?: boolean;
 }

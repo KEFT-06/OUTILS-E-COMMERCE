@@ -7,6 +7,7 @@ import {
   PAGE_SECTIONS,
   type PageVariant,
   buildPageModel,
+  completePageDraft,
   emptyPageDraft,
   hasVariantB,
   missingForExport,
@@ -15,9 +16,10 @@ import { PageIncompleteError, exportProductPage } from '@/modules/pages-produits
 import { safeHttpsUrl } from '@/shared/lib/safeUrl';
 import { useProductDrafts } from '@/shared/stores/useProductDrafts';
 import { useProductPageDrafts } from '@/modules/pages-produits/useProductPageDrafts';
+import { productPageDefaultsOf } from '@/shared/lib/analysisDefaults';
 import { formatMoney, roundPrice } from '@server/shared/currency';
 import { useMoney } from '@/shared/lib/money';
-import type { DigitalProductIdea } from '@/shared/types/analysis';
+import type { DigitalProductIdea, MarketAnalysisReport } from '@/shared/types/analysis';
 import type { ReportComplianceVerdict } from '@/shared/types/compliance';
 import type { ProductPageDraft, SectionRole } from '@/shared/types/productPage';
 import { Alert, AlertDescription } from '@/shared/ui/alert';
@@ -49,7 +51,7 @@ function hostname(url: string): string {
 
 const sectionAnchor = (role: SectionRole) => `page-section-${role}`;
 
-export function ProductPageBuilderView({ products }: { products: DigitalProductIdea[] }) {
+export function ProductPageBuilderView({ products, report = null }: { products: DigitalProductIdea[]; report?: MarketAnalysisReport | null }) {
   const productDrafts = useProductDrafts();
   const pageDrafts = useProductPageDrafts();
   const money = useMoney();
@@ -83,8 +85,15 @@ export function ProductPageBuilderView({ products }: { products: DigitalProductI
     converted !== null && effective.currency !== money.currency
       ? { ...effective, recommendedPrice: roundPrice(converted, money.currency), currency: money.currency }
       : effective;
-  const draft = pageDrafts.get(product.id) ?? emptyPageDraft(product);
-  const update = (changes: Partial<ProductPageDraft>) => pageDrafts.save({ ...draft, ...changes });
+  /*
+    La page part de ce que l'analyse sait déjà de ce lecteur. Jamais ouverte, elle s'ouvre remplie ;
+    déjà commencée, ses champs vides sont complétés une fois. Dès la première saisie, la page est
+    marquée : ce que l'auteur efface ensuite reste effacé.
+  */
+  const proposed = productPageDefaultsOf(product, report);
+  const stored = pageDrafts.get(product.id);
+  const draft = stored ? completePageDraft(stored, product, proposed) : emptyPageDraft(product, proposed);
+  const update = (changes: Partial<ProductPageDraft>) => pageDrafts.save({ ...draft, ...changes, completed: true });
   const updateImage = (role: SectionRole, url: string) => update({ images: { ...draft.images, [role]: url } });
 
   const model = buildPageModel(product, draft, previewVariant);

@@ -28,6 +28,9 @@ import {
 } from "@/shared/ui/select";
 import { Switch } from "@/shared/ui/switch";
 import { useScreenMemory } from "@/shared/lib/apiCache";
+import { useWorkspace } from "@/app/providers/WorkspaceProvider";
+import { spyKeywordOf } from "@/shared/lib/analysisDefaults";
+import { usePrefill } from "@/shared/lib/prefill";
 
 /**
  * Recherche dans la bibliothèque publicitaire, comme sur la page de Meta : un pays, un mot-clé,
@@ -78,6 +81,10 @@ export function MetaSearchPanel() {
   const [lancement, setLancement] = useState(false);
   const [erreur, setErreur] = useState<string | null>(null);
   const [seulementChariow, setSeulementChariow] = useScreenMemory("espionnage.seulement-chariow", false);
+  // La niche analysée donne le mot-clé et le pays : il ne reste qu'à lancer la recherche.
+  const { currentReport } = useWorkspace();
+  usePrefill(motCle, setMotCle, spyKeywordOf(currentReport), "espionnage.mot");
+  usePrefill(pays === "ALL" ? "" : pays, setPays, currentReport?.market && (PAYS as readonly string[]).includes(currentReport.market) ? currentReport.market : null, "espionnage.pays");
   const [annonceur, setAnnonceur] = useState<{
     pageId: string;
     nom: string;
