@@ -2,7 +2,7 @@ import { and, eq, isNull, ne } from 'drizzle-orm';
 import { z } from 'zod';
 import { getDb } from '@server/db/client';
 import { reportDocuments, reports, users } from '@server/db/schema';
-import { env, providers } from '@server/env';
+import { env, isServerless, providers } from '@server/env';
 import { AppError } from '@server/middleware';
 import type { RequestAuth } from '@server/middleware/auth';
 import { debitCredits, effectiveLimits, refundDebit } from '@server/services/accounts';
@@ -20,6 +20,7 @@ import type {
 } from '@server/shared/analysis';
 import { runInBackground } from '@server/shared/backgroundWork';
 import { countryName } from '@server/shared/countries';
+import { REPORT_WORDS_PER_PAGE } from '@server/shared/reportLength';
 import { neutralizeMessage } from '@server/shared/whiteLabel';
 import { todayLabel } from '@server/services/analysis';
 
@@ -55,8 +56,8 @@ const reportNotFound = () => new AppError(404, 'Rapport introuvable sur votre co
 
 /** Longueurs proposées à l'utilisateur, en pages A4 (plafonnées par le palier). */
 export const REPORT_PAGES = { min: 1, max: 250, default: 10 } as const;
-/** Page A4 d'un rapport à la mise en page du PDF : titres, paragraphes, quelques listes. */
-const WORDS_PER_PAGE = 380;
+/** Mots par page A4, à la mise en page du PDF : mesuré, voir server/shared/reportLength.ts. */
+const WORDS_PER_PAGE = REPORT_WORDS_PER_PAGE;
 /** Jusque-là, un seul appel suffit ; au-delà, le rapport s'écrit partie par partie. */
 const SINGLE_CALL_MAX_PAGES = 6;
 /** Au-delà, les parties se regroupent en chapitres. */
@@ -112,9 +113,22 @@ interface OutlineSection {
   pages: number;
 }
 
+/** Chapitre d'un rapport long, et ses parties une fois planifiées. */
+interface ChapterPlan {
+  title: string;
+  focus: string;
+  pages: number;
+  parts?: OutlineSection[];
+}
+
 interface ReportOutline {
   title: string;
   sections: OutlineSection[];
+  /**
+   * Rapport long en cours de planification : ses chapitres, dont les parties s'écrivent une à une.
+   * Absent une fois le plan complet (les parties sont alors toutes dans `sections`).
+   */
+  chapters?: ChapterPlan[];
 }
 
 const OUTLINE_SCHEMA = {
@@ -146,6 +160,52 @@ const outlineSchema = z.object({
     )
     .min(2)
     .max(110),
+});
+
+const CHAPTERS_SCHEMA = {
+  type: 'object',
+  properties: {
+    title: { type: 'string' },
+    chapters: {
+      type: 'array',
+      items: {
+        type: 'object',
+        properties: { title: { type: 'string' }, focus: { type: 'string' }, pages: { type: 'number' } },
+        required: ['title', 'focus', 'pages'],
+      },
+    },
+  },
+  required: ['title', 'chapters'],
+} as const;
+
+const chaptersSchema = z.object({
+  title: z.string().trim().min(3).max(200),
+  chapters: z
+    .array(z.object({ title: z.string().trim().min(2).max(160), focus: z.string().trim().min(2).max(600), pages: z.number().positive() }))
+    .min(2)
+    .max(20),
+});
+
+const PARTS_SCHEMA = {
+  type: 'object',
+  properties: {
+    sections: {
+      type: 'array',
+      items: {
+        type: 'object',
+        properties: { heading: { type: 'string' }, focus: { type: 'string' }, pages: { type: 'number' } },
+        required: ['heading', 'focus', 'pages'],
+      },
+    },
+  },
+  required: ['sections'],
+} as const;
+
+const partsSchema = z.object({
+  sections: z
+    .array(z.object({ heading: z.string().trim().min(2).max(160), focus: z.string().trim().min(2).max(600), pages: z.number().positive() }))
+    .min(1)
+    .max(14),
 });
 
 /** Nombre de parties (et de chapitres) d'un rapport de `pages` pages. */
@@ -347,7 +407,7 @@ function viewOf(row: DocumentRow, report: MarketAnalysisReport): ReportDocument 
     completedAt: row.completedAt?.toISOString() ?? null,
     targetPages: row.targetPages ?? null,
     progress:
-      row.status === 'writing' && Array.isArray(row.sections)
+      row.status === 'writing' && Array.isArray(row.sections) && row.sections.length > 0
         ? { done: row.sections.filter(Boolean).length, total: row.sections.length }
         : null,
   };
@@ -398,6 +458,59 @@ async function outlineOf(material: string, pages: number, timeoutMs: number): Pr
       pages: (section.pages / total) * pages,
     })),
   };
+}
+
+/*
+  Plan d'un rapport de plus de quarante pages, en deux temps.
+
+  Demandé d'un seul tenant, le plan d'un rapport de 250 pages est une réponse d'une centaine de
+  parties : assez longue pour être coupée avant sa fin, et tout le rapport échouait alors sur son
+  plan. Les chapitres sont donc demandés d'abord (une quinzaine de lignes), puis les parties de
+  chaque chapitre, à part : chaque réponse est courte, et un chapitre qui échoue se redemande seul.
+*/
+
+/** Premier temps : le titre et les chapitres, avec leur nombre de pages. */
+async function chaptersOf(material: string, pages: number, timeoutMs: number): Promise<ReportOutline> {
+  const count = outlineShape(pages).chapters ?? 3;
+  const planned = await generateJsonWithPerplexity({
+    service: SERVICE,
+    instructions: [...ROLE, 'Tu prépares le PLAN du rapport ; les chapitres seront détaillés puis rédigés ensuite, chacun à part.'].join('\n'),
+    prompt: `${material}\n\nPLAN DES CHAPITRES : propose un titre parlant et ${count} chapitres, pour un rapport d’environ ${pages} pages. Pour chaque chapitre : un titre parlant (« title »), ce qu’il doit couvrir sans empiéter sur les autres (« focus », deux phrases au plus), et son nombre de pages (« pages »). La somme des pages fait ${pages}. Aucun chapitre « sources », « bibliographie » ni « annexe » : elle est ajoutée automatiquement. Le dernier chapitre porte les recommandations concrètes et datées.`,
+    responseSchema: CHAPTERS_SCHEMA as unknown as Record<string, unknown>,
+    parse: (value) => chaptersSchema.parse(value),
+    maxOutputTokens: Math.min(6_000, 800 + count * 220),
+    timeoutMs,
+  });
+  const total = planned.chapters.reduce((sum, chapter) => sum + chapter.pages, 0) || 1;
+  return {
+    title: planned.title,
+    sections: [],
+    chapters: planned.chapters.map((chapter) => ({ title: chapter.title, focus: chapter.focus, pages: (chapter.pages / total) * pages })),
+  };
+}
+
+/** Second temps : les parties d'un chapitre, avec la liste des chapitres sous les yeux. */
+async function partsOfChapter(material: string, outline: ReportOutline, index: number, timeoutMs: number): Promise<OutlineSection[]> {
+  const chapters = outline.chapters ?? [];
+  const chapter = chapters[index]!;
+  const count = Math.min(12, Math.max(2, Math.round(chapter.pages / 2.5)));
+  const plan = chapters.map((entry, position) => `${position + 1}. ${entry.title} — ${entry.focus}`).join('\n');
+  const planned = await generateJsonWithPerplexity({
+    service: SERVICE,
+    instructions: [...ROLE, 'Tu détailles le plan d’UN chapitre du rapport ; ses parties seront rédigées ensuite, chacune à part.'].join('\n'),
+    prompt: `${material}\n\n## Chapitres du rapport « ${outline.title} »\n${plan}\n\nPLAN DU CHAPITRE ${index + 1} : « ${chapter.title} » — ${chapter.focus}. Propose ${count} parties pour ce chapitre d’environ ${Math.max(1, Math.round(chapter.pages))} pages. Pour chaque partie : un titre parlant (« heading »), ce qu’elle doit couvrir sans empiéter sur les autres parties ni sur les autres chapitres (« focus », une phrase), et son nombre de pages (« pages »).`,
+    responseSchema: PARTS_SCHEMA as unknown as Record<string, unknown>,
+    parse: (value) => partsSchema.parse(value),
+    maxOutputTokens: Math.min(4_000, 600 + count * 180),
+    timeoutMs,
+  });
+  const total = planned.sections.reduce((sum, section) => sum + section.pages, 0) || 1;
+  return planned.sections.map((section) => ({ chapter: chapter.title, heading: section.heading, focus: section.focus, pages: (section.pages / total) * chapter.pages }));
+}
+
+/** Tous les chapitres sont planifiés : leurs parties, à la suite, deviennent le plan du rapport. */
+function flattenChapters(outline: ReportOutline): ReportOutline {
+  return { title: outline.title, sections: (outline.chapters ?? []).flatMap((chapter) => chapter.parts ?? []) };
 }
 
 /** Rédige une partie d'un rapport long, avec le plan complet sous les yeux. */
@@ -478,8 +591,9 @@ const fallbackTitleOf = (report: MarketAnalysisReport) => `Rapport d’étude de
 const SLICE_BUDGET_MS = 200_000;
 /** Réservation d'un passage : au-delà, un passage coupé en route est considéré perdu et relancé. */
 const LEASE_MS = 280_000;
-/** Sans aucune partie écrite depuis ce délai, la rédaction est abandonnée et remboursée. */
-const STALL_MS = 15 * 60_000;
+/** Un nouvel essai programmé à moins de ce délai est attendu par le passage enchaîné lui-même. */
+const PAUSE_WAIT_MS = 150_000;
+const sleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms).unref());
 /** Passages en cours dans cette instance : un même rapport n'est pas écrit deux fois en parallèle. */
 const running = new Set<string>();
 
@@ -492,10 +606,34 @@ const RETRY_WAITS_MS = [15_000, 45_000, 2 * 60_000, 5 * 60_000];
 const sameWriting = (reportId: string, startedAt: Date) =>
   and(eq(reportDocuments.reportId, reportId), eq(reportDocuments.status, 'writing'), eq(reportDocuments.startedAt, startedAt));
 
+/**
+ * Demande au site de lancer lui-même le passage suivant, sans attendre que l'écran le réclame.
+ *
+ * L'écran promet « Vous pouvez quitter cette page : la rédaction continue ». Ce n'était vrai que
+ * tant qu'un écran restait ouvert pour relancer chaque passage ; un rapport de 250 pages, qui en
+ * demande une dizaine, s'arrêtait dès qu'on le quittait. Même mécanisme que pour les ebooks.
+ */
+async function chainNext(reportId: string): Promise<void> {
+  if (!env.CRON_SECRET) return;
+  try {
+    const response = await fetch(`${env.APP_URL.replace(/\/+$/, '')}/api/cron/rapport`, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${env.CRON_SECRET}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ reportId }),
+      signal: AbortSignal.timeout(15_000),
+    });
+    if (!response.ok) console.warn(`[${SERVICE.log}] relance de ${reportId} refusée (${response.status})`);
+  } catch (error) {
+    console.warn(`[${SERVICE.log}] relance de ${reportId} non partie :`, error instanceof Error ? error.message : error);
+  }
+}
+
 async function runSlice(reportId: string, startedAt: Date, today: string): Promise<void> {
   if (running.has(reportId)) return;
   running.add(reportId);
   const db = getDb();
+  /** Vrai quand il reste du travail après ce passage : le suivant est alors demandé. */
+  let more = false;
   try {
     const [row] = await db
       .select({
@@ -529,40 +667,86 @@ async function runSlice(reportId: string, startedAt: Date, today: string): Promi
     const material = buildDocumentPrompt({ report, memo: row.memo, today, currency });
     let outline = row.outline as unknown as ReportOutline | null;
     let sections = row.sections ?? [];
-    if (!outline) {
-      outline = await outlineOf(material, pages, Math.min(120_000, budgetEnd - Date.now()));
-      sections = new Array<string | null>(outline.sections.length).fill(null);
-      const [saved] = await db
-        .update(reportDocuments)
-        .set({ outline: outline as unknown as Record<string, unknown>, sections, updatedAt: new Date() })
-        .where(sameWriting(reportId, startedAt))
-        .returning({ reportId: reportDocuments.reportId });
-      if (!saved) return;
-    }
-
     const waveLimit = env.REPORT_SLICE_WAVES;
     let waves = 0;
+    /** Plus assez de temps pour une vague entière : la main passe au passage suivant. */
+    const outOfTime = () => budgetEnd - Date.now() < 60_000 || (waveLimit > 0 && waves >= waveLimit);
+    const handOver = async () => {
+      await db.update(reportDocuments).set({ leaseUntil: null }).where(sameWriting(reportId, startedAt));
+      more = true;
+    };
+    const waveTimeout = () => Math.max(30_000, Math.min(150_000, budgetEnd + 60_000 - Date.now()));
+    /** Enregistre une avancée ; faux quand une réécriture lancée entre-temps a repris la main. */
+    const save = async (changes: { outline?: ReportOutline; sections?: (string | null)[] }) => {
+      const [saved] = await db
+        .update(reportDocuments)
+        .set({
+          ...(changes.outline ? { outline: changes.outline as unknown as Record<string, unknown> } : {}),
+          ...(changes.sections ? { sections: changes.sections } : {}),
+          // Une avancée efface les refus passés : seuls des refus à la suite, sans rien d'écrit, mènent à l'échec.
+          retryCount: 0,
+          errorCode: null,
+          updatedAt: new Date(),
+        })
+        .where(sameWriting(reportId, startedAt))
+        .returning({ reportId: reportDocuments.reportId });
+      return Boolean(saved);
+    };
+
+    if (!outline) {
+      const timeoutMs = Math.min(120_000, budgetEnd - Date.now());
+      outline = pages > CHAPTER_THRESHOLD_PAGES ? await chaptersOf(material, pages, timeoutMs) : await outlineOf(material, pages, timeoutMs);
+      if (!outline.chapters) sections = new Array<string | null>(outline.sections.length).fill(null);
+      if (!(await save({ outline, ...(outline.chapters ? {} : { sections }) }))) return;
+    }
+
+    // Rapport long : les parties de chaque chapitre sont planifiées par vagues, chacune gardée dès qu'elle est prête.
+    while (outline.chapters) {
+      const todo = outline.chapters.flatMap((chapter, index) => (chapter.parts ? [] : [index]));
+      if (todo.length === 0) {
+        outline = flattenChapters(outline);
+        sections = new Array<string | null>(outline.sections.length).fill(null);
+        if (!(await save({ outline, sections }))) return;
+        break;
+      }
+      if (outOfTime()) return await handOver();
+      const wave = todo.slice(0, SECTION_CONCURRENCY);
+      const timeoutMs = waveTimeout();
+      const settled = await Promise.allSettled(wave.map((index) => partsOfChapter(material, outline!, index, timeoutMs)));
+      let planned = false;
+      settled.forEach((result, position) => {
+        if (result.status !== 'fulfilled') return;
+        outline!.chapters![wave[position]!]!.parts = result.value;
+        planned = true;
+      });
+      waves += 1;
+      if (planned && !(await save({ outline }))) return;
+      const refused = settled.find((result): result is PromiseRejectedResult => result.status === 'rejected');
+      if (refused) throw refused.reason;
+    }
+
     for (;;) {
       const pending = sections.flatMap((text, index) => (text ? [] : [index]));
       if (pending.length === 0) break;
-      // Plus assez de temps pour une vague entière : on passe la main au passage suivant.
-      if (budgetEnd - Date.now() < 60_000 || (waveLimit > 0 && waves >= waveLimit)) {
-        await db.update(reportDocuments).set({ leaseUntil: null }).where(sameWriting(reportId, startedAt));
-        return;
-      }
+      if (outOfTime()) return await handOver();
       const wave = pending.slice(0, SECTION_CONCURRENCY);
-      const timeoutMs = Math.max(30_000, Math.min(150_000, budgetEnd + 60_000 - Date.now()));
-      const written = await Promise.all(wave.map((index) => writeSection(material, outline!, index, timeoutMs)));
-      wave.forEach((index, position) => {
-        sections[index] = written[position]!;
+      const timeoutMs = waveTimeout();
+      /*
+        Chaque partie écrite est gardée, même quand une autre de la même vague est refusée : une
+        seule réponse perdue faisait jeter les quatre autres, déjà payées au rédacteur, et sur une
+        centaine de parties cela finissait par épuiser les essais.
+      */
+      const settled = await Promise.allSettled(wave.map((index) => writeSection(material, outline!, index, timeoutMs)));
+      let wrote = false;
+      settled.forEach((result, position) => {
+        if (result.status !== 'fulfilled') return;
+        sections[wave[position]!] = result.value;
+        wrote = true;
       });
       waves += 1;
-      const [saved] = await db
-        .update(reportDocuments)
-        .set({ sections, updatedAt: new Date() })
-        .where(sameWriting(reportId, startedAt))
-        .returning({ reportId: reportDocuments.reportId });
-      if (!saved) return;
+      if (wrote && !(await save({ sections }))) return;
+      const refused = settled.find((result): result is PromiseRejectedResult => result.status === 'rejected');
+      if (refused) throw refused.reason;
     }
 
     const { title, markdown } = finalizeDocument(assemble(outline, sections as string[]), sourceIdsOf(report), fallbackTitleOf(report));
@@ -571,11 +755,16 @@ async function runSlice(reportId: string, startedAt: Date, today: string): Promi
     // Refus passager : la rédaction garde sa place et ses parties, et reprendra seule.
     if (error instanceof AppError && TRANSIENT.test(error.code)) {
       const scheduled = await scheduleRetry(reportId, startedAt, error.code).catch(() => false);
-      if (scheduled) return;
+      if (scheduled) {
+        more = true;
+        return;
+      }
     }
     await failDocument(reportId, error).catch((failure: unknown) => console.error(`[${SERVICE.log}] échec non enregistré`, failure));
   } finally {
     running.delete(reportId);
+    // Hors hébergement sans serveur et sans déclencheur, c'est le suivi de l'écran qui relance.
+    if (more) await chainNext(reportId);
   }
 }
 
@@ -616,17 +805,27 @@ async function scheduleRetry(reportId: string, startedAt: Date, code: string): P
 }
 
 /**
- * Passage suivant, réclamé par le suivi de l'écran : nouvel essai arrivé à échéance, passage
- * précédent terminé (réservation libérée) ou perdu (réservation expirée). Un seul suivi l'obtient.
+ * Réserve le passage suivant : nouvel essai arrivé à échéance, passage précédent terminé
+ * (réservation libérée) ou perdu (réservation expirée). Un seul demandeur l'obtient ; null sinon.
+ *
+ * Un passage perdu — coupé sans avoir rendu la main — compte comme un essai : plusieurs à la suite,
+ * sans rien d'écrit entre-temps, et la rédaction est abandonnée, points rendus. C'est la seule
+ * limite : une rédaction que personne ne suit n'est jamais abandonnée pour autant, elle attend
+ * simplement d'être reprise (par l'enchaînement, par la veille du serveur ou par son auteur).
  */
-async function claimNextSlice(row: DocumentRow): Promise<DocumentRow> {
-  if (row.status !== 'writing') return row;
+async function claim(row: DocumentRow): Promise<DocumentRow | null> {
+  if (row.status !== 'writing') return null;
   const now = new Date();
   const due = row.retryAfter ? row.retryAfter.getTime() <= now.getTime() : !row.leaseUntil || row.leaseUntil.getTime() < now.getTime();
-  if (!due) return row;
+  if (!due) return null;
+  const lost = !row.retryAfter && Boolean(row.leaseUntil);
+  if (lost && row.retryCount >= RETRY_WAITS_MS.length) {
+    await failDocument(row.reportId, new AppError(504, 'La rédaction du rapport n’a pas pu aboutir. Vos points ont été rendus.', 'REPORT_TIMEOUT'));
+    return null;
+  }
   const [claimed] = await getDb()
     .update(reportDocuments)
-    .set({ retryAfter: null, leaseUntil: new Date(now.getTime() + LEASE_MS) })
+    .set({ retryAfter: null, leaseUntil: new Date(now.getTime() + LEASE_MS), ...(lost ? { retryCount: row.retryCount + 1 } : {}) })
     .where(
       and(
         eq(reportDocuments.reportId, row.reportId),
@@ -637,27 +836,62 @@ async function claimNextSlice(row: DocumentRow): Promise<DocumentRow> {
       ),
     )
     .returning();
-  if (!claimed) return row;
+  return claimed ?? null;
+}
+
+/** Passage suivant, réclamé par le suivi de l'écran : lancé en arrière-plan s'il est obtenu. */
+async function claimNextSlice(row: DocumentRow): Promise<DocumentRow> {
+  const claimed = await claim(row);
+  if (!claimed) {
+    // La réservation a pu échouer parce que la rédaction vient d'être abandonnée : on rend son état réel.
+    if (row.status !== 'writing') return row;
+    const [current] = await getDb().select().from(reportDocuments).where(eq(reportDocuments.reportId, row.reportId)).limit(1);
+    return current ?? row;
+  }
   runInBackground(() => runSlice(claimed.reportId, claimed.startedAt, todayLabel(new Date())), `rapport rédigé ${claimed.reportId}`);
   return claimed;
+}
+
+/**
+ * Passage demandé par le site lui-même (enchaînement) : répond tout de suite, travaille ensuite.
+ * Un nouvel essai programmé à courte échéance est attendu ici, plutôt que de repartir bredouille.
+ */
+export function continueReportInBackground(reportId: string): void {
+  runInBackground(async () => {
+    const db = getDb();
+    let [row] = await db.select().from(reportDocuments).where(eq(reportDocuments.reportId, reportId)).limit(1);
+    if (!row || row.status !== 'writing') return;
+    const wait = (row.retryAfter?.getTime() ?? 0) - Date.now();
+    if (wait > 0 && wait <= PAUSE_WAIT_MS) {
+      await sleep(wait + 500);
+      [row] = await db.select().from(reportDocuments).where(eq(reportDocuments.reportId, reportId)).limit(1);
+      if (!row) return;
+    }
+    const claimed = await claim(row);
+    if (claimed) await runSlice(claimed.reportId, claimed.startedAt, todayLabel(new Date()));
+  }, `passage enchaîné du rapport ${reportId}`);
+}
+
+/**
+ * Rédactions restées en chemin — enchaînement non parti, essai programmé que personne n'est venu
+ * réclamer : elles repartent sans attendre leur auteur. Appelé par les passages programmés du
+ * serveur. Rend le nombre de rédactions en cours.
+ */
+export async function resumeReportDocuments(): Promise<number> {
+  const writing = await getDb().select().from(reportDocuments).where(eq(reportDocuments.status, 'writing'));
+  for (const row of writing) {
+    if (isServerless) await chainNext(row.reportId);
+    else await claimNextSlice(row);
+  }
+  return writing.length;
 }
 
 /** Rapport rédigé d'une analyse, ou null s'il n'a jamais été demandé. */
 export async function getReportDocument(auth: RequestAuth, reportId: string | undefined): Promise<ReportDocument | null> {
   const owned = await ownedReport(auth, reportId);
-  const db = getDb();
-  let [row] = await db.select().from(reportDocuments).where(eq(reportDocuments.reportId, owned.id)).limit(1);
+  const [row] = await getDb().select().from(reportDocuments).where(eq(reportDocuments.reportId, owned.id)).limit(1);
   if (!row) return null;
-
-  // Aucune partie écrite depuis longtemps : l'abandon est constaté, points rendus.
-  if (row.status === 'writing' && !row.retryAfter && Date.now() - row.updatedAt.getTime() > STALL_MS) {
-    await failDocument(owned.id, new AppError(504, 'La rédaction du rapport n’a pas pu aboutir. Vos points ont été rendus.', 'REPORT_TIMEOUT'));
-    [row] = await db.select().from(reportDocuments).where(eq(reportDocuments.reportId, owned.id)).limit(1);
-    if (!row) return null;
-  } else {
-    row = await claimNextSlice(row);
-  }
-  return viewOf(row, owned.report);
+  return viewOf(await claimNextSlice(row), owned.report);
 }
 
 /**

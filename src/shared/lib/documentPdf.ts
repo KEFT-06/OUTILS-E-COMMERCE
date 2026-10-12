@@ -10,6 +10,14 @@ import type { ReportDocument } from '@/shared/types/analysis';
  * Appelé seulement par la porte de conformité (complianceGate), jamais directement.
  */
 export function generateDocumentPDF(document: ReportDocument, meta: { nicheName: string; dateLabel: string }, stamp: PDFComplianceStamp): void {
+  buildDocumentPDF(document, meta, stamp).save(`SmartCreator_Rapport_redige_${toFileSlug(meta.nicheName, 'niche')}.pdf`);
+}
+
+/**
+ * Le PDF, construit sans être téléchargé. Séparé pour que sa longueur puisse se mesurer : le
+ * nombre de mots visé par page (server/shared/reportLength.ts) doit rester celui de cette mise en page.
+ */
+export function buildDocumentPDF(document: ReportDocument, meta: { nicheName: string; dateLabel: string }, stamp: PDFComplianceStamp): jsPDF {
   const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
   const pageWidth = doc.internal.pageSize.getWidth();
   const pageHeight = doc.internal.pageSize.getHeight();
@@ -202,5 +210,5 @@ export function generateDocumentPDF(document: ReportDocument, meta: { nicheName:
     doc.text(`Smart Creator • Page ${page} sur ${total}`, pageWidth / 2, pageHeight - 6, { align: 'center' });
   }
 
-  doc.save(`SmartCreator_Rapport_redige_${toFileSlug(meta.nicheName, 'niche')}.pdf`);
+  return doc;
 }

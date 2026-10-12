@@ -11,6 +11,7 @@ import { purgeExpiredAudio } from '@server/services/audio';
 import { archivePendingVideos, purgeExpiredVideos } from '@server/services/creatives/archive';
 import { purgeStaleVideoUploads } from '@server/services/writing/videoUpload';
 import { continueEbookInBackground, resumeEbookJobs } from '@server/services/writing/ebookJobs';
+import { continueReportInBackground, resumeReportDocuments } from '@server/services/analysis/document';
 import { submitToIndexNow } from '@server/services/seo/indexNow';
 import { sweepPendingGenerations } from '@server/services/generations/sweeper';
 import { sweepDueWatches } from '@server/services/radar/sweeper';
@@ -204,6 +205,10 @@ cronRouter.get(
     if (!env.CRON_SECRET) throw new AppError(503, 'Le déclencheur périodique n’est pas configuré sur ce serveur.', 'CRON_NOT_CONFIGURED');
     if (!secretIsValid(req)) throw new AppError(401, 'Déclencheur refusé.', 'CRON_DENIED');
 
+    // Rapports longs quittés en route : ils reprennent ici au plus tard, sans attendre leur auteur.
+    await resumeReportDocuments().catch((error: unknown) => {
+      console.warn('[veille] reprise des rapports :', error instanceof Error ? error.message : error);
+    });
     // D'abord l'argent : un paiement Mobile Money validé hors écran n'attend pas le lendemain.
     const paiements = await resumeMobileCheckouts({ limit: 20 }).catch((error: unknown) => {
       console.warn('[veille] paiements Mobile Money :', error instanceof Error ? error.message : error);
@@ -242,6 +247,10 @@ cronRouter.get(
     const redactions = await resumeEbookJobs().catch((error: unknown) => {
       console.warn('[cron] reprise des rédactions :', error instanceof Error ? error.message : error);
       return null;
+    });
+    // Même filet pour les rapports rédigés : un long rapport quitté en route se termine quand même.
+    await resumeReportDocuments().catch((error: unknown) => {
+      console.warn('[cron] reprise des rapports :', error instanceof Error ? error.message : error);
     });
 
     // Référencement : les pages publiques sont déclarées aux moteurs, une fois par mise en ligne.
@@ -341,6 +350,22 @@ cronRouter.post(
     const parsed = z.object({ jobId: z.string().uuid() }).safeParse(req.body);
     if (!parsed.success) throw new AppError(400, 'Rédaction inconnue.', 'EBOOK_JOB_NOT_FOUND');
     continueEbookInBackground(parsed.data.jobId);
+    res.status(202).json({ accepted: true });
+  }),
+);
+
+/**
+ * Passage suivant d'un rapport rédigé, demandé par le site lui-même à la fin du précédent : un
+ * long rapport s'écrit ainsi jusqu'au bout, que son auteur soit resté sur l'écran ou non.
+ */
+cronRouter.post(
+  '/rapport',
+  asyncRoute(async (req, res) => {
+    if (!env.CRON_SECRET) throw new AppError(503, 'Le déclencheur périodique n’est pas configuré sur ce serveur.', 'CRON_NOT_CONFIGURED');
+    if (!secretIsValid(req)) throw new AppError(401, 'Déclencheur refusé.', 'CRON_DENIED');
+    const parsed = z.object({ reportId: z.string().uuid() }).safeParse(req.body);
+    if (!parsed.success) throw new AppError(400, 'Rapport inconnu.', 'REPORT_NOT_FOUND');
+    continueReportInBackground(parsed.data.reportId);
     res.status(202).json({ accepted: true });
   }),
 );

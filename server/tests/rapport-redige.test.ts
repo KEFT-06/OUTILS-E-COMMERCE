@@ -169,11 +169,153 @@ describe('Rapport rédigé après l’analyse', () => {
     assert.equal(document?.status, 'ready', JSON.stringify(document?.error));
     assert.ok(avancements.size >= 3, `plusieurs passages observés : ${[...avancements].join(', ')}`);
 
-    const parties = providers.writerCalls.slice(writerBefore).filter((call) => call.prompt.includes('RÉDIGE LA PARTIE'));
+    const appels = providers.writerCalls.slice(writerBefore);
+    assert.equal(appels.filter((call) => call.prompt.includes('PLAN DES CHAPITRES')).length, 1, 'les chapitres d’abord');
+    assert.equal(appels.filter((call) => call.prompt.includes('PLAN DU CHAPITRE')).length, 3, 'puis les parties de chaque chapitre, à part');
+    const parties = appels.filter((call) => call.prompt.includes('RÉDIGE LA PARTIE'));
     assert.equal(parties.length, 18, '45 pages : 18 parties, chacune rédigée une seule fois');
     const markdown = document!.markdown!;
     assert.deepEqual([...markdown.matchAll(/^## (.+)$/gm)].map((m) => m[1]), ['Chapitre 1', 'Chapitre 2', 'Chapitre 3'], 'des chapitres au-delà de 40 pages');
-    assert.equal([...markdown.matchAll(/^### Partie \d+$/gm)].length, 18, 'les parties sous leurs chapitres');
+    assert.equal([...markdown.matchAll(/^### Partie \d+\.\d+$/gm)].length, 18, 'les parties sous leurs chapitres');
+  });
+
+  it('écrit un rapport de 250 pages jusqu’au bout : seize chapitres, une centaine de parties, dans l’ordre', async () => {
+    const { agent } = await signInWithPlan(app, 'redaction-250@exemple.com', 'elite');
+    const report = await analyzedReport(agent, 'élevage de poulets');
+    const writerBefore = providers.writerCalls.length;
+
+    const launched = await agent.post(`/api/reports/${report.id}/document`).send({ pages: 250 }).expect(202);
+    assert.equal(launched.body.document.targetPages, 250);
+
+    // Une vague par passage (réglage de ce fichier) : le rapport demande deux douzaines de passages.
+    let observed = 0;
+    let lastDone = -1;
+    let document: Document | null = null;
+    for (let attempt = 0; attempt < 3_000; attempt += 1) {
+      const { body } = await agent.get(`/api/reports/${report.id}/document`).expect(200);
+      const progress = body.document.progress as { done: number; total: number } | null;
+      if (progress) {
+        assert.equal(progress.total, 96, 'le plan compte 96 parties');
+        assert.ok(progress.done >= lastDone, 'l’avancement ne recule jamais');
+        if (progress.done !== lastDone) observed += 1;
+        lastDone = progress.done;
+      }
+      if (body.document.status !== 'writing') {
+        document = body.document as Document;
+        break;
+      }
+      await sleep(20);
+    }
+    assert.equal(document?.status, 'ready', JSON.stringify(document?.error));
+    assert.ok(observed >= 10, `l’avancement se lit au fil des passages (${observed} étapes vues)`);
+
+    const appels = providers.writerCalls.slice(writerBefore);
+    assert.equal(appels.filter((call) => call.prompt.includes('PLAN DU RAPPORT')).length, 0, 'aucun plan d’un seul tenant : il serait coupé avant sa fin');
+    assert.equal(appels.filter((call) => call.prompt.includes('PLAN DES CHAPITRES')).length, 1);
+    assert.equal(appels.filter((call) => call.prompt.includes('PLAN DU CHAPITRE')).length, 16, 'seize chapitres, détaillés un par un');
+    assert.equal(appels.filter((call) => call.prompt.includes('RÉDIGE LA PARTIE')).length, 96, 'chaque partie rédigée une seule fois');
+
+    const markdown = document!.markdown!;
+    assert.deepEqual([...markdown.matchAll(/^## (.+)$/gm)].map((m) => m[1]), Array.from({ length: 16 }, (_, index) => `Chapitre ${index + 1}`));
+    assert.deepEqual(
+      [...markdown.matchAll(/^### (Partie \d+\.\d+)$/gm)].map((m) => m[1]),
+      Array.from({ length: 16 }, (_, chapter) => Array.from({ length: 6 }, (__, part) => `Partie ${chapter + 1}.${part + 1}`)).flat(),
+      'les parties dans l’ordre du plan, chacune sous son chapitre',
+    );
+    assert.equal(document!.compliance?.exportAllowed, true);
+  });
+
+  it('garde les parties écrites quand une seule est refusée, et ne les fait pas réécrire', async () => {
+    const { agent } = await signInWithPlan(app, 'redaction-partielle@exemple.com', 'pro');
+    const report = await analyzedReport(agent, 'élevage de poulets');
+    const writerBefore = providers.writerCalls.length;
+    const { getDb } = await import('@server/db/client');
+    const { reportDocuments } = await import('@server/db/schema');
+    const { eq } = await import('drizzle-orm');
+    const row = async () => (await getDb().select().from(reportDocuments).where(eq(reportDocuments.reportId, report.id)))[0]!;
+
+    // Douze pages : cinq parties, écrites ensemble. La troisième est refusée (quatre fois : tout son essai).
+    providers.setPartOverload('Partie 3', 4);
+    await agent.post(`/api/reports/${report.id}/document`).send({ pages: 12 }).expect(202);
+    for (let attempt = 0; attempt < 300 && !(await row()).retryAfter; attempt += 1) await sleep(50);
+
+    const paused = await row();
+    assert.ok(paused.retryAfter, 'un nouvel essai est programmé');
+    assert.deepEqual(paused.sections?.map(Boolean), [true, true, false, true, true], 'les quatre parties écrites sont gardées');
+    const view = (await agent.get(`/api/reports/${report.id}/document`).expect(200)).body.document;
+    assert.deepEqual(view.progress, { done: 4, total: 5 });
+    assert.equal(view.error, null, 'aucun message d’erreur à l’écran');
+
+    await getDb().update(reportDocuments).set({ retryAfter: new Date(Date.now() - 1_000) }).where(eq(reportDocuments.reportId, report.id));
+    const document = await waitForDocument(agent, report.id);
+    assert.equal(document.status, 'ready', JSON.stringify(document.error));
+    const written = (heading: string) => providers.writerCalls.slice(writerBefore).filter((call) => call.prompt.includes(`RÉDIGE LA PARTIE`) && call.prompt.includes(`« ${heading} »`)).length;
+    for (const kept of ['Partie 1', 'Partie 2', 'Partie 4', 'Partie 5']) assert.equal(written(kept), 1, `${kept} n’est pas réécrite`);
+    assert.deepEqual([...document.markdown!.matchAll(/^## (.+)$/gm)].map((m) => m[1]), ['Partie 1', 'Partie 2', 'Partie 3', 'Partie 4', 'Partie 5']);
+  });
+
+  it('une rédaction quittée pendant des heures reprend là où elle s’était arrêtée, sans échec ni remboursement', async () => {
+    const { agent } = await signInWithPlan(app, 'redaction-quittee@exemple.com', 'pro');
+    const report = await analyzedReport(agent, 'élevage de poulets');
+    const before = await balance(agent);
+    const { getDb } = await import('@server/db/client');
+    const { reportDocuments } = await import('@server/db/schema');
+    const { eq } = await import('drizzle-orm');
+    const row = async () => (await getDb().select().from(reportDocuments).where(eq(reportDocuments.reportId, report.id)))[0]!;
+    const done = async () => ((await row()).sections ?? []).filter(Boolean).length;
+
+    // Vingt pages : huit parties, donc deux vagues — et l'auteur quitte l'écran après la première.
+    await agent.post(`/api/reports/${report.id}/document`).send({ pages: 20 }).expect(202);
+    for (let attempt = 0; attempt < 300 && ((await done()) < 5 || (await row()).leaseUntil); attempt += 1) await sleep(50);
+    assert.equal(await done(), 5, 'la première vague est écrite');
+    assert.equal((await row()).leaseUntil, null, 'le passage a rendu la main');
+
+    // Trois heures plus tard, personne n'est revenu : rien n'a été écrit depuis.
+    await getDb().update(reportDocuments).set({ updatedAt: new Date(Date.now() - 3 * 3_600_000) }).where(eq(reportDocuments.reportId, report.id));
+
+    // Le passage programmé du serveur la fait repartir, sans son auteur.
+    const { resumeReportDocuments } = await import('@server/services/analysis/document');
+    assert.ok((await resumeReportDocuments()) >= 1);
+    for (let attempt = 0; attempt < 300 && (await row()).status === 'writing'; attempt += 1) await sleep(50);
+
+    const finished = await row();
+    assert.equal(finished.status, 'ready', `${finished.errorCode ?? ''} ${finished.errorMessage ?? ''}`);
+    assert.equal(finished.refunded, false);
+    const document = (await agent.get(`/api/reports/${report.id}/document`).expect(200)).body.document as Document;
+    assert.equal([...document.markdown!.matchAll(/^## Partie \d+$/gm)].length, 8);
+    assert.equal(before.credits.total - (await balance(agent)).credits.total, 6, 'payé une fois, jamais remboursé à tort');
+  });
+
+  it('n’abandonne qu’après plusieurs passages perdus de suite, et rend alors les points', async () => {
+    const { agent } = await signInWithPlan(app, 'redaction-perdue@exemple.com', 'pro');
+    const report = await analyzedReport(agent, 'élevage de poulets');
+    const before = await balance(agent);
+    const { getDb } = await import('@server/db/client');
+    const { reportDocuments } = await import('@server/db/schema');
+    const { eq } = await import('drizzle-orm');
+    const row = async () => (await getDb().select().from(reportDocuments).where(eq(reportDocuments.reportId, report.id)))[0]!;
+
+    await agent.post(`/api/reports/${report.id}/document`).send({ pages: 20 }).expect(202);
+    for (let attempt = 0; attempt < 300 && (((await row()).sections ?? []).filter(Boolean).length < 5 || (await row()).leaseUntil); attempt += 1) await sleep(50);
+
+    // Un passage coupé sans avoir rendu la main : sa réservation est échue. Il compte pour un essai, et le suivant repart.
+    await getDb().update(reportDocuments).set({ leaseUntil: new Date(Date.now() - 1_000), retryCount: 3 }).where(eq(reportDocuments.reportId, report.id));
+    const resumed = (await agent.get(`/api/reports/${report.id}/document`).expect(200)).body.document as Document;
+    assert.equal(resumed.status, 'writing', 'un passage perdu ne suffit pas à abandonner');
+    const document = await waitForDocument(agent, report.id);
+    assert.equal(document.status, 'ready', JSON.stringify(document.error));
+    assert.equal((await row()).retryCount, 0, 'une avancée efface les essais passés');
+
+    // Réécriture, puis des passages perdus à la suite, sans rien d'écrit : là seulement, abandon et remboursement.
+    const spent = before.credits.total - (await balance(agent)).credits.total;
+    await agent.post(`/api/reports/${report.id}/document`).send({ pages: 20 }).expect(202);
+    for (let attempt = 0; attempt < 300 && (((await row()).sections ?? []).filter(Boolean).length < 5 || (await row()).leaseUntil); attempt += 1) await sleep(50);
+    await getDb().update(reportDocuments).set({ leaseUntil: new Date(Date.now() - 1_000), retryCount: 4 }).where(eq(reportDocuments.reportId, report.id));
+    const abandoned = (await agent.get(`/api/reports/${report.id}/document`).expect(200)).body.document as Document;
+    assert.equal(abandoned.status, 'failed');
+    assert.equal(abandoned.error?.code, 'REPORT_TIMEOUT');
+    assert.match(abandoned.error!.message, /points ont été rendus/);
+    assert.equal(before.credits.total - (await balance(agent)).credits.total, spent, 'la seconde rédaction est remboursée, la première reste payée');
   });
 
   it('reprend seule après un refus passager, sans message ni nouveau débit', async () => {

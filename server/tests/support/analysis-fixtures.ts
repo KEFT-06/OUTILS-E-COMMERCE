@@ -138,6 +138,8 @@ export interface FakeProviders {
   setOverload: (calls: number) => void;
   /** Le rédacteur du rapport répond 503 aux N prochains appels (rapport ou partie). */
   setReportOverload: (calls: number) => void;
+  /** Le rédacteur refuse (503) toute partie dont le titre contient ce texte, pour les N prochains appels. */
+  setPartOverload: (heading: string, calls: number) => void;
   close: () => Promise<void>;
 }
 
@@ -208,7 +210,9 @@ export function fakeWrittenReport(input: string): string {
   ].join('\n\n');
 }
 
-export async function startFakeProviders(): Promise<FakeProviders> {
+/** `partSentences` : longueur des parties écrites par le faux rédacteur (14 phrases par défaut ; davantage pour un volume réel). */
+export async function startFakeProviders(options: { partSentences?: number } = {}): Promise<FakeProviders> {
+  const partSentences = options.partSentences ?? 14;
   const geminiCalls: FakeCall[] = [];
   const writerCalls: FakeCall[] = [];
   const sharpenCalls: string[] = [];
@@ -217,6 +221,7 @@ export async function startFakeProviders(): Promise<FakeProviders> {
   const searchQueries: { token: string | undefined; query: string | null; country: string | null }[] = [];
   let overloadRemaining = 0;
   let reportOverloadRemaining = 0;
+  let partOverload = { heading: '', remaining: 0 };
 
   const server: Server = createServer((req, res) => {
     const chunks: Buffer[] = [];
@@ -286,6 +291,23 @@ export async function startFakeProviders(): Promise<FakeProviders> {
               reportOverloadRemaining -= 1;
               return send(503, { error: { message: 'The model is overloaded. Please try again later.' } });
             }
+            // Rapport de plus de quarante pages : les chapitres d'abord, puis les parties de chacun.
+            if ((body as { response_format?: unknown }).response_format && input.includes('PLAN DES CHAPITRES')) {
+              const niche = /« ([^»]+) »/.exec(input)?.[1] ?? 'la niche';
+              const chapters = Number(/(\d+) chapitres/.exec(input)?.[1] ?? 3);
+              const pages = Number(/environ (\d+) pages/.exec(input)?.[1] ?? 45);
+              return send(200, completed(JSON.stringify({
+                title: `Rapport long : ${niche}`,
+                chapters: Array.from({ length: chapters }, (_, index) => ({ title: `Chapitre ${index + 1}`, focus: `Couvrir le thème ${index + 1}`, pages: pages / chapters })),
+              })));
+            }
+            const chapitre = /PLAN DU CHAPITRE (\d+) : « ([^»]+) »/.exec(input);
+            if ((body as { response_format?: unknown }).response_format && chapitre) {
+              const parts = Number(/Propose (\d+) parties/.exec(input)?.[1] ?? 2);
+              return send(200, completed(JSON.stringify({
+                sections: Array.from({ length: parts }, (_, index) => ({ heading: `Partie ${chapitre[1]}.${index + 1}`, focus: `Couvrir le point ${index + 1} du chapitre ${chapitre[1]}`, pages: 2 })),
+              })));
+            }
             // Rapport long : un plan, puis une réponse par partie.
             if ((body as { response_format?: unknown }).response_format && input.includes('PLAN DU RAPPORT')) {
               const niche = /« ([^»]+) »/.exec(input)?.[1] ?? 'la niche';
@@ -303,11 +325,16 @@ export async function startFakeProviders(): Promise<FakeProviders> {
               })));
             }
             const partie = /RÉDIGE LA PARTIE \d+ : « ([^»]+) »/.exec(input);
+            // Une seule partie refusée, les autres de la même vague aboutissent.
+            if (partie && partOverload.remaining > 0 && partie[1]!.includes(partOverload.heading)) {
+              partOverload.remaining -= 1;
+              return send(503, { error: { message: 'The model is overloaded. Please try again later.' } });
+            }
             if (partie) {
               return send(200, completed([
                 `## ${partie[1]}`,
                 `Cette partie développe ${partie[1]!.toLowerCase()} à partir des sources : la demande urbaine progresse [1], et les éleveurs cherchent un accompagnement concret [2]. ` +
-                  'Une offre courte et pratique, suivie d’un accompagnement, répond mieux à cette attente qu’un long guide théorique. '.repeat(14),
+                  'Une offre courte et pratique, suivie d’un accompagnement, répond mieux à cette attente qu’un long guide théorique. '.repeat(partSentences),
               ].join('\n\n')));
             }
             if ((body as { response_format?: unknown }).response_format) return send(200, completed(JSON.stringify(fakeAnalysis(input))));
@@ -363,6 +390,9 @@ export async function startFakeProviders(): Promise<FakeProviders> {
     },
     setReportOverload: (calls: number) => {
       reportOverloadRemaining = calls;
+    },
+    setPartOverload: (heading: string, calls: number) => {
+      partOverload = { heading, remaining: calls };
     },
     searchQueries,
     agentCalls,
