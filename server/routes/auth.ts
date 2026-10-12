@@ -8,6 +8,7 @@ import { requireAuth } from '@server/middleware/auth';
 import { clearReferralCookie, referralCodeOf } from '@server/routes/referral';
 import { attachReferral, normalizeCode } from '@server/services/referral';
 import { loadAccount } from '@server/services/accounts';
+import { readAccountPhone } from '@server/services/accounts/phone';
 import { accountView } from '@server/services/accounts/view';
 import { clientInfo, recordAuthEvent } from '@server/services/audit';
 import {
@@ -74,6 +75,8 @@ const signupSchema = z.object({
   password: passwordInputSchema,
   /** Pays de l'utilisateur : il fixe la devise des prix affichés. */
   country: countrySchema.optional(),
+  /** Numéro de téléphone, tel que saisi : mis au format international d'après le pays. */
+  phone: z.string().trim().max(24).optional(),
   /** Champ piège invisible : un robot le remplit, une personne jamais. */
   website: z.string().max(200).optional(),
   /** Code du parrain dont le lien a été suivi pendant cette visite, quand aucun cookie ne le porte. */
@@ -85,10 +88,11 @@ authRouter.post(
   routeLimiter(60, 10),
   validateBody(signupSchema),
   asyncRoute(async (req, res) => {
-    const { name, email, password, country, website, ref } = req.body as z.infer<typeof signupSchema>;
+    const { name, email, password, country, website, ref, phone: typed } = req.body as z.infer<typeof signupSchema>;
     if (website) throw new AppError(400, 'L’inscription n’a pas pu aboutir.', 'SIGNUP_REJECTED');
+    const phone = readAccountPhone(typed, country) ?? null;
     const client = clientInfo(req);
-    const user = await registerUser({ name, email, password, country, client });
+    const user = await registerUser({ name, email, password, country, phone, client });
     await attachFollowedReferral(req, res, user.id, ref);
     await respondWithSession(req, res, await openSession(user, false, client), 201);
   }),

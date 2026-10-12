@@ -23,6 +23,8 @@ export async function accountView(auth: RequestAuth) {
     status: user.status,
     /** Null tant que l'utilisateur n'a pas choisi son pays. */
     country: user.country,
+    /** Numéro déclaré, au format international ; null tant qu'il n'est pas renseigné. */
+    phone: user.phone,
     /** Devise d'affichage des prix : celle du pays, ou le dollar à défaut. */
     currency: currencyForCountry(user.country, await getRates()),
     plan: { id: plan.id, label: plan.label },

@@ -20,7 +20,7 @@ interface AuthContextType {
   account: Account | null;
   status: AuthStatus;
   isAuthenticated: boolean;
-  signup: (input: { name: string; email: string; password: string; country: string; website?: string }) => Promise<void>;
+  signup: (input: { name: string; email: string; password: string; country: string; phone?: string; website?: string }) => Promise<void>;
   /** `mfaRequired` : le mot de passe est bon, le second facteur est attendu (`methods` dit lequel). */
   login: (input: { email: string; password: string }) => Promise<{ mfaRequired: boolean; methods: SecondFactorMethods | null }>;
   verifyMfa: (code: string) => Promise<void>;
@@ -29,7 +29,7 @@ interface AuthContextType {
   /** Relit le compte (solde, palier, privilèges) depuis le serveur. */
   refresh: () => Promise<Account | null>;
   setAccount: (account: Account | null) => void;
-  updateProfile: (updates: { name?: string; country?: string }) => Promise<void>;
+  updateProfile: (updates: { name?: string; country?: string; phone?: string }) => Promise<void>;
   /** Enregistre une niche, dans la limite du palier (le serveur refuse au-delà). */
   saveNiche: (name: string) => Promise<void>;
   removeNiche: (name: string) => Promise<void>;
@@ -117,7 +117,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     return () => window.removeEventListener(SESSION_EXPIRED_EVENT, onExpired);
   }, []);
 
-  const signup = useCallback(async (input: { name: string; email: string; password: string; country: string; website?: string; ref?: string }) => {
+  const signup = useCallback(async (input: { name: string; email: string; password: string; country: string; phone?: string; website?: string; ref?: string }) => {
     const { account: created } = await apiRequest<{ account: Account }>('/api/auth/signup', { method: 'POST', body: input });
     setAccount(created);
   }, []);
@@ -158,7 +158,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   }, []);
 
-  const updateProfile = useCallback(async (updates: { name?: string; country?: string }) => {
+  const updateProfile = useCallback(async (updates: { name?: string; country?: string; phone?: string }) => {
     const { account: updated } = await apiRequest<{ account: Account }>('/api/account/profile', {
       method: 'PATCH',
       body: updates,

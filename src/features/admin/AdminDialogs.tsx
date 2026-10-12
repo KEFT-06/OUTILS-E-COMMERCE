@@ -5,7 +5,7 @@ import type { PlanCatalog } from '@/shared/types/auth';
 import { useEffect, useState } from 'react';
 import { parseAmount } from '@/shared/lib/parseAmount';
 import { toast } from 'sonner';
-import { Banknote, Ban, KeyRound, LogOut, Minus, Plus, RotateCcw, Search, TriangleAlert, UserPlus, Zap } from 'lucide-react';
+import { Banknote, Ban, KeyRound, LogOut, Minus, Plus, RotateCcw, Search, Trash2, TriangleAlert, UserPlus, Zap } from 'lucide-react';
 import type { AdminMeta, AdminPayment, AdminUserDetail, UserList } from '@/features/admin/adminApi';
 import { CopyableLink } from '@/features/admin/components';
 import { apiRequest } from '@/shared/lib/api';
@@ -974,6 +974,81 @@ export function SuspendDialog({ detail, onDone }: { detail: AdminUserDetail; onD
             >
               {state.busy && <Spinner />}
               {suspended ? 'Débloquer' : 'Bloquer'}
+            </Button>
+          </DialogFooter>
+        </form>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+/* -------------------------------------------------------------------------- */
+/*  Suppression d'un compte                                                    */
+/* -------------------------------------------------------------------------- */
+
+/**
+ * Supprime définitivement le compte d'un utilisateur. C'est la seule action de la fiche qu'aucune
+ * manœuvre ne rattrape : elle demande d'écrire SUPPRIMER et de redonner son code de vérification.
+ * Le serveur refuse son propre compte et le dernier administrateur.
+ */
+export function DeleteUserDialog({ detail, onDeleted }: { detail: AdminUserDetail; onDeleted: () => void }) {
+  const state = useDialogState();
+  const [confirmation, setConfirmation] = useState('');
+  const [code, setCode] = useState('');
+
+  const close = (open: boolean) => {
+    state.setOpen(open);
+    if (!open) {
+      setConfirmation('');
+      setCode('');
+      state.setError(null);
+    }
+  };
+
+  const submit = (event: React.FormEvent) => {
+    event.preventDefault();
+    void state.run(async () => {
+      await apiRequest(`/api/admin/users/${detail.user.id}`, { method: 'DELETE', body: { confirmation: confirmation.trim(), confirmationCode: code.trim() } });
+      toast.success('Compte supprimé', { description: `${detail.user.email} n’existe plus.` });
+      close(false);
+      onDeleted();
+    }, 'Le compte n’a pas pu être supprimé.');
+  };
+
+  return (
+    <Dialog open={state.open} onOpenChange={close}>
+      <DialogTrigger asChild>
+        <Button variant="ghost" size="sm" className="text-danger hover:text-danger">
+          <Trash2 />
+          Supprimer
+        </Button>
+      </DialogTrigger>
+      <DialogContent className="sm:max-w-md">
+        <form onSubmit={submit} className="space-y-4">
+          <DialogHeader>
+            <DialogTitle>Supprimer le compte de {detail.user.name}</DialogTitle>
+            <DialogDescription>
+              Ses contenus, ses points, ses sessions et son historique sont effacés pour de bon. Ses paiements restent au registre, détachés de son nom. Cette action ne s’annule pas : pour seulement
+              fermer l’accès, bloquez le compte.
+            </DialogDescription>
+          </DialogHeader>
+          <Field>
+            <FieldLabel htmlFor="delete-confirmation">Écrivez SUPPRIMER pour confirmer</FieldLabel>
+            <Input id="delete-confirmation" value={confirmation} onChange={(event) => setConfirmation(event.target.value)} autoComplete="off" maxLength={12} />
+          </Field>
+          <Field>
+            <FieldLabel htmlFor="delete-code">Votre code de vérification</FieldLabel>
+            <Input id="delete-code" type="password" value={code} onChange={(event) => setCode(event.target.value.slice(0, 128))} autoComplete="off" />
+            <FieldDescription>Le code de votre second facteur, comme à la connexion.</FieldDescription>
+          </Field>
+          <ErrorLine error={state.error} />
+          <DialogFooter className="gap-2 sm:gap-2">
+            <Button type="button" variant="outline" onClick={() => close(false)}>
+              Annuler
+            </Button>
+            <Button type="submit" variant="destructive" disabled={state.busy || confirmation.trim() !== 'SUPPRIMER' || code.trim().length < 6}>
+              {state.busy && <Spinner />}
+              Supprimer définitivement
             </Button>
           </DialogFooter>
         </form>

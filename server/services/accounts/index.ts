@@ -68,6 +68,7 @@ export async function createUserRecord(
     role: 'user' | 'admin';
     plan?: PlanId;
     country?: string | null;
+    phone?: string | null;
   },
   executor?: Transaction,
 ): Promise<UserRow> {
@@ -84,6 +85,7 @@ export async function createUserRecord(
           email: input.email,
           passwordHash: input.passwordHash,
           country: input.country ?? null,
+          phone: input.phone ?? null,
           role: input.role,
           plan: plan.id,
           planCredits: credits,

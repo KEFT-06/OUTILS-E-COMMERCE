@@ -76,6 +76,8 @@ export interface Account {
   status: 'active' | 'suspended';
   /** Code ISO du pays ; null tant qu'il n'est pas choisi. */
   country: string | null;
+  /** Numéro de téléphone déclaré, au format international ; null tant qu'il n'est pas renseigné. */
+  phone: string | null;
   /** Devise d'affichage des prix (ISO 4217). */
   currency: string;
   plan: { id: PlanId; label: string };

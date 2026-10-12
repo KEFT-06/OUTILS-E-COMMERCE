@@ -1,14 +1,16 @@
 import { countryName } from '@server/shared/countries';
+import { formatPhone } from '@server/shared/phone';
 import { CountryFlag } from '@/shared/components/CountryFlag';
 import { useEffect, useState } from 'react';
-import { Link, useParams } from 'react-router-dom';
+import { Link, useNavigate, useParams } from 'react-router-dom';
 import { toast } from 'sonner';
-import { ArrowLeft, History, Info, KeyRound, ShieldOff, TriangleAlert, UserCog } from 'lucide-react';
+import { ArrowLeft, History, Info, KeyRound, Phone, ShieldOff, TriangleAlert, UserCog } from 'lucide-react';
 import { ConnectionTable } from '@/features/admin/AdminConnectionsPage';
 import { useCreditGate } from '@/app/providers/CreditGateProvider';
 import { type AdminMeta, type AdminUserDetail, useAdminMeta, useAdminResource } from '@/features/admin/adminApi';
 import {
   ChangePlanDialog,
+  DeleteUserDialog,
   GrantCreditsDialog,
   PasswordLinkDialog,
   RecordPaymentDialog,
@@ -80,6 +82,7 @@ function signed(delta: number) {
 export function AdminUserDetailPage() {
   const { userId } = useParams<{ userId: string }>();
   const { account } = useAuth();
+  const navigate = useNavigate();
   const meta = useAdminMeta();
   const { data, error, reload, setData } = useAdminResource<AdminUserDetail>(userId ? `/api/admin/users/${userId}` : null);
 
@@ -135,6 +138,16 @@ export function AdminUserDetailPage() {
                 </>
               )}
             </p>
+            <p className="flex items-center gap-1.5 text-sm text-muted-foreground">
+              <Phone className="size-3.5" aria-hidden="true" />
+              {data.user.phone ? (
+                <a href={`tel:${data.user.phone}`} className="font-medium text-foreground tabular-nums hover:underline">
+                  {formatPhone(data.user.phone, data.user.country)}
+                </a>
+              ) : (
+                <span>Téléphone non renseigné</span>
+              )}
+            </p>
             <div className="flex flex-wrap items-center gap-2">
               <Badge variant={data.user.plan.id === 'free' ? 'secondary' : 'brand'}>Palier {data.user.plan.label}</Badge>
               {data.user.role === 'admin' ? (
@@ -164,6 +177,8 @@ export function AdminUserDetailPage() {
             {canManage && !isSelf && <PasswordLinkDialog detail={data} />}
             {canManage && !isSelf && <RevokeSessionsDialog detail={data} onDone={() => void reload()} />}
             {canManage && !isSelf && <SuspendDialog detail={data} onDone={update} />}
+            {/* Réservé aux administrateurs, comme côté serveur. */}
+            {isAdmin && !isSelf && <DeleteUserDialog detail={data} onDeleted={() => navigate('/app/admin/utilisateurs', { replace: true })} />}
           </div>
         </CardContent>
       </Card>

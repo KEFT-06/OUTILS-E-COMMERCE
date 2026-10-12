@@ -127,8 +127,9 @@ function Confidentialite() {
       <Section title="Données conservées">
         <ul className="list-disc space-y-1.5 pl-5">
           <li>
-            <strong>Compte</strong> : nom, adresse e-mail, pays, date de confirmation de l’adresse, palier et points de
-            recherche. Le mot de passe n’est jamais conservé en clair (empreinte Argon2id) ; le secret de l’application
+            <strong>Compte</strong> : nom, adresse e-mail, pays, numéro de téléphone que vous indiquez (pour vous joindre et
+            préremplir un paiement par Mobile Money ; il n’est pas vérifié et se retire dans « Mon compte »), date de
+            confirmation de l’adresse, palier et points de recherche. Le mot de passe n’est jamais conservé en clair (empreinte Argon2id) ; le secret de l’application
             d’authentification est chiffré.
           </li>
           <li>

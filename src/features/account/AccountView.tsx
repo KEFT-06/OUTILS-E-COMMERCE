@@ -16,6 +16,8 @@ import { RecoveryCodesPanel, TwoFactorSetup } from '@/features/auth/TwoFactorSet
 import { CountryCombobox } from '@/shared/components/CountryCombobox';
 import { PlanCards } from '@/shared/components/PlanCards';
 import { findCountry } from '@server/shared/countries';
+import { dialCodeOf } from '@server/shared/dialCodes';
+import { formatPhone } from '@server/shared/phone';
 import { PageHeader } from '@/shared/components/PageHeader';
 import { apiRequest, passwordProblemsOf } from '@/shared/lib/api';
 import { useCachedState } from '@/shared/lib/apiCache';
@@ -100,6 +102,94 @@ function CountryField({ account }: { account: Account }) {
       />
       <span className="text-xs text-muted-foreground">Prix affichés en {account.currency}</span>
     </div>
+  );
+}
+
+/**
+ * Numéro de téléphone du compte : affiché, corrigé sur place. Il sert à joindre la personne et à
+ * préremplir un paiement par Mobile Money ; il n'est demandé qu'une fois.
+ */
+function PhoneField({ account }: { account: Account }) {
+  const { updateProfile } = useAuth();
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState('');
+  const [saving, setSaving] = useState(false);
+  const dial = dialCodeOf(account.country);
+  const shown = formatPhone(account.phone, account.country);
+
+  const save = async () => {
+    setSaving(true);
+    try {
+      await updateProfile({ phone: draft.trim() });
+      setEditing(false);
+      toast.success(draft.trim() ? 'Numéro enregistré' : 'Numéro retiré');
+    } catch (caught) {
+      toast.error('Le numéro n’a pas pu être enregistré', { description: toApiError(caught, 'Erreur inconnue.').message });
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  if (!editing) {
+    return (
+      <div id="telephone" className="flex scroll-mt-24 flex-wrap items-center gap-2">
+        <span className="text-sm text-muted-foreground">Téléphone</span>
+        {shown ? <span className="text-sm font-medium tabular-nums">{shown}</span> : <span className="text-sm text-muted-foreground">non renseigné</span>}
+        <Button
+          variant={shown ? 'ghost' : 'outline'}
+          size="sm"
+          className="h-8"
+          onClick={() => {
+            // Le numéro s'édite sans son indicatif quand le pays est connu : c'est ainsi qu'on le dicte.
+            const digits = (account.phone ?? '').replace(/\D/g, '');
+            setDraft(dial && digits.startsWith(dial) ? digits.slice(dial.length) : (account.phone ?? ''));
+            setEditing(true);
+          }}
+        >
+          <Pencil />
+          {shown ? 'Modifier' : 'Ajouter mon numéro'}
+        </Button>
+      </div>
+    );
+  }
+
+  return (
+    <form
+      id="telephone"
+      className="flex scroll-mt-24 flex-wrap items-center gap-2"
+      onSubmit={(event) => {
+        event.preventDefault();
+        void save();
+      }}
+    >
+      <label htmlFor="profile-phone" className="text-sm text-muted-foreground">
+        Téléphone
+      </label>
+      <div className="flex items-stretch">
+        {dial && <span className="flex items-center rounded-l-md border border-r-0 bg-muted px-2.5 text-sm font-medium tabular-nums">+{dial}</span>}
+        <Input
+          id="profile-phone"
+          type="tel"
+          inputMode="tel"
+          autoComplete="tel-national"
+          value={draft}
+          onChange={(event) => setDraft(event.target.value)}
+          onKeyDown={(event) => {
+            if (event.key === 'Escape') setEditing(false);
+          }}
+          maxLength={24}
+          className={cn('h-8 w-44 tabular-nums', dial && 'rounded-l-none')}
+          autoFocus
+        />
+      </div>
+      <Button type="submit" size="sm" className="h-8" disabled={saving}>
+        {saving ? <Spinner /> : <Check />}
+        Enregistrer
+      </Button>
+      <Button type="button" variant="ghost" size="sm" className="h-8" onClick={() => setEditing(false)} disabled={saving}>
+        Annuler
+      </Button>
+    </form>
   );
 }
 
@@ -214,6 +304,7 @@ function ProfileCard({ account }: { account: Account }) {
           <p className="text-sm text-muted-foreground">{account.email}</p>
           <EmailVerificationNotice account={account} />
           <CountryField account={account} />
+          <PhoneField account={account} />
 
           <div className="flex flex-wrap items-center gap-2">
             <Badge variant={account.plan.id === 'free' ? 'secondary' : 'brand'}>Palier {account.plan.label}</Badge>
@@ -1820,6 +1911,16 @@ export function AccountView({ onSelectSavedNiche }: AccountViewProps) {
           <TriangleAlert />
           <AlertTitle>Choisissez votre pays</AlertTitle>
           <AlertDescription>Il fixe la devise de tous vos montants.</AlertDescription>
+        </Alert>
+      )}
+      {/* Comptes ouverts avant que le numéro soit demandé, ou par Google : un rappel, jamais un blocage. */}
+      {account.country && !account.phone && (
+        <Alert variant="info">
+          <Smartphone />
+          <AlertTitle>Ajoutez votre numéro de téléphone</AlertTitle>
+          <AlertDescription>
+            Il sert à vous joindre et à payer par Mobile Money sans le ressaisir. Le champ « Téléphone » est juste en dessous, sous votre pays.
+          </AlertDescription>
         </Alert>
       )}
       <ProfileCard account={account} />

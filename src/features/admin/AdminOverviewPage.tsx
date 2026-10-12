@@ -4,12 +4,15 @@ import { Area, AreaChart, CartesianGrid, XAxis, YAxis } from 'recharts';
 import {
   Activity,
   ArrowUpRight,
+  Ban,
   Banknote,
   Coins,
   Film,
+  Mail,
   RefreshCw,
   Repeat,
   ShieldAlert,
+  Smartphone,
   UsersRound,
   Wifi,
 } from 'lucide-react';
@@ -22,6 +25,7 @@ import {
   useAdminMeta,
   useAdminResource,
 } from '@/features/admin/adminApi';
+import { AdminUsersGrowthCard } from '@/features/admin/AdminUsersGrowthCard';
 import { AdminErrorAlert, GranularityToggle, KpiCard } from '@/features/admin/components';
 import { changeRatio, compactNumber, describeAuditDetails, formatPeriod } from '@/features/admin/format';
 import { initialsOf, useAuth } from '@/features/auth/AuthContext';
@@ -39,6 +43,46 @@ import { Progress } from '@/shared/ui/progress';
 import { Skeleton } from '@/shared/ui/skeleton';
 
 const revenueConfig = { amount: { label: 'Encaissé (FCFA)', color: 'var(--chart-1)' } } satisfies ChartConfig;
+
+/**
+ * Ce qui attend un geste de l'équipe, en tête du tableau de bord : chaque ligne mène à l'écran où
+ * l'on agit. Rien à traiter : la rangée ne s'affiche pas — un « tout va bien » permanent ne se lit plus.
+ */
+function AttentionRow({ data, canUsers }: { data: AdminOverview; canUsers: boolean }) {
+  const plural = (count: number, one: string, many: string) => `${count.toLocaleString('fr-FR')} ${count > 1 ? many : one}`;
+  // Une réponse gardée d'avant cette rangée n'a pas ce bloc : rien à traiter, plutôt qu'un écran cassé.
+  const attention = data.attention ?? { newMessages: 0, openMobilePayments: 0 };
+  const items = [
+    canUsers && attention.newMessages > 0
+      ? { to: '/app/admin/messages', icon: Mail, label: plural(attention.newMessages, 'message à lire', 'messages à lire') }
+      : null,
+    canUsers && data.users.suspended > 0
+      ? { to: '/app/admin/utilisateurs?statut=suspended', icon: Ban, label: plural(data.users.suspended, 'compte bloqué', 'comptes bloqués') }
+      : null,
+    attention.openMobilePayments > 0
+      ? { to: '/app/admin/revenus', icon: Smartphone, label: plural(attention.openMobilePayments, 'paiement Mobile Money en attente de validation', 'paiements Mobile Money en attente de validation') }
+      : null,
+  ].filter((item): item is { to: string; icon: typeof Mail; label: string } => item !== null);
+  if (items.length === 0) return null;
+
+  return (
+    <nav aria-label="À traiter" className="flex flex-wrap items-center gap-2 rounded-xl border bg-card p-3">
+      <span className="px-1 text-sm font-semibold">À traiter</span>
+      {items.map((item) => {
+        const Icon = item.icon;
+        return (
+          <Button key={item.to} variant="outline" size="sm" asChild>
+            <Link to={item.to}>
+              <Icon />
+              {item.label}
+              <ArrowUpRight />
+            </Link>
+          </Button>
+        );
+      })}
+    </nav>
+  );
+}
 
 export function AdminOverviewPage() {
   const { account } = useAuth();
@@ -82,6 +126,8 @@ export function AdminOverviewPage() {
       />
 
       {overview.error && <AdminErrorAlert error={overview.error} onRetry={() => void overview.reload()} />}
+
+      {data && <AttentionRow data={data} canUsers={canUsers} />}
 
       <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
         {!data ? (
@@ -257,6 +303,8 @@ export function AdminOverviewPage() {
           </CardContent>
         </Card>
       </div>
+
+      <AdminUsersGrowthCard users={data?.users ?? null} canOpenUsers={canUsers} />
 
       <div className="grid gap-6 lg:grid-cols-3">
         <Card>

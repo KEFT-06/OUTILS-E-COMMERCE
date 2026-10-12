@@ -1,3 +1,5 @@
+import { dialCodeOf } from './dialCodes';
+
 /**
  * Numéros de téléphone, tels que les gens les tapent : avec des espaces, un « + », un « 00 », ou
  * sans l'indicatif du pays. Module pur, partagé avec le site.
@@ -26,4 +28,28 @@ export function internationalNumber(input: string, prefix: string): string | nul
 /** Ce qu'on garde d'un numéro pour le reconnaître sans le conserver : ses deux derniers chiffres. */
 export function phoneHint(international: string): string {
   return `•••• ${international.slice(-2)}`;
+}
+
+/**
+ * Le numéro d'un compte, tel qu'il est enregistré : « + », puis l'indicatif et le numéro, sans
+ * espace. `null` quand la saisie ne peut pas être un numéro.
+ *
+ * Sans pays connu, le numéro doit porter lui-même son indicatif (« + » ou « 00 ») : on ne devine
+ * pas le pays de quelqu'un.
+ */
+export function accountPhone(input: string, country: string | null | undefined): string | null {
+  const dial = dialCodeOf(country);
+  if (!dial && !/^\s*(\+|00)/.test(input)) return null;
+  const digits = internationalNumber(input, dial);
+  return digits ? `+${digits}` : null;
+}
+
+/** Le numéro tel qu'on le lit : indicatif, puis le reste par groupes de deux ou trois chiffres. */
+export function formatPhone(phone: string | null | undefined, country?: string | null): string {
+  const digits = (phone ?? '').replace(/\D/g, '');
+  if (!digits) return '';
+  const dial = dialCodeOf(country);
+  const local = dial && digits.startsWith(dial) && digits.length > dial.length + 5 ? digits.slice(dial.length) : null;
+  const grouped = (value: string) => (value.length % 2 === 1 ? [value.slice(0, 3), ...(value.slice(3).match(/.{1,2}/g) ?? [])] : (value.match(/.{1,2}/g) ?? [])).join(' ');
+  return local ? `+${dial} ${grouped(local)}` : `+${grouped(digits)}`;
 }

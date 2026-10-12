@@ -12,6 +12,8 @@ import { useAuth } from '@/features/auth/AuthContext';
 import { useProviders } from '@/shared/hooks/useProviders';
 import { CountryCombobox } from '@/shared/components/CountryCombobox';
 import { guessCountryCode } from '@/shared/lib/geo';
+import { dialCodeOf } from '@server/shared/dialCodes';
+import { accountPhone } from '@server/shared/phone';
 import type { SecondFactorMethods } from '@/shared/types/auth';
 import { PASSWORD_MIN_LENGTH, PasswordHints, PasswordInput } from '@/features/auth/PasswordInput';
 import { passwordProblemsOf } from '@/shared/lib/api';
@@ -50,12 +52,18 @@ const signupSchema = z
       .max(128, '128 caractères au plus.'),
     confirmation: z.string(),
     country: z.string().min(2, 'Choisissez votre pays : la devise des prix en dépend.'),
+    phone: z.string().trim().min(1, 'Indiquez votre numéro de téléphone.').max(24, 'Numéro trop long.'),
     /** Champ piège invisible : un robot le remplit, une personne jamais. */
     website: z.string().optional(),
   })
   .refine((values) => values.password === values.confirmation, {
     message: 'Les deux mots de passe ne correspondent pas.',
     path: ['confirmation'],
+  })
+  // Même lecture que le serveur : ce qui passe ici sera accepté là-bas.
+  .refine((values) => !values.phone || accountPhone(values.phone, values.country) !== null, {
+    message: 'Ce numéro n’est pas reconnu : écrivez-le en entier, sans oublier de chiffre.',
+    path: ['phone'],
   });
 
 const mfaSchema = z.object({ code: z.string().trim().min(6, 'Saisissez votre code (6 caractères au moins).').max(128, 'Code trop long.') });
@@ -255,16 +263,17 @@ function SignupForm() {
   const [error, setError] = useState<ApiError | null>(null);
   const form = useForm<z.infer<typeof signupSchema>>({
     resolver: zodResolver(signupSchema),
-    defaultValues: { name: '', email: '', password: '', confirmation: '', country: guessCountryCode() ?? '', website: '' },
+    defaultValues: { name: '', email: '', password: '', confirmation: '', country: guessCountryCode() ?? '', phone: '', website: '' },
   });
   const password = form.watch('password');
+  const dial = dialCodeOf(form.watch('country'));
 
-  const onSubmit = form.handleSubmit(async ({ name, email, password: chosen, country, website }) => {
+  const onSubmit = form.handleSubmit(async ({ name, email, password: chosen, country, phone, website }) => {
     setError(null);
     try {
       // Arrivé par le lien d'un membre pendant cette visite : le compte lui est rattaché.
       const ref = currentReferral();
-      await signup({ name, email, password: chosen, country, ...(website ? { website } : {}), ...(ref ? { ref } : {}) });
+      await signup({ name, email, password: chosen, country, phone, ...(website ? { website } : {}), ...(ref ? { ref } : {}) });
     } catch (caught) {
       setError(toApiError(caught, 'La création du compte a échoué.'));
     }
@@ -320,6 +329,33 @@ function SignupForm() {
                 <FieldError errors={[fieldState.error]} />
               ) : (
                 <FieldDescription>Les prix s’affichent dans la devise de votre pays.</FieldDescription>
+              )}
+            </Field>
+          )}
+        />
+        <Controller
+          name="phone"
+          control={form.control}
+          render={({ field, fieldState }) => (
+            <Field data-invalid={fieldState.invalid}>
+              <FieldLabel htmlFor="signup-phone">Numéro de téléphone</FieldLabel>
+              <div className="flex items-stretch">
+                {dial && <span className="flex items-center rounded-l-md border border-r-0 bg-muted px-3 text-sm font-medium tabular-nums">+{dial}</span>}
+                <Input
+                  {...field}
+                  id="signup-phone"
+                  type="tel"
+                  inputMode="tel"
+                  autoComplete="tel-national"
+                  maxLength={24}
+                  className={dial ? 'rounded-l-none tabular-nums' : 'tabular-nums'}
+                  aria-invalid={fieldState.invalid}
+                />
+              </div>
+              {fieldState.invalid ? (
+                <FieldError errors={[fieldState.error]} />
+              ) : (
+                <FieldDescription>Pour vous joindre, et pour payer par Mobile Money sans le ressaisir.</FieldDescription>
               )}
             </Field>
           )}

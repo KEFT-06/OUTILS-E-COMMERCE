@@ -38,6 +38,7 @@ import {
   listUsers,
   onlineUsers,
   revenueSeries,
+  usersSeries,
   revenueTotals,
   securityEvents,
   serializePayment,
@@ -209,6 +210,15 @@ adminRouter.get(
     const fournisseur = (['veo', 'fal'] as const).find((nom) => nom === creative.provider);
     if (!fournisseur) throw new AppError(409, 'Fournisseur de ce créatif inconnu.', 'CREATIVE_PROVIDER_UNKNOWN');
     await streamCreativeFile(creative.providerRef, fournisseur, disposition, res);
+  }),
+);
+
+/** Les comptes dans le temps, pour le graphe des utilisateurs de la vue d'ensemble. */
+adminRouter.get(
+  '/series/users',
+  requirePermission('admin.dashboard.read'),
+  asyncRoute(async (req, res) => {
+    res.json(await usersSeries(granularityOf(req.query.granularity)));
   }),
 );
 

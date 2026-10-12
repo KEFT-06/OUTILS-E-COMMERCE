@@ -65,6 +65,8 @@ export interface AuditEntry {
 export interface AdminOverview {
   generatedAt: string;
   timezone: string;
+  /** Ce qui attend un geste de l'équipe. Absent d'une réponse gardée d'avant son ajout. */
+  attention?: { newMessages: number; openMobilePayments: number };
   users: { total: number; newToday: number; new7d: number; new30d: number; suspended: number; admins: number; withTwoFactor: number };
   /** Actifs : au moins une requête sur la période, d'après l'historique des connexions. */
   online: { users: number; sessions: number; activeToday: number; active7d: number; active30d: number };
@@ -84,6 +86,16 @@ export interface RevenueSeries {
   total: number;
   byPlan: { plan: string; label: string; amount: number; payments: number }[];
   byMethod: { method: string; amount: number; payments: number }[];
+}
+
+/** Les comptes dans le temps (GET /api/admin/series/users). */
+export interface UsersSeries {
+  granularity: Granularity;
+  timezone: string;
+  /** Comptes ouverts pendant la période, et nombre de comptes à la fin de celle-ci. */
+  points: { period: string; signups: number; total: number }[];
+  /** Comptes ouverts sur toute la plage affichée. */
+  signups: number;
 }
 
 export interface UsageSeries {
@@ -137,6 +149,8 @@ export interface AdminUserRow {
   isStaff: boolean;
   twoFactorEnabled: boolean;
   country: string | null;
+  /** Numéro déclaré par l'utilisateur, au format international ; null s'il ne l'a pas donné. */
+  phone: string | null;
 }
 
 export interface UserList {
@@ -192,6 +206,7 @@ export interface AdminUserDetail {
     twoFactorEnabled: boolean;
     twoFactorMethods: { app: boolean; code: boolean };
     country: string | null;
+    phone: string | null;
     isStaff: boolean;
   };
   credits: CreditBalance;

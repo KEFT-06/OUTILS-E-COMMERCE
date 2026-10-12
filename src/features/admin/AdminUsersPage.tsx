@@ -8,6 +8,7 @@ import { AdminErrorAlert, Pagination, PresenceLabel } from '@/features/admin/com
 import { initialsOf, useAuth } from '@/features/auth/AuthContext';
 import { PageHeader } from '@/shared/components/PageHeader';
 import { formatDateFr } from '@/shared/lib/formatDate';
+import { formatPhone } from '@server/shared/phone';
 import { Avatar, AvatarFallback } from '@/shared/ui/avatar';
 import { Badge } from '@/shared/ui/badge';
 import { Card, CardContent } from '@/shared/ui/card';
@@ -172,6 +173,7 @@ export function AdminUsersPage() {
                 <TableHeader>
                   <TableRow>
                     <TableHead>Compte</TableHead>
+                    <TableHead>Téléphone</TableHead>
                     <TableHead>Palier</TableHead>
                     <TableHead className="text-right">Points</TableHead>
                     <TableHead>Activité</TableHead>
@@ -202,6 +204,15 @@ export function AdminUsersPage() {
                             </span>
                           </div>
                         </div>
+                      </TableCell>
+                      <TableCell className="whitespace-nowrap tabular-nums">
+                        {user.phone ? (
+                          <a href={`tel:${user.phone}`} className="hover:underline">
+                            {formatPhone(user.phone, user.country)}
+                          </a>
+                        ) : (
+                          <span className="text-muted-foreground">—</span>
+                        )}
                       </TableCell>
                       <TableCell>
                         <div className="flex flex-wrap items-center gap-1">

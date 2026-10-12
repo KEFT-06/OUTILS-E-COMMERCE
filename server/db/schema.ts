@@ -80,6 +80,11 @@ export const users = pgTable(
     name: text('name').notNull(),
     /** Null tant que le lien de création du mot de passe n'a pas servi. */
     passwordHash: text('password_hash'),
+    /**
+     * Numéro de téléphone déclaré par l'utilisateur, au format international (« +237677123456 »).
+     * Non vérifié : il sert à le joindre, et à préremplir un paiement par Mobile Money.
+     */
+    phone: text('phone'),
     role: userRole('role').notNull().default('user'),
     status: userStatus('status').notNull().default('active'),
     suspendedReason: text('suspended_reason'),

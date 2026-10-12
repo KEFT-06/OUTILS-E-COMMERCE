@@ -7,6 +7,7 @@ import { describeDevice, maskIp } from '@server/lib/device';
 import { AppError, asyncRoute, countrySchema, routeLimiter, validateBody } from '@server/middleware';
 import { requireAuth } from '@server/middleware/auth';
 import { creditSummary, effectiveLimits, loadAccount } from '@server/services/accounts';
+import { readAccountPhone } from '@server/services/accounts/phone';
 import { accountView } from '@server/services/accounts/view';
 import { accountDeletionSchema, deleteOwnAccount, exportPersonalData } from '@server/services/accounts/personalData';
 import { clientInfo } from '@server/services/audit';
@@ -53,19 +54,24 @@ const profileSchema = z
     name: nameSchema.optional(),
     /** Pays de l'utilisateur : la devise des prix en découle. */
     country: countrySchema.optional(),
+    /** Numéro de téléphone, tel que saisi ; vide : le numéro est retiré. */
+    phone: z.string().trim().max(24).optional(),
   })
-  .refine((value) => value.name !== undefined || value.country !== undefined, { message: 'Rien à modifier.' });
+  .refine((value) => value.name !== undefined || value.country !== undefined || value.phone !== undefined, { message: 'Rien à modifier.' });
 
 accountRouter.patch(
   '/profile',
   validateBody(profileSchema),
   asyncRoute(async (req, res) => {
-    const { name, country } = req.body as z.infer<typeof profileSchema>;
+    const { name, country, phone: typed } = req.body as z.infer<typeof profileSchema>;
+    // L'indicatif est celui du pays choisi dans la même demande, sinon celui du compte.
+    const phone = readAccountPhone(typed, country ?? req.auth!.account.user.country);
     await getDb()
       .update(users)
       .set({
         ...(name ? { name } : {}),
         ...(country ? { country } : {}),
+        ...(phone !== undefined ? { phone } : {}),
         updatedAt: new Date(),
       })
       .where(eq(users.id, req.auth!.account.user.id));

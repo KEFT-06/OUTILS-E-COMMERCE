@@ -68,11 +68,12 @@ function MethodTile({ icon, title, description, marks, onClick, disabled }: { ic
 }
 
 export function PaymentDialog({ plan, period, onClose }: { plan: PlanDefinition; period: PaymentPeriod; onClose: () => void }) {
-  const { refresh } = useAuth();
+  const { refresh, account } = useAuth();
   const [step, setStep] = useState<Step>('chargement');
   const [methods, setMethods] = useState<PaymentMethods | null>(null);
   const [operator, setOperator] = useState<string | null>(null);
-  const [phone, setPhone] = useState('');
+  // Le numéro du compte est proposé d'emblée : celui qui paie avec un autre numéro le remplace.
+  const [phone, setPhone] = useState(() => account?.phone ?? '');
   const [otp, setOtp] = useState('');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);

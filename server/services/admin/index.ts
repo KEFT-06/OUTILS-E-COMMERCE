@@ -9,8 +9,10 @@ import {
   auditLogs,
   authEvents,
   authThrottles,
+  contactMessages,
   creditTransactions,
   generations,
+  paymentCheckouts,
   payments,
   sessionHistory,
   sessions,
@@ -210,9 +212,17 @@ export async function adminOverview(options: { includeRevenue: boolean; includeS
 
   const labels = await planLabels();
 
+  // Ce qui attend un geste de l'équipe : messages jamais ouverts, paiements Mobile Money lancés et pas encore validés.
+  const [inbox] = await db.select({ value: num(sql`count(*)`) }).from(contactMessages).where(eq(contactMessages.status, 'new'));
+  const [mobile] = await db
+    .select({ value: num(sql`count(*)`) })
+    .from(paymentCheckouts)
+    .where(and(eq(paymentCheckouts.provider, 'sebpay'), eq(paymentCheckouts.status, 'open'), gte(paymentCheckouts.createdAt, new Date(now.getTime() - DAY_MS))));
+
   return {
     generatedAt: now.toISOString(),
     timezone: env.REPORTING_TIMEZONE,
+    attention: { newMessages: inbox?.value ?? 0, openMobilePayments: mobile?.value ?? 0 },
     users: userStats!,
     online: {
       users: online?.users ?? 0,
@@ -284,6 +294,32 @@ export async function revenueSeries(granularity: Granularity) {
     total: points.reduce((sum, point) => sum + Number(point.amount), 0),
     byPlan: byPlan.map((row) => ({ ...row, label: labels[row.plan] ?? row.plan, amount: Number(row.amount) })),
     byMethod: byMethod.map((row) => ({ ...row, amount: Number(row.amount) })),
+  };
+}
+
+/**
+ * Les comptes dans le temps : ceux ouverts à chaque période, et le nombre de comptes à la fin de
+ * chacune. Deux nombres exacts, comptés sur les comptes existants — un compte supprimé depuis
+ * n'y figure plus, à aucune date.
+ */
+export async function usersSeries(granularity: Granularity) {
+  const { format } = SERIES[granularity];
+  const unit = sql.raw(granularity);
+
+  const points = await queryRows<{ period: string; signups: number; total: number }>(sql`
+    WITH ${periodsCte(granularity)}
+    SELECT to_char(periods.period, ${format}::text) AS period,
+           (SELECT count(*) FROM users u WHERE date_trunc('${unit}', u.created_at AT TIME ZONE ${zone()}) = periods.period)::int AS signups,
+           (SELECT count(*) FROM users u WHERE date_trunc('${unit}', u.created_at AT TIME ZONE ${zone()}) <= periods.period)::int AS total
+    FROM periods
+    ORDER BY periods.period
+  `);
+
+  return {
+    granularity,
+    timezone: env.REPORTING_TIMEZONE,
+    points: points.map((point) => ({ period: point.period, signups: Number(point.signups), total: Number(point.total) })),
+    signups: points.reduce((sum, point) => sum + Number(point.signups), 0),
   };
 }
 
@@ -389,7 +425,10 @@ export async function listUsers(query: UserListQuery) {
   const conditions: SQL[] = [];
   if (query.search) {
     // « Aicha » doit trouver « Aïcha » : les prénoms du public visé portent souvent un accent.
-    conditions.push(containsIgnoringAccents([users.email, users.name], query.search));
+    const byText = containsIgnoringAccents([users.email, users.name], query.search);
+    // Un numéro se cherche par ses chiffres, quels que soient les espaces, le « + » ou l'indicatif tapés.
+    const digits = query.search.replace(/\D/g, '').replace(/^00/, '');
+    conditions.push(digits.length >= 4 ? or(byText, sql`${users.phone} like ${`%${digits}%`}`)! : byText);
   }
   if (query.plan) conditions.push(eq(users.plan, query.plan));
   if (query.status) conditions.push(eq(users.status, query.status));
@@ -426,6 +465,7 @@ export async function listUsers(query: UserListQuery) {
       twoFactorEnabledAt: users.twoFactorEnabledAt,
       hasSecurityCode: sql<boolean>`${users.securityCodeHash} is not null`.mapWith(Boolean),
       country: users.country,
+      phone: users.phone,
       lastSeenAt: sql<Date | null>`${lastSeen}`.mapWith(optionalDate),
       generations: num(sql`(select count(*) from ${generations} where ${generations.userId} = ${users.id})`),
       permissionCount: num(sql`(select count(*) from ${userPermissions} where ${userPermissions.userId} = ${users.id})`),
@@ -465,6 +505,7 @@ export async function listUsers(query: UserListQuery) {
       isStaff: row.role === 'admin' || row.permissionCount > 0,
       twoFactorEnabled: Boolean(row.twoFactorEnabledAt) || row.hasSecurityCode,
       country: row.country,
+      phone: row.phone,
     })),
   };
 }
@@ -580,6 +621,7 @@ export async function adminUserDetail(userId: string) {
       twoFactorEnabled: hasSecondFactor(user),
       twoFactorMethods: secondFactorMethods(user),
       country: user.country,
+      phone: user.phone,
       isStaff: snapshot.isStaff,
     },
     credits: creditSummary(snapshot),

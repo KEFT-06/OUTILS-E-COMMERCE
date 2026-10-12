@@ -71,6 +71,36 @@ export function AppSidebar() {
       </SidebarHeader>
 
       <SidebarContent>
+        {/*
+          Un seul module « Administration » (demande du propriétaire, 11/10/2026) : le menu en
+          listait dix entrées, autant que le reste du site. Il ouvre le tableau de bord, et les
+          sections se choisissent dans le module lui-même.
+        */}
+        {adminSections.length > 0 && (
+          <SidebarGroup>
+            <SidebarGroupLabel>Équipe</SidebarGroupLabel>
+            <SidebarGroupContent>
+              <SidebarMenu>
+                {adminSections.slice(0, 1).map((section) => {
+                  const Icon = section.icon;
+                  const isActive = pathname === ADMIN_PATH || pathname.startsWith(`${ADMIN_PATH}/`);
+                  return (
+                    <SidebarMenuItem key={section.id}>
+                      <SidebarMenuButton asChild isActive={isActive} tooltip="Administration">
+                        <NavLink to={section.path} onClick={closeOnMobile}>
+                          <Icon />
+                          <span>Administration</span>
+                        </NavLink>
+                      </SidebarMenuButton>
+                      {!account?.twoFactor.enabled && <SidebarMenuBadge className="text-warning">2FA</SidebarMenuBadge>}
+                    </SidebarMenuItem>
+                  );
+                })}
+              </SidebarMenu>
+            </SidebarGroupContent>
+          </SidebarGroup>
+        )}
+
         {MODULE_GROUPS.map((group) => (
           <SidebarGroup key={group.id}>
             <SidebarGroupLabel>{group.label.fr}</SidebarGroupLabel>
@@ -114,35 +144,6 @@ export function AppSidebar() {
           </SidebarGroup>
         ))}
 
-        {adminSections.length > 0 && (
-          <SidebarGroup>
-            <SidebarGroupLabel>Administration</SidebarGroupLabel>
-            <SidebarGroupContent>
-              <SidebarMenu>
-                {adminSections.map((section) => {
-                  const Icon = section.icon;
-                  const isActive =
-                    section.path === ADMIN_PATH
-                      ? pathname === ADMIN_PATH
-                      : pathname === section.path || pathname.startsWith(`${section.path}/`);
-                  return (
-                    <SidebarMenuItem key={section.id}>
-                      <SidebarMenuButton asChild isActive={isActive} tooltip={section.label}>
-                        <NavLink to={section.path} end={section.path === ADMIN_PATH} onClick={closeOnMobile}>
-                          <Icon />
-                          <span>{section.label}</span>
-                        </NavLink>
-                      </SidebarMenuButton>
-                      {section.id === 'overview' && !account?.twoFactor.enabled && (
-                        <SidebarMenuBadge className="text-warning">2FA</SidebarMenuBadge>
-                      )}
-                    </SidebarMenuItem>
-                  );
-                })}
-              </SidebarMenu>
-            </SidebarGroupContent>
-          </SidebarGroup>
-        )}
       </SidebarContent>
 
       <SidebarFooter>

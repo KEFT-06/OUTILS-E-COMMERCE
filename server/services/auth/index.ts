@@ -171,6 +171,8 @@ export async function registerUser(input: {
   email: string;
   password: string;
   country?: string;
+  /** Déjà mis au format international par la route. */
+  phone?: string | null;
   client: ClientInfo;
 }): Promise<UserRow> {
   const problems = passwordProblems(input.password, { email: input.email, name: input.name });
@@ -183,6 +185,7 @@ export async function registerUser(input: {
     passwordHash,
     role: 'user',
     country: input.country ?? null,
+    phone: input.phone ?? null,
   });
   await recordAuthEvent('signup', { userId: user.id, email: user.email, client: input.client });
   if (providers.email) {

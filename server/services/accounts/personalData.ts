@@ -122,6 +122,7 @@ export async function exportPersonalData(userId: string) {
       email: user.email,
       emailVerifiedAt: iso(user.emailVerifiedAt),
       country: user.country,
+      phone: user.phone,
       role: user.role,
       status: user.status,
       suspendedReason: user.suspendedReason,
