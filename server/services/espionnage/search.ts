@@ -8,7 +8,7 @@ import { AppError } from '@server/middleware';
 import type { RequestAuth } from '@server/middleware/auth';
 import { effectiveLimits } from '@server/services/accounts';
 import { listSpiedAds } from '@server/services/espionnage';
-import { collectorDispatchConfigured, requestCollectorPassage } from '@server/services/espionnage/dispatch';
+import { collectorDispatchConfigured, collectorDispatchWorking, requestCollectorPassage } from '@server/services/espionnage/dispatch';
 import { fromLibraryRecord } from '@server/services/espionnage/library';
 import { readAnyMetaAd, withoutPlaceholders } from '@server/services/espionnage/parse';
 import { type Storefront, followableOnRadar, keywordScope, libraryTermOf, storefrontOfHost } from '@server/shared/storefronts';
@@ -233,7 +233,7 @@ async function viewOf(found: SearchRow, auth: RequestAuth, fromCache: boolean, n
     ads,
     hiddenByPlan: all.length - ads.length,
     platformAds: all.filter((ad) => followableOnRadar(ad.storeHost)).length,
-    refreshing: awaitsCollector(row) ? (collectorDispatchConfigured() ? 'soon' : 'tonight') : null,
+    refreshing: awaitsCollector(row) ? (collectorDispatchWorking() ? 'soon' : 'tonight') : null,
   };
 }
 
@@ -257,6 +257,16 @@ export async function searchQuota(auth: RequestAuth, now = new Date()): Promise<
     limit: effectiveLimits(auth.account).adSearchesPerMonth,
     serverLeft: Math.max(0, Math.floor((env.SPY_SEARCH_MONTHLY_ADS - spent) / env.SPY_SEARCH_RESULTS)),
   };
+}
+
+/** Un passage du collecteur vient-il d'être demandé pour une autre recherche ? Il lira aussi celle-ci. */
+async function passageJustRequested(now: Date): Promise<boolean> {
+  const [earlier] = await getDb()
+    .select({ id: adSearches.id })
+    .from(adSearches)
+    .where(and(eq(adSearches.collector, 'pending'), gte(adSearches.createdAt, new Date(now.getTime() - DISPATCH_WINDOW_MS))))
+    .limit(1);
+  return Boolean(earlier);
 }
 
 /**
@@ -285,11 +295,7 @@ async function switchToOurBase(row: SearchRow, now: Date, options: { dispatch?: 
       .values(ours.map((ad, position) => ({ searchId: row.id, position, ad: { ...ad, id: `${row.id}-${position}` } as unknown as Record<string, unknown> })));
   }
   // Un passage déjà demandé dans la minute prendra aussi cette recherche.
-  const [earlier] = await getDb()
-    .select({ id: adSearches.id })
-    .from(adSearches)
-    .where(and(eq(adSearches.collector, 'pending'), gte(adSearches.createdAt, new Date(now.getTime() - DISPATCH_WINDOW_MS))))
-    .limit(1);
+  const earlier = await passageJustRequested(now);
   const [served] = await getDb()
     .update(adSearches)
     .set({ status: 'done', adsFound: ours.length, error: null, collector: 'pending', providerRunId: null, datasetId: null, finishedAt: now })
@@ -305,8 +311,9 @@ const serveFromOurBase = async (row: SearchRow, auth: RequestAuth, now: Date): P
  * Lance une recherche, ou relit la même faite depuis moins de 24 heures. Les refus du palier
  * passent AVANT tout appel au fournisseur : une recherche refusée ne coûte rien.
  *
- * La lecture payante d'abord, quand elle est branchée et qu'il lui reste du budget ce mois-ci ;
- * sinon, ou si elle se dérobe au lancement, nos relevés et notre collecteur (voir l'en-tête).
+ * Notre collecteur d'abord, dès qu'il peut être lancé à la demande ; sinon la lecture payante,
+ * quand elle est branchée et qu'il lui reste du budget ce mois-ci ; à défaut, nos relevés, que le
+ * collecteur complétera à son prochain passage (voir l'en-tête).
  */
 export async function startAdSearch(auth: RequestAuth, request: AdSearchRequest, now = new Date()): Promise<AdSearchView> {
   const key = searchKey(request.query);
@@ -347,6 +354,18 @@ export async function startAdSearch(auth: RequestAuth, request: AdSearchRequest,
     .insert(adSearches)
     .values({ query: request.query, queryKey: key, country: request.country, requestedBy: auth.account.user.id, resultsLimit: env.SPY_SEARCH_RESULTS })
     .returning();
+
+  /*
+    Demande du propriétaire, 11/10/2026 : le collecteur maison « doit lire Meta à chaque fois que
+    le site fait appel à lui ». Dès que son lancement à la demande est possible, chaque nouvelle
+    recherche lui est donc confiée sur-le-champ : nos relevés partent tout de suite, sa lecture
+    fraîche les complète en quelques minutes, et rien n'est facturé. La lecture payante n'est plus
+    que le filet, quand ce lancement est refusé.
+  */
+  if (collectorDispatchConfigured()) {
+    const launched = (await passageJustRequested(now)) || (await requestCollectorPassage());
+    if (launched) return viewOf(await switchToOurBase(row!, now, { dispatch: false }), auth, false);
+  }
 
   // Le plafond mensuel du serveur borne la DÉPENSE : une fois atteint, la recherche passe par nos relevés, qui ne coûtent rien.
   if (!providers.apify || quota.serverLeft <= 0) return serveFromOurBase(row!, auth, now);

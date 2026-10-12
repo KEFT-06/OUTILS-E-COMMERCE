@@ -8,8 +8,13 @@ import { signInWithPlan } from './support/analysis-fixtures';
 import { closeTestApp, createTestApp } from './support/helpers';
 
 /**
- * La recherche publicitaire quand la lecture payante se dérobe, contre un faux fournisseur qui
- * refuse le serveur et un faux GitHub.
+ * La recherche publicitaire confiée à notre collecteur, contre un faux GitHub et un faux
+ * fournisseur payant qui refuse le serveur.
+ *
+ * Demande du propriétaire, 11/10/2026 : le collecteur (Crawlee, Playwright) « doit lire Meta à
+ * chaque fois que le site fait appel à lui ». Dès que son lancement à la demande est possible,
+ * chaque nouvelle recherche lui est confiée sur-le-champ ; la lecture payante n'est plus que le
+ * filet, quand ce lancement est refusé.
  *
  * Signalé par le propriétaire le 11/10/2026 : « Recherche impossible — le service de collecte
  * publicitaire refuse l'accès du serveur… mais on a Playwright et Crawlee, pourquoi ça dérange
@@ -23,6 +28,8 @@ const maintenant = Math.floor(Date.now() / 1000);
 
 /** Lancements refusés par le faux fournisseur, et passages demandés au faux GitHub. */
 let refus = 0;
+/** Le faux GitHub refuse le lancement (jeton périmé). */
+let githubRefuse = false;
 const passages: { path: string; authorization: string | undefined; body: { ref?: string; inputs?: Record<string, string> } }[] = [];
 
 const faux = createServer((req, res) => {
@@ -34,6 +41,10 @@ const faux = createServer((req, res) => {
       refus += 1;
       res.writeHead(403, { 'content-type': 'application/json' });
       return res.end(JSON.stringify({ error: { type: 'user-or-token-not-found', message: 'User was not found or authentication token is not valid' } }));
+    }
+    if (req.method === 'POST' && url.pathname.startsWith('/github/repos/') && githubRefuse) {
+      res.writeHead(401, { 'content-type': 'application/json' });
+      return res.end(JSON.stringify({ message: 'Bad credentials' }));
     }
     if (req.method === 'POST' && url.pathname.startsWith('/github/repos/')) {
       passages.push({ path: url.pathname, authorization: req.headers.authorization, body: JSON.parse(Buffer.concat(chunks).toString('utf8')) as { ref?: string } });
@@ -100,8 +111,8 @@ const attendrePassages = async (nombre: number) => {
   for (let essai = 0; essai < 40 && passages.length < nombre; essai += 1) await new Promise((resolve) => setTimeout(resolve, 25));
 };
 
-describe('Recherche publicitaire sans la lecture payante', () => {
-  it('répond avec nos relevés au lieu d’échouer, et appelle notre collecteur pour ce mot', async () => {
+describe('Recherche publicitaire lue par notre collecteur', () => {
+  it('répond avec nos relevés tout de suite, et lance notre collecteur pour ce mot — sans lecture payante', async () => {
     // Le mur contient déjà deux annonces qui parlent de « formation excel », relevées par le collecteur.
     await collecteur()
       .verse({ country: 'CM', items: [annonce('9001', 'https://kpougeet.mychariow.shop/prd_excel', 'Formation Excel en 7 jours'), annonce('9000', 'https://excel-facile.mychariow.shop/prd_tableaux', 'Formation Excel : tableaux croisés')] })
@@ -111,8 +122,8 @@ describe('Recherche publicitaire sans la lecture payante', () => {
     const lancee = await agent.post('/api/espionnage/searches').send({ query: 'formation excel' }).expect(202);
     const recherche = lancee.body.search as Search;
 
-    assert.ok(refus >= 1, 'la lecture payante a bien été essayée, et a refusé');
-    assert.equal(recherche.status, 'done', 'la recherche aboutit quand même');
+    assert.equal(refus, 0, 'la lecture payante n’est pas sollicitée : notre collecteur lit cette recherche');
+    assert.equal(recherche.status, 'done', 'la recherche aboutit tout de suite');
     assert.equal(recherche.error, null);
     assert.doesNotMatch(JSON.stringify(lancee.body), /refuse l’accès|administrateur/, 'le refus du fournisseur n’est pas l’affaire de celui qui cherche');
     assert.deepEqual(recherche.ads.map((ad) => ad.externalId).sort(), ['9000', '9001'], 'ce que nos relevés contiennent pour ce mot');
@@ -200,5 +211,31 @@ describe('Recherche publicitaire sans la lecture payante', () => {
     await new Promise((resolve) => setTimeout(resolve, 150));
     assert.equal(passages.length, avant + 1, 'trois recherches dans la même minute : un seul passage les lira toutes');
     assert.equal((await collecteur().plan().expect(200)).body.searches.length, 3);
+    assert.equal(refus, 0, 'aucune de ces recherches n’a coûté une lecture payante');
+  });
+
+  it('quand le lancement à la demande est refusé, la lecture payante reprend la main, et l’écran ne promet plus « dans quelques minutes »', async () => {
+    const { getDb } = await import('@server/db/client');
+    const { adSearches } = await import('@server/db/schema');
+    const { resetCollectorDispatch } = await import('@server/services/espionnage/dispatch');
+    // Les recherches d'avant ont plus d'une minute : aucun passage récent ne couvre la suivante.
+    await getDb().update(adSearches).set({ createdAt: new Date(Date.now() - 5 * 60_000) });
+
+    githubRefuse = true;
+    try {
+      const { agent } = await signInWithPlan(app, 'chercheur-jeton-perime@exemple.test', 'pro');
+      const avant = passages.length;
+      const recherche = (await agent.post('/api/espionnage/searches').send({ query: 'tricot pour débutants' }).expect(202)).body.search as Search;
+
+      assert.equal(passages.length, avant, 'aucun passage n’a été accepté');
+      assert.equal(refus, 1, 'la lecture payante a été essayée à la place (ici, elle refuse aussi)');
+      assert.equal(recherche.status, 'done', 'la recherche aboutit quand même, sur nos relevés');
+      assert.equal(recherche.error, null);
+      assert.equal(recherche.refreshing, 'tonight', 'le collecteur la lira à son prochain passage programmé : rien d’imminent n’est promis');
+      assert.equal((await collecteur().plan().expect(200)).body.searches.some((search: { id: string }) => search.id === recherche.id), true, 'elle reste dans la file du collecteur');
+    } finally {
+      githubRefuse = false;
+      resetCollectorDispatch();
+    }
   });
 });

@@ -2,6 +2,7 @@ import { Router } from 'express';
 import { z } from 'zod';
 import { providers } from '@server/env';
 import { indexMarketInBackground, searchMarketProducts } from '@server/services/market';
+import { watchOnVisit } from '@server/services/watch';
 import { storePreview } from '@server/services/market/storePreview';
 import { AppError, asyncRoute, routeLimiter, validateBody } from '@server/middleware';
 import { requireAuth, requirePermission } from '@server/middleware/auth';
@@ -70,6 +71,8 @@ radarRouter.get(
       /** false : aucun fournisseur d'e-mail sur ce serveur — l'interrupteur le dit plutôt que de mentir. */
       emailConfigured: providers.email,
     });
+    // La veille suit l'usage du site : consultée, elle repart si son dernier passage date.
+    watchOnVisit();
   }),
 );
 

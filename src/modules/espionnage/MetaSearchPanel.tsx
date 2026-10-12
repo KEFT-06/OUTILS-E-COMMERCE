@@ -450,7 +450,7 @@ export function MetaSearchPanel() {
                     Ces publicités viennent de nos relevés.{" "}
                     {recherche.refreshing === "soon"
                       ? "La bibliothèque publicitaire est relue en ce moment pour cette recherche : la liste se complétera ici d’elle-même, dans quelques minutes."
-                      : "La bibliothèque publicitaire sera relue pour cette recherche cette nuit : la liste complète vous attendra ici demain."}
+                      : "La bibliothèque publicitaire sera relue pour cette recherche dans les prochaines heures : la liste complète vous attendra ici."}
                   </span>
                 </p>
               )}

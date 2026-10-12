@@ -2,6 +2,7 @@ import { Router } from 'express';
 import { asyncRoute } from '@server/middleware';
 import { requireAuth } from '@server/middleware/auth';
 import { alertWatch, countUnreadAlerts, listAlerts, markAlertsSeen } from '@server/services/alerts';
+import { watchOnVisit } from '@server/services/watch';
 
 /**
  * Alertes : ce que le radar, l'index du marché et le mur publicitaire ont remarqué.
@@ -16,6 +17,8 @@ alertsRouter.get(
   asyncRoute(async (req, res) => {
     // Avec le fil, ce qui l'alimente : l'écran dit ce qui est sous veille au lieu d'un silence sans contexte.
     res.json({ alerts: await listAlerts(req.auth!.account.user.id), watch: await alertWatch() });
+    // La veille suit l'usage du site : consultée, elle repart si son dernier passage date.
+    watchOnVisit();
   }),
 );
 

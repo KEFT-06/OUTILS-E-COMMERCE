@@ -6,6 +6,7 @@ import { effectiveLimits } from '@server/services/accounts';
 import { listSpiedAds, refreshWall, refreshWallInBackground, spiedStores } from '@server/services/espionnage';
 import { adDownloadKind, sendAdDownload, sendAdThumbnail, sendAdVideo, sendPageAvatar } from '@server/services/espionnage/media';
 import { type AdStudyRequest, adStudyRequestSchema, studyAdVideo } from '@server/services/espionnage/study';
+import { watchOnVisit } from '@server/services/watch';
 import { STOREFRONTS } from '@server/shared/storefronts';
 import {
   type AdSearchRequest,
@@ -74,6 +75,7 @@ espionnageRouter.get(
     const limite = effectiveLimits(req.auth!.account).spiedAdsVisible;
     res.json(await listSpiedAds(parsed.success ? parsed.data : {}, limite));
     refreshWallInBackground();
+    watchOnVisit();
   }),
 );
 

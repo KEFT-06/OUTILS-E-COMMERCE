@@ -17,6 +17,24 @@ export function collectorDispatchConfigured(): boolean {
   return Boolean(env.COLLECTOR_DISPATCH_TOKEN);
 }
 
+/** Dernier refus d'un lancement à la demande (jeton périmé, droits retirés), sur cette instance. */
+let refusedAt = 0;
+const REFUSAL_MEMORY_MS = 30 * 60_000;
+
+/**
+ * Le collecteur peut-il passer « dans quelques minutes » ? Faux sans jeton, et faux tant qu'un
+ * lancement vient d'être refusé : l'écran annonce alors le prochain passage programmé, pas une
+ * lecture imminente qui ne viendra pas.
+ */
+export function collectorDispatchWorking(now = Date.now()): boolean {
+  return collectorDispatchConfigured() && now - refusedAt > REFUSAL_MEMORY_MS;
+}
+
+/** Oublie un refus passé (tests). */
+export function resetCollectorDispatch(): void {
+  refusedAt = 0;
+}
+
 /** Demande un passage du collecteur pour les recherches en attente. Ne lève jamais. */
 export async function requestCollectorPassage(): Promise<boolean> {
   if (!env.COLLECTOR_DISPATCH_TOKEN) return false;
@@ -34,9 +52,15 @@ export async function requestCollectorPassage(): Promise<boolean> {
       body: JSON.stringify({ ref: env.COLLECTOR_REF, inputs: { demandes: 'oui' } }),
       signal: AbortSignal.timeout(10_000),
     });
-    if (response.status !== 204) console.warn(`[collecteur] passage à la demande refusé (réponse ${response.status}) : la recherche attendra le passage de la nuit.`);
-    return response.status === 204;
+    if (response.status !== 204) {
+      refusedAt = Date.now();
+      console.warn(`[collecteur] passage à la demande refusé (réponse ${response.status}) : la recherche attendra le prochain passage programmé.`);
+      return false;
+    }
+    refusedAt = 0;
+    return true;
   } catch (error) {
+    refusedAt = Date.now();
     console.warn('[collecteur] passage à la demande impossible :', error instanceof Error ? error.message : error);
     return false;
   }

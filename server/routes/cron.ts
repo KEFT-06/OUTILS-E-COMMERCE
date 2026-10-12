@@ -16,8 +16,9 @@ import { submitToIndexNow } from '@server/services/seo/indexNow';
 import { sweepPendingGenerations } from '@server/services/generations/sweeper';
 import { sweepDueWatches } from '@server/services/radar/sweeper';
 import { resumeMobileCheckouts } from '@server/services/billing/mobile';
+import { runWatchPass } from '@server/services/watch';
 import { z } from 'zod';
-import { detectAlerts, watchState } from '@server/services/alerts';
+import { detectAlerts } from '@server/services/alerts';
 import { settleDueCommissions } from '@server/services/referral';
 import { collectorPlan, ingestLibraryRecords, recordCollectorRun } from '@server/services/espionnage/library';
 import { pendingCollectorSearches, pourCollectorSearch } from '@server/services/espionnage/search';
@@ -183,9 +184,6 @@ cronRouter.get(
   }),
 );
 
-/** Temps de relevé par passage de veille : court, puisqu'il revient toutes les demi-heures. */
-const WATCH_RUN_MS = 110_000;
-
 /**
  * Passage de VEILLE CONTINUE, appelé toutes les demi-heures par l'atelier « Veille continue »
  * (.github/workflows/veille.yml).
@@ -205,30 +203,8 @@ cronRouter.get(
     if (!env.CRON_SECRET) throw new AppError(503, 'Le déclencheur périodique n’est pas configuré sur ce serveur.', 'CRON_NOT_CONFIGURED');
     if (!secretIsValid(req)) throw new AppError(401, 'Déclencheur refusé.', 'CRON_DENIED');
 
-    // Rapports longs quittés en route : ils reprennent ici au plus tard, sans attendre leur auteur.
-    await resumeReportDocuments().catch((error: unknown) => {
-      console.warn('[veille] reprise des rapports :', error instanceof Error ? error.message : error);
-    });
-    // D'abord l'argent : un paiement Mobile Money validé hors écran n'attend pas le lendemain.
-    const paiements = await resumeMobileCheckouts({ limit: 20 }).catch((error: unknown) => {
-      console.warn('[veille] paiements Mobile Money :', error instanceof Error ? error.message : error);
-      return null;
-    });
-    const surveillances = await sweepDueWatches(new Date(), 60_000).catch((error: unknown) => {
-      console.warn('[veille] surveillances :', error instanceof Error ? error.message : error);
-      return null;
-    });
-    const releves = await indexDiscoveredStores(WATCH_RUN_MS).catch((error: unknown) => {
-      console.warn('[veille] index du marché :', error instanceof Error ? error.message : error);
-      return null;
-    });
-    const alertes = await detectAlerts().catch((error: unknown) => {
-      console.warn('[veille] alertes :', error instanceof Error ? error.message : error);
-      return null;
-    });
-    await reportMarketRun('veille continue', releves, alertes);
-    const etat = await watchState().catch(() => null);
-    res.json({ surveillances, releves, alertes, etat, paiements });
+    // Borné : il répond toujours avant le délai de l'atelier, et dit quelles étapes ont pris du retard.
+    res.json(await runWatchPass('veille continue'));
   }),
 );
 
