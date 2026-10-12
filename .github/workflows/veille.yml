@@ -61,6 +61,9 @@ jobs:
               `alertes : ${r.alertes ?? "?"} nouvelles, ${etat.alertesDepuis24h ?? "?"} en 24 h, ${etat.alertesAuFil ?? "?"} au fil`,
               `ventes : ${etat.boutiquesReleveesAujourdhui ?? "?"} boutiques relevées aujourd’hui sur ${etat.boutiques ?? "?"} ; dernier relevé ${etat.dernierReleveDeVentes ?? "aucun"}`,
               `publicités : ${etat.annonces ?? "?"} sur le mur, ${etat.annoncesVuesDepuis24h ?? "?"} vues en 24 h ; dernière vue ${String(etat.derniereAnnonceVue ?? "jamais").slice(0, 16)}`,
+              r.paiements ? `paiements Mobile Money repris : ${r.paiements}` : null,
+              (r.enRetard ?? []).length ? `étapes en retard : ${r.enRetard.join(", ")}` : null,
+              (r.enEchec ?? []).length ? `étapes en échec : ${r.enEchec.map((e) => `${e.etape}${e.code ? ` (${e.code})` : ""}`).join(", ")}` : null,
             ].filter(Boolean);
             console.log(`::notice title=Veille continue::${lignes.join(" | ")}`);
           '

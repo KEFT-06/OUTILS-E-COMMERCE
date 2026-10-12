@@ -25,8 +25,11 @@ on:
     branches: [lot1-socle-de-confiance]
     paths: ['.github/workflows/collecte.yml']
 
+# Un passage à la demande (la recherche d'un client) ne fait pas la queue derrière la tournée, qui
+# dure une vingtaine de minutes : chacun a sa file. Deux demandes d'affilée n'en font qu'une — le
+# passage suivant lit toutes les recherches en attente.
 concurrency:
-  group: collecte
+  group: ${{ inputs.demandes == 'oui' && 'collecte-a-la-demande' || 'collecte' }}
   cancel-in-progress: false
 
 permissions:
@@ -58,6 +61,12 @@ jobs:
           node-version: 22
       - name: Installer le collecteur
         run: npm --prefix collecteur ci
+      # Le navigateur est gardé d'un passage à l'autre : un passage à la demande démarre sans le retélécharger.
+      - name: Retrouver le navigateur
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/ms-playwright
+          key: navigateur-${{ runner.os }}-${{ hashFiles('collecteur/package-lock.json') }}
       - name: Installer le navigateur
         run: npx --prefix collecteur playwright install --with-deps chromium
       - name: Collecter
