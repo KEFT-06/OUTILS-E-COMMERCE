@@ -47,8 +47,13 @@ function ErrorLine({ error }: { error: ApiError | null }) {
   );
 }
 
-function useDialogState() {
-  const [open, setOpen] = useState(false);
+/**
+ * `defaultOpen` : la fenêtre s'ouvre d'emblée. C'est ce que demande le menu « ⋯ » d'une ligne de la
+ * liste des utilisateurs (18/10/2026 : le propriétaire ne trouvait ni « Bloquer » ni « Supprimer »,
+ * rangés sur la fiche, que rien ne signalait).
+ */
+function useDialogState(defaultOpen = false) {
+  const [open, setOpen] = useState(defaultOpen);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<ApiError | null>(null);
 
@@ -73,8 +78,8 @@ function useDialogState() {
 
 const QUICK_AMOUNTS = [10, 50, 100, 500];
 
-export function GrantCreditsDialog({ detail, onDone }: { detail: AdminUserDetail; onDone: (detail: AdminUserDetail) => void }) {
-  const state = useDialogState();
+export function GrantCreditsDialog({ detail, onDone, defaultOpen }: { detail: AdminUserDetail; onDone: (detail: AdminUserDetail) => void; defaultOpen?: boolean }) {
+  const state = useDialogState(defaultOpen);
   const [mode, setMode] = useState<'add' | 'remove'>('add');
   const [amount, setAmount] = useState('50');
   const [note, setNote] = useState('');
@@ -254,12 +259,14 @@ export function ChangePlanDialog({
   detail,
   plans,
   onDone,
+  defaultOpen,
 }: {
   detail: AdminUserDetail;
   plans: AdminMeta['plans'];
   onDone: (detail: AdminUserDetail) => void;
+  defaultOpen?: boolean;
 }) {
-  const state = useDialogState();
+  const state = useDialogState(defaultOpen);
   const [plan, setPlan] = useState<string>(detail.user.plan.id);
   const [duration, setDuration] = useState('1');
   const [refill, setRefill] = useState(true);
@@ -876,8 +883,8 @@ export function PasswordLinkDialog({ detail }: { detail: AdminUserDetail }) {
   );
 }
 
-export function RevokeSessionsDialog({ detail, onDone }: { detail: AdminUserDetail; onDone: () => void }) {
-  const state = useDialogState();
+export function RevokeSessionsDialog({ detail, onDone, defaultOpen }: { detail: AdminUserDetail; onDone: () => void; defaultOpen?: boolean }) {
+  const state = useDialogState(defaultOpen);
   const count = detail.sessions.length;
 
   const confirm = () =>
@@ -919,8 +926,8 @@ export function RevokeSessionsDialog({ detail, onDone }: { detail: AdminUserDeta
   );
 }
 
-export function SuspendDialog({ detail, onDone }: { detail: AdminUserDetail; onDone: (detail: AdminUserDetail) => void }) {
-  const state = useDialogState();
+export function SuspendDialog({ detail, onDone, defaultOpen }: { detail: AdminUserDetail; onDone: (detail: AdminUserDetail) => void; defaultOpen?: boolean }) {
+  const state = useDialogState(defaultOpen);
   const [reason, setReason] = useState('');
   const suspended = detail.user.status === 'suspended';
 
@@ -991,8 +998,8 @@ export function SuspendDialog({ detail, onDone }: { detail: AdminUserDetail; onD
  * manœuvre ne rattrape : elle demande d'écrire SUPPRIMER et de redonner son code de vérification.
  * Le serveur refuse son propre compte et le dernier administrateur.
  */
-export function DeleteUserDialog({ detail, onDeleted }: { detail: AdminUserDetail; onDeleted: () => void }) {
-  const state = useDialogState();
+export function DeleteUserDialog({ detail, onDeleted, defaultOpen }: { detail: AdminUserDetail; onDeleted: () => void; defaultOpen?: boolean }) {
+  const state = useDialogState(defaultOpen);
   const [confirmation, setConfirmation] = useState('');
   const [code, setCode] = useState('');
 

@@ -1,16 +1,19 @@
 import { CountryFlag } from '@/shared/components/CountryFlag';
 import { useEffect, useState } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
-import { Search, ShieldCheck } from 'lucide-react';
+import { Ban, Coins, Layers, LogOut, MoreHorizontal, Search, ShieldCheck, Trash2, UserRound, UserRoundCheck } from 'lucide-react';
 import { type UserList, useAdminMeta, useAdminResource } from '@/features/admin/adminApi';
 import { CreateUserDialog } from '@/features/admin/AdminDialogs';
 import { AdminErrorAlert, Pagination, PresenceLabel } from '@/features/admin/components';
+import { type UserAction, userActionHref, userActionsFor } from '@/features/admin/userActions';
 import { initialsOf, useAuth } from '@/features/auth/AuthContext';
 import { PageHeader } from '@/shared/components/PageHeader';
 import { formatDateFr } from '@/shared/lib/formatDate';
 import { formatPhone } from '@server/shared/phone';
 import { Avatar, AvatarFallback } from '@/shared/ui/avatar';
 import { Badge } from '@/shared/ui/badge';
+import { Button } from '@/shared/ui/button';
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from '@/shared/ui/dropdown-menu';
 import { Card, CardContent } from '@/shared/ui/card';
 import { Input } from '@/shared/ui/input';
 import { Label } from '@/shared/ui/label';
@@ -21,6 +24,55 @@ import { Switch } from '@/shared/ui/switch';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/shared/ui/table';
 
 const PAGE_SIZE = 20;
+
+type ListedUser = UserList['users'][number];
+
+/**
+ * Le menu « ⋯ » d'une ligne : chaque action mène à la fiche du compte, sa fenêtre déjà ouverte.
+ * Le 18/10/2026, le propriétaire cherchait « Bloquer » et « Supprimer » dans cette liste, où rien ne
+ * les montrait ni ne disait qu'il fallait ouvrir la fiche.
+ */
+function UserRowMenu({ user, actions }: { user: ListedUser; actions: UserAction[] }) {
+  const suspended = user.status === 'suspended';
+  const entries: { action: UserAction; label: string; icon: typeof Coins; destructive?: boolean }[] = [
+    { action: 'points', label: 'Recharger des points', icon: Coins },
+    { action: 'palier', label: 'Changer le palier', icon: Layers },
+    { action: 'deconnecter', label: 'Déconnecter partout', icon: LogOut },
+    { action: 'bloquer', label: suspended ? 'Débloquer' : 'Bloquer', icon: suspended ? UserRoundCheck : Ban },
+    { action: 'supprimer', label: 'Supprimer le compte', icon: Trash2, destructive: true },
+  ];
+  return (
+    <DropdownMenu>
+      <DropdownMenuTrigger asChild>
+        <Button variant="ghost" size="icon" className="ml-auto size-8 shrink-0" aria-label={`Actions sur le compte de ${user.name}`}>
+          <MoreHorizontal />
+        </Button>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="end" className="w-56">
+        <DropdownMenuItem asChild>
+          <Link to={`/app/admin/utilisateurs/${user.id}`}>
+            <UserRound />
+            Ouvrir la fiche
+          </Link>
+        </DropdownMenuItem>
+        {actions.length > 0 && <DropdownMenuSeparator />}
+        {entries
+          .filter((entry) => actions.includes(entry.action))
+          .map((entry) => {
+            const Icon = entry.icon;
+            return (
+              <DropdownMenuItem key={entry.action} variant={entry.destructive ? 'destructive' : 'default'} asChild>
+                <Link to={userActionHref(user.id, entry.action)}>
+                  <Icon />
+                  {entry.label}
+                </Link>
+              </DropdownMenuItem>
+            );
+          })}
+      </DropdownMenuContent>
+    </DropdownMenu>
+  );
+}
 
 const SORTS = [
   { value: 'created_desc', label: 'Plus récents' },
@@ -82,7 +134,7 @@ export function AdminUsersPage() {
       <PageHeader
         eyebrow="Administration"
         title="Utilisateurs"
-        description="Tous les comptes enregistrés en base : palier, solde de points, présence et privilèges."
+        description="Tous les comptes enregistrés en base : palier, solde de points, présence et privilèges. Le bouton ⋯ d’une ligne recharge les points, change le palier, bloque ou supprime le compte."
         actions={canManage && meta ? <CreateUserDialog plans={meta.plans} onCreated={() => void reload()} /> : undefined}
       />
 
@@ -191,7 +243,7 @@ export function AdminUsersPage() {
                               {initialsOf(user.name)}
                             </AvatarFallback>
                           </Avatar>
-                          <div className="min-w-0">
+                          <div className="min-w-0 flex-1">
                             <Link to={`/app/admin/utilisateurs/${user.id}`} className="flex items-center gap-1.5 font-medium hover:underline">
                               <span className="truncate">{user.name}</span>
                               {user.twoFactorEnabled && (
@@ -203,6 +255,7 @@ export function AdminUsersPage() {
                               <span className="truncate">{user.email}</span>
                             </span>
                           </div>
+                          {account && <UserRowMenu user={user} actions={userActionsFor(account, user)} />}
                         </div>
                       </TableCell>
                       <TableCell className="whitespace-nowrap tabular-nums">

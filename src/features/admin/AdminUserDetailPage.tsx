@@ -2,7 +2,7 @@ import { countryName } from '@server/shared/countries';
 import { formatPhone } from '@server/shared/phone';
 import { CountryFlag } from '@/shared/components/CountryFlag';
 import { useEffect, useState } from 'react';
-import { Link, useNavigate, useParams } from 'react-router-dom';
+import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { toast } from 'sonner';
 import { ArrowLeft, History, Info, KeyRound, Phone, ShieldOff, TriangleAlert, UserCog } from 'lucide-react';
 import { ConnectionTable } from '@/features/admin/AdminConnectionsPage';
@@ -21,6 +21,7 @@ import {
 } from '@/features/admin/AdminDialogs';
 import { AdminErrorAlert, PresenceLabel, StepUpDialog } from '@/features/admin/components';
 import { describeAuditDetails } from '@/features/admin/format';
+import { readUserAction } from '@/features/admin/userActions';
 import { initialsOf, useAuth } from '@/features/auth/AuthContext';
 import { apiRequest } from '@/shared/lib/api';
 import { toApiError } from '@/shared/lib/apiError';
@@ -85,6 +86,21 @@ export function AdminUserDetailPage() {
   const navigate = useNavigate();
   const meta = useAdminMeta();
   const { data, error, reload, setData } = useAdminResource<AdminUserDetail>(userId ? `/api/admin/users/${userId}` : null);
+  // Action demandée par le menu « ⋯ » de la liste : sa fenêtre s'ouvre à l'arrivée, une seule fois.
+  const [params, setParams] = useSearchParams();
+  const [requested] = useState(() => readUserAction(params.get('action')));
+  useEffect(() => {
+    if (!params.has('action')) return;
+    setParams(
+      (current) => {
+        const next = new URLSearchParams(current);
+        next.delete('action');
+        return next;
+      },
+      { replace: true },
+    );
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   if (!account) return null;
 
@@ -169,16 +185,18 @@ export function AdminUserDetailPage() {
           </div>
 
           <div className="flex flex-wrap gap-2 lg:max-w-md lg:justify-end">
-            {canCredits && <GrantCreditsDialog detail={data} onDone={update} />}
+            {canCredits && <GrantCreditsDialog detail={data} onDone={update} defaultOpen={requested === 'points'} />}
             {canPayments && meta && (
               <RecordPaymentDialog plans={meta.plans} presetUser={data.user} presetPlan={data.user.plan.id} onDone={() => void reload()} />
             )}
-            {canManage && meta && <ChangePlanDialog detail={data} plans={meta.plans} onDone={update} />}
+            {canManage && meta && <ChangePlanDialog detail={data} plans={meta.plans} onDone={update} defaultOpen={requested === 'palier'} />}
             {canManage && !isSelf && <PasswordLinkDialog detail={data} />}
-            {canManage && !isSelf && <RevokeSessionsDialog detail={data} onDone={() => void reload()} />}
-            {canManage && !isSelf && <SuspendDialog detail={data} onDone={update} />}
+            {canManage && !isSelf && <RevokeSessionsDialog detail={data} onDone={() => void reload()} defaultOpen={requested === 'deconnecter'} />}
+            {canManage && !isSelf && <SuspendDialog detail={data} onDone={update} defaultOpen={requested === 'bloquer'} />}
             {/* Réservé aux administrateurs, comme côté serveur. */}
-            {isAdmin && !isSelf && <DeleteUserDialog detail={data} onDeleted={() => navigate('/app/admin/utilisateurs', { replace: true })} />}
+            {isAdmin && !isSelf && (
+              <DeleteUserDialog detail={data} onDeleted={() => navigate('/app/admin/utilisateurs', { replace: true })} defaultOpen={requested === 'supprimer'} />
+            )}
           </div>
         </CardContent>
       </Card>
