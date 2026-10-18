@@ -127,7 +127,7 @@ function familles(paysDuSite, paysCibles, annonceurs) {
     { nom: 'chariow · niches', liste: NICHES.flatMap((mot) => PAYS_DES_NICHES.map((country) => ({ q: `mychariow ${mot}`, country, reglage: {} }))) },
     { nom: 'maketou', liste: [...recherches(['mymaketou', 'maketou'], paysCibles), ...recherches(['mymaketou'], paysCibles, { statut: 'inactive' })] },
     { nom: 'shopify', liste: [...recherches(['myshopify'], paysCibles, { media: 'image' }), ...recherches(['myshopify'], paysCibles, { media: 'video' }), ...recherches(['myshopify'], paysCibles, { statut: 'inactive' })] },
-  ].map((famille) => ({ fenetre: 3, ...famille, prochaine: 0, recentes: [], abandonnee: false, credits: 0, nouvelles: 0 }));
+  ].map((famille) => ({ fenetre: 3, ...famille, prochaine: 0, recentes: [], abandonnee: false, epuisee: false, videsDeSuite: 0, credits: 0, nouvelles: 0 }));
 }
 
 /**
@@ -222,6 +222,12 @@ async function traiter({ q, country, reglage, famille, demande, page: annonceur 
     famille.credits += page.credits;
     famille.nouvelles += nouvelles;
     noter(famille, nouvelles);
+    /*
+      Pages vides de suite : les annonceurs restants ne diffusent plus (« This advertiser isn't running
+      ads… », 18/10/2026). Cinq de suite, et la famille est close pour de bon, même jusqu'au bout.
+    */
+    famille.videsDeSuite = trouvees.size === 0 ? famille.videsDeSuite + 1 : 0;
+    if (famille.videsDeSuite >= 5) famille.epuisee = true;
   }
   const reglageLu = [reglage?.statut === 'inactive' ? 'arrêtées' : null, reglage?.media && reglage.media !== 'all' ? reglage.media : null].filter(Boolean).join(', ');
   // Le compte rendu est public (atelier GitHub) : une page d'annonceur n'est pas nommée.
@@ -258,12 +264,12 @@ console.log(
 let tour = 0;
 function suivante() {
   if (demandes.length > 0) return demandes.shift();
-  const vivantes = lesFamilles.filter((famille) => !famille.abandonnee && famille.prochaine < famille.liste.length);
+  const vivantes = lesFamilles.filter((famille) => !famille.abandonnee && !famille.epuisee && famille.prochaine < famille.liste.length);
   if (vivantes.length === 0) {
     if (!JUSQUAU_BOUT) return null;
     // Crédits du mois perdus s'ils ne sont pas dépensés : on reprend les familles abandonnées, la plus rentable d'abord.
     const reste = lesFamilles
-      .filter((famille) => famille.prochaine < famille.liste.length)
+      .filter((famille) => !famille.epuisee && famille.prochaine < famille.liste.length)
       .sort((a, b) => b.nouvelles / Math.max(1, b.credits) - a.nouvelles / Math.max(1, a.credits));
     if (reste.length === 0) return null;
     return { ...reste[0].liste[reste[0].prochaine++], famille: reste[0] };
@@ -297,7 +303,7 @@ await Promise.all(Array.from({ length: CONCURRENCE }, ouvrier));
 const duree = Math.round((Date.now() - debut) / 1000);
 const parFamille = lesFamilles
   .filter((famille) => famille.credits > 0)
-  .map((famille) => ({ famille: famille.nom, credits: famille.credits, nouvelles: famille.nouvelles, abandonnee: famille.abandonnee }));
+  .map((famille) => ({ famille: famille.nom, credits: famille.credits, nouvelles: famille.nouvelles, abandonnee: famille.abandonnee, epuisee: famille.epuisee }));
 // Dernier versement, vide : il inscrit le passage au journal du site et recalcule les alertes.
 if (!ESSAI) {
   await site('/api/cron/collecte', {
@@ -315,6 +321,6 @@ console.log(
     ` Crédits restants : ${apres}.` +
     (arret ? `\nArrêt : ${arret}.` : ''),
 );
-for (const ligne of parFamille) console.log(`  ${ligne.famille} : ${ligne.credits} crédit(s), ${ligne.nouvelles} nouvelles${ligne.abandonnee ? ' (abandonnée : ne rapportait plus)' : ''}`);
+for (const ligne of parFamille) console.log(`  ${ligne.famille} : ${ligne.credits} crédit(s), ${ligne.nouvelles} nouvelles${ligne.epuisee ? ' (close : cinq pages vides de suite)' : ligne.abandonnee ? ' (abandonnée : ne rapportait plus)' : ''}`);
 if (totaux.demandes > 0) console.log(`${totaux.demandes} recherche(s) de clients lue(s).`);
 process.exit(arret && !/épuisés/.test(arret) ? 1 : 0);

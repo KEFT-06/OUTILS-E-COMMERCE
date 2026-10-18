@@ -88,10 +88,12 @@ export async function collectorPlan(now = new Date()) {
     boutique, quand les recherches par mot-clé ne rapportaient plus qu'une annonce nouvelle par crédit.
   */
   /*
-    Ordre : jamais lus d'abord, puis lus il y a le plus longtemps ; à égalité, les annonceurs vus le
-    plus récemment. Mesuré le 18/10/2026 : les plus récemment vus rapportaient huit annonces nouvelles
-    par page ; les moins récemment vus, aucune — leur page est vide, ils ne diffusent plus. Une page
-    lue depuis moins de quinze jours n'est pas remise : la relire ne rapporterait rien.
+    Ordre : jamais lus d'abord, puis lus il y a le plus longtemps ; à égalité, les annonceurs dont une
+    publicité EN COURS a été vue le plus récemment, ceux qui n'en ont aucune en dernier. Mesuré le
+    18/10/2026 : la page d'un annonceur qui diffuse rapportait huit annonces nouvelles ; celle d'un
+    annonceur qui ne diffuse plus est vide (« This advertiser isn't running ads… »), même s'il vient
+    d'être « vu » par la recherche des publicités arrêtées. Une page lue depuis moins de quinze jours
+    n'est pas remise : la relire ne rapporterait rien.
   */
   const relue = new Date(now.getTime() - PAGE_REREAD_DAYS * JOUR_MS);
   const annonceurs = await getDb()
@@ -100,7 +102,11 @@ export async function collectorPlan(now = new Date()) {
     .leftJoin(spiedPages, eq(spiedPages.pageId, spiedAds.pageId))
     .where(and(isNotNull(spiedAds.pageId), or(isNull(spiedPages.readAt), lt(spiedPages.readAt, relue))))
     .groupBy(spiedAds.pageId, spiedPages.readAt)
-    .orderBy(sql`${spiedPages.readAt} asc nulls first`, desc(max(spiedAds.lastSeenAt)))
+    .orderBy(
+      sql`${spiedPages.readAt} asc nulls first`,
+      sql`max(${spiedAds.lastSeenAt}) filter (where ${spiedAds.active}) desc nulls last`,
+      desc(max(spiedAds.lastSeenAt)),
+    )
     .limit(ADVERTISERS_MAX);
 
   return {

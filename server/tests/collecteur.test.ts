@@ -158,12 +158,18 @@ describe('Collecteur maison', () => {
     assert.ok(annonceurs.includes('5550001'));
     assert.ok(annonceurs.indexOf('5550002') < annonceurs.indexOf('5550001'), 'les pages jamais lues passent avant une page relue');
 
+    // Un annonceur qui ne diffuse plus, vu à l'instant par la recherche des publicités arrêtées : sa page est vide, il passe après.
+    const arrete = annonce({ ad_archive_id: '3003', page_id: '5550003', is_active: false });
+    await verser({ country: 'CM', items: [arrete] }).expect(200);
+    annonceurs = await plan();
+    assert.ok(annonceurs.indexOf('5550002') < annonceurs.indexOf('5550003'), 'une publicité en cours, même vue il y a dix jours, passe avant aucune');
+
     // Une page refusée en forme ne s'enregistre pas.
     await verser({ country: 'ALL', items: [], page: { id: 'pas-un-numero', ads: 0 } }).expect(400);
 
     // Le mur retrouve son état : les tests suivants comptent ses annonces par plateforme.
     const { inArray } = await import('drizzle-orm');
-    await getDb().delete(spiedAds).where(inArray(spiedAds.externalId, ['3001', '3002']));
+    await getDb().delete(spiedAds).where(inArray(spiedAds.externalId, ['3001', '3002', '3003']));
     await getDb().delete(spiedPages).where(eq(spiedPages.pageId, '5550001'));
   });
 
