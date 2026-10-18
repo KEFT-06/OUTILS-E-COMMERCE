@@ -63,6 +63,7 @@ jobs:
               `ventes : ${etat.boutiquesReleveesAujourdhui ?? "?"} boutiques relevées aujourd’hui sur ${etat.boutiques ?? "?"} ; dernier relevé ${etat.dernierReleveDeVentes ?? "aucun"}`,
               `publicités : ${etat.annonces ?? "?"} sur le mur, ${etat.annoncesVuesDepuis24h ?? "?"} vues en 24 h ; dernière vue ${String(etat.derniereAnnonceVue ?? "jamais").slice(0, 16)}`,
               r.paiements ? `paiements Mobile Money repris : ${r.paiements}` : null,
+              r.apercus && (r.apercus.shrunk || r.apercus.failed) ? `aperçus allégés : ${r.apercus.shrunk} (${(r.apercus.savedBytes / 1048576).toFixed(1)} Mo rendus)${r.apercus.failed ? `, ${r.apercus.failed} non lus` : ""}` : null,
               (r.enRetard ?? []).length ? `étapes en retard : ${r.enRetard.join(", ")}` : null,
               Object.keys(r.durees ?? {}).length ? `temps : ${Object.entries(r.durees).sort((a, b) => b[1] - a[1]).slice(0, 3).map(([etape, ms]) => `${etape} ${(ms / 1000).toFixed(1)} s`).join(", ")}` : null,
               (r.enEchec ?? []).length ? `étapes en échec : ${r.enEchec.map((e) => `${e.etape}${e.code ? ` (${e.code})` : ""}`).join(", ")}` : null,
