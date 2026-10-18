@@ -138,21 +138,21 @@ describe('Collecteur maison', () => {
     const { eq } = await import('drizzle-orm');
     const plan = async () => (await request(app).get('/api/cron/collecte').set('Authorization', `Bearer ${SECRET}`).expect(200)).body.advertisers as string[];
 
-    // Deux annonceurs jamais lus : l'un revu à l'instant, l'autre pas revu depuis dix jours.
-    const ancien = annonce({ ad_archive_id: '3001', page_id: '5550001' });
-    const recent = annonce({ ad_archive_id: '3002', page_id: '5550002' });
-    await verser({ country: 'CM', items: [ancien, recent] }).expect(200);
-    await getDb().update(spiedAds).set({ lastSeenAt: new Date(Date.now() - 10 * JOUR * 1000) }).where(eq(spiedAds.externalId, '3001'));
+    // Deux annonceurs jamais lus : l'un vu à l'instant, l'autre pas revu depuis dix jours (il ne diffuse sans doute plus).
+    const actif = annonce({ ad_archive_id: '3001', page_id: '5550001' });
+    const eteint = annonce({ ad_archive_id: '3002', page_id: '5550002' });
+    await verser({ country: 'CM', items: [actif, eteint] }).expect(200);
+    await getDb().update(spiedAds).set({ lastSeenAt: new Date(Date.now() - 10 * JOUR * 1000) }).where(eq(spiedAds.externalId, '3002'));
     let annonceurs = await plan();
-    assert.ok(annonceurs.indexOf('5550001') < annonceurs.indexOf('5550002'), 'celui qu’on n’a pas revu depuis longtemps d’abord');
+    assert.ok(annonceurs.indexOf('5550001') < annonceurs.indexOf('5550002'), 'le plus récemment vu d’abord : sa page a des annonces à montrer');
 
     // Sa page est lue en entier : elle sort du plan (le 18/10/2026, un passage relisait les pages qu’il venait de lire).
-    await verser({ country: 'ALL', items: [ancien], page: { id: '5550001', ads: 1 } }).expect(200);
+    await verser({ country: 'ALL', items: [actif], page: { id: '5550001', ads: 1 } }).expect(200);
     annonceurs = await plan();
     assert.ok(!annonceurs.includes('5550001'), 'lue à l’instant : pas remise');
     assert.ok(annonceurs.includes('5550002'));
 
-    // Seize jours plus tard, elle revient — après les pages jamais lues.
+    // Seize jours plus tard, elle revient — après les pages jamais lues, même moins récemment vues.
     await getDb().update(spiedPages).set({ readAt: new Date(Date.now() - 16 * JOUR * 1000) }).where(eq(spiedPages.pageId, '5550001'));
     annonceurs = await plan();
     assert.ok(annonceurs.includes('5550001'));
@@ -165,6 +165,28 @@ describe('Collecteur maison', () => {
     const { inArray } = await import('drizzle-orm');
     await getDb().delete(spiedAds).where(inArray(spiedAds.externalId, ['3001', '3002']));
     await getDb().delete(spiedPages).where(eq(spiedPages.pageId, '5550001'));
+  });
+
+  it('la migration 0050 marque lues les seules pages lues dans la fenêtre du 18/10/2026', async () => {
+    const { readFileSync } = await import('node:fs');
+    const { getDb } = await import('@server/db/client');
+    const { spiedAds, spiedPages } = await import('@server/db/schema');
+    const { eq, inArray, sql } = await import('drizzle-orm');
+    const pendant = annonce({ ad_archive_id: '4001', page_id: '6660001' });
+    const avant = annonce({ ad_archive_id: '4002', page_id: '6660002' });
+    await verser({ country: 'CM', items: [pendant, avant] }).expect(200);
+    await getDb().update(spiedAds).set({ lastSeenAt: new Date('2026-10-18T02:40:00Z') }).where(eq(spiedAds.externalId, '4001'));
+    await getDb().update(spiedAds).set({ lastSeenAt: new Date('2026-10-17T23:10:00Z') }).where(eq(spiedAds.externalId, '4002'));
+
+    const migration = readFileSync(new URL('../db/migrations/0050_pages_lues_avant_suivi.sql', import.meta.url), 'utf8');
+    await getDb().execute(sql.raw(migration));
+    const lues = await getDb().select({ pageId: spiedPages.pageId }).from(spiedPages).where(inArray(spiedPages.pageId, ['6660001', '6660002']));
+    assert.deepEqual(lues.map((page) => page.pageId), ['6660001'], 'lue pendant le passage : marquée ; vue la veille : non');
+    // Rejouée, elle ne change rien.
+    await getDb().execute(sql.raw(migration));
+
+    await getDb().delete(spiedAds).where(inArray(spiedAds.externalId, ['4001', '4002']));
+    await getDb().delete(spiedPages).where(eq(spiedPages.pageId, '6660001'));
   });
 
   /*

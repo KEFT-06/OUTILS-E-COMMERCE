@@ -1,4 +1,4 @@
-import { and, asc, eq, isNotNull, isNull, lt, max, or, sql } from 'drizzle-orm';
+import { and, asc, desc, eq, isNotNull, isNull, lt, max, or, sql } from 'drizzle-orm';
 import { getDb } from '@server/db/client';
 import { spiedAds, spiedPages } from '@server/db/schema';
 import { env } from '@server/env';
@@ -88,9 +88,10 @@ export async function collectorPlan(now = new Date()) {
     boutique, quand les recherches par mot-clé ne rapportaient plus qu'une annonce nouvelle par crédit.
   */
   /*
-    Ordre : jamais lus d'abord, puis lus il y a le plus longtemps ; à égalité, ceux dont on n'a rien
-    revu depuis le plus longtemps. Une page lue depuis moins de quinze jours n'est pas remise : ses
-    annonces viennent d'entrer au mur, la relire ne rapporterait rien (mesuré le 18/10/2026).
+    Ordre : jamais lus d'abord, puis lus il y a le plus longtemps ; à égalité, les annonceurs vus le
+    plus récemment. Mesuré le 18/10/2026 : les plus récemment vus rapportaient huit annonces nouvelles
+    par page ; les moins récemment vus, aucune — leur page est vide, ils ne diffusent plus. Une page
+    lue depuis moins de quinze jours n'est pas remise : la relire ne rapporterait rien.
   */
   const relue = new Date(now.getTime() - PAGE_REREAD_DAYS * JOUR_MS);
   const annonceurs = await getDb()
@@ -99,7 +100,7 @@ export async function collectorPlan(now = new Date()) {
     .leftJoin(spiedPages, eq(spiedPages.pageId, spiedAds.pageId))
     .where(and(isNotNull(spiedAds.pageId), or(isNull(spiedPages.readAt), lt(spiedPages.readAt, relue))))
     .groupBy(spiedAds.pageId, spiedPages.readAt)
-    .orderBy(sql`${spiedPages.readAt} asc nulls first`, asc(max(spiedAds.lastSeenAt)))
+    .orderBy(sql`${spiedPages.readAt} asc nulls first`, desc(max(spiedAds.lastSeenAt)))
     .limit(ADVERTISERS_MAX);
 
   return {

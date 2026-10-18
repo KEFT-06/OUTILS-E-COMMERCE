@@ -351,6 +351,13 @@
       "when": 1792292659760,
       "tag": "0049_pages_annonceurs_lues",
       "breakpoints": true
+    },
+    {
+      "idx": 50,
+      "version": "7",
+      "when": 1792293889478,
+      "tag": "0050_pages_lues_avant_suivi",
+      "breakpoints": true
     }
   ]
 }
