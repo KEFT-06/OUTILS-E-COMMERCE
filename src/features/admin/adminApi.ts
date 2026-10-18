@@ -66,7 +66,7 @@ export interface AdminOverview {
   generatedAt: string;
   timezone: string;
   /** Ce qui attend un geste de l'équipe. Absent d'une réponse gardée d'avant son ajout. */
-  attention?: { newMessages: number; openMobilePayments: number };
+  attention?: { newMessages: number; openMobilePayments: number; googleCredits?: boolean };
   users: { total: number; newToday: number; new7d: number; new30d: number; suspended: number; admins: number; withTwoFactor: number };
   /** Actifs : au moins une requête sur la période, d'après l'historique des connexions. */
   online: { users: number; sessions: number; activeToday: number; active7d: number; active30d: number };

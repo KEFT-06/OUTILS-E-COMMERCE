@@ -55,6 +55,25 @@ async function probe(url: string, headers: Record<string, string>): Promise<Prob
 
 const trimmed = (url: string) => url.replace(/\/+$/, '');
 
+let googleBlocked: { at: number; blocked: boolean } | null = null;
+const GOOGLE_BLOCKED_TTL_MS = 10 * 60_000;
+
+/**
+ * Vrai si Google refuse toute génération faute de crédit : le tableau de bord le met « À traiter ».
+ * Le 18/10/2026, les clients lisaient « l'administrateur en a été informé » alors que rien ne le lui
+ * disait hors de la page État des services. Lu au plus toutes les dix minutes, en trois secondes au
+ * plus : le tableau de bord n'attend jamais Google.
+ */
+export async function googleCreditsBlocked(): Promise<boolean> {
+  if (!providers.gemini) return false;
+  if (googleBlocked && Date.now() - googleBlocked.at < GOOGLE_BLOCKED_TTL_MS) return googleBlocked.blocked;
+  const generation = await Promise.race([probeGeneration(), new Promise<null>((resolve) => setTimeout(() => resolve(null), 3_000))]);
+  const blocked = generation ? classifyGoogleRefusal(generation.status, generation.body) === 'billing' : false;
+  // Sans réponse, on ne conclut rien : la prochaine lecture redemandera.
+  if (generation) googleBlocked = { at: Date.now(), blocked };
+  return blocked;
+}
+
 /** Une génération d'un mot chez Google (voir checkGemini) : le seul contrôle qui voit un projet sans crédit. */
 async function probeGeneration(): Promise<Probe> {
   try {
@@ -194,12 +213,17 @@ async function checkGemini(): Promise<ServiceCheck> {
     */
     const generation = await probeGeneration();
     const blocked = generation ? classifyGoogleRefusal(generation.status, generation.body) : null;
+    if (generation) googleBlocked = { at: Date.now(), blocked: blocked === 'billing' };
     if (blocked) recordGoogleRefusal(blocked, env.GEMINI_MODEL, String((generation?.body as { error?: { message?: string } } | null)?.error?.message ?? '').slice(0, 200));
     if (blocked === 'billing') {
       return {
         ...base,
         state: 'error',
-        detail: `Clé acceptée, mais Google refuse toute génération : crédits prépayés épuisés (ou facturation absente) sur le projet de la clé. Rédaction, contes, voix et vidéos sont à l’arrêt ; les visuels publicitaires et les couvertures passent par Cloudflare, sans le titre lettré.`,
+        detail: `Clé acceptée, mais Google refuse toute génération : crédits prépayés épuisés (ou facturation absente) sur le projet de la clé. Rédaction, contes, voix et vidéos sont à l’arrêt ; ${
+          providers.cloudflareImages
+            ? 'les visuels publicitaires et les couvertures passent par Cloudflare, sans le titre lettré.'
+            : 'les images aussi, faute d’un second moteur (Cloudflare non configuré).'
+        }`,
         action: 'Recharger les crédits prépayés du projet de la clé : ai.studio/projects → Billing. Rien à redéployer : le site reprend dès que Google accepte.',
       };
     }

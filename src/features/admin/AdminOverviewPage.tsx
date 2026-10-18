@@ -13,6 +13,7 @@ import {
   Repeat,
   ShieldAlert,
   Smartphone,
+  TriangleAlert,
   UsersRound,
   Wifi,
 } from 'lucide-react';
@@ -48,11 +49,15 @@ const revenueConfig = { amount: { label: 'Encaissé (FCFA)', color: 'var(--chart
  * Ce qui attend un geste de l'équipe, en tête du tableau de bord : chaque ligne mène à l'écran où
  * l'on agit. Rien à traiter : la rangée ne s'affiche pas — un « tout va bien » permanent ne se lit plus.
  */
-function AttentionRow({ data, canUsers }: { data: AdminOverview; canUsers: boolean }) {
+function AttentionRow({ data, canUsers, canSecurity }: { data: AdminOverview; canUsers: boolean; canSecurity: boolean }) {
   const plural = (count: number, one: string, many: string) => `${count.toLocaleString('fr-FR')} ${count > 1 ? many : one}`;
   // Une réponse gardée d'avant cette rangée n'a pas ce bloc : rien à traiter, plutôt qu'un écran cassé.
   const attention = data.attention ?? { newMessages: 0, openMobilePayments: 0 };
   const items = [
+    // En premier : tant qu'il dure, les clients voient leurs rédactions, contes et voix refusés.
+    canSecurity && attention.googleCredits
+      ? { to: '/app/admin/services', icon: TriangleAlert, label: 'Rédaction, contes et voix à l’arrêt : crédits Google à recharger' }
+      : null,
     canUsers && attention.newMessages > 0
       ? { to: '/app/admin/messages', icon: Mail, label: plural(attention.newMessages, 'message à lire', 'messages à lire') }
       : null,
@@ -71,7 +76,8 @@ function AttentionRow({ data, canUsers }: { data: AdminOverview; canUsers: boole
       {items.map((item) => {
         const Icon = item.icon;
         return (
-          <Button key={item.to} variant="outline" size="sm" asChild>
+          // Sur un téléphone, un libellé long passe à la ligne au lieu de déborder de l'écran.
+          <Button key={item.to} variant="outline" size="sm" className="h-auto min-h-8 max-w-full py-1.5 text-left whitespace-normal" asChild>
             <Link to={item.to}>
               <Icon />
               {item.label}
@@ -127,7 +133,7 @@ export function AdminOverviewPage() {
 
       {overview.error && <AdminErrorAlert error={overview.error} onRetry={() => void overview.reload()} />}
 
-      {data && <AttentionRow data={data} canUsers={canUsers} />}
+      {data && <AttentionRow data={data} canUsers={canUsers} canSecurity={canSecurity} />}
 
       <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
         {!data ? (
@@ -185,7 +191,8 @@ export function AdminOverviewPage() {
         )}
       </div>
 
-      <div className="grid gap-6 lg:grid-cols-3">
+      {/* « grid-cols-1 » : sur téléphone, la colonne rétrécit à l'écran au lieu de suivre le graphique (7 points de trop, 18/10/2026). */}
+      <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
         {canRevenue && (
           <Card className="lg:col-span-2">
             <CardHeader>

@@ -2,7 +2,8 @@ import assert from 'node:assert/strict';
 import { createServer } from 'node:http';
 import type { AddressInfo } from 'node:net';
 import { after, before, beforeEach, describe, it } from 'node:test';
-import { closeTestApp, createTestApp } from './support/helpers';
+import type { Express } from 'express';
+import { closeTestApp, createAdmin, createTestApp } from './support/helpers';
 
 /**
  * Refus 429 de Google : débit de la minute, quota du jour, ou projet sans crédit. Le site les
@@ -31,6 +32,7 @@ const SANS_FRANCHISE = refus('Quota exceeded for metric: generate_content_free_t
 const IMAGE = { candidates: [{ content: { parts: [{ inlineData: { mimeType: 'image/png', data: 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==' } }] } }] };
 const MINUTE = refus('You exceeded your current quota, please check your plan and billing details.', 'GenerateRequestsPerMinutePerProjectPerModel', '10');
 
+let app: Express;
 let reponses: Record<string, { status: number; body: unknown }> = {};
 let appels: string[] = [];
 
@@ -64,7 +66,7 @@ const faux = createServer((req, res) => {
 
 before(async () => {
   await new Promise<void>((r) => faux.listen(0, '127.0.0.1', r));
-  await createTestApp({ GEMINI_API_KEY: 'cle-gemini-de-test', GEMINI_API_URL: `http://127.0.0.1:${(faux.address() as AddressInfo).port}` });
+  app = await createTestApp({ GEMINI_API_KEY: 'cle-gemini-de-test', GEMINI_API_URL: `http://127.0.0.1:${(faux.address() as AddressInfo).port}` });
 });
 after(async () => {
   await closeTestApp();
@@ -190,6 +192,13 @@ describe('Refus de Google', () => {
       assert.match(gemini.detail, /refuse toute génération/);
       assert.match(gemini.action ?? '', /ai\.studio\/projects/);
       assert.ok(appels.includes('POST /v1beta/models/gemini-3.6-flash:generateContent'), 'une vraie génération, pas la seule lecture de la fiche');
+    });
+
+    it('le tableau de bord d’administration le met « À traiter » dès son ouverture', async () => {
+      reponses = { 'gemini-3.6-flash': { status: 402, body: PREPAYE } };
+      const { agent } = await createAdmin(app, 'admin-google@exemple.test');
+      const vue = await agent.get('/api/admin/overview').expect(200);
+      assert.equal(vue.body.attention.googleCredits, true, 'les clients lisent « l’administrateur en a été informé » : il doit l’être');
     });
   });
 

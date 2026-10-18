@@ -26,6 +26,7 @@ import { addMonths, creditSummary, loadAccount } from '@server/services/accounts
 import { AUTH_EVENT_LABELS } from '@server/services/audit';
 import { hasSecondFactor, secondFactorMethods } from '@server/services/auth/factors';
 import { ONLINE_WINDOW_MS } from '@server/services/auth/sessions';
+import { googleCreditsBlocked } from '@server/services/admin/services';
 import { fromMinorUnits } from '@server/services/currency';
 import { integrationsOverview } from '@server/services/integrations';
 import { FEATURES, FEATURE_IDS, getPlanConfig } from '@server/services/plans';
@@ -222,7 +223,12 @@ export async function adminOverview(options: { includeRevenue: boolean; includeS
   return {
     generatedAt: now.toISOString(),
     timezone: env.REPORTING_TIMEZONE,
-    attention: { newMessages: inbox?.value ?? 0, openMobilePayments: mobile?.value ?? 0 },
+    attention: {
+      newMessages: inbox?.value ?? 0,
+      openMobilePayments: mobile?.value ?? 0,
+      // Google à court de crédit : rédaction, contes, voix et vidéos refusés aux clients.
+      googleCredits: await googleCreditsBlocked().catch(() => false),
+    },
     users: userStats!,
     online: {
       users: online?.users ?? 0,
