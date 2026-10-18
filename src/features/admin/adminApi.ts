@@ -50,6 +50,8 @@ export interface RevenueTotals {
   payments: number;
   monthlyRecurring: number;
   activeSubscribers: number;
+  /** Comptes dont un paiement couvre encore la période : ceux que compte le revenu mensuel. */
+  payingSubscribers: number;
 }
 
 export interface AuditEntry {

@@ -102,7 +102,7 @@ export function describeAuditDetails(
     case 'feature.reset':
       return text(details.label ?? details.feature);
     case 'sessions.revoked':
-      return `${text(details.sessions)} session(s)`;
+      return `${text(details.sessions)} session${Number(details.sessions) > 1 ? 's' : ''}`;
     case 'password.link_created':
       return details.purpose === 'setup' ? 'création du mot de passe' : 'réinitialisation';
     case 'security.unlocked':
@@ -120,4 +120,14 @@ export function formatPaymentAmount(payment: { amount: number; currency: string;
   return payment.currency === 'XAF'
     ? formatFcfa(payment.amountFcfa)
     : `${formatMoney(payment.amount, payment.currency)} (≈ ${formatFcfa(payment.amountFcfa)})`;
+}
+
+/**
+ * « 1 abonné payant · 2 sur un palier offert » : les comptes que paie le revenu mensuel, puis ceux
+ * qu'un palier offert par l'équipe (ou un compte de l'équipe) met au-dessus du palier gratuit.
+ */
+export function abonnes(payants: number, surUnPalier: number): string {
+  const offerts = Math.max(0, surUnPalier - payants);
+  const base = `${payants} abonné${payants > 1 ? 's' : ''} payant${payants > 1 ? 's' : ''}`;
+  return offerts > 0 ? `${base} · ${offerts} sur un palier offert` : base;
 }

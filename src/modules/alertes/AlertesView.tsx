@@ -12,7 +12,7 @@ import { useMoney, useUserCurrency } from '@/shared/lib/money';
 import { cn } from '@/shared/lib/utils';
 import { resetAlertsUnread } from '@/shared/stores/useAlertsUnread';
 import { blankProduct, useCustomProducts } from '@/shared/stores/useCustomProducts';
-import type { AlertItem, AlertLevel, AlertWatch } from '@/shared/types/radar';
+import type { AlertItem, AlertKind, AlertLevel, AlertWatch } from '@/shared/types/radar';
 import { etatDeLaVeille } from '@/modules/alertes/veille';
 import { Button } from '@/shared/ui/button';
 import { Card, CardContent } from '@/shared/ui/card';
@@ -35,6 +35,26 @@ const NIVEAUX: Record<AlertLevel, { label: string; filtre: string; icon: LucideI
   info: { label: 'Signal', filtre: 'Signaux', icon: Signal, bord: 'border-l-brand-green', ton: 'text-brand-green-text', pastille: 'bg-brand-green' },
 };
 const ORDRE: AlertLevel[] = ['major', 'opportunity', 'info'];
+
+/*
+  Le nom de chaque sorte d'alerte, tel que l'écran le donne AUJOURD'HUI. Le titre est écrit en base
+  le jour de l'alerte : renommées depuis, les anciennes s'affichaient sous un autre nom que les
+  nouvelles de même sorte (« Produit gagnant détecté » à côté de « Lancement flash », « Arrêt d'une
+  publicité installée » à côté de « Place libérée ») — relevé le 18/10/2026.
+*/
+const TITRES: Record<AlertKind, string> = {
+  winner: 'Lancement flash',
+  flash_scale: 'Scale éclair',
+  daily_scale: 'Pression concurrentielle',
+  first_traction: 'Premier signal',
+  stockout: 'Chute brutale',
+  niche_trend: 'Tendance de niche',
+  ad_stopped: 'Place libérée',
+  ad_longevity: 'Publicité qui dure',
+  store_ramp: 'Montée en puissance',
+};
+
+const memeJour = (iso: string, now = new Date()) => new Date(iso).toDateString() === now.toDateString();
 
 type Filtre = 'tout' | AlertLevel;
 
@@ -59,10 +79,17 @@ function AlertCard({ alert }: { alert: AlertItem }) {
   const ventesJour = nombre(alert.payload.salesToday);
   const ventesVeille = nombre(alert.payload.salesYesterday);
   const ventesTotal = nombre(alert.payload.sales);
+  /*
+    « Aujourd'hui » ne vaut que le jour de l'alerte : le 18 octobre, une alerte du 7 disait encore
+    « 31 ventes aujourd'hui ». Les jours suivants, la phrase nomme le jour du relevé.
+  */
+  // Le mois en toutes lettres : abrégé (« 7 oct. »), il doublait le point en fin de phrase.
+  const jour = memeJour(alert.occurredAt) ? 'aujourd’hui' : `le ${new Date(alert.occurredAt).toLocaleDateString('fr-FR', { day: 'numeric', month: 'long' })}`;
+  const corps = alert.body.replace(/aujourd’hui/g, jour);
 
   // Les chiffres de la constatation, sous la phrase : ce qui permet de juger sans ouvrir la boutique.
   const faits = [
-    ventesJour !== null ? `${ventesJour.toLocaleString('fr-FR')} vente${ventesJour > 1 ? 's' : ''} aujourd’hui` : null,
+    ventesJour !== null ? `${ventesJour.toLocaleString('fr-FR')} vente${ventesJour > 1 ? 's' : ''} ${jour}` : null,
     ventesVeille !== null ? `${ventesVeille.toLocaleString('fr-FR')} la veille` : null,
     ventesTotal !== null ? `${ventesTotal.toLocaleString('fr-FR')} au total` : null,
     prix !== null && prix > 0 ? `vendu ${money.format(prix, devise, { round: true })}` : null,
@@ -97,10 +124,10 @@ function AlertCard({ alert }: { alert: AlertItem }) {
           <Icon className={cn('mt-0.5 size-5 shrink-0', niveau.ton)} aria-hidden="true" />
           <div className="min-w-0 flex-1 space-y-1">
             <p className="flex flex-wrap items-center gap-x-2 gap-y-1">
-              <span className="font-display text-base font-bold">{alert.title}</span>
+              <span className="font-display text-base font-bold">{TITRES[alert.kind] ?? alert.title}</span>
               {alert.unread && <span className="rounded-full bg-brand-green-text px-2 py-0.5 text-xs font-semibold text-white">Nouveau</span>}
             </p>
-            <p className="text-sm leading-relaxed">{alert.body}</p>
+            <p className="text-sm leading-relaxed">{corps}</p>
             {faits.length > 0 && <p className="text-sm font-medium tabular-nums">{faits.join(' · ')}</p>}
             <p className="text-xs text-muted-foreground">
               {niveau.label} · {formatRelativeFr(alert.occurredAt)}

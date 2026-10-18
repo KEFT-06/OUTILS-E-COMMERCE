@@ -19,6 +19,7 @@ import { Button } from '@/shared/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/shared/ui/card';
 import { Field, FieldDescription, FieldLabel } from '@/shared/ui/field';
 import { Input } from '@/shared/ui/input';
+import { objectiveLabel } from '@/shared/lib/adPlatformLabels';
 import { Skeleton } from '@/shared/ui/skeleton';
 
 /**
@@ -238,19 +239,19 @@ export function CampaignBlueprintsView() {
                         <div className="grid gap-3 sm:grid-cols-2">
                           <div className="rounded-lg bg-muted/50 p-3">
                             <p className="text-xs text-muted-foreground">Objectif</p>
-                            <p className="font-semibold">{objective?.officialName ?? phase.objectiveId}</p>
+                            <p className="font-semibold">{objective ? objectiveLabel(objective.officialName) : phase.objectiveId}</p>
                             {objective && <p className="text-sm text-muted-foreground">{objective.purpose}</p>}
                             {fallback && phase.fallbackCondition && (
                               <p className="mt-1 text-sm text-warning">
-                                {phase.fallbackCondition} → {fallback.officialName}
+                                {phase.fallbackCondition} → {objectiveLabel(fallback.officialName)}
                               </p>
                             )}
                           </div>
                           <div className="rounded-lg bg-muted/50 p-3">
                             <p className="text-xs text-muted-foreground">Structure</p>
                             <p className="text-sm">
-                              {phase.structure.campaigns} campagne · {phase.structure.adSets} ensemble(s) de publicités ·{' '}
-                              {phase.structure.adsPerAdSet} publicité(s) par ensemble
+                              {phase.structure.campaigns} campagne{phase.structure.campaigns > 1 ? 's' : ''} · {phase.structure.adSets} ensemble{phase.structure.adSets > 1 ? 's' : ''} de publicités ·{' '}
+                              {phase.structure.adsPerAdSet} publicité{phase.structure.adsPerAdSet > 1 ? 's' : ''} par ensemble
                             </p>
                           </div>
                         </div>

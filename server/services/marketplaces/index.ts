@@ -14,9 +14,8 @@ export * from '@server/services/marketplaces/types';
  * oubliés — ou pire, d'afficher un bouton de connexion qui ne mène nulle part.
  */
 function plannedAdapter(id: string, label: string): MarketplaceAdapter {
-  const reason =
-    `${label} ne publie pas de documentation d'API. ` +
-    "Le connecteur se branchera sur la même interface une fois le partenariat négocié.";
+  // Phrase lue par le client : ni « documentation d'API » ni « partenariat négocié » (relevé le 18/10/2026).
+  const reason = `La liaison avec ${label} n’est pas encore proposée.`;
   const refuse = () => Promise.reject(new AppError(501, reason, 'MARKETPLACE_NOT_AVAILABLE'));
 
   return {

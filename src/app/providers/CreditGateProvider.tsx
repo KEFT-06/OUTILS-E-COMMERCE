@@ -2,6 +2,7 @@ import React, { Suspense, createContext, lazy, useCallback, useContext, useEffec
 import { useAuth } from '@/features/auth/AuthContext';
 import { toast } from 'sonner';
 import { reloadOnceForNewVersion } from '@/shared/lib/reloadForNewVersion';
+import { loadPlans, pointValueOf } from '@/shared/lib/plans';
 import { CreditAction, CreditCostTable, CreditQuote } from '@/shared/types/credits';
 
 /*
@@ -164,12 +165,14 @@ export const CreditGateProvider: React.FC<{ children: React.ReactNode }> = ({ ch
             : { id: actionId, label: [first, ...others].map((part) => part.label).join(' + '), cost, description: [first, ...others].map((part) => part.description).join(' ') };
         const unlimited = account?.credits.unlimited ?? false;
         const balanceBefore = account?.credits.total ?? 0;
+        // La valeur des points se lit sur le prix du palier (voir pointValueOf) ; à défaut, celle de la grille.
+        const valeur = pointValueOf(await loadPlans().catch(() => null), account?.plan.id);
 
         setQuote({
           action: definition,
           cost,
-          monetaryEquivalent: cost * table.pointValue,
-          currency: table.currency,
+          monetaryEquivalent: cost * (valeur?.value ?? table.pointValue),
+          currency: valeur?.currency ?? table.currency,
           balanceBefore,
           balanceAfter: unlimited ? balanceBefore : Math.max(0, balanceBefore - cost),
           sufficient: unlimited || balanceBefore >= cost,

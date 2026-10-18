@@ -28,7 +28,7 @@ import {
 } from '@/features/admin/adminApi';
 import { AdminUsersGrowthCard } from '@/features/admin/AdminUsersGrowthCard';
 import { AdminErrorAlert, GranularityToggle, KpiCard } from '@/features/admin/components';
-import { changeRatio, compactNumber, describeAuditDetails, formatPeriod } from '@/features/admin/format';
+import { abonnes, changeRatio, compactNumber, describeAuditDetails, formatPeriod } from '@/features/admin/format';
 import { initialsOf, useAuth } from '@/features/auth/AuthContext';
 import { PageHeader } from '@/shared/components/PageHeader';
 import { formatRelativeFr } from '@/shared/lib/formatDate';
@@ -158,7 +158,7 @@ export function AdminOverviewPage() {
                 label="Revenu mensuel récurrent"
                 value={formatFcfa(data.revenue.monthlyRecurring)}
                 icon={Repeat}
-                hint={`${data.revenue.activeSubscribers} abonné${data.revenue.activeSubscribers > 1 ? 's' : ''} sur un palier payant`}
+                hint={abonnes(data.revenue.payingSubscribers, data.revenue.activeSubscribers)}
               />
             )}
             <KpiCard
@@ -172,7 +172,7 @@ export function AdminOverviewPage() {
               label="Comptes enregistrés"
               value={data.users.total.toLocaleString('fr-FR')}
               icon={UsersRound}
-              hint={`+${data.users.new7d} en 7 jours · ${data.users.newToday} aujourd’hui${data.users.suspended ? ` · ${data.users.suspended} bloqué(s)` : ''}`}
+              hint={`+${data.users.new7d} en 7 jours · ${data.users.newToday} aujourd’hui${data.users.suspended ? ` · ${data.users.suspended} bloqué${data.users.suspended > 1 ? 's' : ''}` : ''}`}
             />
             <KpiCard
               label="Contenus créés sur 30 jours"

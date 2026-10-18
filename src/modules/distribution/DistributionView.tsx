@@ -108,8 +108,9 @@ export function DistributionView() {
                   {marketplace.label}
                 </CardTitle>
                 <CardAction>
+                  {/* « Non disponible » s'affichait aussi sur Chariow, Shopify et WooCommerce, qui le sont : elles n'étaient pas encore reliées. */}
                   <Badge variant={marketplace.available ? 'success' : 'secondary'}>
-                    {marketplace.available ? 'Connectée' : 'Non disponible'}
+                    {marketplace.available ? 'Connectée' : Object.values(marketplace.capabilities).some(Boolean) ? 'Non reliée' : 'Bientôt'}
                   </Badge>
                 </CardAction>
               </CardHeader>

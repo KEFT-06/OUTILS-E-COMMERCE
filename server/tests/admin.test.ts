@@ -102,6 +102,9 @@ describe('Administration : paiements et revenus', () => {
     assert.equal(overview.body.revenue.month, 15_000);
     assert.equal(overview.body.revenue.year, 15_000);
     assert.equal(overview.body.revenue.monthlyRecurring, 15_000);
+    // Le revenu mensuel vient d'UN abonnement payé : c'est le nombre d'abonnés payants affiché à côté.
+    assert.equal(overview.body.revenue.payingSubscribers, 1);
+    assert.ok(overview.body.revenue.activeSubscribers >= overview.body.revenue.payingSubscribers, 'les paliers offerts sont comptés à part');
 
     for (const granularity of ['day', 'month', 'year']) {
       const series = await admin.agent.get('/api/admin/revenue').query({ granularity }).expect(200);

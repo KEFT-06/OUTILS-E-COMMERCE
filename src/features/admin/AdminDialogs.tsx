@@ -890,7 +890,7 @@ export function RevokeSessionsDialog({ detail, onDone, defaultOpen }: { detail: 
   const confirm = () =>
     void state.run(async () => {
       const result = await apiRequest<{ revoked: number }>(`/api/admin/users/${detail.user.id}/sessions/revoke`, { method: 'POST' });
-      toast.success(`${result.revoked} session(s) fermée(s)`);
+      toast.success(`${result.revoked} session${result.revoked > 1 ? 's' : ''} fermée${result.revoked > 1 ? 's' : ''}`);
       onDone();
       state.setOpen(false);
     }, 'Les sessions n’ont pas pu être fermées.');

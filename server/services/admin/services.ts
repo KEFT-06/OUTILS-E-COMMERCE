@@ -641,7 +641,7 @@ async function checkMarketReading(): Promise<ServiceCheck> {
   const cause = compte?.reasons?.[0] ? ` Échec le plus fréquent : « ${compte.reasons[0].reason} » (${compte.reasons[0].stores}).` : '';
   const dernierPassage =
     passage && compte
-      ? ` Dernier passage (${compte.source ?? 'réveil'}, ${passage.createdAt.toLocaleString('fr-FR', { timeZone: 'UTC', day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })} TU) : ${compte.indexed ?? '?'} relevée(s), ${compte.failed ?? '?'} en échec, ${compte.remaining ?? '?'} en attente.${cause}`
+      ? ` Dernier passage (${compte.source ?? 'réveil'}, ${passage.createdAt.toLocaleString('fr-FR', { timeZone: 'UTC', day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })} TU) : ${compte.indexed ?? '?'} relevée${(compte.indexed ?? 0) > 1 ? 's' : ''}, ${compte.failed ?? '?'} en échec, ${compte.remaining ?? '?'} en attente.${cause}`
       : ' Aucun passage du relevé n’a encore laissé de compte rendu.';
   const suite = `${fils}${dernierPassage}`;
   // Le dernier passage s'est arrêté sur des refus : ce n'est pas le relevé qui manque de passer, c'est la plateforme qui ne répond plus au serveur.
@@ -654,10 +654,10 @@ async function checkMarketReading(): Promise<ServiceCheck> {
   if (watch.stores === 0) return { ...base, state: 'warning', detail: `Aucune boutique n’est encore dans l’index du marché.${suite}`, action: remede };
 
   const dernier = watch.readings[0];
-  if (!dernier) return { ...base, state: 'error', detail: `${watch.stores} boutiques dans l’index, aucune relevée depuis deux semaines.${suite}`, action: remede };
+  if (!dernier) return { ...base, state: 'error', detail: `${watch.stores} boutique${watch.stores > 1 ? 's' : ''} dans l’index, aucune relevée depuis deux semaines.${suite}`, action: remede };
   const age = Math.round((Date.parse(`${new Date().toISOString().slice(0, 10)}T00:00:00Z`) - Date.parse(`${dernier.day}T00:00:00Z`)) / 86_400_000);
   const quand = age <= 0 ? 'aujourd’hui' : age === 1 ? 'hier' : `il y a ${age} jours`;
-  const detail = `${watch.stores} boutiques dans l’index ; dernier relevé ${quand} : ${dernier.stores} boutique${dernier.stores > 1 ? 's' : ''} lue${dernier.stores > 1 ? 's' : ''}.${suite}`;
+  const detail = `${watch.stores} boutique${watch.stores > 1 ? 's' : ''} dans l’index ; dernier relevé ${quand} : ${dernier.stores} boutique${dernier.stores > 1 ? 's' : ''} lue${dernier.stores > 1 ? 's' : ''}.${suite}`;
   if (age > 2) return { ...base, state: 'error', detail: `${detail} Sans relevé d’un jour sur l’autre, aucune alerte ne peut se déclencher.`, action: remede };
   // Moins d'une boutique sur deux relue : le relevé tourne, mais ne fait pas le tour.
   if (age > 1 || dernier.stores * 2 < watch.stores) return { ...base, state: 'warning', detail: `${detail} Le relevé ne fait pas le tour des boutiques chaque jour.`, action: remede };
@@ -688,7 +688,7 @@ async function checkStorefrontReading(): Promise<ServiceCheck> {
   ]);
   if (compte && (compte.status === 401 || compte.status === 403)) return refused(base, 'FIRECRAWL_API_KEY');
   const restants = Number((compte?.body as { data?: { remainingCredits?: unknown } } | null)?.data?.remainingCredits ?? Number.NaN);
-  const jour = `${lues ?? '?'} page${lues === 1 ? '' : 's'} lue${lues === 1 ? '' : 's'} aujourd’hui, sur un plafond de ${env.RADAR_FIRECRAWL_DAILY_PAGES}`;
+  const jour = `${lues ?? '?'} page${(lues ?? 0) > 1 ? 's' : ''} lue${(lues ?? 0) > 1 ? 's' : ''} aujourd’hui, sur un plafond de ${env.RADAR_FIRECRAWL_DAILY_PAGES}`;
   if (Number.isFinite(restants) && restants <= 0) {
     return { ...base, state: 'error', detail: `Forfait Firecrawl épuisé : plus aucune vitrine n’est lue jusqu’au renouvellement. ${jour}.`, action: 'Recharger ou changer de forfait sur firecrawl.dev (Billing).' };
   }

@@ -417,7 +417,7 @@ export function NichesView() {
               {!historyOpen && reports.length > HISTORY_PREVIEW && (
                 <Button variant="ghost" size="sm" className="mt-2 w-full" onClick={() => setHistoryOpen(true)}>
                   <ChevronDown />
-                  Afficher les {reports.length - HISTORY_PREVIEW} autres
+                  {reports.length - HISTORY_PREVIEW > 1 ? `Afficher les ${reports.length - HISTORY_PREVIEW} autres` : 'Afficher l’autre'}
                 </Button>
               )}
             </>
@@ -663,7 +663,7 @@ export function NichesView() {
                         onClick={() => setExpanded((previous) => ({ ...previous, [catalog.id]: true }))}
                       >
                         <ChevronDown />
-                        Afficher les {niches.length - PREVIEW_COUNT} autres
+                        {niches.length - PREVIEW_COUNT > 1 ? `Afficher les ${niches.length - PREVIEW_COUNT} autres` : 'Afficher l’autre'}
                       </Button>
                     )}
                   </CardContent>

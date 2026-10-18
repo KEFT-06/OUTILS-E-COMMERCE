@@ -2,11 +2,11 @@ import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { ArrowUpRight, CircleCheck, CircleDashed, Layers, Target, Zap } from 'lucide-react';
 import { pathOf, type ModuleId } from '@/app/navigation';
-import { useCreditGate } from '@/app/providers/CreditGateProvider';
 import { useAuth } from '@/features/auth/AuthContext';
 import { PageHeader } from '@/shared/components/PageHeader';
 import { useCachedState } from '@/shared/lib/apiCache';
 import { useMoney } from '@/shared/lib/money';
+import { pointValueOf, usePlans } from '@/shared/lib/plans';
 import { cn } from '@/shared/lib/utils';
 import type { MarketAnalysisReport } from '@/shared/types/analysis';
 import { Button } from '@/shared/ui/button';
@@ -81,7 +81,8 @@ function useProviderStatus() {
 
 export function CockpitDashboard({ report, reportPending = false, onNavigateToModule, onOpenBilling }: CockpitDashboardProps) {
   const { account } = useAuth();
-  const { costTable } = useCreditGate();
+  const { catalog } = usePlans();
+  const valeurPoint = pointValueOf(catalog, account?.plan.id);
   const { providers, failed } = useProviderStatus();
   const money = useMoney();
 
@@ -145,19 +146,20 @@ export function CockpitDashboard({ report, reportPending = false, onNavigateToMo
             </p>
             <Progress value={creditPercentage} aria-label="Quota mensuel restant" />
             {/*
-              L'équivalent monétaire vient de la grille tarifaire servie par l'API,
+              La valeur des points se lit sur le prix réellement payé (prix mensuel du palier divisé par
+              son quota, voir pointValueOf), servi par l'API,
               jamais d'une constante du bundle. Sans grille, aucun montant.
             */}
             <p className="flex items-center justify-between gap-2 text-sm">
-              <span className="text-muted-foreground">Équivalent estimé</span>
+              <span className="text-muted-foreground">{valeurPoint && !valeurPoint.ownPlan ? `Valeur au palier ${valeurPoint.planLabel}` : 'Valeur à votre palier'}</span>
               {credits?.unlimited ? (
                 <span className="font-semibold">Illimité</span>
-              ) : costTable ? (
+              ) : valeurPoint ? (
                 <span className="font-semibold tabular-nums">
-                  {money.format(creditsRemaining * costTable.pointValue, costTable.currency, { round: true, approx: true })}
+                  {money.format(creditsRemaining * valeurPoint.value, valeurPoint.currency, { round: true, approx: true })}
                 </span>
               ) : (
-                <span className="text-muted-foreground">grille indisponible</span>
+                <span className="text-muted-foreground">—</span>
               )}
             </p>
             <Button variant="outline" className="w-full" onClick={onOpenBilling}>

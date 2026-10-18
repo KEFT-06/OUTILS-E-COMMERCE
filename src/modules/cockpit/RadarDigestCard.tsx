@@ -55,6 +55,11 @@ export function RadarDigestCard() {
   const surveillees = data.watches.filter((watch) => watch.active).length;
   // Somme des compteurs de la semaine, la seule mesure fiable du volume ici.
   const semaine = Object.values(data.countsLast7Days).reduce((total, n) => total + (n ?? 0), 0);
+  /*
+    Le dernier relevé réel, et non une promesse : « relevées chaque jour » s'affichait au-dessus de
+    boutiques dont les chiffres dataient de deux semaines (relevé le 18/10/2026).
+  */
+  const dernierReleve = data.watches.reduce<string | null>((plusRecent, watch) => (watch.lastReadAt && (!plusRecent || watch.lastReadAt > plusRecent) ? watch.lastReadAt : plusRecent), null);
 
   return (
     <Card className="lg:col-span-12">
@@ -69,8 +74,8 @@ export function RadarDigestCard() {
           )}
         </CardTitle>
         <CardDescription>
-          {surveillees} boutique{surveillees > 1 ? 's' : ''} surveillée{surveillees > 1 ? 's' : ''}, relevées chaque jour
-          sans que vous ouvriez le site.
+          {surveillees} boutique{surveillees > 1 ? 's' : ''} surveillée{surveillees > 1 ? 's' : ''}
+          {dernierReleve ? ` · dernier relevé ${formatRelativeFr(dernierReleve)}` : ' · premier relevé en préparation'}
         </CardDescription>
         <CardAction>
           <Button asChild variant="outline" size="sm">

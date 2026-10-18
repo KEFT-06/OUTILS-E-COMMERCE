@@ -365,6 +365,20 @@
       "when": 1792320526874,
       "tag": "0051_usage_fournisseurs",
       "breakpoints": true
+    },
+    {
+      "idx": 52,
+      "version": "7",
+      "when": 1792333635634,
+      "tag": "0052_retirer_fausses_nouveautes",
+      "breakpoints": true
+    },
+    {
+      "idx": 53,
+      "version": "7",
+      "when": 1792334082400,
+      "tag": "0053_alertes_publicite_en_double",
+      "breakpoints": true
     }
   ]
 }

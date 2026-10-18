@@ -378,7 +378,7 @@ export function AffiliationView() {
                   placeholder="Séparées par une virgule, un espace ou un retour à la ligne"
                 />
                 <FieldDescription className="tabular-nums">
-                  {emails.length} adresse(s)
+                  {emails.length} adresse{emails.length > 1 ? 's' : ''}
                   {emails.length > MAX_INVITATIONS ? ` — au-delà de ${MAX_INVITATIONS}, l’envoi est refusé` : ''}
                   {invalidEmails.length > 0 ? ` — invalides : ${invalidEmails.join(', ')}` : ''}
                 </FieldDescription>
@@ -398,7 +398,7 @@ export function AffiliationView() {
 
               <Button onClick={invite} disabled={!canInvite}>
                 {isInviting ? <Spinner /> : <Mail />}
-                Envoyer {emails.length > 0 ? `${emails.length} invitation(s)` : 'les invitations'}
+                Envoyer {emails.length > 0 ? `${emails.length} invitation${emails.length > 1 ? 's' : ''}` : 'les invitations'}
               </Button>
 
               {invitationError && (
@@ -413,7 +413,7 @@ export function AffiliationView() {
               {invitation && (
                 <Alert variant="success">
                   <CheckCircle2 />
-                  <AlertTitle>{invitation.sentCount} invitation(s) envoyée(s)</AlertTitle>
+                  <AlertTitle>{invitation.sentCount} invitation{invitation.sentCount > 1 ? 's' : ''} envoyée{invitation.sentCount > 1 ? 's' : ''}</AlertTitle>
                   {invitation.skippedEmails.length > 0 && (
                     <AlertDescription>
                       Ignorées par Chariow (déjà affiliées ou déjà invitées) : {invitation.skippedEmails.join(', ')}.

@@ -276,7 +276,7 @@ function OverviewTab({
             <h2>Points</h2>
           </CardTitle>
           <CardDescription>
-            {credits.unlimited ? 'Palier illimité : aucune action ne décompte.' : `Quota rechargé le ${formatDateFr(credits.cycleEndsAt)}.`}
+            {credits.unlimited ? 'Palier illimité : aucune action ne décompte.' : `Prochaine recharge du quota : ${formatDateFr(credits.cycleEndsAt)}.`}
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">

@@ -596,7 +596,7 @@ export function DigitalProductsView({ report, onSelectProductForAd, onAnalyzeNic
                         Prix de vente
                       </label>
                       <span className="text-sm font-semibold tabular-nums">
-                        {priceValue} {currency}
+                        {priceValue.toLocaleString('fr-FR')} {currency}
                       </span>
                     </div>
                     <input
@@ -622,7 +622,7 @@ export function DigitalProductsView({ report, onSelectProductForAd, onAnalyzeNic
                         Coût d’acquisition par vente
                       </label>
                       <span className="text-sm font-semibold text-danger tabular-nums">
-                        {adCostValue} {currency}
+                        {adCostValue.toLocaleString('fr-FR')} {currency}
                       </span>
                     </div>
                     <input

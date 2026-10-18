@@ -14,7 +14,7 @@ import {
 import { RecordPaymentDialog, RefundPaymentDialog } from '@/features/admin/AdminDialogs';
 import { ReferralPayoutsCard } from '@/features/admin/ReferralPayoutsCard';
 import { AdminErrorAlert, GranularityToggle, KpiCard, Pagination } from '@/features/admin/components';
-import { changeRatio, compactNumber, formatPeriod } from '@/features/admin/format';
+import { abonnes, changeRatio, compactNumber, formatPeriod } from '@/features/admin/format';
 import { useAuth } from '@/features/auth/AuthContext';
 import { PageHeader } from '@/shared/components/PageHeader';
 import { formatDateFr } from '@/shared/lib/formatDate';
@@ -112,7 +112,7 @@ export function AdminRevenuePage() {
               value={formatFcfa(t.monthlyRecurring)}
               icon={Repeat}
               tone="success"
-              hint={`${t.activeSubscribers} abonné${t.activeSubscribers > 1 ? 's' : ''} actif${t.activeSubscribers > 1 ? 's' : ''}`}
+              hint={abonnes(t.payingSubscribers, t.activeSubscribers)}
             />
           </>
         )}

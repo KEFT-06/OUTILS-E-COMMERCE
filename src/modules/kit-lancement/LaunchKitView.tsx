@@ -53,6 +53,7 @@ import {
 } from '@/shared/ui/select';
 import { Skeleton } from '@/shared/ui/skeleton';
 import { Spinner } from '@/shared/ui/spinner';
+import { callToActionLabel } from '@/shared/lib/adPlatformLabels';
 import { Textarea } from '@/shared/ui/textarea';
 
 /**
@@ -473,7 +474,7 @@ export function LaunchKitView({ products, market, report = null }: { products: D
                         maxLength={600}
                       />
                       <FieldDescription className={cn('tabular-nums', words > maxWords && 'text-warning')}>
-                        {words} mot(s) · {maxWords} au plus pour {seconds} s
+                        {words} mot{words > 1 ? 's' : ''} · {maxWords} au plus pour {seconds} s
                       </FieldDescription>
                     </Field>
                   </div>
@@ -581,7 +582,7 @@ export function LaunchKitView({ products, market, report = null }: { products: D
                               <SelectLabel>Recommandés : {OBJECTIVE_LABELS[draft.objective]}</SelectLabel>
                               {recommended.map((button) => (
                                 <SelectItem key={button.id} value={button.id}>
-                                  {button.officialName}
+                                  {callToActionLabel(button.officialName)}
                                 </SelectItem>
                               ))}
                             </SelectGroup>
@@ -590,7 +591,7 @@ export function LaunchKitView({ products, market, report = null }: { products: D
                               <SelectLabel>Autres boutons</SelectLabel>
                               {others.map((button) => (
                                 <SelectItem key={button.id} value={button.id}>
-                                  {button.officialName}
+                                  {callToActionLabel(button.officialName)}
                                 </SelectItem>
                               ))}
                             </SelectGroup>

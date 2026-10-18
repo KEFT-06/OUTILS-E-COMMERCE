@@ -187,7 +187,7 @@ export function buildDocumentPDF(document: ReportDocument, meta: { nicheName: st
   doc.setTextColor(stamp.warningCount > 0 ? 180 : 4, stamp.warningCount > 0 ? 83 : 120, stamp.warningCount > 0 ? 9 : 87);
   doc.text(
     stamp.warningCount > 0
-      ? `Aucune formulation bloquante. ${stamp.warningCount} point(s) de vigilance signalé(s).`
+      ? `Aucune formulation bloquante. ${stamp.warningCount} point${stamp.warningCount > 1 ? 's' : ''} de vigilance signalé${stamp.warningCount > 1 ? 's' : ''}.`
       : 'Aucune formulation bloquante ni point de vigilance relevé.',
     margin + 5,
     y + 12.5,

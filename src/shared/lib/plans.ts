@@ -77,3 +77,31 @@ export function formatFcfa(amount: number): string {
 }
 
 export { formatMoney };
+
+export interface PointValue {
+  /** Valeur d'un point, dans la devise du catalogue. */
+  value: number;
+  currency: string;
+  /** Palier sur lequel elle est calculée : celui du compte, ou le premier palier payant. */
+  planLabel: string;
+  /** Vrai quand c'est le palier du compte. */
+  ownPlan: boolean;
+}
+
+/**
+ * Ce que vaut un point : le prix mensuel d'un palier divisé par son quota de points.
+ *
+ * L'écran annonçait « 60 points · équivalent 15 000 FCFA » au palier Pro, qui coûte 9 900 FCFA pour
+ * ces 60 points (relevé le 18/10/2026) : la valeur venait d'un prix du point provisoire, que la
+ * grille elle-même disait « pas encore validé commercialement ». La valeur se lit désormais sur le
+ * prix réellement payé. Palier gratuit ou illimité : celle du premier palier payant.
+ */
+export function pointValueOf(catalog: PlanCatalog | null, planId: string | undefined): PointValue | null {
+  if (!catalog) return null;
+  const parPoint = (plan: PlanDefinition) => (plan.price && plan.price.monthly > 0 && plan.monthlyCredits ? plan.price.monthly / plan.monthlyCredits : null);
+  const own = catalog.plans.find((plan) => plan.id === planId);
+  const ownValue = own ? parPoint(own) : null;
+  if (own?.price && ownValue !== null) return { value: ownValue, currency: own.price.currency, planLabel: own.label, ownPlan: true };
+  const premier = catalog.plans.filter((plan) => parPoint(plan) !== null).sort((a, b) => a.price!.monthly - b.price!.monthly)[0];
+  return premier?.price ? { value: parPoint(premier)!, currency: premier.price.currency, planLabel: premier.label, ownPlan: false } : null;
+}

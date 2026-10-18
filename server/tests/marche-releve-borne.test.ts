@@ -163,7 +163,7 @@ describe('Relevé du marché — chaque passage laisse son compte rendu', () => 
     const { agent } = await createAdmin(app, 'admin-marche@smartcreator.test');
     const services = ((await agent.get('/api/admin/services').expect(200)).body as { services: { id: string; state: string; detail: string; action: string | null }[] }).services;
     const releve = services.find((service) => service.id === 'market-reading')!;
-    assert.match(releve.detail, /Dernier passage \(réveil de la nuit, .* TU\) : 12 relevée\(s\), 30 en échec, 171 en attente\./);
+    assert.match(releve.detail, /Dernier passage \(réveil de la nuit, .* TU\) : 12 relevées, 30 en échec, 171 en attente\./);
     assert.match(releve.detail, /Échec le plus fréquent : « relevé trop long \(plus de 45 s\) » \(27\)\./);
     assert.match(releve.detail, /dernier relevé aujourd’hui : 1 boutique lue/, 'et ce qui a réellement été relevé, compté sur les relevés eux-mêmes');
   });

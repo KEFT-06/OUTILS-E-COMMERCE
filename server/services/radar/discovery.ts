@@ -1,7 +1,7 @@
 import { and, desc, eq, gt, inArray, isNotNull, sql } from 'drizzle-orm';
 import { z } from 'zod';
 import { getDb } from '@server/db/client';
-import { adCollectionRuns, auditLogs, discoveredStores, spiedAds } from '@server/db/schema';
+import { adCollectionRuns, auditLogs, discoveredStores, marketProducts, spiedAds } from '@server/db/schema';
 import { env, providers } from '@server/env';
 import { AppError } from '@server/middleware';
 import { recordAudit } from '@server/services/audit';
@@ -93,34 +93,51 @@ const apifyUnavailable = (detail: string) =>
   new AppError(502, `La découverte de boutiques n’a pas abouti (${detail}).`, 'RADAR_DISCOVERY_UNAVAILABLE');
 
 /** Liste mutualisée, du plus vu au moins vu. Gratuite : c'est du cache. */
-export async function listDiscoveredStores(limit = 100): Promise<DiscoveredStore[]> {
-  const rows = await getDb()
-    .select()
-    .from(discoveredStores)
-    .orderBy(desc(discoveredStores.adCount), desc(discoveredStores.lastSeenAt))
-    .limit(Math.min(Math.max(limit, 1), 300));
+/*
+  Liste revue le 18/10/2026 (recherche des incohérences du site) : elle s'intitule « les boutiques
+  qui font de la publicité en ce moment », mais se triait sur un cumul d'apparitions — des
+  boutiques à « aucune pub en cours » passaient devant d'autres qui en avaient six. Elle proposait
+  aussi « Surveiller » pour des boutiques que le compte surveillait déjà, et montrait l'adresse
+  deux fois quand le nom manquait alors que l'index du marché le connaissait.
+*/
+export async function listDiscoveredStores(limit = 100, options: { exceptHosts?: string[] } = {}): Promise<DiscoveredStore[]> {
+  const exclues = new Set((options.exceptHosts ?? []).map((host) => host.toLowerCase().replace(/\.mychariow\.shop$/, '.mychariow.com')));
+  const rows = (await getDb().select().from(discoveredStores).orderBy(desc(discoveredStores.lastSeenAt)).limit(600)).filter((row) => !exclues.has(row.host));
 
   // Publicités réellement en cours, lues sur le mur : `adCount` n'est qu'un cumul d'apparitions.
   const hosts = rows.map((row) => row.host);
-  const enCours =
+  const [enCours, noms] =
     hosts.length === 0
-      ? []
-      : await getDb()
-          .select({ host: spiedAds.storeHost, total: sql<number>`count(*) filter (where ${spiedAds.active})`, checkedAt: sql<Date | null>`max(${spiedAds.lastSeenAt})` })
-          .from(spiedAds)
-          .where(inArray(spiedAds.storeHost, hosts))
-          .groupBy(spiedAds.storeHost);
+      ? [[], []]
+      : await Promise.all([
+          getDb()
+            .select({ host: spiedAds.storeHost, total: sql<number>`count(*) filter (where ${spiedAds.active})`, checkedAt: sql<Date | null>`max(${spiedAds.lastSeenAt})` })
+            .from(spiedAds)
+            .where(inArray(spiedAds.storeHost, hosts))
+            .groupBy(spiedAds.storeHost),
+          // Le nom lu sur la vitrine par l'index du marché, quand la découverte ne l'a pas.
+          getDb()
+            .select({ host: marketProducts.storeHost, label: sql<string | null>`max(${marketProducts.storeLabel})` })
+            .from(marketProducts)
+            .where(inArray(marketProducts.storeHost, hosts))
+            .groupBy(marketProducts.storeHost),
+        ]);
   const parBoutique = new Map(enCours.map((row) => [row.host, row]));
+  const nomDe = new Map(noms.map((row) => [row.host, row.label?.trim() || null]));
 
-  return rows.map((row) => ({
-    host: row.host,
-    label: row.label,
-    adCount: row.adCount,
-    activeAds: Number(parBoutique.get(row.host)?.total ?? 0),
-    adsCheckedAt: parBoutique.get(row.host)?.checkedAt ? new Date(parBoutique.get(row.host)!.checkedAt!).toISOString() : null,
-    firstSeenAt: row.firstSeenAt.toISOString(),
-    lastSeenAt: row.lastSeenAt.toISOString(),
-  }));
+  return rows
+    .map((row) => ({
+      host: row.host,
+      label: row.label?.trim() || nomDe.get(row.host) || null,
+      adCount: row.adCount,
+      activeAds: Number(parBoutique.get(row.host)?.total ?? 0),
+      adsCheckedAt: parBoutique.get(row.host)?.checkedAt ? new Date(parBoutique.get(row.host)!.checkedAt!).toISOString() : null,
+      firstSeenAt: row.firstSeenAt.toISOString(),
+      lastSeenAt: row.lastSeenAt.toISOString(),
+    }))
+    // Les plus actives en publicité EN CE MOMENT d'abord ; à égalité, les plus récemment vues.
+    .sort((a, b) => b.activeAds - a.activeAds || b.lastSeenAt.localeCompare(a.lastSeenAt))
+    .slice(0, Math.min(Math.max(limit, 1), 300));
 }
 
 /** Action inscrite au journal à chaque collecte lancée, qu'elle rapporte quelque chose ou non. */

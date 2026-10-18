@@ -37,6 +37,8 @@ export function DiscoveredStoresPanel({
   const [data, setData] = useCachedState<DiscoveryView>('/api/radar/discover');
   const [busy, setBusy] = useState<string | null>(null);
   const [refreshing, setRefreshing] = useState(false);
+  /** Les dix plus actives d'abord : cent lignes d'un coup noyaient l'écran du Radar. */
+  const [toutes, setToutes] = useState(false);
 
   const load = useCallback(async () => {
     try {
@@ -90,7 +92,7 @@ export function DiscoveredStoresPanel({
           Boutiques repérées
         </CardTitle>
         <CardDescription>
-          Les boutiques qui font de la publicité en ce moment
+          Repérées par leurs publicités, les plus actives en ce moment d’abord
           {data.lastRunAt ? ` · contrôlé ${formatRelativeFr(data.lastRunAt)}` : ''}
         </CardDescription>
         {data.canRefresh && (
@@ -108,12 +110,14 @@ export function DiscoveredStoresPanel({
             Aucune boutique repérée pour l’instant.
           </p>
         ) : (
-          <ul className="divide-y">
-            {data.stores.map((store) => (
+          <>
+            <ul className="divide-y">
+            {(toutes ? data.stores : data.stores.slice(0, 10)).map((store) => (
               <li key={store.host} className="flex flex-wrap items-center gap-3 py-2.5">
                 <div className="min-w-0 flex-1">
                   <p className="truncate text-sm font-medium">{store.label ?? store.host}</p>
-                  <p className="truncate text-xs text-muted-foreground">{store.host}</p>
+                  {/* L'adresse sous le nom ; sans nom connu, l'adresse ne s'écrit qu'une fois. */}
+                  {store.label && <p className="truncate text-xs text-muted-foreground">{store.host}</p>}
                 </div>
                 {store.activeAds > 0 ? (
                   <Button asChild variant="ghost" size="sm" className="h-8 gap-1.5 px-2 text-brand-green-text">
@@ -138,7 +142,13 @@ export function DiscoveredStoresPanel({
                 </Button>
               </li>
             ))}
-          </ul>
+            </ul>
+            {data.stores.length > 10 && (
+              <Button variant="ghost" size="sm" className="mt-2 w-full" onClick={() => setToutes((valeur) => !valeur)}>
+                {toutes ? 'Afficher les dix premières' : `Afficher les ${data.stores.length - 10} autres`}
+              </Button>
+            )}
+          </>
         )}
       </CardContent>
     </Card>

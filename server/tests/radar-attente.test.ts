@@ -166,3 +166,34 @@ describe('Radar — vitrine qui refuse le serveur', () => {
     assert.equal(resolue?.failureCount, 0);
   });
 });
+
+describe('Correction 0052 — fausses nouveautés du premier relevé', () => {
+  it('retire les « Nouveau produit » du premier relevé, et garde les vraies nouveautés et les retours', async () => {
+    const { readFileSync } = await import('node:fs');
+    const { sql, eq } = await import('drizzle-orm');
+    const { getDb } = await import('@server/db/client');
+    const { watches, watchItems, watchEvents } = await import('@server/db/schema');
+    const { userId } = await signInWithPlan(app, 'correction-0052@exemple.test', 'pro');
+    const depart = new Date('2026-10-18T13:20:00.123Z');
+    const lendemain = new Date('2026-10-19T09:00:00.456Z');
+    const [suivie] = await getDb().insert(watches).values({ userId, source: 'chariow_store', externalId: 'store_correction52', label: 'Correction', url: 'https://correction.mychariow.com' }).returning();
+    const id = suivie!.id;
+    await getDb().insert(watchItems).values([
+      { watchId: id, externalId: 'prd_a', name: 'A', firstSeenAt: depart, lastSeenAt: lendemain },
+      { watchId: id, externalId: 'prd_b', name: 'B', firstSeenAt: depart, lastSeenAt: lendemain },
+      { watchId: id, externalId: 'prd_c', name: 'C', firstSeenAt: lendemain, lastSeenAt: lendemain },
+    ]);
+    await getDb().insert(watchEvents).values([
+      { watchId: id, kind: 'appeared', summary: 'Nouveau produit : « A »', payload: { name: 'A' }, occurredAt: depart },
+      { watchId: id, kind: 'appeared', summary: 'Nouveau produit : « B »', payload: { name: 'B' }, occurredAt: depart },
+      { watchId: id, kind: 'appeared', summary: '« B » est de retour en vente.', payload: { name: 'B', returned: true }, occurredAt: depart },
+      { watchId: id, kind: 'sales_jump', summary: '5 ventes de plus sur « A »', payload: {}, occurredAt: depart },
+      { watchId: id, kind: 'appeared', summary: 'Nouveau produit : « C »', payload: { name: 'C' }, occurredAt: lendemain },
+    ]);
+
+    await getDb().execute(sql.raw(readFileSync('server/db/migrations/0052_retirer_fausses_nouveautes.sql', 'utf8')));
+
+    const restants = (await getDb().select().from(watchEvents).where(eq(watchEvents.watchId, id))).map((event) => event.summary).sort();
+    assert.deepEqual(restants, ['5 ventes de plus sur « A »', 'Nouveau produit : « C »', '« B » est de retour en vente.']);
+  });
+});

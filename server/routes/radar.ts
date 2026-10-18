@@ -16,6 +16,7 @@ import {
   markEventsRead,
   removeWatch,
   setRadarAlerts,
+  storeHostOf,
   sweepNow,
   watchItemsOf,
 } from '@server/services/radar';
@@ -181,8 +182,10 @@ radarRouter.get(
   '/discover',
   asyncRoute(async (req, res) => {
     const auth = req.auth!;
+    // Les boutiques que le compte surveille déjà sont dans « Boutiques surveillées » : pas de « Surveiller » sur elles.
+    const suivies = (await listWatches(auth.account.user.id)).flatMap((watch) => storeHostOf(watch.url) ?? []);
     res.json({
-      stores: await listDiscoveredStores(),
+      stores: await listDiscoveredStores(100, { exceptHosts: suivies }),
       lastRunAt: (await lastDiscoveryAt())?.toISOString() ?? null,
       configured: providers.apify,
       /*

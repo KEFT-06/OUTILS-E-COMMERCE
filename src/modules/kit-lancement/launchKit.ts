@@ -1,5 +1,6 @@
 import { ComplianceBlockedError, checkSectionsCompliance } from '@/shared/lib/complianceGate';
 import { triggerDownload } from '@/shared/lib/download';
+import { callToActionLabel } from '@/shared/lib/adPlatformLabels';
 import { formatDateFr } from '@/shared/lib/formatDate';
 import { FALLBACK_DISCLAIMER } from '@/shared/lib/legal';
 import { countryName } from '@server/shared/countries';
@@ -101,7 +102,7 @@ export function renderKitText(
     lines.push('', `== BOUTONS D'APPEL À L'ACTION PAR MARCHÉ (${platform.label}) ==`);
     for (const [market, buttonId] of choices) {
       const button = platform.buttons.find((candidate) => candidate.id === buttonId);
-      if (button) lines.push(`${countryName(market)} : ${button.officialName}`);
+      if (button) lines.push(`${countryName(market)} : ${callToActionLabel(button.officialName)}`);
     }
     lines.push(`Noms officiels vérifiés le ${formatDateFr(platform.checkedAt)} — ${platform.source}`);
   }

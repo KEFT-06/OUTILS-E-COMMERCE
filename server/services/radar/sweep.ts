@@ -62,6 +62,13 @@ export async function applyObservations(
   await getDb().transaction(async (tx) => {
     const known = await tx.select().from(watchItems).where(eq(watchItems.watchId, watch.id));
     const byExternalId = new Map<string, WatchItemRow>(known.map((item) => [item.externalId, item]));
+    /*
+      Premier relevé de la surveillance : c'est l'ÉTAT DE DÉPART, pas une suite de nouveautés. Les
+      produits que la boutique vendait déjà s'annonçaient un par un en « Nouveau produit » — 173
+      fausses nouveautés le 18/10/2026 sur cinq boutiques ajoutées le jour même, et un fil, une
+      pastille et un résumé par e-mail qui disaient tous « 25 nouveautés » d'une boutique inchangée.
+    */
+    const depart = known.length === 0;
 
     type NewEvent = { kind: WatchEventKind; summary: string; payload: Record<string, unknown>; itemId: string | null };
     const events: NewEvent[] = [];
@@ -88,6 +95,7 @@ export async function applyObservations(
             lastSeenAt: now,
           })
           .returning({ id: watchItems.id });
+        if (depart) continue;
         outcome.appeared += 1;
         events.push({
           kind: 'appeared',

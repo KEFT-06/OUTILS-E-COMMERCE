@@ -50,11 +50,12 @@ const EVENT_STYLE: Record<WatchEventKind, { label: string; icon: typeof Trending
   sales_jump: { label: 'Ventes', icon: TrendingUp, tone: 'text-brand-green-text' },
 };
 
-const COUNTER_ORDER: { kind: WatchEventKind; label: string }[] = [
-  { kind: 'appeared', label: 'nouveautés' },
-  { kind: 'sales_jump', label: 'accélérations' },
-  { kind: 'price_changed', label: 'changements de prix' },
-  { kind: 'disappeared', label: 'arrêts' },
+/** Singulier jusqu'à un, comme le veut le français : « 0 nouveauté », « 2 nouveautés ». */
+const COUNTER_ORDER: { kind: WatchEventKind; label: string; labels: string }[] = [
+  { kind: 'appeared', label: 'nouveauté', labels: 'nouveautés' },
+  { kind: 'sales_jump', label: 'accélération', labels: 'accélérations' },
+  { kind: 'price_changed', label: 'changement de prix', labels: 'changements de prix' },
+  { kind: 'disappeared', label: 'arrêt', labels: 'arrêts' },
 ];
 
 function EventRow({ event }: { event: WatchEventView }) {
@@ -132,7 +133,12 @@ function WatchCard({
         <CardDescription>
           {/* Ajoutée aujourd'hui, sans publicité connue : « depuis au moins moins d'un jour » ne se lit pas. */}
           {anciennete >= 1 ? `En ligne depuis au moins ${dureeLisible(anciennete)}` : 'Sous surveillance depuis aujourd’hui'}
-          {lue ? ` · relevée ${formatRelativeFr(watch.lastReadAt!)}` : ' · premier relevé en préparation'}
+          {lue ? (
+            // Chiffres de plus de deux jours : la date se lit en orange, sans phrase de plus en dessous.
+            <span className={cn(enRetard && 'text-amber-600 dark:text-amber-500')}> · relevée {formatRelativeFr(watch.lastReadAt!)}</span>
+          ) : (
+            ' · premier relevé en préparation'
+          )}
         </CardDescription>
         <CardAction className="flex items-center gap-1">
           <Button
@@ -181,7 +187,6 @@ function WatchCard({
         {watch.active && !lue && (
           <p className="text-xs text-muted-foreground">Son catalogue et ses ventes s’afficheront ici dès sa première lecture.</p>
         )}
-        {enRetard && <p className="text-xs text-amber-600 dark:text-amber-500">Chiffres du relevé {formatRelativeFr(watch.lastReadAt!)}.</p>}
         {watch.activeAds > 0 && host && (
           <Button asChild variant="ghost" size="sm" className="-ml-2 h-auto min-h-8 gap-1.5 px-2 py-1 text-left whitespace-normal text-brand-green-text">
             <Link to={`/app/espionnage?boutique=${encodeURIComponent(host)}`}>
@@ -593,7 +598,10 @@ export function RadarView() {
               <CardTitle>Ce qui a bougé</CardTitle>
               <CardDescription>
                 Sept derniers jours :{' '}
-                {COUNTER_ORDER.map(({ kind, label }) => `${data.countsLast7Days[kind] ?? 0} ${label}`).join(' · ')}
+                {COUNTER_ORDER.map(({ kind, label, labels }) => {
+                  const n = data.countsLast7Days[kind] ?? 0;
+                  return `${n} ${n > 1 ? labels : label}`;
+                }).join(' · ')}
               </CardDescription>
             </CardHeader>
             <CardContent>

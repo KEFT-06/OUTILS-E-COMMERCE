@@ -425,7 +425,7 @@ export function ProductPageBuilderView({ products, report = null }: { products: 
                   {section.role === 'offer' && <p className="font-display text-lg font-extrabold tabular-nums">{model.price}</p>}
                   {section.role === 'faq_cta' && (
                     <p className="text-sm text-muted-foreground">
-                      {model.faq.length} question(s) · bouton « {model.ctaLabel} »
+                      {model.faq.length} question{model.faq.length > 1 ? 's' : ''} · bouton « {model.ctaLabel} »
                     </p>
                   )}
                 </div>

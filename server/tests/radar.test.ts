@@ -113,7 +113,7 @@ describe('Radar — surveillance continue', () => {
     assert.equal(ajout.body.watch.label, 'BOUTIQUE TÉMOIN', 'le libellé vient du titre de la vitrine');
     assert.ok(appelsCatalogue > avant, 'le premier relevé part tout de suite, sans attendre la nuit');
     assert.equal(ajout.body.firstSweep.observed, 2, 'le brouillon est écarté');
-    assert.equal(ajout.body.firstSweep.appeared, 2);
+    assert.equal(ajout.body.firstSweep.appeared, 0, 'le premier relevé est l’état de départ : ses produits ne sont pas des nouveautés');
     assert.equal(ajout.body.watch.liveItems, 2);
     assert.equal(ajout.body.watch.totalSales, 14, 'ventes affichées par la boutique : 4 + 10');
 

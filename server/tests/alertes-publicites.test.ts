@@ -76,6 +76,29 @@ describe('Alertes — une publicité qui dure', () => {
     assert.equal((await detectNewAlerts(new Date(now.getTime() + 30 * 60_000))).filter((alerte) => alerte.kind === 'ad_longevity').length, 0);
   });
 
+  /*
+    Relevé le 18/10/2026 : cinq fois « Africa boost diffuse la même publicité depuis 30 jours » au fil
+    — la même annonce, publiée en plusieurs copies par l'annonceur.
+  */
+  it('ne répète pas l’alerte pour les copies d’une même annonce, ni au passage suivant', async () => {
+    const { getDb } = await import('@server/db/client');
+    const { spiedAds } = await import('@server/db/schema');
+    const { detectNewAlerts } = await import('@server/services/alerts');
+    const jour = new Date(now.getTime() + 3 * JOUR);
+    const depart = new Date(jour.getTime() - 30 * JOUR - 2 * HEURE);
+    await getDb()
+      .insert(spiedAds)
+      .values([
+        annonce('copie-1', 'copies.mychariow.com', depart, { title: '+1500 Clients satisfaits', variants: 2, lastSeenAt: jour }),
+        annonce('copie-2', 'copies.mychariow.com', depart, { title: '+1500  clients satisfaits', variants: 2, lastSeenAt: jour }),
+        annonce('copie-autre-titre', 'copies.mychariow.com', depart, { title: '+2500 Clients satisfaits', lastSeenAt: jour }),
+      ]);
+    const deLaBoutique = async (date: Date) => (await detectNewAlerts(date)).filter((alerte) => alerte.kind === 'ad_longevity' && alerte.payload.storeHost === 'copies.mychariow.com');
+    const alertes = await deLaBoutique(jour);
+    assert.deepEqual(alertes.map((alerte) => alerte.payload.title).sort(), ['+1500 Clients satisfaits', '+2500 Clients satisfaits'], 'une alerte par annonce, pas par copie');
+    assert.equal((await deLaBoutique(new Date(jour.getTime() + HEURE))).length, 0, 'la copie restée de côté ne revient pas au passage suivant');
+  });
+
   it('ne dresse pas l’inventaire : au plus six annonces par cap, celles aux plus nombreuses versions', async () => {
     const { getDb } = await import('@server/db/client');
     const { spiedAds } = await import('@server/db/schema');
@@ -130,5 +153,40 @@ describe('Alertes — ce que le fil et le compte rendu en disent', () => {
     assert.equal(etat.derniereAnnonceVue, '2026-11-02T09:00:00.000Z');
     // Aucune boutique n'a de ventes relevées dans ce test : l'état le dit, sans rien inventer.
     assert.deepEqual([etat.boutiques, etat.boutiquesReleveesAujourdhui, etat.dernierReleveDeVentes], [0, 0, null]);
+  });
+});
+
+describe('Correction 0053 — alertes en double', () => {
+  it('garde la plus ancienne alerte par annonceur, titre et cap, et rien d’autre ne bouge', async () => {
+    const { readFileSync } = await import('node:fs');
+    const { sql, like } = await import('drizzle-orm');
+    const { getDb } = await import('@server/db/client');
+    const { alerts } = await import('@server/db/schema');
+    const t = (minutes: number) => new Date(Date.UTC(2026, 9, 18, 10, minutes));
+    const alerte = (cle: string, storeHost: string, title: string | null, days: number, minutes: number) => ({
+      kind: 'ad_longevity' as const,
+      level: 'info' as const,
+      title: 'Publicité qui dure',
+      body: `${storeHost} depuis ${days} jours`,
+      payload: { storeHost, title, days },
+      dedupeKey: `correction-0053:${cle}`,
+      occurredAt: t(minutes),
+    });
+    await getDb()
+      .insert(alerts)
+      .values([
+        alerte('a1', 'doublons.mychariow.com', '+1500 Clients satisfaits', 30, 1),
+        alerte('a2', 'doublons.mychariow.com', '+1500  clients satisfaits', 30, 2),
+        alerte('a3', 'doublons.mychariow.com', '+1500 Clients satisfaits', 30, 3),
+        alerte('b1', 'doublons.mychariow.com', '+2500 Clients satisfaits', 30, 4),
+        alerte('c1', 'doublons.mychariow.com', '+1500 Clients satisfaits', 60, 5),
+        alerte('d1', 'doublons.mychariow.com', null, 30, 6),
+        alerte('d2', 'doublons.mychariow.com', null, 30, 7),
+      ]);
+
+    await getDb().execute(sql.raw(readFileSync('server/db/migrations/0053_alertes_publicite_en_double.sql', 'utf8')));
+
+    const restantes = (await getDb().select({ cle: alerts.dedupeKey }).from(alerts).where(like(alerts.dedupeKey, 'correction-0053:%'))).map((row) => row.cle.slice(16)).sort();
+    assert.deepEqual(restantes, ['a1', 'b1', 'c1', 'd1', 'd2']);
   });
 });

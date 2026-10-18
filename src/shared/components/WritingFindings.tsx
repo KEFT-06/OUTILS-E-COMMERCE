@@ -20,7 +20,7 @@ export function WritingFindings({ findings }: { findings: readonly WritingFindin
             </li>
           ))}
         </ul>
-        {findings.length > 8 && <p>Et {findings.length - 8} autre(s), détaillés au moment de l’export.</p>}
+        {findings.length > 8 && <p>Et {findings.length - 8 > 1 ? `${findings.length - 8} autres, détaillés` : 'un autre, détaillé'} au moment de l’export.</p>}
       </AlertDescription>
     </Alert>
   );

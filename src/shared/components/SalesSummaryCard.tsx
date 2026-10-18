@@ -118,7 +118,7 @@ export function SalesSummaryCard() {
                     )}
                   </p>
                   <p className="text-xs text-muted-foreground tabular-nums">
-                    {summary.totalsByCurrency.reduce((sum, total) => sum + total.salesCount, 0).toLocaleString('fr-FR')} vente(s)
+                    {summary.totalsByCurrency.reduce((sum, total) => sum + total.salesCount, 0).toLocaleString('fr-FR')} vente{summary.totalsByCurrency.reduce((sum, total) => sum + total.salesCount, 0) > 1 ? 's' : ''}
                   </p>
                 </div>
               )}

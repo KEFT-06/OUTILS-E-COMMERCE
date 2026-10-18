@@ -476,7 +476,7 @@ function CreditsCard({ account }: { account: Account }) {
         <p className="text-sm text-muted-foreground">
           {credits.unlimited
             ? 'Votre palier ne décompte aucun point.'
-            : `Quota rechargé le ${formatDateFr(credits.cycleEndsAt)} ; les points bonus n’expirent pas.`}
+            : `Prochaine recharge du quota : ${formatDateFr(credits.cycleEndsAt)}. Les points bonus n’expirent pas.`}
         </p>
         <Separator />
         <p className="text-center text-xs text-muted-foreground">
@@ -1157,7 +1157,7 @@ function SessionsList() {
     setBusy('others');
     try {
       const result = await apiRequest<{ revoked: number }>('/api/account/sessions/revoke-others', { method: 'POST' });
-      toast.success(result.revoked > 0 ? `${result.revoked} appareil(s) déconnecté(s)` : 'Aucun autre appareil connecté');
+      toast.success(result.revoked > 0 ? `${result.revoked} appareil${result.revoked > 1 ? 's' : ''} déconnecté${result.revoked > 1 ? 's' : ''}` : 'Aucun autre appareil connecté');
       await load();
     } catch (caught) {
       toast.error('Déconnexion impossible', { description: toApiError(caught, 'Erreur inconnue.').message });

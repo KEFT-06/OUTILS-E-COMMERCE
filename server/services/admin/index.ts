@@ -92,6 +92,12 @@ export async function revenueTotals() {
       monthlyRecurring: num(
         sql`coalesce(round(sum(${payments.amountFcfa}::float8 / ${payments.periodMonths}) filter (where ${payments.paidAt} + make_interval(months => ${payments.periodMonths}) > now())), 0)`,
       ),
+      /*
+        Comptes dont un paiement couvre encore la période : ceux que compte le revenu mensuel. La
+        vue d'ensemble disait « 3 abonnés sur un palier payant » à côté d'un revenu d'UN abonnement
+        (18/10/2026) : le compte prenait aussi les paliers offerts par l'équipe.
+      */
+      payingSubscribers: num(sql`count(distinct ${payments.userId}) filter (where ${payments.paidAt} + make_interval(months => ${payments.periodMonths}) > now())`),
     })
     .from(payments)
     .where(eq(payments.status, 'paid'));

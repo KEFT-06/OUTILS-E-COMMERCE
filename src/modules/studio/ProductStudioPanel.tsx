@@ -125,7 +125,7 @@ export function ProductStudioPanel({ baseProduct, report, initialExpertOpen = fa
     toast.success('Votre ebook est prêt', {
       description:
         missing > 0
-          ? `${missing} module(s) n’ont pas été rédigés et gardent leur texte. Lisez-le ci-dessous, corrigez-le, puis téléchargez-le.`
+          ? `${missing > 1 ? `${missing} modules n’ont pas été rédigés et gardent leur texte` : 'Un module n’a pas été rédigé et garde son texte'}. Lisez-le ci-dessous, corrigez-le, puis téléchargez-le.`
           : `${result.pages} pages environ. Lisez-le ci-dessous, corrigez ce qui doit l’être, puis téléchargez-le.`,
     });
   };

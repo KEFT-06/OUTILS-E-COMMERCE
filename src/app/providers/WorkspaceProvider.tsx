@@ -470,7 +470,7 @@ export const WorkspaceProvider: React.FC<{ children: React.ReactNode }> = ({ chi
       const verdict = await exportReportPDF(currentReport, (amount, currency) => money.format(amount, currency, { round: true }));
       if (verdict.findings.length > 0) {
         toast.info('Dossier PDF téléchargé', {
-          description: `${verdict.findings.length} point(s) de vigilance signalé(s).`,
+          description: `${verdict.findings.length} point${verdict.findings.length > 1 ? 's' : ''} de vigilance signalé${verdict.findings.length > 1 ? 's' : ''}.`,
         });
       } else {
         toast.success('Dossier PDF téléchargé');

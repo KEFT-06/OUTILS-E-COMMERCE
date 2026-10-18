@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto';
 import { and, asc, count, desc, eq, gt, gte, inArray, isNotNull, isNull, lte, sql } from 'drizzle-orm';
 import { alias } from 'drizzle-orm/pg-core';
 import { getDb } from '@server/db/client';
@@ -279,8 +280,17 @@ async function longRunningAds(now: Date): Promise<NewAlert[]> {
       .orderBy(desc(spiedAds.variants), asc(spiedAds.startedAt))
       .limit(LONGEVITY_PER_STEP);
     for (const row of rows) {
-      if (told.has(row.externalId)) continue;
+      /*
+        Un annonceur publie souvent la même annonce en plusieurs copies (mêmes titre, texte et date
+        de départ) : le fil affichait cinq fois « Africa boost diffuse la même publicité depuis
+        30 jours » (relevé le 18/10/2026). Une copie de plus n'est pas un fait de plus : une alerte
+        par annonceur, titre et cap, d'un passage à l'autre aussi.
+      */
+      const titre = row.title?.trim().toLowerCase().replace(/\s+/g, ' ') ?? '';
+      const meme = titre ? `${row.storeHost}:${titre}` : row.externalId;
+      if (told.has(row.externalId) || told.has(meme)) continue;
       told.add(row.externalId);
+      told.add(meme);
       const annonceur = row.advertiser ?? row.storeHost;
       const versions = row.variants > 1 ? `, en ${row.variants} versions` : '';
       const sujet = row.title?.trim() ? ` : « ${row.title.trim().slice(0, 90)} »` : '';
@@ -290,7 +300,7 @@ async function longRunningAds(now: Date): Promise<NewAlert[]> {
         title: 'Publicité qui dure',
         body: `${annonceur} diffuse la même publicité depuis ${days} jours${versions}${sujet}. Une annonce payée aussi longtemps est une annonce qui rapporte.`,
         payload: { storeHost: row.storeHost, storeLabel: annonceur, advertiser: annonceur, adId: row.id, pageId: row.pageId, days, title: row.title, productName: row.title },
-        dedupeKey: `ad_longevity:${row.externalId}:${days}`,
+        dedupeKey: titre ? `ad_longevity:${row.storeHost}:${createHash('sha1').update(titre).digest('hex').slice(0, 16)}:${days}` : `ad_longevity:${row.externalId}:${days}`,
       });
     }
   }

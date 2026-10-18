@@ -417,7 +417,7 @@ export async function generateAnalysisPDF(
 
   if (stamp.warningCount > 0) {
     doc.setTextColor(180, 83, 9);
-    doc.text(`Aucune formulation bloquante. ${stamp.warningCount} point(s) de vigilance signalé(s).`, margin + 5, currentY + 14);
+    doc.text(`Aucune formulation bloquante. ${stamp.warningCount} point${stamp.warningCount > 1 ? 's' : ''} de vigilance signalé${stamp.warningCount > 1 ? 's' : ''}.`, margin + 5, currentY + 14);
   } else {
     doc.setTextColor(4, 120, 87);
     doc.text('Aucune formulation bloquante ni point de vigilance relevé.', margin + 5, currentY + 14);

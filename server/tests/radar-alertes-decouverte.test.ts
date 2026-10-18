@@ -265,6 +265,9 @@ describe('Radar — résumé par e-mail', () => {
     const { agent } = await signInWithPlan(app, 'resume@exemple.test', 'pro');
     const ajout = await agent.post('/api/radar/watches').send({ target: base }).expect(201);
     const watchId = ajout.body.watch.id as string;
+    // Le premier relevé est l'état de départ : c'est le suivant qui a quelque chose à raconter.
+    catalogue = [...catalogue, { id: 'prd_x9', name: 'Pack productivité, tome 2', prix: 5_000, ventes: 0 }];
+    await agent.post(`/api/radar/watches/${watchId}/sweep`).expect(200);
 
     // Adresse pas encore confirmée : aucun envoi, même avec des événements à raconter.
     const avantConfirmation = await sendDueRadarDigests();
@@ -297,10 +300,14 @@ describe('Radar — résumé par e-mail', () => {
   it('compte les événements non lus pour la pastille, puis les éteint', async () => {
     catalogue = [{ id: 'prd_y1', name: 'Guide export', prix: 6_000, ventes: 1 }];
     const { agent } = await signInWithPlan(app, 'pastille@exemple.test', 'pro');
-    await agent.post('/api/radar/watches').send({ target: base }).expect(201);
+    const ajout = await agent.post('/api/radar/watches').send({ target: base }).expect(201);
+    assert.equal((await agent.get('/api/radar/unread').expect(200)).body.unread, 0, 'le premier relevé est l’état de départ, sans nouveauté');
 
+    // Le lendemain, un produit apparaît : c'est une vraie nouveauté.
+    catalogue = [...catalogue, { id: 'prd_y2', name: 'Guide export, édition 2', prix: 7_000, ventes: 0 }];
+    await agent.post(`/api/radar/watches/${ajout.body.watch.id}/sweep`).expect(200);
     const avant = await agent.get('/api/radar/unread').expect(200);
-    assert.ok(avant.body.unread > 0, 'le premier relevé laisse des nouveautés à lire');
+    assert.ok(avant.body.unread > 0, 'la nouveauté est à lire');
 
     await agent.post('/api/radar/events/read').expect(200);
     const apres = await agent.get('/api/radar/unread').expect(200);

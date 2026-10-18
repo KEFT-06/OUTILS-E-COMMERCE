@@ -142,7 +142,7 @@ export function WrittenReportPanel({ reportId, nicheName }: WrittenReportPanelPr
       });
       setBlocked(null);
       const warnings = verdict.findings.filter((finding) => finding.severity === 'warn').length;
-      toast.success('Rapport PDF téléchargé', warnings > 0 ? { description: `${warnings} point(s) de vigilance signalé(s) dans le document.` } : undefined);
+      toast.success('Rapport PDF téléchargé', warnings > 0 ? { description: `${warnings} point${warnings > 1 ? 's' : ''} de vigilance signalé${warnings > 1 ? 's' : ''} dans le document.` } : undefined);
     } catch (error) {
       if (error instanceof ComplianceBlockedError) {
         setBlocked(error.verdict);
