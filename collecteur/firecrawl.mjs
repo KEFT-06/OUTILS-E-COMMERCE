@@ -5,7 +5,9 @@
  * premières annonces, complètes (lien de la boutique, texte, visuels, dates) — exactement ce que
  * lit le collecteur maison. Faire défiler la page n'en ajoute aucune : la suite arrive par des
  * requêtes que Firecrawl ne rend pas. Pour récolter beaucoup d'annonces DIFFÉRENTES, ce collecteur
- * multiplie donc les recherches que le collecteur maison ne fait pas : annonces arrêtées, images
+ * multiplie donc les lectures que le collecteur maison ne fait pas : d'abord la PAGE de chaque
+ * annonceur du mur (toutes ses publicités, en cours et passées : 17 annonces, toutes vers sa
+ * boutique, sur la page essayée), puis des recherches par mot-clé — annonces arrêtées, images
  * seules, vidéos seules, pays en plus, niches, Maketou, Shopify.
  *
  * Chaque crédit doit rapporter : une famille de recherches qui ne ramène plus d'annonces nouvelles
@@ -18,13 +20,15 @@
  *   node firecrawl.mjs --essai --credits=6      lit sans rien verser (les crédits sont dépensés quand même)
  *   node firecrawl.mjs                          dépense les crédits jusqu'au bout et verse au site
  *   node firecrawl.mjs --credits=200 --nouvelles=5000 --concurrence=2
+ *   node firecrawl.mjs --jusquau-bout         continue sur les familles abandonnées tant qu'il reste
+ *                                             des crédits (ceux du mois expirent à la fin de la période)
  *
  * Réglages (environnement, ou fichier .env à la racine du dépôt) :
  *   FIRECRAWL_API_KEY  clé du compte Firecrawl
  *   CRON_SECRET        secret du planificateur du site : sans lui, essai seulement
  *   COLLECTE_SITE      adresse du site (défaut : https://www.smartcreatorcm.com)
  */
-import { clientDuSite, harvestPage, lireReglages, searchUrl, slim } from './annonces.mjs';
+import { clientDuSite, harvestPage, lireReglages, pageUrl, searchUrl, slim } from './annonces.mjs';
 
 lireReglages(/^(CRON_SECRET|COLLECTE_[A-Z_]+|FIRECRAWL_API_KEY)$/);
 
@@ -41,6 +45,7 @@ const ESSAI = option('essai', false) === true || !SECRET;
 const PLAFOND_CREDITS = Number(option('credits', Number.POSITIVE_INFINITY)) || Number.POSITIVE_INFINITY;
 const PLAFOND_NOUVELLES = Number(option('nouvelles', Number.POSITIVE_INFINITY)) || Number.POSITIVE_INFINITY;
 const CONCURRENCE = Math.max(1, Math.min(5, Number(option('concurrence', 2)) || 2));
+const JUSQUAU_BOUT = option('jusquau-bout', false) === true;
 const FIRECRAWL = 'https://api.firecrawl.dev/v2';
 const LOT = 40;
 
@@ -110,9 +115,11 @@ const PAYS_DES_NICHES = ['ALL', 'CM', 'CI', 'SN', 'BJ', 'TG', 'BF', 'CD', 'GA'];
 
 const recherches = (mots, pays, reglage = {}) => mots.flatMap((q) => pays.map((country) => ({ q, country, reglage })));
 
-function familles(paysDuSite, paysCibles) {
+function familles(paysDuSite, paysCibles, annonceurs) {
   const tous = ['ALL', ...paysDuSite.filter((code) => code !== 'ALL')];
   return [
+    // Une série d'annonceurs déjà bien relevés ne dit rien des suivants : fenêtre plus large.
+    { nom: 'pages d’annonceurs', fenetre: 15, liste: annonceurs.map((page) => ({ q: `annonceur ${page}`, country: 'ALL', page })) },
     { nom: 'chariow · annonces arrêtées', liste: recherches(['mychariow', 'chariow'], tous, { statut: 'inactive' }) },
     { nom: 'chariow · images', liste: recherches(['mychariow'], tous, { media: 'image' }) },
     { nom: 'chariow · vidéos', liste: recherches(['mychariow'], tous, { media: 'video' }) },
@@ -120,15 +127,14 @@ function familles(paysDuSite, paysCibles) {
     { nom: 'chariow · niches', liste: NICHES.flatMap((mot) => PAYS_DES_NICHES.map((country) => ({ q: `mychariow ${mot}`, country, reglage: {} }))) },
     { nom: 'maketou', liste: [...recherches(['mymaketou', 'maketou'], paysCibles), ...recherches(['mymaketou'], paysCibles, { statut: 'inactive' })] },
     { nom: 'shopify', liste: [...recherches(['myshopify'], paysCibles, { media: 'image' }), ...recherches(['myshopify'], paysCibles, { media: 'video' }), ...recherches(['myshopify'], paysCibles, { statut: 'inactive' })] },
-  ].map((famille) => ({ ...famille, prochaine: 0, recentes: [], abandonnee: false, credits: 0, nouvelles: 0 }));
+  ].map((famille) => ({ fenetre: 4, ...famille, prochaine: 0, recentes: [], abandonnee: false, credits: 0, nouvelles: 0 }));
 }
 
-/** Une famille est abandonnée quand ses quatre dernières recherches ont rapporté moins de quatre annonces nouvelles. */
-const FENETRE = 4;
+/** Une famille est abandonnée quand ses N dernières lectures ont rapporté moins de N annonces nouvelles (moins d'une par crédit). */
 function noter(famille, nouvelles) {
   famille.recentes.push(nouvelles);
-  if (famille.recentes.length > FENETRE) famille.recentes.shift();
-  if (famille.recentes.length === FENETRE && famille.recentes.reduce((a, b) => a + b, 0) < FENETRE) famille.abandonnee = true;
+  if (famille.recentes.length > famille.fenetre) famille.recentes.shift();
+  if (famille.recentes.length === famille.fenetre && famille.recentes.reduce((a, b) => a + b, 0) < famille.fenetre) famille.abandonnee = true;
 }
 
 /* -------------------------------------------------------------------------- */
@@ -168,8 +174,20 @@ async function verser(annonces, country, recherche = null) {
   return nouvelles;
 }
 
-async function traiter({ q, country, reglage, famille, demande }) {
-  const page = await lirePage(searchUrl(q, country, reglage));
+/** Annonceurs déjà prévus ou lus : chacun n'est lu qu'une fois. */
+const annonceursConnus = new Set();
+function decouvrir(annonces) {
+  const famille = lesFamilles.find((candidate) => candidate.nom === 'pages d’annonceurs');
+  for (const ad of annonces) {
+    const id = String(ad.page_id ?? '');
+    if (!/^\d{5,30}$/.test(id) || annonceursConnus.has(id)) continue;
+    annonceursConnus.add(id);
+    famille.liste.push({ q: `annonceur ${id}`, country: 'ALL', page: id });
+  }
+}
+
+async function traiter({ q, country, reglage, famille, demande, page: annonceur }) {
+  const page = await lirePage(annonceur ? pageUrl(annonceur) : searchUrl(q, country, reglage));
   totaux.recherches += 1;
   if (!page) {
     console.warn(`${heure()} « ${q} » · ${country} : abandon après trois essais.`);
@@ -186,6 +204,8 @@ async function traiter({ q, country, reglage, famille, demande }) {
   // Une annonce déjà lue pendant ce passage n'est pas reversée (une recherche de client, si : elle la complète).
   const annonces = [...trouvees.values()].filter((ad) => demande || !dejaLues.has(String(ad.ad_archive_id))).map(slim);
   for (const ad of annonces) dejaLues.add(String(ad.ad_archive_id));
+  // Seuls les annonceurs qui mènent à une boutique suivie méritent qu'on lise leur page.
+  decouvrir(annonces.filter((ad) => BOUTIQUE.test(JSON.stringify(ad.snapshot ?? {}))));
   totaux.lues += trouvees.size;
   if (demande) totaux.demandes += 1;
   const nouvelles = await verser(annonces, country, demande ?? null);
@@ -196,7 +216,9 @@ async function traiter({ q, country, reglage, famille, demande }) {
     noter(famille, nouvelles);
   }
   const reglageLu = [reglage?.statut === 'inactive' ? 'arrêtées' : null, reglage?.media && reglage.media !== 'all' ? reglage.media : null].filter(Boolean).join(', ');
-  console.log(`${heure()} « ${q} » · ${country}${reglageLu ? ` (${reglageLu})` : ''} : ${trouvees.size} lues, ${nouvelles} nouvelles${famille ? ` — ${famille.nom}` : ' — recherche d’un client'}`);
+  // Le compte rendu est public (atelier GitHub) : une page d'annonceur n'est pas nommée.
+  const quoi = annonceur ? 'page d’un annonceur' : `« ${q} » · ${country}${reglageLu ? ` (${reglageLu})` : ''}`;
+  console.log(`${heure()} ${quoi} : ${trouvees.size} lues, ${nouvelles} nouvelles${famille ? ` — ${famille.nom}` : ' — recherche d’un client'}`);
 }
 
 /** Plan : pays du site et recherches de clients en attente. Le site absent (essai), un plan par défaut. */
@@ -215,12 +237,13 @@ async function plan() {
 const programme = await plan();
 const restantes = await creditsRestants();
 const budget = Math.min(PLAFOND_CREDITS, Number.isFinite(restantes) ? restantes : PLAFOND_CREDITS);
-const lesFamilles = familles(programme.countries ?? [], programme.extra?.countries ?? []);
+const lesFamilles = familles(programme.countries ?? [], programme.extra?.countries ?? [], []);
+decouvrir((programme.advertisers ?? []).map((page_id) => ({ page_id })));
 const demandes = (programme.searches ?? []).map((search) => ({ q: search.query, country: search.country, reglage: {}, demande: search.id }));
 console.log(
   `${ESSAI ? 'ESSAI (rien n’est versé)' : `Versement vers ${SITE}`} — ${restantes} crédit(s) Firecrawl restant(s), ${budget === Number.POSITIVE_INFINITY ? 'tous' : budget} à dépenser` +
     `${Number.isFinite(PLAFOND_NOUVELLES) ? `, arrêt à ${PLAFOND_NOUVELLES} annonces nouvelles` : ''} ; ${demandes.length} recherche(s) de clients en attente ; ` +
-    `${lesFamilles.reduce((total, famille) => total + famille.liste.length, 0)} recherches possibles en ${lesFamilles.length} familles.`,
+    `${annonceursConnus.size} annonceur(s) du mur à lire, ${lesFamilles.reduce((total, famille) => total + famille.liste.length, 0) - annonceursConnus.size} recherches par mot-clé possibles.`,
 );
 
 /** Prochaine recherche : les clients d'abord, puis chaque famille encore productive à tour de rôle. */
@@ -228,7 +251,15 @@ let tour = 0;
 function suivante() {
   if (demandes.length > 0) return demandes.shift();
   const vivantes = lesFamilles.filter((famille) => !famille.abandonnee && famille.prochaine < famille.liste.length);
-  if (vivantes.length === 0) return null;
+  if (vivantes.length === 0) {
+    if (!JUSQUAU_BOUT) return null;
+    // Crédits du mois perdus s'ils ne sont pas dépensés : on reprend les familles abandonnées, la plus rentable d'abord.
+    const reste = lesFamilles
+      .filter((famille) => famille.prochaine < famille.liste.length)
+      .sort((a, b) => b.nouvelles / Math.max(1, b.credits) - a.nouvelles / Math.max(1, a.credits));
+    if (reste.length === 0) return null;
+    return { ...reste[0].liste[reste[0].prochaine++], famille: reste[0] };
+  }
   const famille = vivantes[tour++ % vivantes.length];
   return { ...famille.liste[famille.prochaine++], famille };
 }

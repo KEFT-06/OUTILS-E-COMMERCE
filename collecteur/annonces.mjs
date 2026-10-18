@@ -59,6 +59,10 @@ export const searchUrl = (query, country, reglage = {}) =>
     media_type: reglage.media ?? 'all',
   })}`;
 
+/** Page d'un annonceur : toutes ses publicités, en cours et passées, tous pays. */
+export const pageUrl = (pageId) =>
+  `https://www.facebook.com/ads/library/?${new URLSearchParams({ active_status: 'all', ad_type: 'all', country: 'ALL', view_all_page_id: pageId, search_type: 'page', media_type: 'all' })}`;
+
 export const adUrl = (id) => `https://www.facebook.com/ads/library/?${new URLSearchParams({ active_status: 'all', ad_type: 'all', country: 'ALL', id })}`;
 
 /** Ne garde d'une annonce que ce que le site lit : dix fois moins lourd à verser. */

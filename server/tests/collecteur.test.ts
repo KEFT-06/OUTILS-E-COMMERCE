@@ -112,6 +112,8 @@ describe('Collecteur maison', () => {
     assert.ok(plan.body.queries.length >= 1);
     assert.ok(plan.body.countries.includes('CM'));
     assert.deepEqual(plan.body.toVerify, ['1016806434734594'], 'en cours depuis 95 jours, pas revue depuis 3');
+    assert.ok(plan.body.advertisers.includes('1319145094611462'), 'l’annonceur du mur est remis au collecteur, pour lire toute sa page');
+    assert.equal(new Set(plan.body.advertisers).size, plan.body.advertisers.length, 'chaque annonceur une fois');
 
     // Le contrôle la trouve arrêtée : dernier lot du passage, les alertes sont recalculées.
     const controle = await verser({ country: 'ALL', items: [annonce({ is_active: false })], done: true, summary: { lues: 1 } }).expect(200);

@@ -1,4 +1,4 @@
-import { and, asc, eq, isNotNull, lt } from 'drizzle-orm';
+import { and, asc, desc, eq, isNotNull, lt, max } from 'drizzle-orm';
 import { getDb } from '@server/db/client';
 import { spiedAds } from '@server/db/schema';
 import { env } from '@server/env';
@@ -48,6 +48,8 @@ export async function recordCollectorRun(details: Record<string, unknown>): Prom
 }
 
 const JOUR_MS = 86_400_000;
+/** Annonceurs remis au plus par plan : bien au-delà de ce qu'un mois de crédits Firecrawl peut lire. */
+const ADVERTISERS_MAX = 3_000;
 
 /**
  * Ce que le collecteur doit faire à son prochain passage : mots-clés, pays, et annonces
@@ -69,6 +71,20 @@ export async function collectorPlan(now = new Date()) {
     .orderBy(asc(spiedAds.lastSeenAt))
     .limit(60);
 
+  /*
+    Annonceurs du mur, les plus récemment vus d'abord. Leur page de la bibliothèque montre TOUTES
+    leurs publicités, en cours et passées — celles qu'aucune recherche par mot-clé ne fait remonter.
+    Mesuré le 18/10/2026 : une page d'annonceur lue par Firecrawl rend 17 annonces, toutes vers sa
+    boutique, quand les recherches par mot-clé ne rapportaient plus qu'une annonce nouvelle par crédit.
+  */
+  const annonceurs = await getDb()
+    .select({ pageId: spiedAds.pageId })
+    .from(spiedAds)
+    .where(isNotNull(spiedAds.pageId))
+    .groupBy(spiedAds.pageId)
+    .orderBy(desc(max(spiedAds.lastSeenAt)))
+    .limit(ADVERTISERS_MAX);
+
   return {
     queries: discoveryQueries(),
     countries: env.SPY_COLLECT_COUNTRIES,
@@ -80,5 +96,6 @@ export async function collectorPlan(now = new Date()) {
     */
     extra: { queries: env.SPY_COLLECT_EXTRA_QUERIES, countries: env.SPY_COLLECT_EXTRA_COUNTRIES, maxPerQuery: env.SPY_COLLECT_EXTRA_MAX },
     toVerify: anciennes.map((row) => row.externalId),
+    advertisers: annonceurs.flatMap((row) => (row.pageId ? [row.pageId] : [])),
   };
 }
