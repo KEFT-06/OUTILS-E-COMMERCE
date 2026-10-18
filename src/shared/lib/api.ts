@@ -45,12 +45,16 @@ function passingFailure(error: unknown): boolean {
  * rendu une erreur interne, puis tout a répondu normalement. Le visiteur n'a pas à voir cela, ni à
  * recommencer lui-même. Seules les lectures sont concernées : une action (création, paiement,
  * génération) n'est jamais rejouée à l'insu de celui qui l'a lancée.
+ *
+ * `replayable` : un envoi qu'on peut refaire sans effet de plus (la connexion par mot de passe :
+ * au pire une seconde session s'ouvre) se redemande comme une lecture. Le 18/10/2026, juste après
+ * une mise en ligne, une connexion a rendu 500 puis les deux suivantes ont abouti.
  */
 export async function apiRequest<T>(
   path: string,
-  options: { method?: Method; body?: unknown; signal?: AbortSignal } = {},
+  options: { method?: Method; body?: unknown; signal?: AbortSignal; replayable?: boolean } = {},
 ): Promise<T> {
-  const reading = (!options.method || options.method === 'GET') && options.body === undefined;
+  const reading = ((!options.method || options.method === 'GET') && options.body === undefined) || options.replayable === true;
   if (!reading) return sendRequest<T>(path, options);
   const started = Date.now();
   try {

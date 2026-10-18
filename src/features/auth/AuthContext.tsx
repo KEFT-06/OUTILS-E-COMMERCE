@@ -123,9 +123,11 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   }, []);
 
   const login = useCallback(async (input: { email: string; password: string }) => {
+    // Redemandée une fois sur une panne passagère ; le code de sécurité, lui, ne l'est jamais (un code consommé serait refusé).
     const result = await apiRequest<{ account?: Account; mfaRequired?: boolean; methods?: SecondFactorMethods }>('/api/auth/login', {
       method: 'POST',
       body: input,
+      replayable: true,
     });
     if (result.mfaRequired) return { mfaRequired: true, methods: result.methods ?? null };
     setAccount(result.account ?? null);

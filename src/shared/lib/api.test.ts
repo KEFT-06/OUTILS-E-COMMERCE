@@ -72,6 +72,20 @@ describe('lecture redemandée après une panne passagère', () => {
     }
   });
 
+  it('la connexion par mot de passe se redemande comme une lecture ; un mauvais mot de passe, jamais', async () => {
+    const demandes = serveur([interne, () => json(200, { account: { id: 'compte' } })]);
+    const identifiants = { email: 'client@exemple.test', password: 'Baobab-Savane-2026' };
+    assert.deepEqual(await apiRequest('/api/auth/login', { method: 'POST', body: identifiants, replayable: true }), { account: { id: 'compte' } });
+    assert.deepEqual(demandes, [
+      { path: '/api/auth/login', method: 'POST' },
+      { path: '/api/auth/login', method: 'POST' },
+    ]);
+
+    const refus = serveur([() => json(401, { error: { code: 'INVALID_CREDENTIALS', message: 'Identifiants incorrects.' } })]);
+    await assert.rejects(apiRequest('/api/auth/login', { method: 'POST', body: identifiants, replayable: true }));
+    assert.equal(refus.length, 1);
+  });
+
   it('une lecture abandonnée par l’écran n’est pas redemandée', async () => {
     const abandon = new AbortController();
     const demandes = serveur([
