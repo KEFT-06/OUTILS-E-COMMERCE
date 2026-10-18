@@ -2,7 +2,7 @@ import { desc, eq } from 'drizzle-orm';
 import { getDb } from '@server/db/client';
 import { auditLogs } from '@server/db/schema';
 import { isServerless } from '@server/env';
-import { detectAlerts, watchState } from '@server/services/alerts';
+import { detectAlerts, feedWatchState, salesWatchState, wallWatchState, type watchState } from '@server/services/alerts';
 import { resumeReportDocuments } from '@server/services/analysis/document';
 import { resumeMobileCheckouts } from '@server/services/billing/mobile';
 import { MARKET_RUN_AUDIT_ACTION, indexDiscoveredStores, reportMarketRun } from '@server/services/market';
@@ -38,7 +38,10 @@ export interface WatchPassReport {
   surveillances: Awaited<ReturnType<typeof sweepDueWatches>> | null;
   releves: Awaited<ReturnType<typeof indexDiscoveredStores>> | null;
   alertes: number | null;
-  etat: Awaited<ReturnType<typeof watchState>> | null;
+  /** Ce que la veille sait à cet instant ; une lecture manquée laisse ses chiffres absents, sans emporter les autres. */
+  etat: Partial<Awaited<ReturnType<typeof watchState>>>;
+  /** Durée de chaque étape, en millisecondes : dit où le temps du passage est allé. */
+  durees: Record<string, number>;
   /** Paliers activés par des paiements Mobile Money validés hors écran. */
   paiements: number | null;
   /** Étapes qui n'ont pas rendu la main à temps : leur travail continue, le passage ne les attend pas. */
@@ -91,7 +94,15 @@ export async function runWatchPass(source: string, budgetMs = WATCH_PASS_MS): Pr
   const failed: { etape: string; code: string | null }[] = [];
   /** Ce qu'il reste du passage, plafonné : une étape ne prend jamais le temps des suivantes. */
   const left = (cap: number) => Math.max(2_000, Math.min(cap, end - Date.now()));
-  const step = <T>(label: string, ms: number, work: () => Promise<T>) => boundedStep(label, ms, work, late, failed);
+  const durees: Record<string, number> = {};
+  const step = async <T>(label: string, ms: number, work: () => Promise<T>) => {
+    const started = Date.now();
+    try {
+      return await boundedStep(label, ms, work, late, failed);
+    } finally {
+      durees[label] = Date.now() - started;
+    }
+  };
 
   await step('reprise des rapports', left(20_000), () => resumeReportDocuments());
   // L'argent d'abord : un paiement validé hors écran n'attend pas le lendemain.
@@ -106,8 +117,13 @@ export async function runWatchPass(source: string, budgetMs = WATCH_PASS_MS): Pr
 
   const alertes = await step('alertes', left(30_000), () => detectAlerts());
   await step('compte rendu', left(10_000), () => reportMarketRun(source, releves, alertes));
-  const etat = await step('état', left(10_000), () => watchState());
-  return { surveillances, releves, alertes, etat, paiements, enRetard: late, enEchec: failed };
+  // Trois lectures séparées : celle qui manque ne retire pas les deux autres du compte rendu.
+  const etat = {
+    ...((await step('état des ventes', left(8_000), () => salesWatchState())) ?? {}),
+    ...((await step('état des publicités', left(8_000), () => wallWatchState())) ?? {}),
+    ...((await step('état des alertes', left(8_000), () => feedWatchState())) ?? {}),
+  };
+  return { surveillances, releves, alertes, etat, paiements, enRetard: late, enEchec: failed, durees };
 }
 
 /** Un passage est-il dû ? Faux tant que le dernier, quelle qu'en soit l'origine, a moins d'une demi-heure. */

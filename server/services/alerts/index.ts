@@ -416,27 +416,33 @@ export async function watchState(now = new Date()): Promise<{
   alertesAuFil: number;
   alertesDepuis24h: number;
 }> {
-  const hier = new Date(now.getTime() - JOUR_MS);
-  const [watch, [mur], [fil]] = await Promise.all([
-    alertWatch(now),
-    getDb()
-      .select({ total: count(), fraiches: sql<number>`count(*) filter (where ${spiedAds.lastSeenAt} >= ${hier.toISOString()}::timestamptz)`, derniere: sql<Date | string | null>`max(${spiedAds.lastSeenAt})` })
-      .from(spiedAds),
-    getDb()
-      .select({ total: count(), recentes: sql<number>`count(*) filter (where ${alerts.occurredAt} >= ${hier.toISOString()}::timestamptz)` })
-      .from(alerts),
-  ]);
+  // L'une après l'autre : une instance n'a qu'une connexion, et chaque lecture se mesure ainsi à part.
+  return { ...(await salesWatchState(now)), ...(await wallWatchState(now)), ...(await feedWatchState(now)) };
+}
+
+/** Ventes : boutiques de l'index, celles relevées aujourd'hui, jour du dernier relevé. */
+export async function salesWatchState(now = new Date()): Promise<{ boutiques: number; boutiquesReleveesAujourdhui: number; dernierReleveDeVentes: string | null }> {
+  const watch = await alertWatch(now);
   const aujourdhui = watch.readings.find((reading) => reading.day === dayOf(now));
-  return {
-    boutiques: watch.stores,
-    boutiquesReleveesAujourdhui: aujourdhui?.stores ?? 0,
-    dernierReleveDeVentes: watch.readings[0]?.day ?? null,
-    annonces: Number(mur?.total ?? 0),
-    annoncesVuesDepuis24h: Number(mur?.fraiches ?? 0),
-    derniereAnnonceVue: mur?.derniere ? new Date(mur.derniere).toISOString() : null,
-    alertesAuFil: Number(fil?.total ?? 0),
-    alertesDepuis24h: Number(fil?.recentes ?? 0),
-  };
+  return { boutiques: watch.stores, boutiquesReleveesAujourdhui: aujourdhui?.stores ?? 0, dernierReleveDeVentes: watch.readings[0]?.day ?? null };
+}
+
+/** Publicités : taille du mur, annonces vues depuis vingt-quatre heures, date de la dernière. */
+export async function wallWatchState(now = new Date()): Promise<{ annonces: number; annoncesVuesDepuis24h: number; derniereAnnonceVue: string | null }> {
+  const hier = new Date(now.getTime() - JOUR_MS);
+  const [mur] = await getDb()
+    .select({ total: count(), fraiches: sql<number>`count(*) filter (where ${spiedAds.lastSeenAt} >= ${hier.toISOString()}::timestamptz)`, derniere: sql<Date | string | null>`max(${spiedAds.lastSeenAt})` })
+    .from(spiedAds);
+  return { annonces: Number(mur?.total ?? 0), annoncesVuesDepuis24h: Number(mur?.fraiches ?? 0), derniereAnnonceVue: mur?.derniere ? new Date(mur.derniere).toISOString() : null };
+}
+
+/** Alertes : au fil en tout, et depuis vingt-quatre heures. */
+export async function feedWatchState(now = new Date()): Promise<{ alertesAuFil: number; alertesDepuis24h: number }> {
+  const hier = new Date(now.getTime() - JOUR_MS);
+  const [fil] = await getDb()
+    .select({ total: count(), recentes: sql<number>`count(*) filter (where ${alerts.occurredAt} >= ${hier.toISOString()}::timestamptz)` })
+    .from(alerts);
+  return { alertesAuFil: Number(fil?.total ?? 0), alertesDepuis24h: Number(fil?.recentes ?? 0) };
 }
 
 export async function countUnreadAlerts(userId: string): Promise<number> {

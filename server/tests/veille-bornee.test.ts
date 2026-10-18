@@ -49,7 +49,13 @@ describe('Passage de veille borné', () => {
     const started = Date.now();
     const passage = await request(app).get('/api/cron/veille').set('Authorization', `Bearer ${SECRET}`).expect(200);
     assert.ok(Date.now() - started < 30_000, 'sans rien à relever, le passage est immédiat');
-    for (const key of ['surveillances', 'releves', 'alertes', 'etat', 'paiements', 'enRetard', 'enEchec']) assert.ok(key in passage.body, `le compte rendu porte « ${key} »`);
+    for (const key of ['surveillances', 'releves', 'alertes', 'etat', 'paiements', 'enRetard', 'enEchec', 'durees']) assert.ok(key in passage.body, `le compte rendu porte « ${key} »`);
+    assert.deepEqual(
+      Object.keys(passage.body.durees),
+      ['reprise des rapports', 'paiements Mobile Money', 'surveillances', 'index du marché', 'alertes', 'compte rendu', 'état des ventes', 'état des publicités', 'état des alertes'],
+      'chaque étape dit le temps qu’elle a pris',
+    );
+    assert.deepEqual(Object.keys(passage.body.etat).sort(), ['alertesAuFil', 'alertesDepuis24h', 'annonces', 'annoncesVuesDepuis24h', 'boutiques', 'boutiquesReleveesAujourdhui', 'derniereAnnonceVue', 'dernierReleveDeVentes'].sort());
     assert.deepEqual(passage.body.enRetard, [], 'aucune étape en retard');
     assert.deepEqual(passage.body.enEchec, [], 'aucune étape en échec');
     assert.ok(passage.body.etat && typeof passage.body.etat.annonces === 'number', 'l’état de la veille est lu');
