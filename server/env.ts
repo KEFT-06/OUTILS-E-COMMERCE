@@ -487,6 +487,20 @@ const schema = z.object({
    * l'écran en 1 312 FCFA. Le franc CFA est la devise de la grande majorité des boutiques suivies.
    */
   RADAR_PRICE_CURRENCY: z.string().regex(/^[A-Z]{3}$/).default('XAF'),
+  /**
+   * Firecrawl : lecture des vitrines Chariow par un service tiers. La plateforme refuse le serveur
+   * du site depuis le 11/10/2026 (« réponse 500/403 (cloudflare) ») ; le propriétaire a décidé le
+   * 18/10/2026 de lire les vitrines par Firecrawl. Lecture ordinaire seulement (« proxy basic ») :
+   * jamais le mode furtif. Sans clé, le radar lit les vitrines directement, comme avant.
+   */
+  FIRECRAWL_API_KEY: z.string().optional(),
+  FIRECRAWL_API_URL: z.string().url().default('https://api.firecrawl.dev'),
+  /**
+   * Pages de vitrine lues par Firecrawl au plus par jour, tous relevés confondus : une page = un
+   * crédit. 30 tient dans un forfait de 1 000 crédits par mois. Les surveillances des clients et
+   * ce qu'un client ouvre passent avant l'index du marché (qui n'en prend que les deux tiers).
+   */
+  RADAR_FIRECRAWL_DAILY_PAGES: z.coerce.number().int().min(0).max(100_000).default(30),
 
   /**
    * Collecte publicitaire (découverte de boutiques et mur d'espionnage) : jeton Apify, créé sur
@@ -720,6 +734,8 @@ export const providers = {
   fal: Boolean(env.FAL_KEY),
   gamma: Boolean(env.GAMMA_API_KEY),
   chariow: Boolean(env.CHARIOW_API_KEY),
+  /** Les vitrines se lisent par Firecrawl (voir FIRECRAWL_API_KEY). */
+  firecrawl: Boolean(env.FIRECRAWL_API_KEY),
   apify: Boolean(env.APIFY_TOKEN),
   videoArchive: Boolean(env.SUPABASE_API_SECRET_KEY),
   googleAuth: Boolean(env.GOOGLE_OAUTH_CLIENT_ID && env.GOOGLE_OAUTH_CLIENT_SECRET),

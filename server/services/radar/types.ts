@@ -44,6 +44,9 @@ export interface RadarTarget {
 export interface RadarSource {
   /** Traduit une saisie d'utilisateur (lien, sous-domaine, identifiant) en cible. */
   resolve(input: string): Promise<RadarTarget>;
-  /** Relève l'état courant de la cible. Un tableau vide est une réponse valide : la boutique est vide. */
-  observe(externalId: string): Promise<RadarObservation[]>;
+  /**
+   * Relève l'état courant de la cible. Un tableau vide est une réponse valide : la boutique est vide.
+   * `deadline` (horodatage) : au-delà, plus aucune fiche n'est entamée — le relevé rend ce qu'il a lu.
+   */
+  observe(externalId: string, options?: { deadline?: number }): Promise<RadarObservation[]>;
 }

@@ -24,6 +24,8 @@ import { collectorPlan, ingestLibraryRecords, markPageRead, recordCollectorRun }
 import { pendingCollectorSearches, pourCollectorSearch } from '@server/services/espionnage/search';
 import { indexDiscoveredStores, reportMarketRun } from '@server/services/market';
 import { runInBackground } from '@server/shared/backgroundWork';
+import { observationsFromStorefront } from '@server/services/radar/sources/chariowStore';
+import { ingestStorefrontReading, storefrontPlan } from '@server/services/radar/storefrontReadings';
 
 /**
  * Déclencheur périodique du radar, pour les hébergements où rien ne tourne entre deux requêtes.
@@ -403,5 +405,63 @@ cronRouter.post(
       alertes = await detectAlerts().catch(() => null);
     }
     res.json({ ...outcome, alertes, ...(thumbnails ? { thumbnails } : {}), ...(searched ? { searchStored: searched.stored } : {}) });
+  }),
+);
+
+/* -------------------------------------------------------------------------- */
+/*  Vitrines lues par le collecteur (collecteur/vitrines.mjs, par Firecrawl)   */
+/* -------------------------------------------------------------------------- */
+
+/** Les boutiques à relever, dans l'ordre : surveillées par des clients, en publicité, puis les autres. */
+cronRouter.get(
+  '/vitrines',
+  asyncRoute(async (req, res) => {
+    requireCollector(req);
+    const limite = z.coerce.number().int().min(1).max(2_000).catch(500).parse(req.query.limite ?? 500);
+    res.json({ stores: await storefrontPlan(new Date(), limite) });
+  }),
+);
+
+const vitrineSchema = z.object({
+  /** Le relevé COMPLET d'une boutique : toutes les pages de son catalogue, et les fiches lues. */
+  store: z
+    .object({
+      externalId: z.string().regex(/^store_[a-z0-9]{6,24}$/i),
+      host: z.string().trim().toLowerCase().regex(/^[a-z0-9][a-z0-9-]{0,62}\.mychariow\.(com|shop)$/),
+      label: z.string().trim().max(200).nullable().default(null),
+    })
+    .optional(),
+  /** Produits du catalogue tels que la plateforme les rend. */
+  catalog: z.array(z.record(z.string(), z.unknown())).max(2_000).default([]),
+  /** Fiches lues, par identifiant de produit : ventes et catégorie. */
+  details: z.record(z.string().regex(/^prd_[a-z0-9]{2,40}$/i), z.record(z.string(), z.unknown())).default({}),
+  /** Fin du passage : les alertes sont recalculées, et le compte rendu écrit. */
+  done: z.boolean().default(false),
+  summary: z
+    .object({
+      indexed: z.number().int().min(0).default(0),
+      failed: z.number().int().min(0).default(0),
+      remaining: z.number().int().min(0).default(0),
+      reasons: z.record(z.string().max(120), z.number().int().min(0)).default({}),
+    })
+    .optional(),
+});
+
+/** Versement du relevé d'une boutique ; avec `done`, clôture du passage. */
+cronRouter.post(
+  '/vitrines',
+  asyncRoute(async (req, res) => {
+    requireCollector(req);
+    const parsed = vitrineSchema.safeParse(req.body);
+    if (!parsed.success) throw new AppError(400, 'Relevé de vitrine illisible.', 'STOREFRONT_READING_INVALID');
+    const { store, catalog, details, done, summary } = parsed.data;
+    const outcome = store ? await ingestStorefrontReading(store, observationsFromStorefront(catalog, details)) : null;
+    let alertes: number | null = null;
+    if (done) {
+      alertes = await detectAlerts().catch(() => null);
+      const bilan = summary ?? { indexed: 0, failed: 0, remaining: 0, reasons: {} };
+      await reportMarketRun('relevé des vitrines par le collecteur', { ...bilan, launched: 0 }, alertes);
+    }
+    res.json({ ...(outcome ?? {}), alertes });
   }),
 );

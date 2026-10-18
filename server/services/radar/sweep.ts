@@ -5,6 +5,7 @@ import { env } from '@server/env';
 import { AppError } from '@server/middleware';
 import { indexStoreCatalog, normalHost } from '@server/services/market';
 import { sourceFor } from '@server/services/radar/sources';
+import { BUDGET_CODE } from '@server/services/radar/sources/firecrawl';
 import type { RadarObservation } from '@server/services/radar/types';
 
 /**
@@ -285,6 +286,9 @@ export async function sweepWatch(watch: WatchRow, now = new Date()): Promise<Swe
     }
     return outcome;
   } catch (error) {
+    // Plafond du jour de la lecture des vitrines : la boutique n'y est pour rien. Ni échec compté,
+    // ni date de passage avancée — la surveillance reste due, et sera relevée dès qu'il y aura de quoi.
+    if (error instanceof AppError && error.code === BUDGET_CODE) throw error;
     const raison = error instanceof AppError ? error.message : 'Erreur inattendue pendant le relevé.';
     const echecs = watch.failureCount + 1;
     await getDb()

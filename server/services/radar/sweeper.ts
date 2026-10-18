@@ -2,11 +2,13 @@ import { and, asc, count, eq, isNull, lt, or, sql } from 'drizzle-orm';
 import { getDb } from '@server/db/client';
 import { users, watches } from '@server/db/schema';
 import { env } from '@server/env';
+import { AppError } from '@server/middleware';
 import { getPlanConfig } from '@server/services/plans';
 import { sendDueRadarDigests } from '@server/services/radar/alerts';
 import { collectPerformanceContributions } from '@server/services/performanceLoop/collect';
 import { discoveryIsDue, runDiscovery } from '@server/services/radar/discovery';
 import { sweepWatch } from '@server/services/radar/sweep';
+import { BUDGET_CODE } from '@server/services/radar/sources/firecrawl';
 
 /**
  * Le radar ne dort pas.
@@ -65,6 +67,8 @@ export interface SweepRunOutcome {
    * vidée : c'est ce chiffre qu'il faut lire avant de croire le radar à jour.
    */
   remaining: number;
+  /** Le plafond du jour de la lecture des vitrines est atteint : le tour s'est arrêté là, sans échec. */
+  budgetReached?: boolean;
 }
 
 /** Relève les surveillances dues. Renvoie ce qui a été tenté, ce qui a abouti, et ce qui attend. */
@@ -131,6 +135,7 @@ export async function sweepDueWatches(now = new Date(), budgetMs = BUDGET_MS): P
   let swept = 0;
   let failed = 0;
   let traitees = 0;
+  let budgetReached = false;
 
   for (const [index, ligne] of lot.entries()) {
     const watch = ligne.watch;
@@ -143,6 +148,12 @@ export async function sweepDueWatches(now = new Date(), budgetMs = BUDGET_MS): P
       await sweepWatch(watch, new Date());
       swept += 1;
     } catch (error) {
+      // Plus de quoi lire aujourd'hui : les suivantes échoueraient toutes de même. Celle-ci reste due.
+      if (error instanceof AppError && error.code === BUDGET_CODE) {
+        traitees -= 1;
+        budgetReached = true;
+        break;
+      }
       // L'échec est déjà inscrit sur la surveillance par sweepWatch : ici on continue,
       // sinon une boutique fermée empêcherait de relever toutes les suivantes.
       failed += 1;
@@ -150,7 +161,7 @@ export async function sweepDueWatches(now = new Date(), budgetMs = BUDGET_MS): P
     }
   }
 
-  return { due, swept, failed, remaining: Math.max(0, due - traitees) };
+  return { due, swept, failed, remaining: Math.max(0, due - traitees), ...(budgetReached ? { budgetReached } : {}) };
 }
 
 /**

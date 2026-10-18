@@ -3,6 +3,8 @@ import { getDb } from '@server/db/client';
 import { sansAccents } from '@server/db/search';
 import { discoveredStores, marketProducts, marketSalesDaily, spiedAds } from '@server/db/schema';
 import { chariowStoreSource, sourceFailureOf } from '@server/services/radar/sources/chariowStore';
+import { BUDGET_CODE, asMarketIndexRead } from '@server/services/radar/sources/firecrawl';
+import { AppError } from '@server/middleware';
 import type { RadarObservation } from '@server/services/radar/types';
 import { type AdvertisedOffer, advertisedOffers } from '@server/services/market/adProducts';
 import { adsOfProduct, loadStoreAds, productUrl } from '@server/services/market/productAds';
@@ -48,6 +50,16 @@ const STORE_MIN_MS = 15_000;
  * relèverait rien et ressemblerait à une attaque. Le passage suivant réessaiera.
  */
 const REFUSALS_BEFORE_HALT = 5;
+/**
+ * Écart au-delà duquel un produit nouveau n'est plus daté comme lancé. Un produit absent du relevé
+ * d'hier et présent aujourd'hui a été mis en ligne entre les deux ; si le relevé précédent date de
+ * douze jours (la plateforme a refusé le serveur du 11 au 18/10/2026), il a pu l'être n'importe
+ * quand dans ces douze jours. « Lancé aujourd'hui » serait faux, et une alerte « N ventes en
+ * 0 jour » aussi : il est seulement vu pour la première fois.
+ */
+const LAUNCH_DATING_MS = 48 * 3_600_000;
+/** Marge laissée, dans le délai d'une boutique, à la fiche en cours de lecture. */
+const DETAIL_MARGIN_MS = 6_000;
 
 const pause = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
 
@@ -83,10 +95,12 @@ export async function indexStoreCatalog(store: MarketStoreRef, observations: Rad
   const db = getDb();
   const host = normalHost(store.host);
   const known = await db
-    .select({ externalId: marketProducts.externalId })
+    .select({ externalId: marketProducts.externalId, lastSeenAt: marketProducts.lastSeenAt })
     .from(marketProducts)
     .where(eq(marketProducts.storeExternalId, store.externalId));
-  const storeKnown = known.length > 0;
+  // Le relevé précédent de la boutique : récent, un produit nouveau est un lancement daté.
+  const previousRead = known.reduce((latest, row) => Math.max(latest, row.lastSeenAt.getTime()), 0);
+  const storeKnown = known.length > 0 && now.getTime() - previousRead <= LAUNCH_DATING_MS;
   const knownIds = new Set(known.map((row) => row.externalId));
   let launched = 0;
 
@@ -181,6 +195,8 @@ export interface MarketIndexOutcome {
   reasons: Record<string, number>;
   /** La plateforme refusait : le passage s'est arrêté de lui-même au lieu d'insister. */
   halted?: boolean;
+  /** Le plafond du jour de la lecture des vitrines est atteint : le passage s'est arrêté là, sans échec. */
+  budgetReached?: boolean;
 }
 
 /**
@@ -236,13 +252,16 @@ export async function indexDiscoveredStores(
     if (deadline - Date.now() < storeMinMs) break;
     if (rang > 0) await pause(PAUSE_MS);
     outcome.remaining -= 1;
+    // La marge ne mange jamais plus du quart du délai : sur un délai court, les fiches se lisent encore.
+    const storeDeadline = Date.now() + storeCapMs - Math.min(DETAIL_MARGIN_MS, Math.floor(storeCapMs / 4));
     try {
       const { target, observations } = await within(
-        (async () => {
+        // Lectures de l'index : servies après ce qu'un client attend (voir sources/firecrawl.ts).
+        asMarketIndexRead(async () => {
           // L'identifiant « store_… » se lit une fois sur la page de la boutique, puis il est gardé.
           const known = store.storeExternalId ? { externalId: store.storeExternalId, label: store.label } : await chariowStoreSource.resolve(store.host);
-          return { target: known, observations: await chariowStoreSource.observe(known.externalId) };
-        })(),
+          return { target: known, observations: await chariowStoreSource.observe(known.externalId, { deadline: storeDeadline }) };
+        }),
         storeCapMs,
       );
       const { launched } = await indexStoreCatalog({ externalId: target.externalId, host: store.host, label: target.label ?? store.label }, observations, now);
@@ -254,6 +273,12 @@ export async function indexDiscoveredStores(
       outcome.launched += launched;
       refusals = 0;
     } catch (error) {
+      // Plafond du jour atteint : la boutique n'a pas échoué, elle attend — sa date ne bouge pas.
+      if (error instanceof AppError && error.code === BUDGET_CODE) {
+        outcome.remaining += 1;
+        outcome.budgetReached = true;
+        break;
+      }
       outcome.failed += 1;
       // La cause, sans le nom de la boutique : c'est le motif qui se compte, d'un passage à l'autre.
       const cause = sourceFailureOf(error);
@@ -287,7 +312,7 @@ export async function reportMarketRun(source: string, outcome: MarketIndexOutcom
   await recordAudit({
     actor: { id: null, email: 'réveil quotidien' },
     action: MARKET_RUN_AUDIT_ACTION,
-    details: { source, indexed: outcome?.indexed ?? null, failed: outcome?.failed ?? null, remaining: outcome?.remaining ?? null, launched: outcome?.launched ?? null, halted: outcome?.halted ?? false, alertes, reasons },
+    details: { source, indexed: outcome?.indexed ?? null, failed: outcome?.failed ?? null, remaining: outcome?.remaining ?? null, launched: outcome?.launched ?? null, halted: outcome?.halted ?? false, budgetReached: outcome?.budgetReached ?? false, alertes, reasons },
     client: { ipAddress: null, userAgent: 'réveil quotidien' },
   }).catch((error: unknown) => console.warn('[marché] compte rendu non enregistré :', error instanceof Error ? error.message : error));
 }

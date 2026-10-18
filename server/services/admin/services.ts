@@ -10,6 +10,7 @@ import { classifyGoogleRefusal, lastGoogleRefusal, recordGoogleRefusal } from '@
 import { lastImageOutcome } from '@server/services/ai/image';
 import { videoArchiveConfigured } from '@server/services/creatives/archive';
 import { ownIllustrationAvailable } from '@server/services/storybook/illustrate';
+import { firecrawlPagesToday } from '@server/services/radar/sources/firecrawl';
 
 /**
  * État des services du site, vérifié en direct pour l'administration.
@@ -646,8 +647,8 @@ async function checkMarketReading(): Promise<ServiceCheck> {
   // Le dernier passage s'est arrêté sur des refus : ce n'est pas le relevé qui manque de passer, c'est la plateforme qui ne répond plus au serveur.
   const refuse = Boolean(compte?.halted);
   const remede = refuse
-    ? 'La plateforme des vitrines refuse les lectures du serveur. Le relevé réessaie à chaque passage, cinq boutiques au plus, sans insister, et reprendra de lui-même dès qu’elle répondra. ' +
-      'Si le refus dure, il faut un accord avec la plateforme : aucun réglage du site ne le lève.'
+    ? 'La plateforme des vitrines refuse les lectures du serveur. Le relevé réessaie à chaque passage, cinq boutiques au plus, sans insister. ' +
+      'Il reprend par Firecrawl dès que FIRECRAWL_API_KEY est renseignée chez l’hébergeur (voir « Lecture des vitrines ») ; un grand passage peut aussi partir d’un poste : « node collecteur/vitrines.mjs --credits=N ».'
     : 'Vérifier que l’atelier « Veille continue » du dépôt GitHub tourne (toutes les demi-heures) et que le secret CRON_SECRET y est renseigné, avec la même valeur que sur le site. ' +
       'À défaut, seule la tâche planifiée de l’hébergeur relève les boutiques, une fois par nuit.';
   if (watch.stores === 0) return { ...base, state: 'warning', detail: `Aucune boutique n’est encore dans l’index du marché.${suite}`, action: remede };
@@ -661,6 +662,38 @@ async function checkMarketReading(): Promise<ServiceCheck> {
   // Moins d'une boutique sur deux relue : le relevé tourne, mais ne fait pas le tour.
   if (age > 1 || dernier.stores * 2 < watch.stores) return { ...base, state: 'warning', detail: `${detail} Le relevé ne fait pas le tour des boutiques chaque jour.`, action: remede };
   return { ...base, state: 'ok', detail, action: null };
+}
+
+/**
+ * Lecture des vitrines : par quoi le radar lit-il les boutiques, et lui reste-t-il de quoi lire ?
+ *
+ * La plateforme refuse le serveur du site depuis le 11/10/2026 ; le propriétaire a décidé le
+ * 18/10/2026 de lire les vitrines par Firecrawl. Une page = un crédit : le contrôle dit les pages
+ * lues aujourd'hui, le plafond du jour, et ce qu'il reste au forfait.
+ */
+async function checkStorefrontReading(): Promise<ServiceCheck> {
+  const base = { id: 'storefronts', name: 'Lecture des vitrines', role: 'Catalogue et ventes des boutiques, pour le radar, l’index du marché et les alertes (Firecrawl)' };
+  const plafond = `RADAR_FIRECRAWL_DAILY_PAGES (${env.RADAR_FIRECRAWL_DAILY_PAGES} pages par jour ; 30 tiennent dans 1 000 crédits par mois)`;
+  if (!providers.firecrawl) {
+    return {
+      ...base,
+      state: 'warning',
+      detail: 'Vitrines lues directement par le serveur, ce que la plateforme refuse depuis le 11/10/2026 : ni ventes ni alertes de vente sans le collecteur des vitrines.',
+      action: `Ajouter FIRECRAWL_API_KEY aux variables de l’hébergeur (Vercel → Settings → Environment Variables), puis redéployer. Plafond réglable par ${plafond}.`,
+    };
+  }
+  const [compte, lues] = await Promise.all([
+    probe(`${trimmed(env.FIRECRAWL_API_URL)}/v2/team/credit-usage`, { Authorization: `Bearer ${env.FIRECRAWL_API_KEY ?? ''}` }),
+    firecrawlPagesToday().catch(() => null),
+  ]);
+  if (compte && (compte.status === 401 || compte.status === 403)) return refused(base, 'FIRECRAWL_API_KEY');
+  const restants = Number((compte?.body as { data?: { remainingCredits?: unknown } } | null)?.data?.remainingCredits ?? Number.NaN);
+  const jour = `${lues ?? '?'} page${lues === 1 ? '' : 's'} lue${lues === 1 ? '' : 's'} aujourd’hui, sur un plafond de ${env.RADAR_FIRECRAWL_DAILY_PAGES}`;
+  if (Number.isFinite(restants) && restants <= 0) {
+    return { ...base, state: 'error', detail: `Forfait Firecrawl épuisé : plus aucune vitrine n’est lue jusqu’au renouvellement. ${jour}.`, action: 'Recharger ou changer de forfait sur firecrawl.dev (Billing).' };
+  }
+  const reste = Number.isFinite(restants) ? ` · ${restants.toLocaleString('fr-FR')} crédits restants au forfait` : ' · forfait illisible pour l’instant';
+  return { ...base, state: 'ok', detail: `Lecture par Firecrawl, ordinaire (jamais furtive) · ${jour}${reste}.`, action: null };
 }
 
 async function checkRadar(): Promise<ServiceCheck> {
@@ -789,6 +822,7 @@ export async function checkServices(options: { refresh?: boolean } = {}): Promis
     checkVideoArchive(),
     checkChariow(),
     checkRadar(),
+    checkStorefrontReading(),
     checkMarketReading(),
     checkAdCollection(),
     checkStripe(),

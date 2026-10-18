@@ -1498,6 +1498,22 @@ export const spiedAds = pgTable(
 ).enableRLS();
 
 /**
+ * Unités consommées par jour chez un fournisseur payé à l'unité (une page Firecrawl = un crédit).
+ * Partagée par toutes les instances du serveur : un compteur en mémoire laisserait chacune
+ * dépenser le plafond de son côté.
+ */
+export const providerDailyUsage = pgTable(
+  'provider_daily_usage',
+  {
+    /** Jour en temps universel, « 2026-10-18 ». */
+    day: text('day').notNull(),
+    provider: text('provider').notNull(),
+    units: integer('units').notNull().default(0),
+  },
+  (table) => [primaryKey({ columns: [table.day, table.provider] })],
+).enableRLS();
+
+/**
  * Pages d'annonceurs lues en entier dans la bibliothèque (collecteur Firecrawl). Sans elle, le plan
  * remettait en tête les annonceurs qu'on venait de lire — leurs annonces étant « vues » à l'instant —
  * et un passage relisait pour rien les mêmes pages (18/10/2026 : 0 annonce nouvelle à la relecture).

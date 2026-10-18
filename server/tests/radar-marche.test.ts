@@ -226,6 +226,31 @@ describe('Alertes', () => {
   });
 
   /*
+    Du 11 au 18/10/2026, la plateforme a refusé le serveur : douze jours sans relevé. Le produit
+    apparu entre-temps a pu être mis en ligne n'importe quel jour de ces douze — il n'est donc pas
+    « lancé aujourd'hui », et ses ventes ne font pas un « lancement flash » de zéro jour.
+  */
+  it('ne date pas de lancement un produit apparu après des jours sans relevé', async () => {
+    const { indexStoreCatalog } = await import('@server/services/market');
+    const { detectNewAlerts } = await import('@server/services/alerts');
+    const { getDb } = await import('@server/db/client');
+    const { marketProducts } = await import('@server/db/schema');
+    const { eq } = await import('drizzle-orm');
+    const boutique = { externalId: 'store_absente', host: 'absente.mychariow.com', label: 'Boutique absente' };
+    const produit = (externalId: string, name: string, salesCount: number) => ({ externalId, name, kind: 'downloadable', priceValue: 5_000, currency: 'XAF', salesCount });
+    const jour = (n: number) => new Date(Date.UTC(2026, 2, 1 + n, 3));
+
+    await indexStoreCatalog(boutique, [produit('prd_socle', 'Guide de la pâtisserie', 80)], jour(0));
+    const { launched } = await indexStoreCatalog(boutique, [produit('prd_socle', 'Guide de la pâtisserie', 120), produit('prd_apparu', 'Formation gâteaux de mariage', 60)], jour(12));
+    assert.equal(launched, 0, 'douze jours sans relevé : la date de mise en ligne est inconnue');
+    const [apparu] = await getDb().select().from(marketProducts).where(eq(marketProducts.externalId, 'prd_apparu'));
+    assert.equal(apparu?.launchedAt, null);
+    assert.equal(apparu?.salesCount, 60, 'le produit est bien relevé, avec ses ventes');
+    const creees = await detectNewAlerts(jour(12));
+    assert.equal(creees.filter((alerte) => alerte.payload.storeHost === 'absente.mychariow.com').length, 0, 'aucun « lancement flash » inventé');
+  });
+
+  /*
     Les règles en ventes PAR JOUR : la différence entre deux relevés de jours consécutifs.
     Une boutique, six produits, trois jours — chacun illustre une règle, ou son absence.
   */
@@ -341,7 +366,8 @@ describe('Alertes', () => {
 
     for (const rang of [1, 2, 3]) {
       const boutique = { externalId: `store_tendance${rang}`, host: `tendance${rang}.mychariow.com`, label: `Boutique ${rang}` };
-      await indexStoreCatalog(boutique, [produit('prd_base', 'Catalogue de base')], jour(0));
+      // Relevée la veille de son lancement : un produit nouveau n'est daté que d'un relevé à l'autre de jours proches.
+      await indexStoreCatalog(boutique, [produit('prd_base', 'Catalogue de base')], jour(rang - 1));
       // Chacune lance, à un jour d'écart, un produit sur le même sujet.
       await indexStoreCatalog(boutique, [produit('prd_base', 'Catalogue de base'), produit(`prd_fumage${rang}`, `Formation fumage de poisson, méthode ${rang}`)], jour(rang));
       if (rang < 3) assert.equal(await detectAlerts(jour(rang)), 0, `${rang} boutique(s) : pas encore une tendance`);

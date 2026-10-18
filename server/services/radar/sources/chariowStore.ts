@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import { env, isProd } from '@server/env';
 import { AppError } from '@server/middleware';
+import { BUDGET_CODE, fetchViaFirecrawl, firecrawlConfigured, jsonOfPage } from '@server/services/radar/sources/firecrawl';
 import type { RadarObservation, RadarSource, RadarTarget } from '@server/services/radar/types';
 
 /**
@@ -186,7 +187,21 @@ function storefrontUrl(input: string): URL {
   return url;
 }
 
+/**
+ * Une page lue par Firecrawl, rendue comme une lecture directe : mêmes refus, mêmes messages. Le
+ * statut est celui de la page chez la plateforme ; 0 : Firecrawl n'a rien pu rendre.
+ */
+async function readThroughFirecrawl(url: string, notFound: string): Promise<string> {
+  const page = await fetchViaFirecrawl(url);
+  if (page.status === 404) throw new AppError(404, notFound, 'RADAR_TARGET_NOT_FOUND');
+  if (page.status === 429) throw new AppError(429, 'La plateforme limite les consultations : le radar réessaiera.', 'RADAR_SOURCE_RATE_LIMITED');
+  if (page.status < 200 || page.status >= 300) throw unreachable(page.status ? `réponse ${page.status} (lue par Firecrawl)` : 'Firecrawl sans réponse');
+  if (page.body.length > MAX_HTML_BYTES) throw unreachable('page trop volumineuse');
+  return page.body;
+}
+
 async function fetchText(url: URL): Promise<string> {
+  if (firecrawlConfigured()) return readThroughFirecrawl(url.toString(), 'Cette boutique n’existe pas, ou n’est plus en ligne.');
   let response: Response;
   try {
     response = await fetch(url, {
@@ -208,6 +223,14 @@ async function fetchText(url: URL): Promise<string> {
 }
 
 async function fetchJson(url: string): Promise<unknown> {
+  if (firecrawlConfigured()) {
+    const body = await readThroughFirecrawl(url, 'Cette boutique n’est plus accessible sur la plateforme.');
+    try {
+      return jsonOfPage(body);
+    } catch {
+      throw unreachable('réponse illisible (lue par Firecrawl)');
+    }
+  }
   let response: Response;
   try {
     response = await fetch(url, {
@@ -280,33 +303,78 @@ function detailUrl(externalId: string, productId: string): string {
  * d'un jour sur l'autre : chaque produit est lu au moins un jour sur deux, et le dernier compte
  * connu reste affiché entre-temps. Un refus de débit arrête la lecture au lieu d'insister.
  */
-async function readDetails(externalId: string, observations: RadarObservation[], now = new Date()): Promise<void> {
+async function readDetails(externalId: string, observations: RadarObservation[], now = new Date(), until = Number.POSITIVE_INFINITY): Promise<void> {
   const pending = observations.filter((observation) => observation.salesCount === null);
   if (pending.length === 0) return;
 
   const jour = Math.floor(now.getTime() / 86_400_000);
   const start = pending.length > DETAILS_MAX ? (jour * DETAILS_MAX) % pending.length : 0;
   const queue = [...pending.slice(start), ...pending.slice(0, start)].slice(0, DETAILS_MAX);
-  const deadline = Date.now() + DETAILS_BUDGET_MS;
+  const deadline = Math.min(Date.now() + DETAILS_BUDGET_MS, until);
   let stopped = false;
+  let read = 0;
+  let withSales = 0;
 
-  const worker = async () => {
-    for (let observation = queue.shift(); observation && !stopped && Date.now() < deadline; observation = queue.shift()) {
-      try {
-        const payload = (await fetchJson(detailUrl(externalId, observation.externalId))) as { data?: unknown } | null;
-        const detail = detailSchema.safeParse(payload?.data ?? payload);
-        if (!detail.success) continue;
-        const sales = detail.data.sales_count?.value;
-        if (typeof sales === 'number') observation.salesCount = sales;
-        observation.category = detail.data.category?.value?.trim() || null;
-      } catch (error) {
-        // La plateforme demande de ralentir : on s'arrête là, le relevé de demain reprendra.
-        // Toute autre fiche illisible est simplement passée : elle ne fait pas échouer le relevé.
-        if (error instanceof AppError && error.code === 'RADAR_SOURCE_RATE_LIMITED') stopped = true;
+  const readOne = async (observation: RadarObservation) => {
+    try {
+      const payload = (await fetchJson(detailUrl(externalId, observation.externalId))) as { data?: unknown } | null;
+      const detail = detailSchema.safeParse(payload?.data ?? payload);
+      if (!detail.success) return;
+      read += 1;
+      const sales = detail.data.sales_count?.value;
+      if (typeof sales === 'number') {
+        withSales += 1;
+        observation.salesCount = sales;
       }
+      observation.category = detail.data.category?.value?.trim() || null;
+    } catch (error) {
+      // La plateforme demande de ralentir : on s'arrête là, le relevé de demain reprendra.
+      // Toute autre fiche illisible est simplement passée : elle ne fait pas échouer le relevé.
+      // Le plafond Firecrawl du jour aussi : les fiches restantes se liront au relevé suivant.
+      if (error instanceof AppError && (error.code === 'RADAR_SOURCE_RATE_LIMITED' || error.code === BUDGET_CODE)) stopped = true;
     }
   };
+  const open = () => !stopped && Date.now() < deadline;
+
+  /*
+    Une boutique peut masquer ses ventes (réglage de toute la boutique) : sa fiche rend
+    `sales_count: null`. Mesuré le 18/10/2026 sur une boutique de 25 produits, huit fiches lues
+    pour rien — et chaque fiche lue par Firecrawl coûte un crédit. Les premières fiches se lisent
+    donc une à une : deux sans ventes, et la boutique n'est pas lue plus loin.
+  */
+  while (queue.length > 0 && open() && withSales === 0 && read < 2) await readOne(queue.shift()!);
+  if (withSales === 0 && read >= 2) return;
+
+  const worker = async () => {
+    for (let observation = queue.shift(); observation && open(); observation = queue.shift()) await readOne(observation);
+  };
   await Promise.all(Array.from({ length: DETAILS_CONCURRENCY }, worker));
+}
+
+/**
+ * Un relevé lu hors du serveur (le collecteur, par Firecrawl) : les produits du catalogue et les
+ * fiches tels que la plateforme les rend, lus ici par les mêmes règles que `observe` — brouillons
+ * écartés, prix remises comprises, ventes prises sur la fiche. Une ligne illisible est passée.
+ */
+export function observationsFromStorefront(catalog: unknown[], details: Record<string, unknown>): RadarObservation[] {
+  const observations: RadarObservation[] = [];
+  const seen = new Set<string>();
+  for (const item of catalog) {
+    const product = productSchema.safeParse(item);
+    if (!product.success) continue;
+    if (product.data.status && product.data.status !== 'published') continue;
+    if (seen.has(product.data.id)) continue;
+    seen.add(product.data.id);
+    const observation = toObservation(product.data);
+    const detail = detailSchema.safeParse(details[product.data.id]);
+    if (detail.success && details[product.data.id] !== undefined) {
+      const sales = detail.data.sales_count?.value;
+      if (typeof sales === 'number') observation.salesCount = sales;
+      observation.category = detail.data.category?.value?.trim() || null;
+    }
+    observations.push(observation);
+  }
+  return observations;
 }
 
 export const chariowStoreSource: RadarSource = {
@@ -342,7 +410,7 @@ export const chariowStoreSource: RadarSource = {
     };
   },
 
-  async observe(externalId: string): Promise<RadarObservation[]> {
+  async observe(externalId: string, options: { deadline?: number } = {}): Promise<RadarObservation[]> {
     const observations: RadarObservation[] = [];
     const seen = new Set<string>();
     let next: string | null = catalogUrl(externalId);
@@ -362,7 +430,7 @@ export const chariowStoreSource: RadarSource = {
       next = suivant && suivant.startsWith(env.CHARIOW_STOREFRONT_URL.replace(/\/+$/, '')) ? suivant : null;
     }
 
-    await readDetails(externalId, observations);
+    await readDetails(externalId, observations, new Date(), options.deadline);
     return observations;
   },
 };

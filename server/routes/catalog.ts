@@ -106,6 +106,8 @@ catalogRouter.get(
         artDirection: claudeConfigured(),
         // Collecte et recherche publicitaires (Apify) : sans elle, l'espionnage ne se remplit pas.
         adLibrary: providers.apify,
+        // Vitrines des boutiques lues par Firecrawl : sans elle, le radar les lit directement (refusé depuis le 11/10/2026).
+        storefronts: providers.firecrawl,
       },
       /** test : aucune carte réelle débitée. */
       paymentMode: stripeMode(),
