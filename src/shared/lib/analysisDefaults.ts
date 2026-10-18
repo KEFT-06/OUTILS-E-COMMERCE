@@ -1,7 +1,10 @@
 import { findStorefront, followableOnRadar } from '@server/shared/storefronts';
+import { safeHttpsUrl } from '@/shared/lib/safeUrl';
 import { limitWords, shorten } from '@/shared/lib/text';
 import type { DigitalProductIdea, MarketAnalysisReport, MetaAdCampaign } from '@/shared/types/analysis';
 import type { BeatText, CtaPlatform, KitObjective, LaunchKitDraft, ScriptFormat } from '@/shared/types/launchKit';
+import type { FaqItem, SectionRole } from '@/shared/types/productPage';
+import type { MarketSearch } from '@/shared/types/radar';
 import type { StorybookBrief } from '@/shared/types/storybook';
 
 /**
@@ -13,7 +16,7 @@ import type { StorybookBrief } from '@/shared/types/storybook';
  * paiement, ni fait culturel ; ce que l'analyse ne sait pas reste à écrire par l'auteur.
  */
 
-type Report = Pick<MarketAnalysisReport, 'query' | 'nicheName' | 'market' | 'competitors' | 'adCampaigns' | 'audience'>;
+type Report = Pick<MarketAnalysisReport, 'query' | 'nicheName' | 'market' | 'competitors' | 'adCampaigns' | 'audience' | 'pricing' | 'illustrativeImages'>;
 
 /** Longueur au-delà de laquelle une requête est une phrase, plus un mot-clé. */
 const KEYWORD_MAX = 60;
@@ -31,6 +34,17 @@ export function followableCompetitorOf(report: Pick<Report, 'competitors'> | nul
     if (found && followableOnRadar(found.host)) return found.host;
   }
   return '';
+}
+
+/**
+ * À défaut d'une boutique citée par l'analyse, celle que le marché de la niche désigne : la plus
+ * vendeuse de l'index des catalogues, sinon la plus poussée en publicité sur le mur d'espionnage.
+ * Une boutique déjà surveillée n'est pas reproposée. Le Radar et l'Espionnage se complètent
+ * (demande du propriétaire, 18/10/2026).
+ */
+export function followableStoreOfMarket(market: Pick<MarketSearch, 'products' | 'advertised'> | null | undefined, watchedHosts: ReadonlySet<string> = new Set()): string {
+  const candidates = [...(market?.products ?? []).map((product) => product.storeHost), ...(market?.advertised ?? []).map((offer) => offer.storeHost)];
+  return candidates.find((host) => followableOnRadar(host) && !watchedHosts.has(host.toLowerCase())) ?? '';
 }
 
 /** Le script de l'analyse écrit pour cet ouvrage ; à défaut, le premier. */
@@ -62,7 +76,7 @@ export function campaignNumbersOf(adCostPerSale: number | null | undefined): { b
 
 /**
  * Le brief d'un conte, d'après la niche. Le personnage et le style sont des propositions à
- * changer ; les éléments culturels restent vides — ce sont des faits, et l'outil n'en invente pas.
+ * changer ; les éléments culturels se proposent d'après le pays d'ancrage (culturalElements.ts).
  */
 export function storybookBriefOf(report: Pick<Report, 'nicheName' | 'query'> | null | undefined): Partial<StorybookBrief> {
   const niche = (report?.nicheName || report?.query || '').replace(/\s+/g, ' ').trim();
@@ -75,6 +89,21 @@ export function storybookBriefOf(report: Pick<Report, 'nicheName' | 'query'> | n
 }
 
 /* -------------------------------------------------------------------------- */
+/*  Couverture                                                                 */
+/* -------------------------------------------------------------------------- */
+
+/** Ce que la couverture montre, d'après l'ouvrage : son lecteur, déjà arrivé au résultat promis. */
+export function coverWishOf(book: { audience?: string | null; promise?: string | null } | null | undefined): string {
+  const audience = (book?.audience ?? '').replace(/\s+/g, ' ').trim();
+  const promise = (book?.promise ?? '').replace(/\s+/g, ' ').trim();
+  if (!promise) return '';
+  return shorten(
+    audience ? `Une personne du public visé (${audience}) qui vit déjà ce que l’ouvrage promet : ${promise}` : `Une scène qui montre ce que l’ouvrage promet : ${promise}`,
+    280,
+  );
+}
+
+/* -------------------------------------------------------------------------- */
 /*  Page produit                                                               */
 /* -------------------------------------------------------------------------- */
 
@@ -82,13 +111,51 @@ export interface ProductPageDefaults {
   headlineB: string;
   ctaLabelB: string;
   problem: string;
+  /** À qui la page dit franchement que l'offre ne convient pas. */
+  notFor: string;
+  /** Accès et moyens de paiement conseillés par l'analyse. */
+  offerConditions: string;
+  /** Les freins de l'acheteur relevés par l'analyse, chacun avec sa réponse. */
+  faq: FaqItem[];
+  /** Images https connues : la couverture, puis les illustrations de l'analyse, une par section. */
+  images: Partial<Record<SectionRole, string>>;
+  /** Prix à afficher quand le produit n'en porte pas : celui que propose le simulateur du Studio. */
+  price: string;
+}
+
+/** Ordre des sections de la page : la première image va à l'accroche. */
+const IMAGE_ORDER: readonly SectionRole[] = ['hero', 'problem', 'solution', 'content', 'audience', 'offer', 'faq_cta'];
+
+/** Ce qui sépare un frein de sa réponse dans une objection de l'analyse (« Trop cher : … », « Pas le temps — … »). */
+const FREIN_REPONSE = /\s+(?:—|–|->|→)\s+|\s*:\s+/;
+
+/**
+ * Les objections de l'analyse en questions-réponses : chacune est écrite « un frein, suivi de la
+ * réponse à y apporter ». Une objection sans réponse n'en devient pas une : la FAQ ne répond pas à vide.
+ */
+export function faqFromObjections(objections: readonly string[] | null | undefined): FaqItem[] {
+  return (objections ?? [])
+    .flatMap((raw) => {
+      const text = raw.replace(/\s+/g, ' ').trim();
+      const found = FREIN_REPONSE.exec(text);
+      if (!found || found.index < 3) return [];
+      const frein = text.slice(0, found.index).replace(/^[«"“\s]+|[»"”\s]+$/g, '').trim();
+      const reponse = text.slice(found.index + found[0].length).trim();
+      if (!frein || reponse.length < 8) return [];
+      return [{ question: shorten(/\?$/.test(frein) ? frein : `« ${frein} »`, 160), answer: shorten(reponse.charAt(0).toUpperCase() + reponse.slice(1), 600) }];
+    })
+    .slice(0, 4);
 }
 
 /**
  * Ce que l'analyse sait de la page de vente d'un ouvrage : la difficulté de son lecteur, et une
  * seconde accroche à comparer à la première. Le lien de paiement, lui, ne se devine pas.
  */
-export function productPageDefaultsOf(product: Pick<DigitalProductIdea, 'targetProblem' | 'transformationPromise' | 'title'>, report: Pick<Report, 'audience'> | null | undefined): ProductPageDefaults {
+export function productPageDefaultsOf(
+  product: Pick<DigitalProductIdea, 'targetProblem' | 'transformationPromise' | 'title'> & Partial<Pick<DigitalProductIdea, 'imageUrl'>>,
+  report: Partial<Pick<Report, 'audience' | 'pricing' | 'illustrativeImages'>> | null | undefined,
+  options: { fallbackPrice?: string } = {},
+): ProductPageDefaults {
   const pains = (report?.audience?.pains ?? []).map((pain) => pain.replace(/\s+/g, ' ').trim()).filter(Boolean);
   const problem = product.targetProblem?.trim() || (pains.length > 0 ? pains.slice(0, 3).map((pain) => `— ${pain}`).join('\n') : '');
   const promise = product.transformationPromise?.replace(/\s+/g, ' ').trim() ?? '';
@@ -98,7 +165,25 @@ export function productPageDefaultsOf(product: Pick<DigitalProductIdea, 'targetP
     ctaLabelB: 'Je commence maintenant',
     // Les retours à la ligne sont gardés : une difficulté par ligne se relit mieux qu'un bloc.
     problem: problem.replace(/[ \t]+/g, ' ').slice(0, 2000),
+    // Une page qui dit à qui elle ne s'adresse pas inspire confiance ; la phrase est à ajuster, pas à écrire.
+    notFor: 'Ce produit n’est pas pour vous si vous cherchez un résultat sans effort : il demande de mettre ses étapes en pratique.',
+    offerConditions: offerConditionsOf(report?.pricing?.paymentMethods),
+    faq: faqFromObjections(report?.audience?.objections),
+    images: imagesOf(product.imageUrl, report?.illustrativeImages),
+    price: options.fallbackPrice ?? '',
   };
+}
+
+/** Accès immédiat (un produit numérique) et moyens de paiement conseillés par l'analyse. */
+function offerConditionsOf(methods: readonly string[] | null | undefined): string {
+  const moyens = [...new Set((methods ?? []).map((method) => method.replace(/\s+/g, ' ').trim()).filter(Boolean))].slice(0, 4);
+  return `Accès immédiat après paiement, sur téléphone comme sur ordinateur.${moyens.length > 0 ? ` Paiement : ${moyens.join(', ')}.` : ''}`;
+}
+
+/** Une image https par section, sans en répéter aucune : la couverture d'abord, puis les illustrations de l'analyse. */
+function imagesOf(cover: string | undefined, illustrations: readonly { url: string }[] | null | undefined): Partial<Record<SectionRole, string>> {
+  const urls = [...new Set([cover, ...(illustrations ?? []).map((image) => image.url)].flatMap((url) => (safeHttpsUrl(url) ? [url!] : [])))];
+  return Object.fromEntries(IMAGE_ORDER.slice(0, urls.length).map((role, index) => [role, urls[index]!]));
 }
 
 /* -------------------------------------------------------------------------- */

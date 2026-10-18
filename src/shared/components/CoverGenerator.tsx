@@ -3,6 +3,8 @@ import { ImageIcon, RefreshCw, Sparkles, Trash2 } from 'lucide-react';
 import { useCreditGate } from '@/app/providers/CreditGateProvider';
 import { ZoomableImage } from '@/shared/components/ZoomableImage';
 import { type CoverBook, type CoverView, coversApi } from '@/shared/lib/covers';
+import { coverWishOf } from '@/shared/lib/analysisDefaults';
+import { usePrefill } from '@/shared/lib/prefill';
 import { toApiError } from '@/shared/lib/apiError';
 import { cn } from '@/shared/lib/utils';
 import { Alert, AlertDescription } from '@/shared/ui/alert';
@@ -58,6 +60,8 @@ export function CoverGenerator({
   const [loading, setLoading] = useState(true);
   const [style, setStyle] = useState<Style>('illustration');
   const [description, setDescription] = useState('');
+  // Proposée d'après l'ouvrage (son lecteur, le résultat promis) ; l'auteur la corrige ou l'efface.
+  usePrefill(description, setDescription, coverWishOf(book), `couverture.${subject}.${subjectId}`);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 

@@ -23,6 +23,7 @@ import { Textarea } from '@/shared/ui/textarea';
 import { useScreenMemory } from '@/shared/lib/apiCache';
 import { useWorkspace } from '@/app/providers/WorkspaceProvider';
 import { storybookBriefOf } from '@/shared/lib/analysisDefaults';
+import { culturalElementsOf } from '@/shared/lib/culturalElements';
 import { usePrefill } from '@/shared/lib/prefill';
 
 /**
@@ -31,8 +32,8 @@ import { usePrefill } from '@/shared/lib/prefill';
  *
  * L'écran ne demande plus à l'auteur de vérifier quoi que ce soit après coup. Le personnage
  * reste le même d'une page à l'autre parce que le serveur le dessine d'après une planche de
- * référence ; aucun fait culturel n'est inventé, seuls les éléments fournis par l'auteur servant
- * de références précises. L'avancée affichée est le compte réel des illustrations terminées.
+ * référence ; les éléments culturels — proposés d'après le pays d'ancrage (repères familiers, voir
+ * culturalElements.ts) et corrigés par l'auteur — servent de références précises. L'avancée affichée est le compte réel des illustrations terminées.
  */
 
 /** Cadence de sondage recommandée par le service de mise en page. */
@@ -110,6 +111,8 @@ export function StorybookView() {
   usePrefill(brief.heroDescription ?? '', (value) => update('heroDescription', value), propose.heroDescription, 'storybook.personnage');
   usePrefill(brief.theme, (value) => update('theme', value), propose.theme, 'storybook.theme');
   usePrefill(brief.visualStyle ?? '', (value) => update('visualStyle', value), propose.visualStyle, 'storybook.style');
+  // D'après le pays d'ancrage : la case suit le pays tant que l'auteur ne l'a pas retouchée.
+  usePrefill(brief.culturalElements ?? '', (value) => update('culturalElements', value), culturalElementsOf(brief.country), 'storybook.culture');
 
   /*
     Nombre de pages : saisi en texte, borné en quittant le champ.

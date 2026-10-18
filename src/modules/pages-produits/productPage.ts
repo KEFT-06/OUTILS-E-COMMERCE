@@ -1,3 +1,4 @@
+import type { ProductPageDefaults } from '@/shared/lib/analysisDefaults';
 import { safeHttpsUrl } from '@/shared/lib/safeUrl';
 import { DigitalProductIdea } from '@/shared/types/analysis';
 import { ComplianceSection } from '@/shared/types/compliance';
@@ -85,7 +86,15 @@ const DEFAULT_CTA = 'Obtenir le produit';
  * La page telle qu'elle s'ouvre la première fois. `proposed` : ce que l'analyse sait de ce lecteur
  * (sa difficulté) et une seconde accroche à comparer ; le lien de paiement, lui, ne se devine pas.
  */
-export function emptyPageDraft(product: DigitalProductIdea, proposed: { headlineB?: string; ctaLabelB?: string; problem?: string } = {}): ProductPageDraft {
+/** Ce que l'analyse propose pour la page (voir `productPageDefaultsOf`). */
+export type PageProposal = Partial<Pick<ProductPageDefaults, 'headlineB' | 'ctaLabelB' | 'problem' | 'notFor' | 'offerConditions' | 'faq' | 'images' | 'price'>>;
+
+/**
+ * Une page jamais ouverte s'ouvre remplie (propriétaire, 18/10/2026 : « tout ce qu'il y a à remplir
+ * est fait par l'outil, l'utilisateur modifie juste ») : seul le lien de paiement reste à donner —
+ * c'est le sien, et il ne se devine pas.
+ */
+export function emptyPageDraft(product: DigitalProductIdea, proposed: PageProposal = {}): ProductPageDraft {
   return {
     productId: product.id,
     headlineA: product.title,
@@ -94,11 +103,11 @@ export function emptyPageDraft(product: DigitalProductIdea, proposed: { headline
     ctaLabelB: proposed.headlineB ? (proposed.ctaLabelB ?? '') : '',
     checkoutUrl: '',
     problem: proposed.problem ?? '',
-    notFor: '',
-    offerConditions: '',
-    price: formatPrice(product),
-    faq: [],
-    images: {},
+    notFor: proposed.notFor ?? '',
+    offerConditions: proposed.offerConditions ?? '',
+    price: formatPrice(product) || (proposed.price ?? ''),
+    faq: proposed.faq ?? [],
+    images: proposed.images ?? {},
   };
 }
 
@@ -106,15 +115,34 @@ export function emptyPageDraft(product: DigitalProductIdea, proposed: { headline
  * Une page déjà commencée, avec ses champs vides complétés — une seule fois. Rien de ce que
  * l'auteur a écrit n'est touché ; une variante B n'est proposée que s'il n'en a commencé aucune.
  */
-export function completePageDraft(draft: ProductPageDraft, product: DigitalProductIdea, proposed: { headlineB?: string; ctaLabelB?: string; problem?: string } = {}): ProductPageDraft {
-  if (draft.completed) return draft;
+/**
+ * Version des propositions. La 2 (18/10/2026) ajoute « pour qui ce n'est pas », conditions,
+ * questions-réponses, images et prix : une page retouchée avant les reçoit une fois — l'auteur ne
+ * les avait jamais vues, il n'a donc rien pu en effacer.
+ */
+export const PAGE_PROPOSAL_VERSION = 2;
+
+export function completePageDraft(draft: ProductPageDraft, product: DigitalProductIdea, proposed: PageProposal = {}): ProductPageDraft {
+  const received = draft.completed ? (draft.completedVersion ?? 1) : 0;
+  if (received >= PAGE_PROPOSAL_VERSION) return draft;
+  const filled = (value: string | undefined, fallback: string | undefined) => (value?.trim() ? value : (fallback ?? ''));
+  const nouvelles = {
+    notFor: filled(draft.notFor, proposed.notFor),
+    offerConditions: filled(draft.offerConditions, proposed.offerConditions),
+    price: filled(draft.price, formatPrice(product) || proposed.price),
+    faq: draft.faq.length > 0 ? draft.faq : (proposed.faq ?? []),
+    // Une image choisie par l'auteur reste la sienne ; les sections sans image reçoivent la proposition.
+    images: { ...(proposed.images ?? {}), ...Object.fromEntries(Object.entries(draft.images).filter(([, url]) => Boolean(url?.trim()))) },
+  };
+  // Déjà retouchée : ce que la première version proposait et que l'auteur a effacé reste effacé.
+  if (received === 1) return { ...draft, ...nouvelles };
   const offerB = !hasVariantB(draft) && Boolean(proposed.headlineB);
   return {
     ...draft,
     headlineB: offerB ? proposed.headlineB! : draft.headlineB,
     ctaLabelB: offerB ? (proposed.ctaLabelB ?? '') : draft.ctaLabelB,
-    problem: draft.problem.trim() ? draft.problem : (proposed.problem ?? ''),
-    price: draft.price?.trim() ? draft.price : formatPrice(product),
+    problem: filled(draft.problem, proposed.problem),
+    ...nouvelles,
   };
 }
 

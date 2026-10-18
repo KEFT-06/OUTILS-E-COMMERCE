@@ -8,6 +8,7 @@ import {
   type PageVariant,
   buildPageModel,
   completePageDraft,
+  PAGE_PROPOSAL_VERSION,
   emptyPageDraft,
   hasVariantB,
   missingForExport,
@@ -17,6 +18,7 @@ import { safeHttpsUrl } from '@/shared/lib/safeUrl';
 import { useProductDrafts } from '@/shared/stores/useProductDrafts';
 import { useProductPageDrafts } from '@/modules/pages-produits/useProductPageDrafts';
 import { productPageDefaultsOf } from '@/shared/lib/analysisDefaults';
+import { usePricing } from '@/modules/studio/usePricing';
 import { formatMoney, roundPrice } from '@server/shared/currency';
 import { useMoney } from '@/shared/lib/money';
 import type { DigitalProductIdea, MarketAnalysisReport } from '@/shared/types/analysis';
@@ -55,6 +57,8 @@ export function ProductPageBuilderView({ products, report = null }: { products: 
   const productDrafts = useProductDrafts();
   const pageDrafts = useProductPageDrafts();
   const money = useMoney();
+  // Le prix que propose le simulateur du Studio : la page et le Studio annoncent le même.
+  const { pricing } = usePricing();
 
   const [productId, setProductId] = useState(products[0]?.id ?? '');
   const [previewVariant, setPreviewVariant] = useState<PageVariant>('A');
@@ -90,10 +94,10 @@ export function ProductPageBuilderView({ products, report = null }: { products: 
     déjà commencée, ses champs vides sont complétés une fois. Dès la première saisie, la page est
     marquée : ce que l'auteur efface ensuite reste effacé.
   */
-  const proposed = productPageDefaultsOf(product, report);
+  const proposed = productPageDefaultsOf(product, report, { fallbackPrice: pricing ? money.format(pricing.sellingPrice.default) : '' });
   const stored = pageDrafts.get(product.id);
   const draft = stored ? completePageDraft(stored, product, proposed) : emptyPageDraft(product, proposed);
-  const update = (changes: Partial<ProductPageDraft>) => pageDrafts.save({ ...draft, ...changes, completed: true });
+  const update = (changes: Partial<ProductPageDraft>) => pageDrafts.save({ ...draft, ...changes, completed: true, completedVersion: PAGE_PROPOSAL_VERSION });
   const updateImage = (role: SectionRole, url: string) => update({ images: { ...draft.images, [role]: url } });
 
   const model = buildPageModel(product, draft, previewVariant);

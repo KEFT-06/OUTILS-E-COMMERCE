@@ -3,13 +3,18 @@ import { describe, it } from 'node:test';
 import {
   campaignNumbersOf,
   completeKitDraft,
+  coverWishOf,
+  faqFromObjections,
   followableCompetitorOf,
+  followableStoreOfMarket,
   launchKitDefaultsOf,
   productPageDefaultsOf,
   scriptFor,
   spyKeywordOf,
   storybookBriefOf,
 } from '@/shared/lib/analysisDefaults';
+import { culturalElementsOf } from '@/shared/lib/culturalElements';
+import type { MarketSearch } from '@/shared/types/radar';
 import { limitWords } from '@/shared/lib/text';
 import type { DigitalProductIdea, MarketAnalysisReport, MetaAdCampaign } from '@/shared/types/analysis';
 import type { CtaPlatform, ScriptFormat } from '@/shared/types/launchKit';
@@ -18,9 +23,11 @@ import type { CtaPlatform, ScriptFormat } from '@/shared/types/launchKit';
  * Ce que l'analyse d'une niche propose dans chaque module (demande du propriétaire, 11/10/2026 :
  * « l'outil remplit toutes les cases, l'utilisateur ne fait que modifier »).
  *
- * Deux choses sont verrouillées : chaque proposition vient bien de l'analyse ou de l'ouvrage, et
- * ce que l'analyse ne sait pas — un lien de paiement, un fait culturel, une boutique que le radar
- * ne sait pas suivre — n'est jamais inventé.
+ * Deux choses sont verrouillées : chaque proposition vient bien de l'analyse, de l'ouvrage ou du
+ * marché relevé, et ce qui ne se devine pas — un lien de paiement, une boutique que le radar ne
+ * sait pas suivre, une réponse à une objection que l'analyse n'a pas donnée — n'est jamais inventé.
+ * Le 18/10/2026, le propriétaire a redemandé que TOUT ce qui se remplit le soit : conditions,
+ * questions-réponses, images, prix, éléments culturels et scène de couverture s'y sont ajoutés.
  */
 
 const scene = (sceneNumber: number, phase: MetaAdCampaign['scenes'][number]['phase'], spokenVoiceover: string) => ({
@@ -100,13 +107,35 @@ describe('Ce que l’analyse propose dans chaque module', () => {
     assert.equal(campaignNumbersOf(0), null);
   });
 
-  it('Storybook : un brief prêt à lancer, sans fait culturel inventé', () => {
+  it('Storybook : un brief prêt à lancer ; les éléments culturels suivent le pays d’ancrage', () => {
     const brief = storybookBriefOf(report);
     assert.equal(brief.heroName, 'Awa');
     assert.match(brief.theme ?? '', /« Élevage de poules pondeuses en milieu urbain »/);
     assert.ok(brief.visualStyle);
-    assert.equal('culturalElements' in brief, false, 'les éléments culturels sont des faits : l’auteur les donne');
     assert.equal('theme' in storybookBriefOf(null), false, 'sans niche, pas de thème inventé');
+    assert.match(culturalElementsOf('CM'), /ndolé/);
+    assert.match(culturalElementsOf('sn'), /thiéboudiène/, 'le code se lit en minuscules aussi');
+    assert.notEqual(culturalElementsOf('CI'), culturalElementsOf('CM'), 'chaque pays a ses repères');
+    assert.ok(culturalElementsOf('ZZ').length > 0, 'un pays sans repères propres reçoit des éléments familiers partout');
+    assert.ok(culturalElementsOf(null).length > 0);
+  });
+
+  it('Couverture : la scène part du lecteur et de la promesse de l’ouvrage', () => {
+    assert.equal(coverWishOf({ audience: 'Citadins de 25 à 40 ans', promise: 'Avoir ses œufs frais toute l’année.' }), 'Une personne du public visé (Citadins de 25 à 40 ans) qui vit déjà ce que l’ouvrage promet : Avoir ses œufs frais toute l’année.');
+    assert.match(coverWishOf({ promise: 'Avoir ses œufs frais.' }), /^Une scène qui montre ce que l’ouvrage promet/);
+    assert.equal(coverWishOf({ audience: 'Citadins' }), '', 'sans promesse, pas de scène inventée');
+    assert.equal(coverWishOf(null), '');
+  });
+
+  it('Radar : à défaut d’une boutique citée, celle que le marché de la niche désigne, jamais une déjà suivie', () => {
+    const market = {
+      products: [{ storeHost: 'premiere.mychariow.com' }, { storeHost: 'boutique.myshopify.com' }],
+      advertised: [{ storeHost: 'pub.mychariow.com' }],
+    } as unknown as MarketSearch;
+    assert.equal(followableStoreOfMarket(market), 'premiere.mychariow.com', 'la plus vendeuse de l’index d’abord');
+    assert.equal(followableStoreOfMarket(market, new Set(['premiere.mychariow.com'])), 'pub.mychariow.com', 'déjà suivie : la suivante, ici vue en publicité');
+    assert.equal(followableStoreOfMarket({ products: [{ storeHost: 'boutique.myshopify.com' }], advertised: [] } as unknown as MarketSearch), '', 'une boutique que le radar ne sait pas suivre n’est pas proposée');
+    assert.equal(followableStoreOfMarket(null), '');
   });
 
   it('Page produit : la difficulté du lecteur vient de l’ouvrage, sinon de l’analyse', () => {
@@ -118,6 +147,41 @@ describe('Ce que l’analyse propose dans chaque module', () => {
     assert.equal(fromAnalysis.problem, '— Le bruit des voisins\n— Le manque de place\n— Le coût de l’aliment', 'trois difficultés relevées par l’analyse');
     assert.equal(productPageDefaultsOf({ ...product, targetProblem: '' }, null).problem, '', 'ni ouvrage ni analyse : la section reste à écrire');
     assert.equal(productPageDefaultsOf({ ...product, transformationPromise: product.title }, report).headlineB, '', 'une variante identique à la première ne sert à rien');
+  });
+
+  it('Page produit : conditions, questions-réponses, images et prix sont proposés ; le lien de paiement, jamais', () => {
+    const complete = productPageDefaultsOf(
+      { ...product, imageUrl: 'https://cdn.exemple.test/couverture.jpg' },
+      {
+        ...report,
+        pricing: { observed: '', recommendation: '', paymentMethods: ['Orange Money', 'MTN MoMo', 'Orange Money'], sourceIds: [] },
+        illustrativeImages: [
+          { title: '', caption: '', url: 'https://cdn.exemple.test/poulailler.jpg' },
+          { title: '', caption: '', url: 'http://non-sur.exemple.test/image.jpg' },
+          { title: '', caption: '', url: '/api/images/locale.png' },
+        ],
+        audience: { ...report.audience!, objections: ['« C’est trop cher » : le guide coûte moins qu’un mois d’œufs achetés au marché.', 'Je n’ai pas de place — quatre poules tiennent dans 2 m² de cour.', 'Le bruit sans réponse'] },
+      },
+      { fallbackPrice: '25 900 FCFA' },
+    );
+    assert.equal(complete.offerConditions, 'Accès immédiat après paiement, sur téléphone comme sur ordinateur. Paiement : Orange Money, MTN MoMo.', 'les moyens conseillés par l’analyse, sans doublon');
+    assert.deepEqual(complete.faq, [
+      { question: '« C’est trop cher »', answer: 'Le guide coûte moins qu’un mois d’œufs achetés au marché.' },
+      { question: '« Je n’ai pas de place »', answer: 'Quatre poules tiennent dans 2 m² de cour.' },
+    ], 'une objection sans réponse ne devient pas une question restée vide');
+    assert.deepEqual(complete.images, { hero: 'https://cdn.exemple.test/couverture.jpg', problem: 'https://cdn.exemple.test/poulailler.jpg' }, 'seules les images https, la couverture à l’accroche');
+    assert.equal(complete.price, '25 900 FCFA', 'le prix du simulateur du Studio');
+    assert.ok(complete.notFor.length > 0);
+    assert.equal('checkoutUrl' in complete, false, 'le lien de paiement est celui de l’auteur : rien n’est proposé');
+  });
+
+  it('Questions-réponses : chaque séparateur courant est compris', () => {
+    assert.deepEqual(faqFromObjections(['Pas le temps → 15 minutes par jour suffisent.', 'Est-ce rentable ? : oui, dès le troisième mois de ponte.']), [
+      { question: '« Pas le temps »', answer: '15 minutes par jour suffisent.' },
+      { question: 'Est-ce rentable ?', answer: 'Oui, dès le troisième mois de ponte.' },
+    ]);
+    assert.deepEqual(faqFromObjections(null), []);
+    assert.equal(faqFromObjections(Array.from({ length: 8 }, (_, index) => `Frein ${index} : une réponse assez longue`)).length, 4, 'quatre au plus');
   });
 
   const formats: ScriptFormat[] = [

@@ -13,7 +13,7 @@ import { useMoney } from '@/shared/lib/money';
 import { safeHttpUrl } from '@/shared/lib/safeUrl';
 import { cn } from '@/shared/lib/utils';
 import { resetRadarUnread } from '@/shared/stores/useRadarUnread';
-import type { RadarDashboard, WatchEventKind, WatchEventView, WatchSummary } from '@/shared/types/radar';
+import type { MarketSearch, RadarDashboard, WatchEventKind, WatchEventView, WatchSummary } from '@/shared/types/radar';
 import { Alert, AlertDescription, AlertTitle } from '@/shared/ui/alert';
 import { Button } from '@/shared/ui/button';
 import { Card, CardAction, CardContent, CardDescription, CardHeader, CardTitle } from '@/shared/ui/card';
@@ -31,7 +31,7 @@ import { StorePreviewPanel } from '@/modules/radar/StorePreviewPanel';
 import { WatchItemsPanel } from '@/modules/radar/WatchItemsPanel';
 import { useScreenMemory } from '@/shared/lib/apiCache';
 import { useWorkspace } from '@/app/providers/WorkspaceProvider';
-import { followableCompetitorOf } from '@/shared/lib/analysisDefaults';
+import { followableCompetitorOf, followableStoreOfMarket } from '@/shared/lib/analysisDefaults';
 import { usePrefill } from '@/shared/lib/prefill';
 
 /**
@@ -220,7 +220,22 @@ export function RadarView() {
   const [loadError, setLoadError] = useState<ApiError | null>(null);
   const [target, setTarget] = useScreenMemory('radar.lien', '');
   const { currentReport } = useWorkspace();
-  usePrefill(target, setTarget, followableCompetitorOf(currentReport), 'radar.lien');
+  /*
+    La boutique à surveiller : celle que cite l'analyse ; à défaut, celle que le marché de la niche
+    désigne — index des catalogues, puis publicités du mur. L'analyse en citait rarement une que le
+    Radar sait suivre, et la case restait vide (propriétaire, 18/10/2026).
+  */
+  const citee = followableCompetitorOf(currentReport);
+  const nichePourBoutique = currentReport && !citee ? (currentReport.nicheName || currentReport.query || '').trim() : '';
+  const [marcheNiche, setMarcheNiche] = useState<MarketSearch | null>(null);
+  useEffect(() => {
+    if (nichePourBoutique.length < 2) return;
+    apiRequest<MarketSearch>(`/api/radar/market?niche=${encodeURIComponent(nichePourBoutique)}`)
+      .then(setMarcheNiche)
+      .catch(() => undefined);
+  }, [nichePourBoutique]);
+  const surveillees = new Set((data?.watches ?? []).flatMap((watch) => (watch.url ? [hoteNormal(watch.url)] : [])));
+  usePrefill(target, setTarget, citee || followableStoreOfMarket(marcheNiche, surveillees), 'radar.lien');
   const [isAdding, setIsAdding] = useState(false);
   const [busyWatch, setBusyWatch] = useState<string | null>(null);
   /** Interrupteur du résumé par e-mail, tenu localement pour répondre au clic sans attendre. */
