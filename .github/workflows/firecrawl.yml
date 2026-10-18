@@ -1,0 +1,55 @@
+name: Collecte Firecrawl
+
+# Lancée à la main seulement (Actions → Collecte Firecrawl → Run workflow) : chaque passage dépense
+# des crédits Firecrawl, au rythme que choisit le propriétaire. Voir collecteur/firecrawl.mjs.
+on:
+  workflow_dispatch:
+    inputs:
+      credits:
+        description: 'Crédits à dépenser au plus (vide : tous ceux du compte)'
+        required: false
+        default: ''
+      nouvelles:
+        description: 'Arrêt après ce nombre d’annonces nouvelles sur le mur (vide : sans limite)'
+        required: false
+        default: '5000'
+
+concurrency:
+  group: collecte-firecrawl
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  firecrawl:
+    # Version fixée, comme les autres ateliers.
+    runs-on: ubuntu-24.04
+    timeout-minutes: 240
+    steps:
+      - name: Vérifier les secrets
+        env:
+          CRON_SECRET: ${{ secrets.CRON_SECRET }}
+          FIRECRAWL_API_KEY: ${{ secrets.FIRECRAWL_API_KEY }}
+        run: |
+          if [ -z "$CRON_SECRET" ]; then
+            echo "::error title=Secret absent::CRON_SECRET est absent des secrets du dépôt (Settings → Secrets and variables → Actions → onglet Secrets)."
+            exit 1
+          fi
+          if [ -z "$FIRECRAWL_API_KEY" ]; then
+            echo "::error title=Clé absente::FIRECRAWL_API_KEY est absente des secrets du dépôt. Settings → Secrets and variables → Actions → onglet Secrets → New repository secret, nom FIRECRAWL_API_KEY, valeur : la clé du compte Firecrawl."
+            exit 1
+          fi
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      # Aucun paquet à installer : le collecteur Firecrawl n'utilise que Node.
+      - name: Collecter
+        env:
+          CRON_SECRET: ${{ secrets.CRON_SECRET }}
+          FIRECRAWL_API_KEY: ${{ secrets.FIRECRAWL_API_KEY }}
+          COLLECTE_SITE: ${{ vars.COLLECTE_SITE || 'https://www.smartcreatorcm.com' }}
+          CREDITS: ${{ inputs.credits }}
+          NOUVELLES: ${{ inputs.nouvelles }}
+        run: node collecteur/firecrawl.mjs ${CREDITS:+--credits=$CREDITS} ${NOUVELLES:+--nouvelles=$NOUVELLES}

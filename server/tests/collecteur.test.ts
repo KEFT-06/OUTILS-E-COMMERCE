@@ -75,6 +75,7 @@ describe('Collecteur maison', () => {
     assert.equal(versement.body.adsExamined, 1);
     assert.equal(versement.body.adsKept, 1, 'elle mène à une boutique de la plateforme');
     assert.equal(versement.body.storesNew, 1);
+    assert.equal(versement.body.adsNew, 1, 'jamais vue sur le mur');
 
     const { agent } = await signInWithPlan(app, 'collecteur@exemple.test', 'pro');
     const mur = await agent.get('/api/espionnage').query({ country: 'CM' }).expect(200);
@@ -92,7 +93,8 @@ describe('Collecteur maison', () => {
     assert.deepEqual(mur.body.countries, ['CM']);
 
     // Le même relevé dans un second pays : les pays s'ajoutent, l'annonce ne se dédouble pas.
-    await verser({ country: 'CI', items: [annonce()] }).expect(200);
+    const encore = await verser({ country: 'CI', items: [annonce()] }).expect(200);
+    assert.equal(encore.body.adsNew, 0, 'déjà sur le mur : relue, pas nouvelle');
     const apres = await agent.get('/api/espionnage').expect(200);
     const memes = apres.body.ads.filter((ad: { externalId: string }) => ad.externalId === '1016806434734594');
     assert.equal(memes.length, 1);

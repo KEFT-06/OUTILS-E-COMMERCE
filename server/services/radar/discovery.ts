@@ -73,6 +73,8 @@ export interface DiscoveryOutcome {
   storesNew: number;
   /** Annonces retenues pour le mur d'espionnage : celles qui mènent vraiment à la plateforme. */
   adsKept: number;
+  /** Parmi elles, celles que le mur n'avait jamais vues : ce que la collecte lui a vraiment apporté. */
+  adsNew?: number;
   /** Passages encore en cours chez Apify : leur résultat sera récolté plus tard. */
   pending?: number;
 }
@@ -479,6 +481,14 @@ export async function ingestDiscoveryItems(items: unknown[], now = new Date(), c
     Le paquet reste modeste : une requête qui porte deux cents lignes, chacune avec le texte
     d'une publicité, dépasse ce qu'un pilote accepte de préparer d'un coup.
   */
+  // Les annonces jamais vues, lues AVANT l'écriture comme les boutiques nouvelles.
+  const ids = [...new Set(annonces.map((annonce) => annonce.externalId))];
+  const dejaVues =
+    ids.length === 0
+      ? new Set<string>()
+      : new Set((await getDb().select({ id: spiedAds.externalId }).from(spiedAds).where(inArray(spiedAds.externalId, ids))).map((row) => row.id));
+  const adsNew = ids.filter((id) => !dejaVues.has(id)).length;
+
   const PAQUET = 50;
   for (let debut = 0; debut < annonces.length; debut += PAQUET) {
     await getDb()
@@ -524,7 +534,7 @@ export async function ingestDiscoveryItems(items: unknown[], now = new Date(), c
   }
   const adsKept = annonces.length;
 
-  return { adsExamined: items.length, storesFound: comptes.size, storesNew, adsKept };
+  return { adsExamined: items.length, storesFound: comptes.size, storesNew, adsKept, adsNew };
 }
 
 /** Vrai si une collecte est due, selon le rythme configuré. */

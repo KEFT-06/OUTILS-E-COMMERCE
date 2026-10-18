@@ -6,6 +6,7 @@ import { spiedAds } from '@server/db/schema';
 import { isProd } from '@server/env';
 import { assertPublicUrl } from '@server/lib/publicUrl';
 import { AppError } from '@server/middleware';
+import { shrinkThumbnail } from '@server/services/espionnage/thumbnail';
 import { type BucketOptions, getObject, putObject, removeObjects, supabaseStorage } from '@server/services/storage/supabase';
 
 /**
@@ -70,7 +71,8 @@ export async function storeMissingThumbnails(limit = 100): Promise<{ stored: num
   const worker = async () => {
     for (let row = queue.shift(); row; row = queue.shift()) {
       try {
-        const { bytes, type } = await downloadMetaImage(row.mediaUrl!);
+        const downloaded = await downloadMetaImage(row.mediaUrl!);
+        const { bytes, type } = shrinkThumbnail({ bytes: Buffer.from(downloaded.bytes), type: downloaded.type });
         const path = `ads/${row.externalId.replace(/[^\w-]/g, '')}.${IMAGE_TYPES[type]}`;
         await putObject(target, bucket(), path, bytes, type);
         await getDb().update(spiedAds).set({ thumbnailPath: path }).where(eq(spiedAds.id, row.id));

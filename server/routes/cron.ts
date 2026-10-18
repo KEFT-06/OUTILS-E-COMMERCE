@@ -374,6 +374,12 @@ const collecteSchema = z.object({
   summary: z.record(z.string(), z.unknown()).optional(),
   /** Lot lu pour la recherche d'un client : il la complète, en plus de rejoindre le mur. */
   search: z.object({ id: z.string().uuid(), first: z.boolean().default(false), done: z.boolean().default(false) }).optional(),
+  /**
+   * Copier les aperçus du lot tout de suite, pendant que les adresses de Meta sont fraîches. Une
+   * collecte de plusieurs milliers d'annonces (Firecrawl) dépasse ce que la tenue du mur copie en
+   * une journée : sans cela, ses aperçus expireraient avant d'être copiés.
+   */
+  apercus: z.boolean().default(false),
 });
 
 /** Versement d'un lot d'annonces lues dans la bibliothèque publique. */
@@ -383,14 +389,16 @@ cronRouter.post(
     requireCollector(req);
     const parsed = collecteSchema.safeParse(req.body);
     if (!parsed.success) throw new AppError(400, 'Lot d’annonces illisible.', 'COLLECT_INVALID');
-    const { country, items, done, summary, search } = parsed.data;
+    const { country, items, done, summary, search, apercus } = parsed.data;
     const outcome = await ingestLibraryRecords(items, country === 'ALL' ? null : country);
+    // Les annonces du lot sont les plus récemment vues : ce sont elles que la copie prend d'abord.
+    const thumbnails = apercus && outcome.adsKept > 0 ? await storeMissingThumbnails(Math.min(outcome.adsKept, 60)).catch(() => null) : null;
     const searched = search ? await pourCollectorSearch({ ...search, items }) : null;
     let alertes: number | null = null;
     if (done) {
       await recordCollectorRun(summary ?? {});
       alertes = await detectAlerts().catch(() => null);
     }
-    res.json({ ...outcome, alertes, ...(searched ? { searchStored: searched.stored } : {}) });
+    res.json({ ...outcome, alertes, ...(thumbnails ? { thumbnails } : {}), ...(searched ? { searchStored: searched.stored } : {}) });
   }),
 );
