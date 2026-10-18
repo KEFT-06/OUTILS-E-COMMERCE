@@ -63,6 +63,7 @@ jobs:
               `publicités : ${etat.annonces ?? "?"} sur le mur, ${etat.annoncesVuesDepuis24h ?? "?"} vues en 24 h ; dernière vue ${String(etat.derniereAnnonceVue ?? "jamais").slice(0, 16)}`,
               r.paiements ? `paiements Mobile Money repris : ${r.paiements}` : null,
               (r.enRetard ?? []).length ? `étapes en retard : ${r.enRetard.join(", ")}` : null,
+              Object.keys(r.durees ?? {}).length ? `temps : ${Object.entries(r.durees).sort((a, b) => b[1] - a[1]).slice(0, 3).map(([etape, ms]) => `${etape} ${(ms / 1000).toFixed(1)} s`).join(", ")}` : null,
               (r.enEchec ?? []).length ? `étapes en échec : ${r.enEchec.map((e) => `${e.etape}${e.code ? ` (${e.code})` : ""}`).join(", ")}` : null,
             ].filter(Boolean);
             console.log(`::notice title=Veille continue::${lignes.join(" | ")}`);
