@@ -1,6 +1,6 @@
 import { once } from 'node:events';
 import type { Response as ExpressResponse } from 'express';
-import { and, desc, eq, isNotNull, isNull, lt } from 'drizzle-orm';
+import { and, desc, eq, isNotNull, isNull, lt, notLike, sql } from 'drizzle-orm';
 import { getDb } from '@server/db/client';
 import { spiedAds } from '@server/db/schema';
 import { isProd } from '@server/env';
@@ -34,6 +34,13 @@ const IMAGE_TYPES: Record<string, string> = { 'image/jpeg': 'jpg', 'image/png': 
 const META_IMAGE_HOST = /(^|\.)(fbcdn\.net|cdninstagram\.com)$/i;
 
 const bucket = (): BucketOptions => ({ id: BUCKET_ID, public: false, fileSizeLimit: MAX_BYTES, allowedMimeTypes: Object.keys(IMAGE_TYPES) });
+const EXTENSION_TYPES: Record<string, string> = Object.fromEntries(Object.entries(IMAGE_TYPES).map(([type, extension]) => [extension, type]));
+
+/**
+ * Nom d'un aperçu rangé selon la règle « v2 » : allégé à 640 points par `shrinkThumbnail`
+ * (18/10/2026). Le nom porte la règle : les aperçus rangés avant se reconnaissent sans colonne de plus.
+ */
+const thumbnailPathOf = (externalId: string, extension: string) => `ads/${externalId.replace(/[^\w-]/g, '')}.v2.${extension}`;
 
 async function downloadMetaImage(raw: string): Promise<{ bytes: ArrayBuffer; type: string }> {
   const url = await assertPublicUrl(raw, 'L’adresse du visuel');
@@ -73,7 +80,7 @@ export async function storeMissingThumbnails(limit = 100): Promise<{ stored: num
       try {
         const downloaded = await downloadMetaImage(row.mediaUrl!);
         const { bytes, type } = shrinkThumbnail({ bytes: Buffer.from(downloaded.bytes), type: downloaded.type });
-        const path = `ads/${row.externalId.replace(/[^\w-]/g, '')}.${IMAGE_TYPES[type]}`;
+        const path = thumbnailPathOf(row.externalId, IMAGE_TYPES[type]!);
         await putObject(target, bucket(), path, bytes, type);
         await getDb().update(spiedAds).set({ thumbnailPath: path }).where(eq(spiedAds.id, row.id));
         stored += 1;
@@ -86,6 +93,58 @@ export async function storeMissingThumbnails(limit = 100): Promise<{ stored: num
   };
   await Promise.all(Array.from({ length: Math.min(CONCURRENCY, rows.length) }, worker));
   return { stored, failed };
+}
+
+/**
+ * Allège les aperçus rangés avant la règle des 640 points : 100 Ko en moyenne, 36 Ko après
+ * (mesuré le 18/10/2026 sur quinze aperçus réels) — près de 250 Mo rendus au stockage pour les
+ * 3 900 annonces du mur d'alors. L'aperçu allégé est écrit sous son nouveau nom, la fiche pointe
+ * dessus, PUIS l'ancien est effacé : à aucun moment une annonce n'est sans aperçu.
+ *
+ * Par tranches tirées au hasard et bornées dans le temps : un aperçu illisible ou injoignable reste
+ * tel quel et sera retenté, sans bloquer les autres. Ne lève jamais.
+ */
+export async function shrinkStoredThumbnails(limit = 60, budgetMs = 20_000): Promise<{ shrunk: number; savedBytes: number; failed: number }> {
+  const target = supabaseStorage();
+  if (!target) return { shrunk: 0, savedBytes: 0, failed: 0 };
+  const deadline = Date.now() + budgetMs;
+  const rows = await getDb()
+    .select({ id: spiedAds.id, externalId: spiedAds.externalId, path: spiedAds.thumbnailPath })
+    .from(spiedAds)
+    .where(and(isNotNull(spiedAds.thumbnailPath), notLike(spiedAds.thumbnailPath, '%.v2.%')))
+    .orderBy(sql`random()`)
+    .limit(limit);
+
+  let shrunk = 0;
+  let savedBytes = 0;
+  let failed = 0;
+  const queue = [...rows];
+  const worker = async () => {
+    for (let row = queue.shift(); row && Date.now() < deadline; row = queue.shift()) {
+      const ancien = row.path!;
+      try {
+        // Absent ou injoignable : rien n'est touché, il sera retenté à un prochain passage.
+        const object = await getObject(target, BUCKET_ID, ancien);
+        if (!object) throw new Error('aperçu illisible dans le stockage');
+        const before = Buffer.from(await object.arrayBuffer());
+        const declared = String(object.headers.get('content-type') ?? '').split(';')[0]!.trim().toLowerCase();
+        const type = IMAGE_TYPES[declared] ? declared : EXTENSION_TYPES[ancien.split('.').pop() ?? ''];
+        if (!type) throw new Error(`type inconnu : ${declared || 'aucun'}`);
+        const after = shrinkThumbnail({ bytes: before, type });
+        const path = thumbnailPathOf(row.externalId, IMAGE_TYPES[after.type]!);
+        await putObject(target, bucket(), path, after.bytes, after.type);
+        await getDb().update(spiedAds).set({ thumbnailPath: path }).where(eq(spiedAds.id, row.id));
+        await removeObjects(target, BUCKET_ID, [ancien]);
+        shrunk += 1;
+        savedBytes += before.length - after.bytes.length;
+      } catch (error) {
+        failed += 1;
+        console.warn('[espionnage] aperçu non allégé :', row.externalId, error instanceof Error ? error.message : error);
+      }
+    }
+  };
+  await Promise.all(Array.from({ length: Math.min(CONCURRENCY, rows.length) }, worker)).catch(() => undefined);
+  return { shrunk, savedBytes, failed };
 }
 
 /**

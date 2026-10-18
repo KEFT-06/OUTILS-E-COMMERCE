@@ -49,10 +49,10 @@ describe('Passage de veille borné', () => {
     const started = Date.now();
     const passage = await request(app).get('/api/cron/veille').set('Authorization', `Bearer ${SECRET}`).expect(200);
     assert.ok(Date.now() - started < 30_000, 'sans rien à relever, le passage est immédiat');
-    for (const key of ['surveillances', 'releves', 'alertes', 'etat', 'paiements', 'enRetard', 'enEchec', 'durees']) assert.ok(key in passage.body, `le compte rendu porte « ${key} »`);
+    for (const key of ['surveillances', 'releves', 'alertes', 'etat', 'paiements', 'apercus', 'enRetard', 'enEchec', 'durees']) assert.ok(key in passage.body, `le compte rendu porte « ${key} »`);
     assert.deepEqual(
       Object.keys(passage.body.durees),
-      ['reprise des rapports', 'paiements Mobile Money', 'surveillances', 'index du marché', 'alertes', 'compte rendu', 'état des ventes', 'état des publicités', 'état des alertes'],
+      ['reprise des rapports', 'paiements Mobile Money', 'surveillances', 'index du marché', 'alertes', 'compte rendu', 'état des ventes', 'état des publicités', 'état des alertes', 'aperçus allégés'],
       'chaque étape dit le temps qu’elle a pris',
     );
     assert.deepEqual(Object.keys(passage.body.etat).sort(), ['alertesAuFil', 'alertesDepuis24h', 'annonces', 'annoncesVuesDepuis24h', 'boutiques', 'boutiquesReleveesAujourdhui', 'derniereAnnonceVue', 'dernierReleveDeVentes'].sort());

@@ -63,6 +63,18 @@ const faux = createServer((req, res) => {
         objets.set(depot[1]!, corps);
         return json(200, { Key: `espionnage/${depot[1]!}` });
       }
+      const lecture = /^\/storage\/v1\/object\/authenticated\/espionnage\/(.+)$/.exec(url.pathname);
+      if (req.method === 'GET' && lecture) {
+        const objet = objets.get(lecture[1]!);
+        if (!objet) return json(404, { message: 'Object not found' });
+        res.writeHead(200, { 'content-type': 'image/jpeg' });
+        res.end(objet);
+        return;
+      }
+      if (req.method === 'DELETE' && url.pathname === '/storage/v1/object/espionnage') {
+        for (const chemin of (JSON.parse(corps.toString('utf8')) as { prefixes: string[] }).prefixes) objets.delete(chemin);
+        return json(200, []);
+      }
     }
     json(404, { detail: 'Not Found' });
   });
@@ -112,17 +124,47 @@ describe('Collecte massive : aperçus et annonces nouvelles', () => {
     assert.equal(premier.body.adsNew, 2);
     assert.deepEqual(premier.body.thumbnails, { stored: 2, failed: 0 });
 
-    const reduite = objets.get('ads/2001.jpg')!;
+    const reduite = objets.get('ads/2001.v2.jpg')!;
     const lue = jpeg.decode(reduite);
     assert.equal(Math.max(lue.width, lue.height), 640, 'ramenée à 640 points sur son plus grand côté');
     assert.equal(lue.width, 360, 'proportions gardées');
     assert.ok(reduite.length < GRANDE.length / 3, `${reduite.length} octets contre ${GRANDE.length}`);
-    assert.deepEqual(objets.get('ads/2002.jpg'), PETITE, 'une image déjà petite est gardée telle quelle');
+    assert.deepEqual(objets.get('ads/2002.v2.jpg'), PETITE, 'une image déjà petite est gardée telle quelle');
 
     const second = await verser({ country: 'CI', items: lot }).expect(200);
     assert.equal(second.body.adsKept, 2);
     assert.equal(second.body.adsNew, 0, 'déjà sur le mur : rien de nouveau');
     assert.equal(second.body.thumbnails, undefined, 'sans la demande, le versement ne copie rien (le collecteur maison garde son rythme)');
+  });
+
+  it('allège les aperçus rangés avant la règle des 640 points, sans qu’une annonce perde le sien', async () => {
+    const { getDb } = await import('@server/db/client');
+    const { spiedAds } = await import('@server/db/schema');
+    const { eq, inArray } = await import('drizzle-orm');
+    // Trois annonces rangées à l'ancienne : une grande image, une petite, et une dont le fichier a disparu.
+    await verser({ country: 'CM', items: [annonce('3001', `${base}/images/grande.jpg`), annonce('3002', `${base}/images/petite.jpg`), annonce('3003', `${base}/images/petite.jpg`)] }).expect(200);
+    for (const [id, image] of [['3001', GRANDE], ['3002', PETITE]] as const) {
+      objets.set(`ads/${id}.jpg`, image);
+      await getDb().update(spiedAds).set({ thumbnailPath: `ads/${id}.jpg` }).where(eq(spiedAds.externalId, id));
+    }
+    await getDb().update(spiedAds).set({ thumbnailPath: 'ads/3003.jpg' }).where(eq(spiedAds.externalId, '3003'));
+
+    const { shrinkStoredThumbnails } = await import('@server/services/espionnage/media');
+    const resultat = await shrinkStoredThumbnails(60, 30_000);
+    assert.equal(resultat.shrunk, 2);
+    assert.equal(resultat.failed, 1, 'le fichier disparu est compté, pas inventé');
+    assert.ok(resultat.savedBytes > GRANDE.length / 2, `${resultat.savedBytes} octets rendus au stockage`);
+
+    const fiches = await getDb().select({ id: spiedAds.externalId, path: spiedAds.thumbnailPath }).from(spiedAds).where(inArray(spiedAds.externalId, ['3001', '3002', '3003']));
+    const chemin = Object.fromEntries(fiches.map((fiche) => [fiche.id, fiche.path]));
+    assert.deepEqual(chemin, { '3001': 'ads/3001.v2.jpg', '3002': 'ads/3002.v2.jpg', '3003': 'ads/3003.jpg' }, 'l’annonce au fichier disparu garde sa fiche : rien n’est effacé sur une lecture ratée');
+    assert.equal(Math.max(jpeg.decode(objets.get('ads/3001.v2.jpg')!).width, jpeg.decode(objets.get('ads/3001.v2.jpg')!).height), 640);
+    assert.deepEqual(objets.get('ads/3002.v2.jpg'), PETITE);
+    assert.ok(!objets.has('ads/3001.jpg') && !objets.has('ads/3002.jpg'), 'les anciens fichiers sont effacés une fois la fiche à jour');
+
+    // Les aperçus déjà allégés ne sont plus jamais repris.
+    await getDb().update(spiedAds).set({ thumbnailPath: null }).where(eq(spiedAds.externalId, '3003'));
+    assert.deepEqual(await shrinkStoredThumbnails(60, 30_000), { shrunk: 0, savedBytes: 0, failed: 0 });
   });
 
   it('garde telle quelle une image qu’il ne sait pas alléger', async () => {

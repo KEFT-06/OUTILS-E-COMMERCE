@@ -5,6 +5,7 @@ import { isServerless } from '@server/env';
 import { detectAlerts, feedWatchState, salesWatchState, wallWatchState, type watchState } from '@server/services/alerts';
 import { resumeReportDocuments } from '@server/services/analysis/document';
 import { resumeMobileCheckouts } from '@server/services/billing/mobile';
+import { shrinkStoredThumbnails } from '@server/services/espionnage/media';
 import { MARKET_RUN_AUDIT_ACTION, indexDiscoveredStores, reportMarketRun } from '@server/services/market';
 import { sweepDueWatches } from '@server/services/radar/sweeper';
 import { runInBackground } from '@server/shared/backgroundWork';
@@ -44,6 +45,8 @@ export interface WatchPassReport {
   durees: Record<string, number>;
   /** Paliers activés par des paiements Mobile Money validés hors écran. */
   paiements: number | null;
+  /** Aperçus anciens allégés à ce passage, et octets rendus au stockage. */
+  apercus: Awaited<ReturnType<typeof shrinkStoredThumbnails>> | null;
   /** Étapes qui n'ont pas rendu la main à temps : leur travail continue, le passage ne les attend pas. */
   enRetard: string[];
   /**
@@ -123,7 +126,9 @@ export async function runWatchPass(source: string, budgetMs = WATCH_PASS_MS): Pr
     ...((await step('état des publicités', left(8_000), () => wallWatchState())) ?? {}),
     ...((await step('état des alertes', left(8_000), () => feedWatchState())) ?? {}),
   };
-  return { surveillances, releves, alertes, etat, paiements, enRetard: late, enEchec: failed, durees };
+  // Entretien du stockage, en dernier : il ne retarde aucune étape qui compte pour les clients.
+  const apercus = await step('aperçus allégés', left(20_000), () => shrinkStoredThumbnails(60, left(18_000)));
+  return { surveillances, releves, alertes, etat, paiements, apercus, enRetard: late, enEchec: failed, durees };
 }
 
 /** Un passage est-il dû ? Faux tant que le dernier, quelle qu'en soit l'origine, a moins d'une demi-heure. */
