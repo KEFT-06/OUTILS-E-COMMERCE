@@ -28,8 +28,8 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
  * à cet endroit, avec ce qu'on peut faire, au lieu d'une erreur.
  */
 
-/** Relances de la fiche pendant le premier relevé du catalogue, espacées de cinq secondes. */
-const RELANCES = 8;
+/** Relances de la fiche pendant une lecture de la vitrine, espacées de cinq secondes : une minute au plus. */
+const RELANCES = 12;
 
 const enLigneDepuis = (product: StorePreviewProduct, firstAdAt: string | null) =>
   product.launchedAt ?? (firstAdAt && firstAdAt < product.firstSeenAt ? firstAdAt : product.firstSeenAt);
@@ -71,8 +71,8 @@ export function StorePreviewPanel({
         .then((fiche) => {
           if (!actif) return;
           setData(fiche);
-          // Premier relevé encore en cours : la fiche revient d'elle-même, sans geste.
-          if (fiche.pending && essais.current < RELANCES) {
+          // Lecture de la vitrine en cours (première, ou relecture à l'ouverture) : la fiche revient d'elle-même, sans geste.
+          if ((fiche.pending || fiche.refreshing) && essais.current < RELANCES) {
             essais.current += 1;
             minuterie = setTimeout(lire, 5000);
           }
@@ -126,6 +126,7 @@ export function StorePreviewPanel({
         <CardDescription className="truncate">
           {host}
           {data?.indexedAt ? ` · catalogue relevé ${formatRelativeFr(data.indexedAt)}` : ''}
+          {data?.refreshing ? ' · lecture de la vitrine en cours…' : ''}
         </CardDescription>
         <CardAction>
           <Button variant="ghost" size="icon" onClick={onClose} aria-label="Fermer la fiche de cette boutique">

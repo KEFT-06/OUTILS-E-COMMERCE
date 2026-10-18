@@ -2,9 +2,12 @@ import { and, eq, sql } from 'drizzle-orm';
 import { getDb } from '@server/db/client';
 import { discoveredStores, marketProducts, spiedAds, watches } from '@server/db/schema';
 import { AppError } from '@server/middleware';
-import { indexStoreCatalog, normalHost } from '@server/services/market';
+import { normalHost } from '@server/services/market';
 import { adsOfProduct, loadStoreAds, productUrl } from '@server/services/market/productAds';
 import { chariowStoreSource } from '@server/services/radar/sources/chariowStore';
+import { firecrawlConfigured } from '@server/services/radar/sources/firecrawl';
+import { ingestStorefrontReading } from '@server/services/radar/storefrontReadings';
+import { runInBackground } from '@server/shared/backgroundWork';
 import { type Storefront, followableOnRadar, storefrontOfHost } from '@server/shared/storefronts';
 
 /**
@@ -17,6 +20,12 @@ import { type Storefront, followableOnRadar, storefrontOfHost } from '@server/sh
  *
  * Le catalogue vient de l'index du marché (commun à tous les comptes : c'est la vitrine publique
  * de la boutique). S'il n'y est pas encore, il est relevé une fois, à la demande.
+ *
+ * Demande du propriétaire (18/10/2026) : « quand on clique sur Voir dans Radar d'une boutique, on
+ * affiche toutes les informations nécessaires automatiquement — pas seulement ce que Firecrawl a
+ * collecté à l'avance : qu'il puisse le faire à la demande ». Quand la vitrine se lit par Firecrawl,
+ * une fiche dont le dernier relevé a plus de six heures est donc RELUE à l'ouverture : l'écran montre
+ * aussitôt les chiffres connus, datés, puis les chiffres frais dès qu'ils arrivent.
  */
 
 export interface StorePreviewProduct {
@@ -61,6 +70,8 @@ export interface StorePreviewView {
   itemsWithSales: number;
   /** Le premier relevé du catalogue est en cours : l'écran redemande la fiche dans un instant. */
   pending: boolean;
+  /** Le catalogue affiché est relu en ce moment : l'écran redemande la fiche, les chiffres frais arrivent. */
+  refreshing: boolean;
   /** La vitrine n'a pas répondu au relevé : la fiche montre ce qui reste connu, ses publicités. */
   unreachable: boolean;
   /** Offres que la boutique met en avant dans ses publicités, les plus diffusées d'abord. */
@@ -72,6 +83,14 @@ export interface StorePreviewView {
 
 /** Temps laissé au premier relevé avant de répondre « en cours » : l'écran ne reste pas figé. */
 const FIRST_READ_MS = 9_000;
+/** Au-delà, une fiche ouverte relit sa vitrine : les chiffres d'une boutique qu'on regarde doivent être ceux du jour. */
+const REFRESH_AFTER_MS = 6 * 3_600_000;
+/**
+ * Une lecture demandée il y a moins longtemps est tenue pour en cours, d'une instance du serveur à
+ * l'autre : l'écran redemande la fiche toutes les cinq secondes, et chaque demande peut tomber sur
+ * une instance différente — sans cette marque, chacune relancerait une lecture payée.
+ */
+const READING_WINDOW_MS = 90_000;
 
 /** Relevés en cours, par hôte : dix écrans ouverts sur la même boutique ne font qu'une lecture. */
 const reading = new Map<string, Promise<void>>();
@@ -79,15 +98,22 @@ const reading = new Map<string, Promise<void>>();
 const RETRY_AFTER_MS = 10 * 60_000;
 const failedAt = new Map<string, number>();
 
-function readCatalogOnce(host: string): Promise<void> {
+function readCatalogOnce(host: string, known: { externalId: string; label: string | null } | null = null, previousIndexedAt: Date | null = null): Promise<void> {
   const running = reading.get(host);
   if (running) return running;
   const task = (async () => {
     try {
-      const target = await chariowStoreSource.resolve(host);
+      // Les autres instances voient la lecture en cours, et n'en lancent pas une seconde.
+      await getDb()
+        .insert(discoveredStores)
+        .values({ host, label: known?.label ?? null, storeExternalId: known?.externalId ?? null, indexedAt: new Date() })
+        .onConflictDoUpdate({ target: discoveredStores.host, set: { indexedAt: new Date() } });
+      // L'identifiant déjà connu évite de relire la page de la boutique : une page de moins à payer.
+      const target = known ? { externalId: known.externalId, label: known.label ?? host } : await chariowStoreSource.resolve(host);
       const observations = await chariowStoreSource.observe(target.externalId);
       const now = new Date();
-      await indexStoreCatalog({ externalId: target.externalId, host, label: target.label }, observations, now);
+      // Index du marché, et surveillances de cette boutique par tous les comptes : un relevé sert à tous.
+      await ingestStorefrontReading({ externalId: target.externalId, host, label: target.label }, observations, now);
       failedAt.delete(host);
       // La boutique entre dans la file des relevés quotidiens : sa fiche restera à jour.
       await getDb()
@@ -101,12 +127,20 @@ function readCatalogOnce(host: string): Promise<void> {
       // Mémoire bornée : au-delà, on repart de zéro plutôt que de grossir sans fin.
       if (failedAt.size > 500) failedAt.clear();
       failedAt.set(host, Date.now());
+      // La lecture n'a rien donné : la boutique garde la date de son dernier vrai relevé.
+      await getDb()
+        .update(discoveredStores)
+        .set({ indexedAt: previousIndexedAt })
+        .where(eq(discoveredStores.host, host))
+        .catch(() => undefined);
       console.warn('[marché] fiche de boutique, relevé impossible :', host, error instanceof Error ? error.message : error);
     } finally {
       reading.delete(host);
     }
   })();
   reading.set(host, task);
+  // En hébergement sans serveur, la lecture se poursuit après la réponse : l'hébergeur en est prévenu.
+  runInBackground(() => task, 'fiche de boutique');
   return task;
 }
 
@@ -130,18 +164,37 @@ export async function storePreview(userId: string, rawHost: string): Promise<Sto
 
   let rows = await lire();
   let pending = false;
+  let refreshing = false;
   let unreachable = false;
-  if (rows.length === 0 && followable) {
+  const [dejaConnue] = await db.select().from(discoveredStores).where(eq(discoveredStores.host, host)).limit(1);
+  const dernierReleve = rows.reduce((latest, row) => Math.max(latest, row.lastSeenAt.getTime()), 0);
+  const perime = rows.length > 0 && Date.now() - dernierReleve > REFRESH_AFTER_MS;
+  // Une lecture vient d'être demandée (ici ou sur une autre instance) et n'a pas encore rendu ses chiffres.
+  const lectureEnCours =
+    reading.has(host) || (dejaConnue?.indexedAt != null && dejaConnue.indexedAt.getTime() > dernierReleve && Date.now() - dejaConnue.indexedAt.getTime() < READING_WINDOW_MS);
+  /*
+    Jamais relevée : on la lit maintenant, quel que soit le lecteur. Relevée il y a plus de six
+    heures : on la relit seulement par Firecrawl — lue directement, la plateforme refuse le serveur
+    depuis le 11/10/2026, et chaque ouverture la solliciterait pour rien.
+  */
+  const aLire = followable && (rows.length === 0 || (perime && firecrawlConfigured()));
+  if (aLire && lectureEnCours) {
+    if (rows.length === 0) pending = true;
+    else refreshing = true;
+  } else if (aLire) {
     const echec = failedAt.get(host);
-    if (echec !== undefined && Date.now() - echec < RETRY_AFTER_MS) unreachable = true;
+    if (echec !== undefined && Date.now() - echec < RETRY_AFTER_MS) unreachable = rows.length === 0;
     else {
-      // Jamais relevée : on la lit maintenant. Passé le délai, le relevé continue et l'écran revient.
+      const connue = rows[0] ? { externalId: rows[0].storeExternalId, label: rows[0].storeLabel } : dejaConnue?.storeExternalId ? { externalId: dejaConnue.storeExternalId, label: dejaConnue.label } : null;
+      // Passé le délai, la lecture continue et l'écran revient la chercher.
       const fini = await Promise.race([
-        readCatalogOnce(host).then(() => true),
+        readCatalogOnce(host, connue, dejaConnue?.indexedAt ?? null).then(() => true),
         new Promise<false>((resolve) => setTimeout(() => resolve(false), FIRST_READ_MS)),
       ]);
-      if (!fini) pending = true;
-      else {
+      if (!fini) {
+        if (rows.length === 0) pending = true;
+        else refreshing = true;
+      } else {
         rows = await lire();
         unreachable = rows.length === 0 && failedAt.has(host);
       }
@@ -214,6 +267,7 @@ export async function storePreview(userId: string, rawHost: string): Promise<Sto
     totalSales: counted.reduce((total, row) => total + (row.salesCount ?? 0), 0),
     itemsWithSales: counted.length,
     pending,
+    refreshing,
     unreachable,
     advertised: offres
       .filter((offre) => offre.url.startsWith('https://'))

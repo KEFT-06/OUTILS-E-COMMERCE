@@ -340,6 +340,8 @@ export interface StorePreview {
   pending: boolean;
   /** Sa vitrine n'a pas répondu au relevé : la fiche montre ce qui reste connu, ses publicités. */
   unreachable: boolean;
+  /** Le catalogue affiché est relu en ce moment : les chiffres frais arrivent. */
+  refreshing?: boolean;
   /** Offres mises en avant dans ses publicités, les plus diffusées d'abord. */
   advertised: { title: string; url: string; ads: number; active: number }[];
   indexedAt: string | null;

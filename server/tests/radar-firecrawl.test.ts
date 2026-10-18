@@ -315,3 +315,35 @@ describe('Relevés de vitrines versés par le collecteur', () => {
     }
   });
 });
+
+/*
+  Demande du propriétaire (18/10/2026) : « quand on clique sur Voir dans Radar d'une boutique, on
+  affiche toutes les informations nécessaires automatiquement — à la demande », pas seulement ce
+  que le collecteur a relevé à l'avance.
+*/
+describe('Fiche d’une boutique — lecture à la demande', () => {
+  it('relit à l’ouverture une boutique relevée il y a plus de six heures, sans repayer sa page, et une seule fois', async () => {
+    const { indexStoreCatalog } = await import('@server/services/market');
+    const host = 'cuisine-a-la-demande.mychariow.com';
+    const ilYA7h = new Date(Date.now() - 7 * 3_600_000);
+    await indexStoreCatalog(
+      { externalId: BOUTIQUE, host, label: 'Cuisine du pays' },
+      catalogue.map((p) => ({ externalId: p.id, name: p.name, kind: 'downloadable', priceValue: p.prix, currency: 'XAF', salesCount: Math.max(0, p.ventes - 50) })),
+      ilYA7h,
+    );
+    lectures.length = 0;
+
+    const { agent } = await signInWithPlan(app, 'fiche-a-la-demande@exemple.test', 'pro');
+    const { body } = await agent.get(`/api/radar/store?host=${host}`).expect(200);
+    assert.equal(body.refreshing, false, 'lue dans le temps de la réponse');
+    assert.equal(body.totalSales, 3_970, 'les ventes d’aujourd’hui, et non celles d’il y a sept heures');
+    assert.ok(Date.now() - new Date(body.indexedAt).getTime() < 60_000, 'le catalogue est daté de cette lecture');
+    assert.equal(lectures.length, 4, 'le catalogue et trois fiches : l’identifiant connu évite de relire la page de la boutique');
+    assert.ok(lectures.every((lecture) => lecture.proxy === 'basic'));
+
+    // Rouverte aussitôt : ses chiffres sont frais, rien n'est relu ni payé.
+    lectures.length = 0;
+    await agent.get(`/api/radar/store?host=${host}`).expect(200);
+    assert.equal(lectures.length, 0);
+  });
+});

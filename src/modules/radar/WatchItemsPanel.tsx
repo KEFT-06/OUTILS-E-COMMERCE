@@ -115,7 +115,7 @@ export function WatchItemsPanel({
     return () => {
       cancelled = true;
     };
-  }, [path, watch.lastSweptAt]);
+  }, [path, watch.lastSweptAt, watch.lastReadAt]);
 
   const ventes = (item: WatchItemView) => (vue === 'globale' ? item.sales : item.salesTracked);
 

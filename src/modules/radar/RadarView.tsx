@@ -395,6 +395,26 @@ export function RadarView() {
     fermerBoutique();
   }, [dejaSurveillee, fermerBoutique, setOuverteId]);
 
+  /*
+    Ouvrir le catalogue suivi d'une boutique relit sa vitrine quand ses chiffres ont plus de six
+    heures (ou qu'elle n'a pas encore été lue) — demande du propriétaire, 18/10/2026 : les
+    informations s'affichent à la demande, sans attendre le passage suivant. La lecture se fait en
+    arrière-plan, une fois par ouverture ; le catalogue se met à jour de lui-même.
+  */
+  const relues = useRef(new Set<string>());
+  useEffect(() => {
+    const watch = ouverteId ? data?.watches.find((candidate) => candidate.id === ouverteId) : undefined;
+    if (!watch || !watch.active || relues.current.has(watch.id)) return;
+    const age = watch.lastReadAt ? Date.now() - new Date(watch.lastReadAt).getTime() : Number.POSITIVE_INFINITY;
+    if (age < 6 * 3_600_000) return;
+    relues.current.add(watch.id);
+    setBusyWatch(watch.id);
+    void apiRequest(`/api/radar/watches/${watch.id}/sweep`, { method: 'POST' })
+      .then(() => load())
+      .catch(() => undefined)
+      .finally(() => setBusyWatch((courant) => (courant === watch.id ? null : courant)));
+  }, [ouverteId, data, load]);
+
   /** Fiche en lecture : seulement quand la liste des surveillances est connue, pour ne pas clignoter. */
   const apercu = hoteDemande && data && !dejaSurveillee ? hoteDemande : null;
 
