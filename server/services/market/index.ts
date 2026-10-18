@@ -185,6 +185,41 @@ export async function indexStoreCatalog(store: MarketStoreRef, observations: Rad
   return { launched };
 }
 
+/** La boutique de cet hôte telle que nos relevés la connaissent (identifiant « store_… » et nom), ou null. */
+export async function knownStoreOfHost(host: string): Promise<{ externalId: string; label: string | null } | null> {
+  const db = getDb();
+  const [discovered] = await db
+    .select({ externalId: discoveredStores.storeExternalId, label: discoveredStores.label })
+    .from(discoveredStores)
+    .where(eq(discoveredStores.host, host))
+    .limit(1);
+  if (discovered?.externalId) return { externalId: discovered.externalId.toLowerCase(), label: discovered.label?.trim() || null };
+  const [indexed] = await db
+    .select({ externalId: marketProducts.storeExternalId, label: marketProducts.storeLabel })
+    .from(marketProducts)
+    .where(eq(marketProducts.storeHost, host))
+    .limit(1);
+  return indexed ? { externalId: indexed.externalId.toLowerCase(), label: indexed.label?.trim() || null } : null;
+}
+
+/**
+ * Le dernier relevé de cette boutique dans l'index du marché : sa date, et ses produits en vente
+ * tels qu'il les a lus. null quand la boutique n'y est pas.
+ */
+export async function latestIndexReading(storeExternalId: string): Promise<{ at: Date; observations: RadarObservation[] } | null> {
+  const rows = await getDb()
+    .select()
+    .from(marketProducts)
+    .where(and(eq(marketProducts.storeExternalId, storeExternalId), isNull(marketProducts.endedAt)));
+  if (rows.length === 0) return null;
+  const at = new Date(Math.max(...rows.map((row) => row.lastSeenAt.getTime())));
+  // Les produits de ce relevé-là : un relevé les date tous du même instant.
+  const observations = rows
+    .filter((row) => row.lastSeenAt.getTime() === at.getTime())
+    .map((row) => ({ externalId: row.externalId, name: row.name, kind: row.kind, priceValue: row.priceValue, currency: row.currency, salesCount: row.salesCount, category: row.category, slug: row.slug }));
+  return { at, observations };
+}
+
 export interface MarketIndexOutcome {
   indexed: number;
   failed: number;

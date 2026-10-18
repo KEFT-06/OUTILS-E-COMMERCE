@@ -1,12 +1,13 @@
 import { and, count, desc, eq, gte, inArray, isNull, sql } from 'drizzle-orm';
 import { getDb, isUniqueViolation } from '@server/db/client';
-import { discoveredStores, marketProducts, spiedAds, users, watchEvents, watchItems, watches, type WatchRow } from '@server/db/schema';
+import { spiedAds, users, watchEvents, watchItems, watches, type WatchRow } from '@server/db/schema';
 import { AppError } from '@server/middleware';
 import { adsOfProduct, loadStoreAds, productUrl } from '@server/services/market/productAds';
 import { sourceFor } from '@server/services/radar/sources';
-import { storefrontHostOf } from '@server/services/radar/sources/chariowStore';
+import { pendingTargetOf, storefrontHostOf } from '@server/services/radar/sources/chariowStore';
 import type { RadarTarget } from '@server/services/radar/types';
-import { sweepWatch, type SweepOutcome } from '@server/services/radar/sweep';
+import { isPlatformRefusal, sweepWatch, type SweepOutcome } from '@server/services/radar/sweep';
+import { knownStoreOfHost } from '@server/services/market';
 
 /**
  * Radar — surveillances d'un compte.
@@ -29,6 +30,12 @@ export interface WatchSummary {
   createdAt: string;
   lastSweptAt: string | null;
   lastError: string | null;
+  /**
+   * Dernier relevé RÉUSSI : la date des chiffres affichés. null : la boutique n'a pas encore été
+   * lue. `lastSweptAt` avance aussi sur un relevé raté — la carte disait « relevée à l'instant »
+   * au-dessus d'un catalogue vide (capture du propriétaire, 18/10/2026).
+   */
+  lastReadAt: string | null;
   /** Jours écoulés depuis la mise sous surveillance : l'ancienneté de l'observation. */
   trackedDays: number;
   liveItems: number;
@@ -124,21 +131,9 @@ async function requireWatch(userId: string, watchId: string): Promise<WatchRow> 
 async function knownStore(input: string): Promise<RadarTarget | null> {
   const host = storefrontHostOf(input);
   if (!host) return null;
-  const [discovered] = await getDb()
-    .select({ externalId: discoveredStores.storeExternalId, label: discoveredStores.label })
-    .from(discoveredStores)
-    .where(eq(discoveredStores.host, host))
-    .limit(1);
-  const [indexed] = discovered?.externalId
-    ? []
-    : await getDb()
-        .select({ externalId: marketProducts.storeExternalId, label: marketProducts.storeLabel })
-        .from(marketProducts)
-        .where(eq(marketProducts.storeHost, host))
-        .limit(1);
-  const externalId = discovered?.externalId ?? indexed?.externalId;
-  if (!externalId) return null;
-  return { source: 'chariow_store', externalId: externalId.toLowerCase(), label: discovered?.label?.trim() || indexed?.label?.trim() || host, url: `https://${host}` };
+  const known = await knownStoreOfHost(host);
+  if (!known) return null;
+  return { source: 'chariow_store', externalId: known.externalId, label: known.label || host, url: `https://${host}` };
 }
 
 /**
@@ -159,19 +154,19 @@ export async function addWatch(
     );
   }
 
-  // Nos relevés d'abord ; la page de la vitrine seulement pour une boutique que nous n'avons jamais vue.
+  /*
+    Nos relevés d'abord ; la page de la vitrine seulement pour une boutique que nous n'avons jamais
+    vue. Si la plateforme ne répond pas au serveur, la boutique est mise sous surveillance QUAND
+    MÊME, en attente de son premier relevé (serveur ou collecteur des vitrines). L'écran disait
+    « ouvrez-la dans votre navigateur, puis ajoutez-la ici » : conseil sans effet, et ajout refusé.
+  */
   const target =
     (await knownStore(input).catch(() => null)) ??
     (await sourceFor('chariow_store')
       .resolve(input)
       .catch((error: unknown) => {
-        if (!(error instanceof AppError) || error.code !== 'RADAR_SOURCE_UNAVAILABLE') throw error;
-        // Boutique inconnue de nos relevés ET page muette : dire quoi faire, pas ce qui a cassé.
-        throw new AppError(
-          503,
-          'La vitrine de cette boutique ne répond pas encore au radar. Ouvrez-la une fois dans votre navigateur, puis ajoutez-la ici : elle sera lue aussitôt.',
-          'RADAR_SOURCE_UNAVAILABLE',
-        );
+        if (!isPlatformRefusal(error)) throw error;
+        return pendingTargetOf(input);
       }));
 
   const inserted = await getDb().transaction(async (tx) => {
@@ -239,6 +234,7 @@ export async function listWatches(userId: string, onlyId?: string): Promise<Watc
       createdAt: watches.createdAt,
       lastSweptAt: watches.lastSweptAt,
       lastError: watches.lastError,
+      lastReadAt: sql<Date | string | null>`max(${watchItems.lastSeenAt})`,
       liveItems: sql<number>`count(distinct case when ${watchItems.endedAt} is null then ${watchItems.id} end)`,
       endedItems: sql<number>`count(distinct case when ${watchItems.endedAt} is not null then ${watchItems.id} end)`,
       totalSales: sql<number>`coalesce(sum(case when ${watchItems.endedAt} is null then ${watchItems.salesCount} else 0 end), 0)`,
@@ -270,6 +266,7 @@ export async function listWatches(userId: string, onlyId?: string): Promise<Watc
     createdAt: row.createdAt.toISOString(),
     lastSweptAt: row.lastSweptAt?.toISOString() ?? null,
     lastError: row.lastError,
+    lastReadAt: row.lastReadAt ? new Date(row.lastReadAt).toISOString() : null,
     trackedDays: jours(row.createdAt),
     liveItems: Number(row.liveItems),
     endedItems: Number(row.endedItems),
@@ -339,8 +336,14 @@ export async function markEventsRead(userId: string, now = new Date()): Promise<
   return updated.length;
 }
 
-/** Relevé demandé à la main. Réservé aux cas où l'utilisateur ne veut pas attendre la nuit. */
-export async function sweepNow(userId: string, watchId: string): Promise<SweepOutcome> {
+/**
+ * Relevé demandé à la main. Réservé aux cas où l'utilisateur ne veut pas attendre la nuit.
+ *
+ * La plateforme ne répond pas au serveur et aucun relevé frais n'existe : ce n'est pas une erreur
+ * pour le client — ses chiffres restent ceux du dernier relevé, et le prochain viendra de la veille
+ * du radar. `pending` le dit à l'écran, sans message d'échec.
+ */
+export async function sweepNow(userId: string, watchId: string): Promise<SweepOutcome & { pending?: true }> {
   const watch = await requireWatch(userId, watchId);
   if (!watch.active) {
     throw new AppError(
@@ -349,7 +352,12 @@ export async function sweepNow(userId: string, watchId: string): Promise<SweepOu
       'WATCH_PAUSED',
     );
   }
-  return sweepWatch(watch);
+  try {
+    return await sweepWatch(watch);
+  } catch (error) {
+    if (!isPlatformRefusal(error)) throw error;
+    return { observed: 0, appeared: 0, disappeared: 0, priceChanged: 0, salesJumps: 0, pending: true };
+  }
 }
 
 /** Articles d'une surveillance : ce qui est en vente, puis ce qui s'est arrêté. */

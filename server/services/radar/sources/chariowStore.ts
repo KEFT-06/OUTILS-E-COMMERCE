@@ -188,6 +188,24 @@ function storefrontUrl(input: string): URL {
 }
 
 /**
+ * Identifiant d'attente d'une boutique ajoutée avant d'avoir pu être lue : « host:{hôte} ». Le
+ * premier relevé réussi (serveur ou collecteur) le remplace par son vrai identifiant « store_… ».
+ */
+export const PENDING_PREFIX = 'host:';
+
+export const isPendingStore = (externalId: string) => externalId.startsWith(PENDING_PREFIX);
+
+/**
+ * Cible d'attente pour une boutique de la plateforme dont la page n'a pas pu être lue. L'adresse
+ * est validée comme pour une lecture : une adresse quelconque reste refusée.
+ */
+export function pendingTargetOf(input: string): RadarTarget {
+  const url = storefrontUrl(input);
+  const host = storefrontHostOf(input) ?? url.host.toLowerCase();
+  return { source: 'chariow_store', externalId: `${PENDING_PREFIX}${host}`, label: host, url: STOREFRONT_HOSTS.test(host) ? `https://${host}` : url.origin };
+}
+
+/**
  * Une page lue par Firecrawl, rendue comme une lecture directe : mêmes refus, mêmes messages. Le
  * statut est celui de la page chez la plateforme ; 0 : Firecrawl n'a rien pu rendre.
  */

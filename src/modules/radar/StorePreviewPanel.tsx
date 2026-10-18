@@ -268,7 +268,7 @@ export function StorePreviewPanel({
             {data.followable && !data.pending && data.products.length === 0 && (
               <p className="text-sm text-muted-foreground">
                 {data.unreachable
-                  ? 'Sa vitrine ne répond pas en ce moment : son catalogue s’affichera ici dès qu’elle sera de nouveau lisible.'
+                  ? 'Son catalogue n’a pas encore été relevé : il s’affichera ici dès sa première lecture.'
                   : 'Cette boutique n’affiche aucun produit en vente pour l’instant.'}
               </p>
             )}

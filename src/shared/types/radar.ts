@@ -17,6 +17,8 @@ export interface WatchSummary {
   createdAt: string;
   lastSweptAt: string | null;
   lastError: string | null;
+  /** Dernier relevé réussi : la date des chiffres affichés. null : pas encore lue. */
+  lastReadAt: string | null;
   /** Jours de surveillance : la profondeur de l'historique, invendable par un concurrent. */
   trackedDays: number;
   liveItems: number;

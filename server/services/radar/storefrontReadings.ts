@@ -1,8 +1,9 @@
 import { and, desc, eq, isNull, lt, or, sql } from 'drizzle-orm';
-import { getDb } from '@server/db/client';
+import { getDb, isUniqueViolation } from '@server/db/client';
 import { discoveredStores, spiedAds, users, watches } from '@server/db/schema';
 import { indexStoreCatalog, normalHost } from '@server/services/market';
 import { applyObservations } from '@server/services/radar/sweep';
+import { PENDING_PREFIX, isPendingStore } from '@server/services/radar/sources/chariowStore';
 import type { RadarObservation } from '@server/services/radar/types';
 
 /**
@@ -78,10 +79,12 @@ export async function storefrontPlan(now = new Date(), limit = 500): Promise<Sto
   for (const row of surveillees) {
     if (!row.due) continue;
     const sweptAt = row.sweptAt ? new Date(row.sweptAt) : null;
-    const host = row.url ? normalHost(row.url) : null;
-    if (!host) continue;
+    // Ajoutée avant d'avoir pu être lue : son identifiant se lit sur la page de la boutique.
+    const enAttente = isPendingStore(row.externalId);
+    const host = enAttente ? normalHost(row.externalId.slice(PENDING_PREFIX.length)) : row.url ? normalHost(row.url) : null;
+    if (!host || hotes.has(host)) continue;
     hotes.add(host);
-    plan.push({ externalId: row.externalId, host, label: row.label, reason: 'surveillance', activeAds: 0, readAt: sweptAt?.toISOString() ?? null });
+    plan.push({ externalId: enAttente ? null : row.externalId, host, label: row.label, reason: 'surveillance', activeAds: 0, readAt: sweptAt?.toISOString() ?? null });
   }
 
   const pubs = db
@@ -138,17 +141,31 @@ export async function ingestStorefrontReading(
     .select({ watch: watches })
     .from(watches)
     .innerJoin(users, eq(users.id, watches.userId))
-    .where(and(eq(watches.source, 'chariow_store'), eq(watches.externalId, externalId), eq(users.status, 'active')));
+    .where(and(eq(watches.source, 'chariow_store'), or(eq(watches.externalId, externalId), eq(watches.externalId, `${PENDING_PREFIX}${host}`)), eq(users.status, 'active')));
 
   const outcome: StorefrontIngestOutcome = { products: observations.length, launched, watches: 0, resumed: 0, events: 0 };
-  for (const { watch } of suivies) {
+  for (const { watch: suivie } of suivies) {
+    let watch = suivie;
+    // Ajoutée avant d'avoir pu être lue : elle prend son vrai identifiant, et le nom de la boutique.
+    if (isPendingStore(watch.externalId)) {
+      try {
+        const label = watch.label === host && store.label ? store.label : watch.label;
+        const [resolue] = await db.update(watches).set({ externalId, label }).where(eq(watches.id, watch.id)).returning();
+        watch = resolue ?? watch;
+      } catch (error) {
+        if (!isUniqueViolation(error)) throw error;
+        // Le compte la surveillait déjà sous son vrai identifiant : le doublon en attente disparaît.
+        await db.delete(watches).where(eq(watches.id, watch.id));
+        continue;
+      }
+    }
     const result = await applyObservations(watch, observations, now);
     outcome.watches += 1;
     outcome.events += result.appeared + result.disappeared + result.priceChanged + result.salesJumps;
     /*
-      Seuls les refus de la plateforme mettent une surveillance en pause (cinq échecs de suite) :
-      la boutique répond de nouveau, la surveillance reprend. applyObservations a déjà remis le
-      compte des échecs à zéro.
+      Une surveillance mise en pause par des échecs de suite (avant le 18/10/2026, les refus de la
+      plateforme aussi) : la boutique vient d'être lue, la surveillance reprend. applyObservations
+      a déjà remis le compte des échecs à zéro.
     */
     if (!watch.active) {
       await db.update(watches).set({ active: true }).where(eq(watches.id, watch.id));

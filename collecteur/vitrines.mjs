@@ -275,7 +275,10 @@ const restants = await creditsRestants();
 budget = Math.max(0, Math.min(PLAFOND_CREDITS, (Number.isFinite(restants) ? restants : PLAFOND_CREDITS + RESERVE) - RESERVE));
 console.log(`${heure()} ${ESSAI ? 'ESSAI (rien n’est versé) · ' : ''}crédits restants : ${Number.isFinite(restants) ? restants : '?'} · ce passage : ${budget}`);
 
-const { stores } = await site('/api/cron/vitrines?limite=1000');
+/** --raisons=surveillance : seulement les boutiques que des clients surveillent (après un ajout, par exemple). */
+const RAISONS = option('raisons', null);
+const plan = await site('/api/cron/vitrines?limite=1000');
+const stores = RAISONS ? plan.stores.filter((s) => String(RAISONS).split(',').includes(s.reason)) : plan.stores;
 const parRaison = stores.reduce((compte, s) => ({ ...compte, [s.reason]: (compte[s.reason] ?? 0) + 1 }), {});
 console.log(`${heure()} plan : ${stores.length} boutique(s) · ${Object.entries(parRaison).map(([r, n]) => `${n} ${r}`).join(' · ')}`);
 

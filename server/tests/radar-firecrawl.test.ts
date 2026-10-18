@@ -164,9 +164,9 @@ describe('Radar — vitrines lues par Firecrawl', () => {
     await dejaLues(PLAFOND);
     lectures.length = 0;
 
-    const refus = await agent.post(`/api/radar/watches/${id}/sweep`).expect(429);
-    assert.equal(refus.body.error.code, 'RADAR_SOURCE_BUDGET');
-    assert.match(refus.body.error.message, /reprendra demain/);
+    // Le relevé de l'ajout, frais, sert la surveillance : ni erreur, ni attente, et rien à repayer.
+    const releve = await agent.post(`/api/radar/watches/${id}/sweep`).expect(200);
+    assert.equal(releve.body.outcome.pending, undefined);
     assert.equal(lectures.length, 0, 'aucune page demandée au-delà du plafond');
 
     const apres = await surveillance(id);
@@ -175,10 +175,16 @@ describe('Radar — vitrines lues par Firecrawl', () => {
     assert.equal(apres.active, true);
     assert.equal(apres.lastSweptAt?.getTime(), avant.lastSweptAt?.getTime(), 'la date du passage ne bouge pas : la surveillance reste due');
 
-    // Le tour du planificateur s'arrête là, sans compter d'échec.
+    // Relevé vieux de quarante heures : plus rien de frais à servir. Actualiser dit « en attente », sans erreur.
     const { getDb: db } = await import('@server/db/client');
-    const { watches } = await import('@server/db/schema');
+    const { marketProducts, watches } = await import('@server/db/schema');
     const { eq } = await import('drizzle-orm');
+    await db().update(marketProducts).set({ lastSeenAt: new Date(Date.now() - 40 * 3_600_000) }).where(eq(marketProducts.storeExternalId, BOUTIQUE));
+    const attente = await agent.post(`/api/radar/watches/${id}/sweep`).expect(200);
+    assert.equal(attente.body.outcome.pending, true);
+    assert.equal(lectures.length, 0);
+
+    // Le tour du planificateur s'arrête là, sans compter d'échec.
     await db().update(watches).set({ lastSweptAt: new Date(Date.now() - 48 * 3_600_000) }).where(eq(watches.id, id));
     const { sweepDueWatches } = await import('@server/services/radar/sweeper');
     const tour = await sweepDueWatches(new Date(), 10_000);

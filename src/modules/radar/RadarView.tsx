@@ -109,7 +109,14 @@ function WatchCard({
     normal. Un avertissement qui se déclenche tous les jours n'est plus lu.
   */
   const RETARD_MS = 48 * 60 * 60 * 1000;
-  const enRetard = watch.active && watch.lastSweptAt !== null && Date.now() - new Date(watch.lastSweptAt).getTime() > RETARD_MS;
+  /*
+    La date des chiffres est celle du dernier relevé RÉUSSI. La carte lisait celle du dernier
+    passage, réussi ou non : « relevée à l'instant » au-dessus de « 0 en vente » et d'un message
+    d'échec (capture du propriétaire, 18/10/2026). Une boutique pas encore lue n'a pas « 0 produit » :
+    elle n'a pas de chiffres, et la carte le dit sans parler de panne.
+  */
+  const lue = watch.lastReadAt !== null;
+  const enRetard = watch.active && lue && Date.now() - new Date(watch.lastReadAt!).getTime() > RETARD_MS;
 
   return (
     <Card>
@@ -123,8 +130,9 @@ function WatchCard({
           <span className="truncate">{watch.label}</span>
         </CardTitle>
         <CardDescription>
-          En ligne depuis au moins {dureeLisible(anciennete)}
-          {watch.lastSweptAt ? ` · relevée ${formatRelativeFr(watch.lastSweptAt)}` : ''}
+          {/* Ajoutée aujourd'hui, sans publicité connue : « depuis au moins moins d'un jour » ne se lit pas. */}
+          {anciennete >= 1 ? `En ligne depuis au moins ${dureeLisible(anciennete)}` : 'Sous surveillance depuis aujourd’hui'}
+          {lue ? ` · relevée ${formatRelativeFr(watch.lastReadAt!)}` : ' · premier relevé en préparation'}
         </CardDescription>
         <CardAction className="flex items-center gap-1">
           <Button
@@ -150,11 +158,11 @@ function WatchCard({
       <CardContent className="space-y-3">
         <div className="grid grid-cols-3 gap-3 text-center">
           <div>
-            <p className="font-display text-xl font-bold">{watch.liveItems}</p>
+            <p className="font-display text-xl font-bold">{lue ? watch.liveItems : '—'}</p>
             <p className="text-xs text-muted-foreground">en vente</p>
           </div>
           <div>
-            <p className="font-display text-xl font-bold">{watch.endedItems}</p>
+            <p className="font-display text-xl font-bold">{lue ? watch.endedItems : '—'}</p>
             <p className="text-xs text-muted-foreground">arrêtés</p>
           </div>
           <div>
@@ -166,16 +174,14 @@ function WatchCard({
           <Alert variant="destructive">
             <AlertTitle>Surveillance en pause</AlertTitle>
             <AlertDescription>
-              {watch.lastError ?? 'Plusieurs relevés ont échoué de suite.'} Retirez-la puis ajoutez-la de nouveau.
+              Cette boutique n’a plus été trouvée sur la plateforme. Retirez-la, ou ajoutez-la de nouveau si elle a changé d’adresse.
             </AlertDescription>
           </Alert>
         )}
-        {watch.active && watch.lastError && (
-          <p className="text-xs text-amber-600 dark:text-amber-500">Dernier relevé en échec : {watch.lastError}</p>
+        {watch.active && !lue && (
+          <p className="text-xs text-muted-foreground">Son catalogue et ses ventes s’afficheront ici dès sa première lecture.</p>
         )}
-        {enRetard && !watch.lastError && (
-          <p className="text-xs text-amber-600 dark:text-amber-500">Chiffres du dernier relevé : actualisez cette boutique.</p>
-        )}
+        {enRetard && <p className="text-xs text-amber-600 dark:text-amber-500">Chiffres du relevé {formatRelativeFr(watch.lastReadAt!)}.</p>}
         {watch.activeAds > 0 && host && (
           <Button asChild variant="ghost" size="sm" className="-ml-2 h-auto min-h-8 gap-1.5 px-2 py-1 text-left whitespace-normal text-brand-green-text">
             <Link to={`/app/espionnage?boutique=${encodeURIComponent(host)}`}>
@@ -342,7 +348,12 @@ export function RadarView() {
   async function sweep(id: string) {
     setBusyWatch(id);
     try {
-      await apiRequest(`/api/radar/watches/${id}/sweep`, { method: 'POST' });
+      const { outcome } = await apiRequest<{ outcome: { pending?: boolean } }>(`/api/radar/watches/${id}/sweep`, { method: 'POST' });
+      // Pas de relevé plus frais que celui affiché : ce n'est pas une panne, et l'écran ne la présente pas comme telle.
+      if (outcome.pending) {
+        const lue = data?.watches.find((watch) => watch.id === id)?.lastReadAt ?? null;
+        toast.info(lue ? `Chiffres à jour du dernier relevé (${formatRelativeFr(lue)}).` : 'Son catalogue et ses ventes s’afficheront ici dès sa première lecture.');
+      }
       await load();
     } catch (caught) {
       toast.error(toApiError(caught, 'Le relevé n’a pas abouti.').message);

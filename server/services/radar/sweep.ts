@@ -1,10 +1,11 @@
-import { and, eq, inArray, isNull } from 'drizzle-orm';
-import { getDb } from '@server/db/client';
+import { and, eq, inArray, isNull, sql } from 'drizzle-orm';
+import { getDb, isUniqueViolation } from '@server/db/client';
 import { watchEvents, watchItems, watches, type WatchEventKind, type WatchItemRow, type WatchRow } from '@server/db/schema';
 import { env } from '@server/env';
 import { AppError } from '@server/middleware';
-import { indexStoreCatalog, normalHost } from '@server/services/market';
+import { indexStoreCatalog, knownStoreOfHost, latestIndexReading, normalHost } from '@server/services/market';
 import { sourceFor } from '@server/services/radar/sources';
+import { PENDING_PREFIX, isPendingStore } from '@server/services/radar/sources/chariowStore';
 import { BUDGET_CODE } from '@server/services/radar/sources/firecrawl';
 import type { RadarObservation } from '@server/services/radar/types';
 
@@ -271,36 +272,105 @@ export async function applyObservations(
 const MAX_FAILURES = 5;
 
 /**
+ * La PLATEFORME ne répond pas au serveur (refus, débit limité, plafond de lecture du jour) : rien
+ * ne dit que la boutique a un problème. Depuis le 11/10/2026, c'est le cas de toutes les vitrines.
+ */
+const PLATFORM_REFUSALS = new Set(['RADAR_SOURCE_UNAVAILABLE', 'RADAR_SOURCE_RATE_LIMITED', BUDGET_CODE]);
+export const isPlatformRefusal = (error: unknown) => error instanceof AppError && PLATFORM_REFUSALS.has(error.code ?? '');
+
+/**
+ * Âge au-delà duquel un relevé de l'index ne remplace plus celui de la surveillance. 30 h : le
+ * relevé est quotidien, avec du jeu sur l'heure de passage.
+ */
+const FRESH_INDEX_MS = 30 * 3_600_000;
+
+/**
+ * Une boutique ajoutée avant d'avoir pu être lue reçoit son vrai identifiant : par nos relevés
+ * d'abord, sinon par la page de sa vitrine. Rend la surveillance à jour.
+ */
+async function resolvePending(watch: WatchRow): Promise<WatchRow> {
+  if (!isPendingStore(watch.externalId)) return watch;
+  const host = watch.externalId.slice(PENDING_PREFIX.length);
+  const known = await knownStoreOfHost(host);
+  const target = known ?? (await sourceFor(watch.source).resolve(watch.url ?? host));
+  const label = watch.label === host && target.label ? target.label : watch.label;
+  try {
+    const [updated] = await getDb().update(watches).set({ externalId: target.externalId, label }).where(eq(watches.id, watch.id)).returning();
+    return updated ?? watch;
+  } catch (error) {
+    if (!isUniqueViolation(error)) throw error;
+    // Le compte surveillait déjà cette boutique sous son vrai identifiant : le doublon en attente disparaît.
+    await getDb().delete(watches).where(eq(watches.id, watch.id));
+    throw new AppError(409, 'Vous surveillez déjà cette boutique.', 'WATCH_ALREADY_EXISTS');
+  }
+}
+
+/**
+ * Applique à la surveillance le dernier relevé de l'index (collecteur des vitrines, ou surveillance
+ * de la même boutique par un autre compte), s'il est frais. null : rien d'assez frais.
+ *
+ * Signalé par le propriétaire le 18/10/2026 : boutiques ajoutées, « 0 en vente », « Dernier relevé
+ * en échec : la vitrine ne répond pas » — alors que le collecteur venait de les lire. Le relevé
+ * existait ; la surveillance redemandait la vitrine elle-même, et s'arrêtait sur le refus.
+ */
+async function applyFreshIndexReading(watch: WatchRow, now: Date): Promise<SweepOutcome | null> {
+  if (isPendingStore(watch.externalId)) return null;
+  const reading = await latestIndexReading(watch.externalId);
+  if (!reading || now.getTime() - reading.at.getTime() > FRESH_INDEX_MS) return null;
+  const [dernier] = await getDb()
+    .select({ at: sql<Date | string | null>`max(${watchItems.lastSeenAt})` })
+    .from(watchItems)
+    .where(eq(watchItems.watchId, watch.id));
+  const dejaVu = dernier?.at ? new Date(dernier.at).getTime() >= reading.at.getTime() : false;
+  if (!dejaVu) return applyObservations(watch, reading.observations, reading.at);
+  // Ce relevé est déjà celui de la surveillance : rien de neuf à comparer, et rien n'a échoué.
+  await getDb().update(watches).set({ lastError: null, failureCount: 0 }).where(eq(watches.id, watch.id));
+  return { observed: reading.observations.length, appeared: 0, disappeared: 0, priceChanged: 0, salesJumps: 0 };
+}
+
+/**
  * Relève une surveillance et applique le résultat. Un échec est inscrit sur la
  * surveillance — un radar silencieux doit pouvoir dire pourquoi il ne voit rien.
  */
 export async function sweepWatch(watch: WatchRow, now = new Date()): Promise<SweepOutcome> {
+  let current = watch;
   try {
-    const observations = await sourceFor(watch.source).observe(watch.externalId);
-    const outcome = await applyObservations(watch, observations, now);
+    current = await resolvePending(watch);
+    const observations = await sourceFor(current.source).observe(current.externalId);
+    const outcome = await applyObservations(current, observations, now);
     // Le même relevé nourrit l'index du marché, partagé : il n'est pas refait pour lui.
-    if (watch.url) {
-      await indexStoreCatalog({ externalId: watch.externalId, host: normalHost(watch.url), label: watch.label }, observations, now).catch((error: unknown) =>
-        console.warn('[marché] index non mis à jour :', watch.label, error instanceof Error ? error.message : error),
+    if (current.url) {
+      await indexStoreCatalog({ externalId: current.externalId, host: normalHost(current.url), label: current.label }, observations, now).catch((error: unknown) =>
+        console.warn('[marché] index non mis à jour :', current.label, error instanceof Error ? error.message : error),
       );
     }
     return outcome;
   } catch (error) {
+    // La plateforme ne répond pas au serveur : le relevé frais de l'index, quand il y en a un.
+    if (isPlatformRefusal(error)) {
+      const fromIndex = await applyFreshIndexReading(current, now).catch(() => null);
+      if (fromIndex) return fromIndex;
+    }
     // Plafond du jour de la lecture des vitrines : la boutique n'y est pour rien. Ni échec compté,
     // ni date de passage avancée — la surveillance reste due, et sera relevée dès qu'il y aura de quoi.
     if (error instanceof AppError && error.code === BUDGET_CODE) throw error;
+    if (error instanceof AppError && error.code === 'WATCH_ALREADY_EXISTS') throw error;
     const raison = error instanceof AppError ? error.message : 'Erreur inattendue pendant le relevé.';
-    const echecs = watch.failureCount + 1;
+    const echecs = current.failureCount + 1;
     await getDb()
       .update(watches)
       .set({
         lastSweptAt: now,
         lastError: raison.slice(0, 300),
         failureCount: echecs,
-        // Au-delà du seuil, on arrête d'appeler le site d'un tiers tous les jours pour rien.
-        active: echecs < MAX_FAILURES,
+        /*
+          Au-delà du seuil, on arrête d'appeler le site d'un tiers tous les jours pour rien. Pas
+          quand c'est la plateforme qui refuse le serveur : la boutique va bien, le collecteur la
+          lit, et une surveillance en pause ne reprendrait jamais d'elle-même pour son client.
+        */
+        active: echecs < MAX_FAILURES || isPlatformRefusal(error),
       })
-      .where(eq(watches.id, watch.id));
+      .where(eq(watches.id, current.id));
     throw error;
   }
 }

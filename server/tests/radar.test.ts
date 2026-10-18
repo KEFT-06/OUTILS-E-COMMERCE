@@ -347,11 +347,15 @@ describe('Radar — surveillance continue', () => {
     assert.equal(ajout.body.watch.totalSales, 7);
   });
 
-  it('dit quoi faire, sans jargon, pour une boutique inconnue dont la vitrine ne répond pas', async () => {
+  /*
+    L'ajout était refusé (« ouvrez-la une fois dans votre navigateur, puis ajoutez-la ici » : conseil
+    sans effet). Désormais la boutique est mise sous surveillance quand même ; ici son identifiant
+    est déjà connu de nos relevés, et son catalogue se lit tout de suite. Voir radar-attente.test.ts.
+  */
+  it('ajoute une boutique dont la page refuse le serveur, sans erreur', async () => {
     const { agent } = await signInWithPlan(app, 'radar-muette@exemple.test', 'pro');
-    const refus = await agent.post('/api/radar/watches').send({ target: `${base}/muette` }).expect(503);
-    assert.equal(refus.body.error.code, 'RADAR_SOURCE_UNAVAILABLE');
-    assert.match(refus.body.error.message, /Ouvrez-la une fois dans votre navigateur, puis ajoutez-la ici/);
-    assert.doesNotMatch(refus.body.error.message, /500|réponse|injoignable/, 'le motif technique reste au journal du serveur');
+    const ajout = await agent.post('/api/radar/watches').send({ target: `${base}/muette` }).expect(201);
+    assert.equal(ajout.body.watch.active, true);
+    assert.ok(ajout.body.watch.lastReadAt, 'son identifiant est connu de nos relevés : elle est lue aussitôt');
   });
 });
