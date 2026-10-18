@@ -1,7 +1,7 @@
 import { z } from 'zod';
 import { env, isProd } from '@server/env';
 import { AppError } from '@server/middleware';
-import { classifyGoogle429, recordGoogleRefusal } from '@server/services/ai/googleRefusal';
+import { classifyGoogleRefusal, recordGoogleRefusal } from '@server/services/ai/googleRefusal';
 
 /**
  * Rendu vidéo par Veo 3.1, chez Google.
@@ -73,8 +73,9 @@ function veoFailure(status: number, detail: string, payload: unknown = null): Ap
   if (status === 401 || status === 403) {
     return new AppError(503, 'Le service vidéo refuse l’accès du serveur : l’administrateur doit vérifier sa configuration.', 'VEO_ACCESS_DENIED');
   }
-  if (status === 429) {
-    const kind = classifyGoogle429(payload);
+  // 429, ou 402 « crédits prépayés épuisés » (voir classifyGoogleRefusal).
+  if (status === 429 || status === 402) {
+    const kind = classifyGoogleRefusal(status, payload) ?? 'unknown';
     recordGoogleRefusal(kind, 'veo', detail);
     // Projet de la clé sans crédit ni facturation : aucun modèle Veo n'a de franchise gratuite,
     // les autres refuseraient de même.

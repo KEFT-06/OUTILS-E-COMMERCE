@@ -6,7 +6,7 @@ import { MARKET_RUN_AUDIT_ACTION } from '@server/services/market';
 import { env, isProd, isServerless, providers } from '@server/env';
 import { lastClaudeOutcome } from '@server/services/ai/claude';
 import { sebpayMode } from '@server/services/billing/sebpay';
-import { lastGoogleRefusal } from '@server/services/ai/googleRefusal';
+import { classifyGoogleRefusal, lastGoogleRefusal, recordGoogleRefusal } from '@server/services/ai/googleRefusal';
 import { lastImageOutcome } from '@server/services/ai/image';
 import { videoArchiveConfigured } from '@server/services/creatives/archive';
 import { ownIllustrationAvailable } from '@server/services/storybook/illustrate';
@@ -54,6 +54,21 @@ async function probe(url: string, headers: Record<string, string>): Promise<Prob
 }
 
 const trimmed = (url: string) => url.replace(/\/+$/, '');
+
+/** Une génération d'un mot chez Google (voir checkGemini) : le seul contrôle qui voit un projet sans crédit. */
+async function probeGeneration(): Promise<Probe> {
+  try {
+    const response = await fetch(`${trimmed(env.GEMINI_API_URL)}/v1beta/models/${env.GEMINI_MODEL}:generateContent`, {
+      method: 'POST',
+      headers: { Accept: 'application/json', 'Content-Type': 'application/json', 'x-goog-api-key': env.GEMINI_API_KEY ?? '' },
+      body: JSON.stringify({ contents: [{ role: 'user', parts: [{ text: 'OK' }] }], generationConfig: { maxOutputTokens: 1 } }),
+      signal: AbortSignal.timeout(TIMEOUT_MS),
+    });
+    return { status: response.status, body: await response.json().catch(() => null) };
+  } catch {
+    return null;
+  }
+}
 
 function unreachable(base: Omit<ServiceCheck, 'state' | 'detail' | 'action'>): ServiceCheck {
   return {
@@ -173,9 +188,21 @@ async function checkGemini(): Promise<ServiceCheck> {
   if (result.status === 200) {
     /*
       « Clé acceptée » ne dit pas que Google génère : lire la fiche d'un modèle est gratuit, et
-      une clé dont le projet n'a plus de crédit passe ce contrôle. Le dernier refus réel des
-      générations (texte, images, vidéo) dit ce que le contrôle ne peut pas voir.
+      une clé dont le projet n'a plus de crédit passe ce contrôle — la page affichait « Clé
+      acceptée » le 18/10/2026 pendant que Google refusait tout par un 402. Une génération d'un
+      seul mot dit la vérité ; refusée, elle ne coûte rien.
     */
+    const generation = await probeGeneration();
+    const blocked = generation ? classifyGoogleRefusal(generation.status, generation.body) : null;
+    if (blocked) recordGoogleRefusal(blocked, env.GEMINI_MODEL, String((generation?.body as { error?: { message?: string } } | null)?.error?.message ?? '').slice(0, 200));
+    if (blocked === 'billing') {
+      return {
+        ...base,
+        state: 'error',
+        detail: `Clé acceptée, mais Google refuse toute génération : crédits prépayés épuisés (ou facturation absente) sur le projet de la clé. Rédaction, contes, voix et vidéos sont à l’arrêt ; les visuels publicitaires et les couvertures passent par Cloudflare, sans le titre lettré.`,
+        action: 'Recharger les crédits prépayés du projet de la clé : ai.studio/projects → Billing. Rien à redéployer : le site reprend dès que Google accepte.',
+      };
+    }
     const refus = lastGoogleRefusal();
     const recent = refus && Date.now() - new Date(refus.at).getTime() < 6 * 3_600_000;
     const quand = refus ? new Date(refus.at).toLocaleString('fr-FR', { timeZone: env.REPORTING_TIMEZONE }) : '';
@@ -221,7 +248,7 @@ async function checkGemini(): Promise<ServiceCheck> {
 function checkImages(): ServiceCheck {
   const base = { id: 'images', name: 'Génération d’images', role: 'Couvertures des guides et des ebooks' };
   const billing =
-    'Activer la facturation du projet Google de la clé (aistudio.google.com → Billing) : l’offre gratuite n’autorise aucune image.';
+    'Recharger les crédits prépayés du projet Google de la clé, ou y activer la facturation (ai.studio/projects → Billing) : l’offre gratuite n’autorise aucune image.';
 
   if (!providers.cloudflareImages && !providers.gemini)
     return {
@@ -290,7 +317,7 @@ function checkImages(): ServiceCheck {
       action: 'Renseigner CLOUDFLARE_ACCOUNT_ID et CLOUDFLARE_AI_TOKEN : une couverture y coûte une vingtaine de fois moins.',
     };
   if (gemini.code === 'GEMINI_IMAGE_BILLING_REQUIRED')
-    return { ...base, state: 'error', detail: 'Google refuse les images : la clé est sur l’offre gratuite.', action: billing };
+    return { ...base, state: 'error', detail: 'Google refuse les images : crédits prépayés épuisés, ou clé sur l’offre gratuite.', action: billing };
   return {
     ...base,
     state: 'warning',

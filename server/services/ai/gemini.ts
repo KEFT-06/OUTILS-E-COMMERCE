@@ -1,6 +1,6 @@
 import { env } from '@server/env';
 import { AppError, providerUnavailable } from '@server/middleware';
-import { type GoogleRefusal, classifyGoogle429, recordGoogleRefusal } from '@server/services/ai/googleRefusal';
+import { type GoogleRefusal, classifyGoogleRefusal, recordGoogleRefusal } from '@server/services/ai/googleRefusal';
 
 /**
  * Appel à Gemini (API REST generateContent) avec une réponse JSON structurée,
@@ -112,7 +112,7 @@ async function readProviderError(response: Response): Promise<ProviderError> {
   return {
     message: [payload?.error?.status, payload?.error?.message].filter(Boolean).join(' — ').slice(0, 300),
     retryDelayMs: Number.isFinite(seconds) && seconds > 0 ? Math.round(seconds * 1000) : null,
-    refusal: response.status === 429 ? classifyGoogle429(payload) : null,
+    refusal: classifyGoogleRefusal(response.status, payload),
   };
 }
 
@@ -221,14 +221,15 @@ export async function generateJson<T>(input: {
       // Le modèle suivant prend la suite ; s'il n'y en a plus, la boucle s'arrête d'elle-même.
       continue;
     }
-    if (!RETRYABLE_STATUS.has(response.status)) {
+    // Lu AVANT les refus définitifs : un projet sans crédit répond 402, qui n'est pas un refus de la demande.
+    if (failure.refusal) recordGoogleRefusal(failure.refusal, model, failure.message);
+    if (failure.refusal !== 'billing' && !RETRYABLE_STATUS.has(response.status)) {
       console.error(`[${service.log}] le fournisseur a répondu`, response.status, failure.message);
       if (response.status === 401 || response.status === 403) {
         throw new AppError(503, `L’accès au ${service.name} est refusé : clé API invalide sur le serveur.`, `${service.code}_ACCESS_DENIED`);
       }
       throw new AppError(502, `Le ${service.name} a refusé la demande : vos points ont été rendus.`, `${service.code}_FAILED`);
     }
-    if (failure.refusal) recordGoogleRefusal(failure.refusal, model, failure.message);
     if (failure.refusal === 'billing') {
       /*
         Projet de la clé sans crédit ni facturation : tous les modèles partagent ce projet.

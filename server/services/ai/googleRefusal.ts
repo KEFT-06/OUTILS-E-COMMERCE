@@ -34,6 +34,21 @@ export function classifyGoogle429(payload: unknown): GoogleRefusal {
   return 'unknown';
 }
 
+/**
+ * Nature d'un refus de Google quel que soit son code, ou null s'il ne dit rien du projet.
+ *
+ * Google disait « crédits épuisés » par un 429. Depuis le prépaiement, il le dit AUSSI par un 402
+ * « Payment Required » — mesuré le 18/10/2026 sur le texte comme sur les images : « Your prepayment
+ * credits are depleted », RESOURCE_EXHAUSTED. Le site ne lisait que le 429 : le 402 passait pour un
+ * refus de la demande, la chaîne d'images essayait chaque modèle, et l'administration affichait
+ * « Clé acceptée » pendant que plus rien ne se générait.
+ */
+export function classifyGoogleRefusal(status: number, payload: unknown): GoogleRefusal | null {
+  if (status === 402) return 'billing';
+  if (status === 429) return classifyGoogle429(payload);
+  return null;
+}
+
 let lastRefusal: { kind: GoogleRefusal; model: string; at: string; detail: string } | null = null;
 
 export function recordGoogleRefusal(kind: GoogleRefusal, model: string, detail: string): void {

@@ -1,5 +1,6 @@
 import { env } from '@server/env';
 import { AppError, providerUnavailable } from '@server/middleware';
+import { classifyGoogleRefusal, recordGoogleRefusal } from '@server/services/ai/googleRefusal';
 
 /**
  * Synthèse vocale (Gemini TTS) : un passage de texte devient sa lecture à voix haute.
@@ -142,7 +143,14 @@ export async function synthesizeSpeech(input: SpeechInput): Promise<SpokenAudio>
       return { pcm, seconds: secondsOf(pcm), model };
     }
 
-    console.warn(`[voix] ${model} a répondu ${response.status} :`, [payload?.error?.status, payload?.error?.message].filter(Boolean).join(' — ').slice(0, 300));
+    const detail = [payload?.error?.status, payload?.error?.message].filter(Boolean).join(' — ').slice(0, 300);
+    console.warn(`[voix] ${model} a répondu ${response.status} :`, detail);
+    const refusal = classifyGoogleRefusal(response.status, payload);
+    if (refusal) recordGoogleRefusal(refusal, model, detail);
+    // Projet de la clé sans crédit : le modèle suivant partage ce projet, et chaque passage refuserait de même.
+    if (refusal === 'billing') {
+      throw new AppError(503, 'La lecture à voix haute est momentanément indisponible : l’administrateur en a été informé. Vos points ont été rendus.', 'GEMINI_SPEECH_BILLING_REQUIRED');
+    }
     if (response.status === 401 || response.status === 403) {
       throw new AppError(503, 'Le service de lecture à voix haute refuse l’accès du serveur : l’administrateur doit vérifier sa configuration.', 'GEMINI_SPEECH_ACCESS_DENIED');
     }
@@ -170,8 +178,8 @@ export async function speakPassages(passages: readonly string[], options: { voic
     for (let index = next++; index < passages.length; index = next++) {
       const say = () => synthesizeSpeech({ text: passages[index]!, voice: options.voice, style: options.style, budgetMs: deadline - Date.now() });
       spoken[index] = await say().catch((error: unknown) => {
-        // Un refus d'accès ne se rejoue pas : il vaut pour tous les passages.
-        if (error instanceof AppError && error.code === 'GEMINI_SPEECH_ACCESS_DENIED') throw error;
+        // Un refus d'accès ou de crédit ne se rejoue pas : il vaut pour tous les passages.
+        if (error instanceof AppError && (error.code === 'GEMINI_SPEECH_ACCESS_DENIED' || error.code === 'GEMINI_SPEECH_BILLING_REQUIRED')) throw error;
         return say();
       });
     }

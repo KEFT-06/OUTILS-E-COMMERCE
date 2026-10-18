@@ -1,6 +1,6 @@
 import { env } from '@server/env';
 import { AppError, providerUnavailable } from '@server/middleware';
-import { classifyGoogle429, recordGoogleRefusal } from '@server/services/ai/googleRefusal';
+import { classifyGoogleRefusal, recordGoogleRefusal } from '@server/services/ai/googleRefusal';
 import type { ImageAspectRatio, ImageResult } from '@server/services/ai/imageTypes';
 
 /**
@@ -148,8 +148,9 @@ async function produceImage(input: GeminiImageInput): Promise<ImageResult> {
       if (status === 400) {
         throw new AppError(502, 'L’image n’a pas pu être produite : vos points ont été rendus.', 'GEMINI_IMAGE_FAILED');
       }
-      if (status === 429) {
-        const kind = classifyGoogle429(payload);
+      // 429, ou 402 « crédits prépayés épuisés » (voir classifyGoogleRefusal).
+      const kind = classifyGoogleRefusal(status, payload);
+      if (kind) {
         recordGoogleRefusal(kind, model, detail);
         // Projet de la clé bloqué (crédits épuisés, facturation absente) : les autres modèles
         // partagent ce projet et refuseraient de même. On sort tout de suite vers le secours.
@@ -159,7 +160,7 @@ async function produceImage(input: GeminiImageInput): Promise<ImageResult> {
           console.error('[image gemini] projet Google sans crédit ni facturation : les images passent par le secours.');
           throw new AppError(
             503,
-            'La génération d’images n’est pas encore activée pour le site : l’administrateur doit terminer sa configuration. Vos points ont été rendus.',
+            'La génération d’images est momentanément indisponible : l’administrateur en a été informé. Vos points ont été rendus.',
             'GEMINI_IMAGE_BILLING_REQUIRED',
           );
         }
@@ -174,7 +175,7 @@ async function produceImage(input: GeminiImageInput): Promise<ImageResult> {
   if (lastStatus === 429 && freeTierOnly) {
     throw new AppError(
       503,
-      'La génération d’images n’est pas encore activée pour le site : l’administrateur doit terminer sa configuration. Vos points ont été rendus.',
+      'La génération d’images est momentanément indisponible : l’administrateur en a été informé. Vos points ont été rendus.',
       'GEMINI_IMAGE_BILLING_REQUIRED',
     );
   }

@@ -299,6 +299,23 @@ describe('Administration : suspension, liens et journal', () => {
     assert.equal(self.body.error.code, 'SELF_ACTION_FORBIDDEN');
   });
 
+  it('déconnecte un compte partout, sans le bloquer : la personne se reconnecte quand elle veut', async () => {
+    const telephone = request.agent(app);
+    const ordinateur = request.agent(app);
+    for (const appareil of [telephone, ordinateur]) {
+      await appareil.post('/api/auth/login').send({ email: 'kwame@exemple.com', password: STRONG_PASSWORD }).expect(200);
+      assert.ok((await appareil.get('/api/auth/me')).body.account, 'connecté avant');
+    }
+
+    const fermees = await admin.agent.post(`/api/admin/users/${kwame.account.id}/sessions/revoke`).expect(200);
+    assert.ok(fermees.body.revoked >= 2, 'les sessions de chaque appareil sont fermées');
+    for (const appareil of [telephone, ordinateur]) assert.equal((await appareil.get('/api/auth/me')).body.account, null);
+
+    await request(app).post('/api/auth/login').send({ email: 'kwame@exemple.com', password: STRONG_PASSWORD }).expect(200);
+    const self = await admin.agent.post(`/api/admin/users/${admin.user.id}/sessions/revoke`).expect(403);
+    assert.equal(self.body.error.code, 'SELF_ACTION_FORBIDDEN');
+  });
+
   it('crée un lien de réinitialisation et garde la trace de chaque action', async () => {
     const link = await admin.agent.post(`/api/admin/users/${kwame.account.id}/password-link`).expect(200);
     assert.equal(link.body.purpose, 'reset');
@@ -317,6 +334,7 @@ describe('Administration : suspension, liens et journal', () => {
       'role.changed',
       'user.suspended',
       'user.reactivated',
+      'sessions.revoked',
       'password.link_created',
     ]) {
       assert.ok(actions.has(action), `journal : ${action}`);

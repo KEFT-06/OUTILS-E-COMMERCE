@@ -19,6 +19,14 @@ const refus = (message: string, quotaId?: string, quotaValue?: string) => ({
   },
 });
 const CREDITS = refus('Your prepayment credits are depleted. Please go to AI Studio at https://ai.studio/projects to manage your project and billing.');
+/** Réponse réelle de Google du 18/10/2026, texte comme images : un 402, et non plus un 429. */
+const PREPAYE = {
+  error: {
+    code: 402,
+    status: 'RESOURCE_EXHAUSTED',
+    message: 'Your prepayment credits are depleted. Please go to AI Studio at https://ai.studio/projects to manage your project and billing. Learn more at https://ai.google.dev/gemini-api/docs/billing#prepay. ',
+  },
+};
 const SANS_FRANCHISE = refus('Quota exceeded for metric: generate_content_free_tier_requests, limit: 0');
 const IMAGE = { candidates: [{ content: { parts: [{ inlineData: { mimeType: 'image/png', data: 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==' } }] } }] };
 const MINUTE = refus('You exceeded your current quota, please check your plan and billing details.', 'GenerateRequestsPerMinutePerProjectPerModel', '10');
@@ -42,6 +50,9 @@ const faux = createServer((req, res) => {
     }
     const suivi = /\/v1beta\/models\/([^/]+)\/operations\/([^/?]+)/.exec(url);
     if (suivi) return send(200, { name: `models/${suivi[1]}/operations/${suivi[2]}`, done: false });
+    // Fiche d'un modèle (lecture gratuite de l'état des services) : toujours accordée.
+    const fiche = /^\/v1beta\/models\/([^:/?]+)$/.exec(url.replace(/\?.*$/, ''));
+    if (fiche && req.method === 'GET') return send(200, { name: `models/${fiche[1]}` });
     const texte = /\/v1beta\/models\/([^:]+):generateContent/.exec(url);
     if (texte) {
       const r = reponses[decodeURIComponent(texte[1]!)];
@@ -122,6 +133,64 @@ describe('Refus de Google', () => {
     appels = [];
     await getVeoGeneration(lance.requestId);
     assert.deepEqual(appels, ['GET /v1beta/models/veo-3.1-lite-generate-preview/operations/opvideo42'], 'le suivi interroge le modèle qui a lancé le rendu');
+  });
+
+  describe('crédits prépayés épuisés, dits par un 402 (réponse réelle de Google, 18/10/2026)', () => {
+    it('le reconnaît comme un projet sans crédit', async () => {
+      const { classifyGoogleRefusal } = await import('@server/services/ai/googleRefusal');
+      assert.equal(classifyGoogleRefusal(402, PREPAYE), 'billing');
+      assert.equal(classifyGoogleRefusal(429, CREDITS), 'billing');
+      assert.equal(classifyGoogleRefusal(400, { error: { message: 'bad' } }), null);
+    });
+
+    it('arrête la rédaction au premier refus, et garde la cause pour l’administration', async () => {
+      reponses = { 'gemini-3.6-flash': { status: 402, body: PREPAYE } };
+      const { generateJson } = await import('@server/services/ai/gemini');
+      await assert.rejects(
+        generateJson({ service: { name: 'service de test', code: 'TEST', log: 'test' }, prompt: 'Réponds.', responseSchema: { type: 'OBJECT' }, parse: (v) => v, timeoutMs: 30_000 }),
+        (error: { code?: string }) => error.code === 'TEST_INSUFFICIENT_CREDITS',
+      );
+      assert.equal(appels.length, 1);
+      const { lastGoogleRefusal } = await import('@server/services/ai/googleRefusal');
+      assert.equal(lastGoogleRefusal()?.kind, 'billing');
+    });
+
+    it('n’essaie pas les autres modèles d’image : le code obtenu fait passer au secours', async () => {
+      reponses = { 'gemini-3-pro-image': { status: 402, body: PREPAYE } };
+      const { generateGeminiImage } = await import('@server/services/ai/geminiImage');
+      await assert.rejects(generateGeminiImage({ prompt: 'Une couturière', aspectRatio: '1:1' }), (error: { code?: string; message?: string }) => {
+        // Le client lit un message neutre, ni « configuration » ni nom de fournisseur.
+        return error.code === 'GEMINI_IMAGE_BILLING_REQUIRED' && !/configuration|Google|Gemini/i.test(error.message ?? '');
+      });
+      assert.equal(appels.length, 1);
+    });
+
+    it('arrête la voix sans essayer le second modèle', async () => {
+      reponses = { 'gemini-3.8-flash-tts': { status: 402, body: PREPAYE } };
+      const { synthesizeSpeech } = await import('@server/services/ai/geminiSpeech');
+      await assert.rejects(synthesizeSpeech({ text: 'Bonjour.', voice: 'Kore' }), (error: { code?: string }) => error.code === 'GEMINI_SPEECH_BILLING_REQUIRED');
+      assert.equal(appels.length, 1);
+    });
+
+    it('arrête la vidéo sans changer de modèle', async () => {
+      reponses = { 'veo-3.1-fast-generate-preview': { status: 402, body: PREPAYE } };
+      const { submitVeoGeneration } = await import('@server/services/veo');
+      await assert.rejects(
+        submitVeoGeneration({ prompt: 'Une couturière', negativePrompt: '', aspectRatio: '16:9', durationSeconds: 8 }),
+        (error: { code?: string }) => error.code === 'VEO_BILLING_REQUIRED',
+      );
+      assert.equal(appels.length, 1);
+    });
+
+    it('l’état des services le dit en rouge, même si personne n’a rien généré', async () => {
+      reponses = { 'gemini-3.6-flash': { status: 402, body: PREPAYE } };
+      const { checkServices } = await import('@server/services/admin/services');
+      const gemini = (await checkServices({ refresh: true })).services.find((service) => service.id === 'gemini')!;
+      assert.equal(gemini.state, 'error');
+      assert.match(gemini.detail, /refuse toute génération/);
+      assert.match(gemini.action ?? '', /ai\.studio\/projects/);
+      assert.ok(appels.includes('POST /v1beta/models/gemini-3.6-flash:generateContent'), 'une vraie génération, pas la seule lecture de la fiche');
+    });
   });
 
   it('ne change pas de modèle vidéo quand le projet n’a plus de crédit', async () => {
