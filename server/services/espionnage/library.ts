@@ -1,6 +1,6 @@
-import { and, asc, desc, eq, isNotNull, lt, max } from 'drizzle-orm';
+import { and, asc, eq, isNotNull, isNull, lt, max, or, sql } from 'drizzle-orm';
 import { getDb } from '@server/db/client';
-import { spiedAds } from '@server/db/schema';
+import { spiedAds, spiedPages } from '@server/db/schema';
 import { env } from '@server/env';
 import { recordAudit } from '@server/services/audit';
 import { DISCOVERY_AUDIT_ACTION, discoveryQueries, ingestDiscoveryItems, type DiscoveryOutcome } from '@server/services/radar/discovery';
@@ -50,6 +50,16 @@ export async function recordCollectorRun(details: Record<string, unknown>): Prom
 const JOUR_MS = 86_400_000;
 /** Annonceurs remis au plus par plan : bien au-delà de ce qu'un mois de crédits Firecrawl peut lire. */
 const ADVERTISERS_MAX = 3_000;
+/** Une page d'annonceur lue n'est pas remise au collecteur avant ce délai. */
+const PAGE_REREAD_DAYS = 15;
+
+/** Retient qu'une page d'annonceur vient d'être lue en entier : elle sort du plan pour quinze jours. */
+export async function markPageRead(pageId: string, ads: number, now = new Date()): Promise<void> {
+  await getDb()
+    .insert(spiedPages)
+    .values({ pageId, readAt: now, ads })
+    .onConflictDoUpdate({ target: spiedPages.pageId, set: { readAt: now, ads } });
+}
 
 /**
  * Ce que le collecteur doit faire à son prochain passage : mots-clés, pays, et annonces
@@ -77,12 +87,19 @@ export async function collectorPlan(now = new Date()) {
     Mesuré le 18/10/2026 : une page d'annonceur lue par Firecrawl rend 17 annonces, toutes vers sa
     boutique, quand les recherches par mot-clé ne rapportaient plus qu'une annonce nouvelle par crédit.
   */
+  /*
+    Ordre : jamais lus d'abord, puis lus il y a le plus longtemps ; à égalité, ceux dont on n'a rien
+    revu depuis le plus longtemps. Une page lue depuis moins de quinze jours n'est pas remise : ses
+    annonces viennent d'entrer au mur, la relire ne rapporterait rien (mesuré le 18/10/2026).
+  */
+  const relue = new Date(now.getTime() - PAGE_REREAD_DAYS * JOUR_MS);
   const annonceurs = await getDb()
     .select({ pageId: spiedAds.pageId })
     .from(spiedAds)
-    .where(isNotNull(spiedAds.pageId))
-    .groupBy(spiedAds.pageId)
-    .orderBy(desc(max(spiedAds.lastSeenAt)))
+    .leftJoin(spiedPages, eq(spiedPages.pageId, spiedAds.pageId))
+    .where(and(isNotNull(spiedAds.pageId), or(isNull(spiedPages.readAt), lt(spiedPages.readAt, relue))))
+    .groupBy(spiedAds.pageId, spiedPages.readAt)
+    .orderBy(sql`${spiedPages.readAt} asc nulls first`, asc(max(spiedAds.lastSeenAt)))
     .limit(ADVERTISERS_MAX);
 
   return {

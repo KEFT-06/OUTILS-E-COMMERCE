@@ -20,7 +20,7 @@ import { runWatchPass } from '@server/services/watch';
 import { z } from 'zod';
 import { detectAlerts } from '@server/services/alerts';
 import { settleDueCommissions } from '@server/services/referral';
-import { collectorPlan, ingestLibraryRecords, recordCollectorRun } from '@server/services/espionnage/library';
+import { collectorPlan, ingestLibraryRecords, markPageRead, recordCollectorRun } from '@server/services/espionnage/library';
 import { pendingCollectorSearches, pourCollectorSearch } from '@server/services/espionnage/search';
 import { indexDiscoveredStores, reportMarketRun } from '@server/services/market';
 import { runInBackground } from '@server/shared/backgroundWork';
@@ -380,6 +380,8 @@ const collecteSchema = z.object({
    * une journée : sans cela, ses aperçus expireraient avant d'être copiés.
    */
   apercus: z.boolean().default(false),
+  /** Lot lu sur la page de cet annonceur (lue en entier) : elle sort du plan pour quinze jours. */
+  page: z.object({ id: z.string().regex(/^\d{5,30}$/), ads: z.number().int().min(0).max(10_000) }).optional(),
 });
 
 /** Versement d'un lot d'annonces lues dans la bibliothèque publique. */
@@ -389,8 +391,9 @@ cronRouter.post(
     requireCollector(req);
     const parsed = collecteSchema.safeParse(req.body);
     if (!parsed.success) throw new AppError(400, 'Lot d’annonces illisible.', 'COLLECT_INVALID');
-    const { country, items, done, summary, search, apercus } = parsed.data;
+    const { country, items, done, summary, search, apercus, page } = parsed.data;
     const outcome = await ingestLibraryRecords(items, country === 'ALL' ? null : country);
+    if (page) await markPageRead(page.id, page.ads);
     // Les annonces du lot sont les plus récemment vues : ce sont elles que la copie prend d'abord.
     const thumbnails = apercus && outcome.adsKept > 0 ? await storeMissingThumbnails(Math.min(outcome.adsKept, 60)).catch(() => null) : null;
     const searched = search ? await pourCollectorSearch({ ...search, items }) : null;

@@ -344,6 +344,13 @@
       "when": 1791787894424,
       "tag": "0048_telephone_du_compte",
       "breakpoints": true
+    },
+    {
+      "idx": 49,
+      "version": "7",
+      "when": 1792292659760,
+      "tag": "0049_pages_annonceurs_lues",
+      "breakpoints": true
     }
   ]
 }

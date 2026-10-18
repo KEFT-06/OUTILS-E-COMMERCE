@@ -132,6 +132,41 @@ describe('Collecteur maison', () => {
     assert.equal(await discoveryIsDue(), false);
   });
 
+  it('remet d’abord les annonceurs jamais lus, et ne remet pas une page lue depuis moins de quinze jours', async () => {
+    const { getDb } = await import('@server/db/client');
+    const { spiedAds, spiedPages } = await import('@server/db/schema');
+    const { eq } = await import('drizzle-orm');
+    const plan = async () => (await request(app).get('/api/cron/collecte').set('Authorization', `Bearer ${SECRET}`).expect(200)).body.advertisers as string[];
+
+    // Deux annonceurs jamais lus : l'un revu à l'instant, l'autre pas revu depuis dix jours.
+    const ancien = annonce({ ad_archive_id: '3001', page_id: '5550001' });
+    const recent = annonce({ ad_archive_id: '3002', page_id: '5550002' });
+    await verser({ country: 'CM', items: [ancien, recent] }).expect(200);
+    await getDb().update(spiedAds).set({ lastSeenAt: new Date(Date.now() - 10 * JOUR * 1000) }).where(eq(spiedAds.externalId, '3001'));
+    let annonceurs = await plan();
+    assert.ok(annonceurs.indexOf('5550001') < annonceurs.indexOf('5550002'), 'celui qu’on n’a pas revu depuis longtemps d’abord');
+
+    // Sa page est lue en entier : elle sort du plan (le 18/10/2026, un passage relisait les pages qu’il venait de lire).
+    await verser({ country: 'ALL', items: [ancien], page: { id: '5550001', ads: 1 } }).expect(200);
+    annonceurs = await plan();
+    assert.ok(!annonceurs.includes('5550001'), 'lue à l’instant : pas remise');
+    assert.ok(annonceurs.includes('5550002'));
+
+    // Seize jours plus tard, elle revient — après les pages jamais lues.
+    await getDb().update(spiedPages).set({ readAt: new Date(Date.now() - 16 * JOUR * 1000) }).where(eq(spiedPages.pageId, '5550001'));
+    annonceurs = await plan();
+    assert.ok(annonceurs.includes('5550001'));
+    assert.ok(annonceurs.indexOf('5550002') < annonceurs.indexOf('5550001'), 'les pages jamais lues passent avant une page relue');
+
+    // Une page refusée en forme ne s'enregistre pas.
+    await verser({ country: 'ALL', items: [], page: { id: 'pas-un-numero', ads: 0 } }).expect(400);
+
+    // Le mur retrouve son état : les tests suivants comptent ses annonces par plateforme.
+    const { inArray } = await import('drizzle-orm');
+    await getDb().delete(spiedAds).where(inArray(spiedAds.externalId, ['3001', '3002']));
+    await getDb().delete(spiedPages).where(eq(spiedPages.pageId, '5550001'));
+  });
+
   /*
     Relevé réel du 04/10/2026, 717 annonces cherchées au Cameroun, en Côte d'Ivoire et au
     Sénégal : 357 mènent à « *.myshopify.com », 335 à « *.mymaketou.shop » ou « .store ». Le mur

@@ -127,10 +127,14 @@ function familles(paysDuSite, paysCibles, annonceurs) {
     { nom: 'chariow · niches', liste: NICHES.flatMap((mot) => PAYS_DES_NICHES.map((country) => ({ q: `mychariow ${mot}`, country, reglage: {} }))) },
     { nom: 'maketou', liste: [...recherches(['mymaketou', 'maketou'], paysCibles), ...recherches(['mymaketou'], paysCibles, { statut: 'inactive' })] },
     { nom: 'shopify', liste: [...recherches(['myshopify'], paysCibles, { media: 'image' }), ...recherches(['myshopify'], paysCibles, { media: 'video' }), ...recherches(['myshopify'], paysCibles, { statut: 'inactive' })] },
-  ].map((famille) => ({ fenetre: 4, ...famille, prochaine: 0, recentes: [], abandonnee: false, credits: 0, nouvelles: 0 }));
+  ].map((famille) => ({ fenetre: 3, ...famille, prochaine: 0, recentes: [], abandonnee: false, credits: 0, nouvelles: 0 }));
 }
 
-/** Une famille est abandonnée quand ses N dernières lectures ont rapporté moins de N annonces nouvelles (moins d'une par crédit). */
+/**
+ * Une famille est abandonnée quand ses N dernières lectures ont rapporté moins de N annonces nouvelles
+ * (moins d'une par crédit). N vaut 3 pour les recherches par mot-clé, que le collecteur maison épuise
+ * déjà : mesuré le 18/10/2026, plus aucune annonce nouvelle dès le deuxième passage.
+ */
 function noter(famille, nouvelles) {
   famille.recentes.push(nouvelles);
   if (famille.recentes.length > famille.fenetre) famille.recentes.shift();
@@ -147,11 +151,14 @@ const dejaLues = new Set();
 let pagesVidesDeSuite = 0;
 let arret = null;
 
-/** Verse les annonces d'une recherche ; rend le nombre d'annonces nouvelles pour le mur. */
-async function verser(annonces, country, recherche = null) {
+/**
+ * Verse les annonces d'une lecture ; rend le nombre d'annonces nouvelles pour le mur. `page` : la
+ * page d'annonceur lue, que le site retient pour ne pas la remettre au prochain plan — même vide.
+ */
+async function verser(annonces, country, recherche = null, page = null) {
   if (ESSAI) return annonces.filter((ad) => BOUTIQUE.test(JSON.stringify(ad.snapshot ?? {}))).length;
   // Rien de neuf à verser : seule une recherche de client doit apprendre qu’elle est lue, même vide.
-  if (annonces.length === 0 && !recherche) return 0;
+  if (annonces.length === 0 && !recherche && !page) return 0;
   let nouvelles = 0;
   for (let debut = 0; debut === 0 || debut < annonces.length; debut += LOT) {
     const lot = annonces.slice(debut, debut + LOT);
@@ -162,6 +169,7 @@ async function verser(annonces, country, recherche = null) {
         items: lot,
         apercus: true,
         ...(recherche ? { search: { id: recherche, first: debut === 0, done: debut + LOT >= annonces.length } } : {}),
+        ...(page && debut === 0 ? { page } : {}),
       }),
     });
     totaux.versees += lot.length;
@@ -208,7 +216,7 @@ async function traiter({ q, country, reglage, famille, demande, page: annonceur 
   decouvrir(annonces.filter((ad) => BOUTIQUE.test(JSON.stringify(ad.snapshot ?? {}))));
   totaux.lues += trouvees.size;
   if (demande) totaux.demandes += 1;
-  const nouvelles = await verser(annonces, country, demande ?? null);
+  const nouvelles = await verser(annonces, country, demande ?? null, annonceur ? { id: annonceur, ads: trouvees.size } : null);
   totaux.nouvelles += nouvelles;
   if (famille) {
     famille.credits += page.credits;

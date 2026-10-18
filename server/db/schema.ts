@@ -1498,6 +1498,19 @@ export const spiedAds = pgTable(
 ).enableRLS();
 
 /**
+ * Pages d'annonceurs lues en entier dans la bibliothèque (collecteur Firecrawl). Sans elle, le plan
+ * remettait en tête les annonceurs qu'on venait de lire — leurs annonces étant « vues » à l'instant —
+ * et un passage relisait pour rien les mêmes pages (18/10/2026 : 0 annonce nouvelle à la relecture).
+ */
+export const spiedPages = pgTable('spied_pages', {
+  /** Identifiant de la page Facebook de l'annonceur. */
+  pageId: text('page_id').primaryKey(),
+  readAt: moment('read_at').notNull().defaultNow(),
+  /** Annonces que la page montrait à cette lecture. */
+  ads: integer('ads').notNull().default(0),
+}).enableRLS();
+
+/**
  * Passages de collecte publicitaire lancés chez Apify, suivis jusqu'à leur récolte.
  *
  * Un passage dure plusieurs minutes, au-delà de ce qu'une requête peut attendre sur un
