@@ -250,6 +250,9 @@ describe('Relevés de vitrines versés par le collecteur', () => {
     await applyObservations(suivie!, catalogue.map((p) => ({ externalId: p.id, name: p.name, kind: 'downloadable', priceValue: p.prix, currency: 'XAF', salesCount: p.ventes - 100 > 0 ? p.ventes - 100 : 0 })), ilYA(12));
     await getDb().update(watches).set({ active: false, failureCount: 5, lastError: 'La vitrine de cette boutique ne répond pas en ce moment.', lastSweptAt: ilYA(1) }).where(eq(watches.id, suivie!.id));
 
+    // Encore active, mais refusée par la plateforme il y a une heure : son dernier relevé RÉUSSI est ancien, elle est due.
+    await getDb().insert(watches).values({ userId, source: 'chariow_store', externalId: 'store_refuseehier', label: 'Refusée hier', url: 'https://refusee-hier.mychariow.com', active: true, failureCount: 2, lastError: 'La vitrine de cette boutique ne répond pas en ce moment.', lastSweptAt: new Date(Date.now() - 3_600_000) });
+
     const hotes = ['pub-active.mychariow.com', 'sans-pub.mychariow.com', 'lue-ce-matin.mychariow.com', 'autre-plateforme.example.com'];
     await getDb().insert(discoveredStores).values([
       { host: hotes[1]!, lastSeenAt: ilYA(10), indexedAt: ilYA(9) },
@@ -262,18 +265,19 @@ describe('Relevés de vitrines versés par le collecteur', () => {
     try {
       await request(app).get('/api/cron/vitrines').expect(401);
       const { body: plan } = await request(app).get('/api/cron/vitrines').set('Authorization', `Bearer ${SECRET}`).expect(200);
-      const nos = (plan.stores as { host: string; reason: string; externalId: string | null; activeAds: number }[]).filter((s) => [...hotes, 'cuisine-du-pays.mychariow.com'].includes(s.host));
+      const nos = (plan.stores as { host: string; reason: string; externalId: string | null; activeAds: number }[]).filter((s) => [...hotes, 'cuisine-du-pays.mychariow.com', 'refusee-hier.mychariow.com'].includes(s.host));
       assert.deepEqual(
         nos.map((s) => [s.host, s.reason]),
         [
           ['cuisine-du-pays.mychariow.com', 'surveillance'],
+          ['refusee-hier.mychariow.com', 'surveillance'],
           ['pub-active.mychariow.com', 'publicite'],
           ['sans-pub.mychariow.com', 'index'],
         ],
         'surveillées, puis en publicité, puis les autres ; ni la boutique lue ce matin ni une autre plateforme',
       );
-      assert.equal(nos[1]!.externalId, 'store_pubactive01');
-      assert.equal(nos[1]!.activeAds, 1);
+      assert.equal(nos[2]!.externalId, 'store_pubactive01');
+      assert.equal(nos[2]!.activeAds, 1);
 
       // Une adresse qui n'est pas une vitrine est refusée : le versement ne décide pas de ce qui est indexé.
       await request(app).post('/api/cron/vitrines').set('Authorization', `Bearer ${SECRET}`).send({ ...vitrine([1, 2, 3]), store: { externalId: BOUTIQUE, host: 'evil.example.com', label: null } }).expect(400);

@@ -53,8 +53,11 @@ export async function storefrontPlan(now = new Date(), limit = 500): Promise<Sto
 
   /*
     Surveillances de comptes actifs : en cours, ou mises en pause par les refus de la plateforme.
-    Une boutique suivie par plusieurs comptes est due dès que L'UNE de ses surveillances l'est : le
-    plus ancien passage compte, pas le plus récent.
+    Une boutique suivie par plusieurs comptes est due dès que L'UNE de ses surveillances l'est.
+
+    « Due » se lit sur le dernier relevé RÉUSSI. Un relevé raté avance aussi la date de passage :
+    une surveillance refusée chaque jour par la plateforme avait l'air relevée de la veille, et
+    sortait du plan — constaté en production le 18/10/2026, aucune boutique surveillée au plan.
   */
   const surveillees = await db
     .select({
@@ -62,18 +65,19 @@ export async function storefrontPlan(now = new Date(), limit = 500): Promise<Sto
       url: sql<string | null>`max(${watches.url})`,
       label: sql<string>`max(${watches.label})`,
       sweptAt: sql<Date | string | null>`min(${watches.lastSweptAt})`,
-      jamais: sql<boolean>`bool_or(${watches.lastSweptAt} is null)`,
+      due: sql<boolean>`bool_or(${watches.lastSweptAt} is null or ${watches.failureCount} > 0 or ${watches.lastSweptAt} < ${seuil.toISOString()}::timestamptz)`,
     })
     .from(watches)
     .innerJoin(users, eq(users.id, watches.userId))
     .where(and(eq(watches.source, 'chariow_store'), eq(users.status, 'active')))
-    .groupBy(watches.externalId);
+    .groupBy(watches.externalId)
+    .orderBy(sql`min(${watches.lastSweptAt}) asc nulls first`);
 
   const plan: StorefrontPlanEntry[] = [];
   const hotes = new Set<string>();
   for (const row of surveillees) {
-    const sweptAt = row.jamais || !row.sweptAt ? null : new Date(row.sweptAt);
-    if (sweptAt && sweptAt >= seuil) continue;
+    if (!row.due) continue;
+    const sweptAt = row.sweptAt ? new Date(row.sweptAt) : null;
     const host = row.url ? normalHost(row.url) : null;
     if (!host) continue;
     hotes.add(host);
