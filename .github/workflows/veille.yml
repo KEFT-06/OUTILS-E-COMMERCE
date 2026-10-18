@@ -27,7 +27,8 @@ permissions: {}
 
 jobs:
   veille:
-    runs-on: ubuntu-latest
+    # Version fixée, comme le collecteur : un changement d'image ne doit pas arrêter la veille.
+    runs-on: ubuntu-24.04
     timeout-minutes: 8
     steps:
       - name: Demander un passage de veille au site

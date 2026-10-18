@@ -37,7 +37,9 @@ permissions:
 
 jobs:
   collecte:
-    runs-on: ubuntu-latest
+    # Version fixée : « ubuntu-latest » change de version sans prévenir, et le navigateur s'installe
+    # avec les paquets système de la version. Changer les deux lignes ensemble (ici et la clé du cache).
+    runs-on: ubuntu-24.04
     timeout-minutes: 45
     steps:
       # Avant d'installer un navigateur pour rien : le secret est-il là où un atelier peut le lire ?
@@ -66,7 +68,7 @@ jobs:
         uses: actions/cache@v4
         with:
           path: ~/.cache/ms-playwright
-          key: navigateur-${{ runner.os }}-${{ hashFiles('collecteur/package-lock.json') }}
+          key: navigateur-ubuntu-24.04-${{ hashFiles('collecteur/package-lock.json') }}
       - name: Installer le navigateur
         run: npx --prefix collecteur playwright install --with-deps chromium
       - name: Collecter
