@@ -7,8 +7,10 @@ import { SalesViewToggle, type SalesView } from '@/modules/radar/SalesViewToggle
 import { categoryLabel } from '@/modules/radar/WatchItemsPanel';
 import { apiRequest } from '@/shared/lib/api';
 import { useCachedState } from '@/shared/lib/apiCache';
+import { formatDateFr } from '@/shared/lib/formatDate';
 import { useMoney } from '@/shared/lib/money';
-import type { MarketProduct, MarketSearch } from '@/shared/types/radar';
+import { followableOnRadar } from '@server/shared/storefronts';
+import type { AdvertisedOffer, MarketProduct, MarketSearch } from '@/shared/types/radar';
 import { Button } from '@/shared/ui/button';
 import { Card, CardAction, CardContent, CardDescription, CardHeader, CardTitle } from '@/shared/ui/card';
 import { Skeleton } from '@/shared/ui/skeleton';
@@ -66,6 +68,8 @@ export function NicheProductsPanel({
     [data, vue],
   );
 
+  const offres = data?.advertised ?? [];
+
   return (
     <Card className="border-brand-green-text/40">
       <CardHeader>
@@ -74,7 +78,9 @@ export function NicheProductsPanel({
           {data === null
             ? 'Recherche des produits en vente…'
             : produits.length === 0
-              ? 'Aucun produit en vente sur cette niche dans les boutiques connues.'
+              ? offres.length > 0
+                ? `Aucun produit de cette niche dans les catalogues relevés ; ${offres.length} offre${offres.length > 1 ? 's' : ''} vue${offres.length > 1 ? 's' : ''} en publicité ci-dessous.`
+                : 'Aucun produit en vente sur cette niche dans les boutiques connues, ni aucune publicité sur le mur.'
               : `${produits.length} produit${produits.length > 1 ? 's' : ''} chez ${data.stores} boutique${data.stores > 1 ? 's' : ''}${
                   prixMedian !== null ? ` · prix médian ${money.format(prixMedian, undefined, { round: true })}` : ''
                 }`}
@@ -157,7 +163,92 @@ export function NicheProductsPanel({
             </Table>
           </>
         )}
+
+        {offres.length > 0 && <AdvertisedOffers offers={offres} />}
       </CardContent>
     </Card>
+  );
+}
+
+/** Clé du produit dans l'adresse de l'offre (son nom d'adresse ou son identifiant), pour filtrer le mur dessus. */
+const cleProduit = (landingUrl: string) => {
+  try {
+    const segments = new URL(landingUrl).pathname.split('/').filter(Boolean).filter((segment) => segment.toLowerCase() !== 'checkout');
+    return segments.at(-1) ?? null;
+  } catch {
+    return null;
+  }
+};
+
+/**
+ * Ce que le mur d'espionnage montre de la niche : les offres que ses boutiques paient pour diffuser.
+ * Le Radar les ignorait quand l'index des catalogues n'avait rien — les vitrines Chariow refusent
+ * d'être relues depuis le 11/10/2026 (demande du propriétaire, 18/10/2026 : Radar et Espionnage se
+ * complètent).
+ */
+function AdvertisedOffers({ offers }: { offers: AdvertisedOffer[] }) {
+  const money = useMoney();
+  return (
+    <section className="space-y-2" aria-labelledby="offres-publicite">
+      <h3 id="offres-publicite" className="flex items-center gap-1.5 text-sm font-semibold">
+        <Megaphone className="size-4 text-brand-green-text" aria-hidden="true" />
+        Offres de la niche vues en publicité
+      </h3>
+      <Table>
+        <TableHeader>
+          <TableRow>
+            <TableHead>Offre</TableHead>
+            <TableHead>Boutique</TableHead>
+            <TableHead className="text-right">Publicités</TableHead>
+            <TableHead className="text-right">Diffusée depuis</TableHead>
+            <TableHead />
+          </TableRow>
+        </TableHeader>
+        <TableBody>
+          {offers.map((offer) => {
+            const cle = cleProduit(offer.landingUrl);
+            const mur = `/app/espionnage?boutique=${encodeURIComponent(offer.storeHost)}${cle ? `&produit=${encodeURIComponent(cle)}` : ''}`;
+            return (
+              <TableRow key={`${offer.storeHost}${offer.landingUrl}`}>
+                <TableCell className="max-w-72 min-w-44">
+                  <p className="line-clamp-2 font-medium whitespace-normal" title={offer.title}>
+                    {offer.title}
+                  </p>
+                  {offer.product && (
+                    <p className="text-xs text-muted-foreground tabular-nums">
+                      {offer.product.sales !== null ? `${offer.product.sales.toLocaleString('fr-FR')} vente${offer.product.sales > 1 ? 's' : ''}` : 'Ventes non publiées'}
+                      {offer.product.price !== null && ` · ${money.format(offer.product.price, offer.product.currency, { round: true })}`}
+                      {` · relevé le ${formatDateFr(offer.product.readAt)}`}
+                    </p>
+                  )}
+                </TableCell>
+                <TableCell className="max-w-44">
+                  <a href={`https://${offer.storeHost}`} target="_blank" rel="noreferrer noopener" className="inline-flex max-w-full items-center gap-1 font-medium underline-offset-4 hover:underline">
+                    <span className="truncate">{offer.storeHost}</span>
+                    <ExternalLink className="size-3 shrink-0" aria-hidden="true" />
+                  </a>
+                </TableCell>
+                <TableCell className="text-right whitespace-nowrap tabular-nums">
+                  {offer.activeAds > 0 ? `${offer.activeAds} en cours / ${offer.ads}` : `${offer.ads} (arrêtée${offer.ads > 1 ? 's' : ''})`}
+                </TableCell>
+                <TableCell className="text-right whitespace-nowrap">{offer.longestDays !== null ? dureeLisible(offer.longestDays) : '—'}</TableCell>
+                <TableCell>
+                  <div className="flex flex-nowrap items-center justify-end gap-1.5">
+                    <Button asChild variant="ghost" size="sm">
+                      <Link to={mur}>Publicités</Link>
+                    </Button>
+                    {followableOnRadar(offer.storeHost) && (
+                      <Button asChild variant="ghost" size="sm">
+                        <Link to={`/app/radar?boutique=${encodeURIComponent(offer.storeHost)}`}>Boutique</Link>
+                      </Button>
+                    )}
+                  </div>
+                </TableCell>
+              </TableRow>
+            );
+          })}
+        </TableBody>
+      </Table>
+    </section>
   );
 }

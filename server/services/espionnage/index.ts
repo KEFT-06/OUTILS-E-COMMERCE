@@ -5,6 +5,7 @@ import { spiedAds } from '@server/db/schema';
 import { providers } from '@server/env';
 import { harvestCollectionRuns, lastDiscoveryAt, pendingCollectionRuns } from '@server/services/radar/discovery';
 import { isMetaMediaUrl, storeMissingAvatars, storeMissingThumbnails } from '@server/services/espionnage/media';
+import { type AdRadarData, radarDataForAds } from '@server/services/market/adProducts';
 import { withoutPlaceholders } from '@server/services/espionnage/parse';
 import { runInBackground } from '@server/shared/backgroundWork';
 import { STOREFRONTS, type Storefront } from '@server/shared/storefronts';
@@ -71,6 +72,8 @@ export interface SpiedAdView {
   linkCaption: string | null;
   linkDescription: string | null;
   cards: { title: string | null; body: string | null; linkUrl: string | null; ctaText: string | null }[];
+  /** Ce que le Radar sait du produit annoncé et de sa boutique ; null : rien de relevé. */
+  radar: AdRadarData | null;
 }
 
 export interface EspionnageFilters {
@@ -191,6 +194,7 @@ function viewOf(row: typeof spiedAds.$inferSelect, now: Date): SpiedAdView {
     linkDescription: withoutPlaceholders(row.linkDescription),
     cards: (row.cards ?? []).map((card) => ({ ...card, title: withoutPlaceholders(card.title), body: withoutPlaceholders(card.body) })),
     daysSinceSeen: Math.max(0, Math.floor((now.getTime() - row.lastSeenAt.getTime()) / JOUR_MS)),
+    radar: null,
   };
 }
 
@@ -322,6 +326,7 @@ export async function listSpiedAds(
     l'utilisateur qui souscrit découvre que rien ne change.
   */
   const hiddenByPlan = visibleLimit !== null ? Math.max(0, matching - visibleLimit) : 0;
+  const radar = await radarDataForAds(rows);
 
   const [totaux] = await getDb()
     .select({ total: count(), stores: sql<number>`count(distinct ${spiedAds.storeHost})` })
@@ -348,7 +353,8 @@ export async function listSpiedAds(
     storefronts: parPlateforme.filter((entry) => entry.ads > 0 || entry.id === filters.storefront),
     /** Annonces servies par série : de quoi dire « annonces 101 à 200 sur 380 ». */
     pageSize: limit,
-    ads: rows.map((row) => viewOf(row, now)),
+    // Le Radar complète chaque annonce : produit annoncé, prix, ventes relevées (voir market/adProducts.ts).
+    ads: rows.map((row) => ({ ...viewOf(row, now), radar: radar.get(row.id) ?? null })),
     total: Number(totaux?.total ?? 0),
     stores: Number(totaux?.stores ?? 0),
     lastCollectedAt: (await lastDiscoveryAt())?.toISOString() ?? null,

@@ -4,6 +4,7 @@ import { sansAccents } from '@server/db/search';
 import { discoveredStores, marketProducts, marketSalesDaily, spiedAds } from '@server/db/schema';
 import { chariowStoreSource, sourceFailureOf } from '@server/services/radar/sources/chariowStore';
 import type { RadarObservation } from '@server/services/radar/types';
+import { type AdvertisedOffer, advertisedOffers } from '@server/services/market/adProducts';
 import { adsOfProduct, loadStoreAds, productUrl } from '@server/services/market/productAds';
 import { recordAudit } from '@server/services/audit';
 import { runInBackground } from '@server/shared/backgroundWork';
@@ -371,6 +372,8 @@ export interface MarketSearchView {
   /** Boutiques dont le catalogue est dans l'index, et produits en vente qu'il contient. */
   indexedStores: number;
   indexedProducts: number;
+  /** Offres de la niche vues en publicité sur le mur d'espionnage (voir market/adProducts.ts). */
+  advertised: AdvertisedOffer[];
 }
 
 /** Produits en vente dont le nom porte un mot distinctif de la niche, les plus vendus d'abord. */
@@ -381,7 +384,8 @@ export async function searchMarketProducts(niche: string, limit = 60): Promise<M
     .select({ stores: sql<number>`count(distinct ${marketProducts.storeExternalId})`, products: sql<number>`count(*)` })
     .from(marketProducts)
     .where(isNull(marketProducts.endedAt));
-  const base = { niche, keywords, indexedStores: Number(totaux?.stores ?? 0), indexedProducts: Number(totaux?.products ?? 0) };
+  // Ce que le mur montre de la niche, que l'index en sache quelque chose ou non : le Radar ne reste jamais muet.
+  const base = { niche, keywords, indexedStores: Number(totaux?.stores ?? 0), indexedProducts: Number(totaux?.products ?? 0), advertised: await advertisedOffers(keywords) };
   if (keywords.length === 0) return { ...base, products: [], stores: 0 };
 
   const rows = await db

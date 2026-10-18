@@ -22,7 +22,9 @@ import { apiRequest } from '@/shared/lib/api';
 import { CountryFlag } from '@/shared/components/CountryFlag';
 import { safeHttpUrl } from '@/shared/lib/safeUrl';
 import { cn } from '@/shared/lib/utils';
-import type { LibraryAd } from '@/shared/types/radar';
+import { formatDateFr } from '@/shared/lib/formatDate';
+import { useMoney } from '@/shared/lib/money';
+import type { AdRadarData, LibraryAd } from '@/shared/types/radar';
 import { Button } from '@/shared/ui/button';
 import { Card } from '@/shared/ui/card';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/shared/ui/dialog';
@@ -483,6 +485,7 @@ export function AdCard({
             État contrôlé il y a {ad.daysSinceSeen} jour{ad.daysSinceSeen > 1 ? 's' : ''}
           </p>
         )}
+        <RadarFacts radar={ad.radar} />
         <Button variant="secondary" className="mt-1 h-11 w-full text-base font-medium" onClick={() => onShowDetails(ad)}>
           {recapitulatif ? 'Voir les détails du récapitulatif' : 'Voir les détails de la publicité'}
         </Button>
@@ -631,6 +634,7 @@ export function AdDetailsDialog({
                 </ol>
               </div>
             )}
+            <RadarFacts radar={ad.radar} />
             <div className="flex flex-wrap gap-2">
               {lien && (
                 <Button asChild size="sm">
@@ -693,5 +697,58 @@ export function AdDetailsDialog({
         )}
       </DialogContent>
     </Dialog>
+  );
+}
+
+/**
+ * Ce que le Radar a relevé du produit vers lequel mène l'annonce : ses ventes et son prix, à la date
+ * du relevé. À défaut, ce qu'il sait de la boutique. Rien de relevé : rien d'affiché — pas de case
+ * « inconnu » qui ferait croire à une panne (demande du propriétaire, 18/10/2026 : l'Espionnage et
+ * le Radar se complètent).
+ */
+function RadarFacts({ radar }: { radar: AdRadarData | null | undefined }) {
+  const money = useMoney();
+  const product = radar?.product ?? null;
+  const store = radar?.store && radar.store.products > 0 ? radar.store : null;
+  if (!product && !store) return null;
+  const releve = (iso: string | null) => (iso ? ` · relevé le ${formatDateFr(iso)}` : '');
+  return (
+    <div className="rounded-lg border bg-muted/40 p-3 text-sm">
+      <p className="flex items-center gap-1.5 text-xs font-medium text-muted-foreground">
+        <Radar className="size-3.5" aria-hidden="true" />
+        {product ? 'Produit annoncé, d’après le Radar' : 'Boutique, d’après le Radar'}
+      </p>
+      {product ? (
+        <>
+          <p className="mt-1 truncate font-medium" title={product.name}>
+            {product.name}
+          </p>
+          <p className="mt-0.5 tabular-nums">
+            {product.sales !== null ? (
+              <span className="font-semibold">
+                {product.sales.toLocaleString('fr-FR')} vente{product.sales > 1 ? 's' : ''}
+              </span>
+            ) : (
+              'Ventes non publiées par la boutique'
+            )}
+            {product.price !== null && ` · ${money.format(product.price, product.currency, { round: true })}`}
+          </p>
+          <p className="text-xs text-muted-foreground">
+            {product.ended ? 'Plus en vente au dernier relevé' : 'En vente'}
+            {releve(product.readAt)}
+          </p>
+        </>
+      ) : (
+        store && (
+          <p className="mt-1 tabular-nums">
+            <span className="font-semibold">
+              {store.products.toLocaleString('fr-FR')} produit{store.products > 1 ? 's' : ''} en vente
+            </span>
+            {store.sales !== null && ` · ${store.sales.toLocaleString('fr-FR')} vente${store.sales > 1 ? 's' : ''} relevée${store.sales > 1 ? 's' : ''}`}
+            <span className="block text-xs text-muted-foreground">{releve(store.readAt).replace(/^ · /, '')}</span>
+          </p>
+        )
+      )}
+    </div>
   );
 }

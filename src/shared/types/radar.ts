@@ -170,6 +170,24 @@ export interface SpiedAd {
   linkCaption: string | null;
   linkDescription: string | null;
   cards: { title: string | null; body: string | null; linkUrl: string | null; ctaText: string | null }[];
+  /** Ce que le Radar sait du produit annoncé et de sa boutique (mur seulement) ; null : rien de relevé. */
+  radar?: AdRadarData | null;
+}
+
+/** Ce que le Radar sait du produit qu'une publicité annonce (miroir de server/services/market/adProducts.ts). */
+export interface AdRadarData {
+  product: {
+    name: string;
+    price: number | null;
+    currency: string | null;
+    sales: number | null;
+    salesTracked: number | null;
+    /** Dernier relevé du produit : les chiffres datent de ce jour. */
+    readAt: string;
+    ended: boolean;
+    url: string;
+  } | null;
+  store: { products: number; sales: number | null; readAt: string | null } | null;
 }
 
 /** Annonce quelconque de la bibliothèque (recherche par mot-clé) : sans boutique ni lien parfois. */
@@ -264,6 +282,21 @@ export interface MarketSearch {
   stores: number;
   indexedStores: number;
   indexedProducts: number;
+  /** Offres de la niche vues en publicité sur le mur d'espionnage. Absent : serveur d'avant le 18/10/2026. */
+  advertised?: AdvertisedOffer[];
+}
+
+/** Une offre poussée en publicité dans une niche (miroir de server/services/market/adProducts.ts). */
+export interface AdvertisedOffer {
+  title: string;
+  storeHost: string;
+  storefront: 'chariow' | 'maketou' | 'shopify' | null;
+  landingUrl: string;
+  ads: number;
+  activeAds: number;
+  firstAdAt: string | null;
+  longestDays: number | null;
+  product: NonNullable<AdRadarData['product']> | null;
 }
 
 export interface StorePreviewProduct {
