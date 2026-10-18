@@ -8,7 +8,7 @@ import { AdminErrorAlert, Pagination, PresenceLabel } from '@/features/admin/com
 import { type UserAction, userActionHref, userActionsFor } from '@/features/admin/userActions';
 import { initialsOf, useAuth } from '@/features/auth/AuthContext';
 import { PageHeader } from '@/shared/components/PageHeader';
-import { formatDateFr } from '@/shared/lib/formatDate';
+import { formatDateFr, formatShortDateFr } from '@/shared/lib/formatDate';
 import { formatPhone } from '@server/shared/phone';
 import { Avatar, AvatarFallback } from '@/shared/ui/avatar';
 import { Badge } from '@/shared/ui/badge';
@@ -24,6 +24,10 @@ import { Switch } from '@/shared/ui/switch';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/shared/ui/table';
 
 const PAGE_SIZE = 20;
+
+/** Colonne « Compte » figée à gauche, sur le fond de la carte (et de la ligne survolée). */
+// Plus étroite sur téléphone, sans avatar : la colonne figée y laisse la place de faire défiler les autres.
+const COLONNE_COMPTE = 'sticky left-0 z-10 w-40 min-w-40 max-w-40 bg-card group-hover:bg-muted shadow-[1px_0_0_var(--border)] sm:w-64 sm:min-w-56 sm:max-w-72';
 
 type ListedUser = UserList['users'][number];
 
@@ -224,7 +228,11 @@ export function AdminUsersPage() {
               <Table>
                 <TableHeader>
                   <TableRow>
-                    <TableHead>Compte</TableHead>
+                    {/*
+                      Colonne figée : le tableau défile à l'horizontale sur les écrans étroits, et le
+                      18/10/2026 le propriétaire ne voyait plus que des « ⋯ » sans le nom de leur compte.
+                    */}
+                    <TableHead className={COLONNE_COMPTE}>Compte</TableHead>
                     <TableHead>Téléphone</TableHead>
                     <TableHead>Palier</TableHead>
                     <TableHead className="text-right">Points</TableHead>
@@ -235,10 +243,10 @@ export function AdminUsersPage() {
                 </TableHeader>
                 <TableBody>
                   {data.users.map((user) => (
-                    <TableRow key={user.id}>
-                      <TableCell>
+                    <TableRow key={user.id} className="group">
+                      <TableCell className={COLONNE_COMPTE}>
                         <div className="flex items-center gap-3">
-                          <Avatar className="size-9 rounded-lg">
+                          <Avatar className="size-9 rounded-lg max-sm:hidden">
                             <AvatarFallback className="rounded-lg bg-accent text-xs font-semibold text-accent-foreground">
                               {initialsOf(user.name)}
                             </AvatarFallback>
@@ -278,7 +286,9 @@ export function AdminUsersPage() {
                           {user.status === 'suspended' && <Badge variant="danger">Bloqué</Badge>}
                         </div>
                         {user.planExpiresAt && (
-                          <span className="mt-1 block text-xs text-muted-foreground">jusqu’au {formatDateFr(user.planExpiresAt)}</span>
+                          <span className="mt-1 block text-xs whitespace-nowrap text-muted-foreground" title={`jusqu’au ${formatDateFr(user.planExpiresAt)}`}>
+                            jusqu’au {formatShortDateFr(user.planExpiresAt)}
+                          </span>
                         )}
                       </TableCell>
                       <TableCell className="text-right tabular-nums">
@@ -287,10 +297,12 @@ export function AdminUsersPage() {
                         <span className="block text-xs whitespace-nowrap text-muted-foreground">{user.creditsUsed30d} utilisé{user.creditsUsed30d > 1 ? 's' : ''} sur 30 j</span>
                       </TableCell>
                       <TableCell>
-                        <PresenceLabel online={user.online} lastSeenAt={user.lastSeenAt} />
+                        <PresenceLabel online={user.online} lastSeenAt={user.lastSeenAt} compact />
                       </TableCell>
                       <TableCell className="text-right tabular-nums">{user.generations}</TableCell>
-                      <TableCell className="text-sm whitespace-nowrap text-muted-foreground">{formatDateFr(user.createdAt)}</TableCell>
+                      <TableCell className="text-sm whitespace-nowrap text-muted-foreground" title={formatDateFr(user.createdAt)}>
+                        {formatShortDateFr(user.createdAt)}
+                      </TableCell>
                     </TableRow>
                   ))}
                 </TableBody>

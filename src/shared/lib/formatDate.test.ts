@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { after, describe, it } from 'node:test';
-import { formatDateFr } from '@/shared/lib/formatDate';
+import { formatDateFr, formatShortDateFr } from '@/shared/lib/formatDate';
 
 /**
  * Les dates « de calendrier » (vérification d'une source, mise à jour d'une grille) arrivent
@@ -28,5 +28,15 @@ describe('Date lisible en français', () => {
 
   it('rend telle quelle une entrée qui n’est pas une date', () => {
     assert.equal(formatDateFr('bientôt'), 'bientôt');
+  });
+});
+
+describe('Date courte, pour une colonne de tableau', () => {
+  const maintenant = new Date('2026-10-18T12:00:00');
+  it('mois abrégé ; l’année omise quand l’heure est donnée et que c’est l’année en cours', () => {
+    assert.equal(formatShortDateFr('2026-10-14T16:12:00', false, maintenant), '14 oct. 2026');
+    assert.equal(formatShortDateFr('2026-10-14T16:12:00', true, maintenant), '14 oct., 16:12');
+    assert.equal(formatShortDateFr('2025-10-14T16:12:00', true, maintenant), '14 oct. 2025, 16:12');
+    assert.equal(formatShortDateFr('pas une date'), 'pas une date');
   });
 });

@@ -4,7 +4,7 @@ import { Copy, RefreshCw, TriangleAlert } from 'lucide-react';
 import { toast } from 'sonner';
 import type { Granularity } from '@/features/admin/adminApi';
 import type { ApiError } from '@/shared/lib/apiError';
-import { formatDateFr, formatRelativeFr } from '@/shared/lib/formatDate';
+import { formatDateFr, formatRelativeFr, formatShortDateFr } from '@/shared/lib/formatDate';
 import { cn } from '@/shared/lib/utils';
 import { Alert, AlertDescription, AlertTitle } from '@/shared/ui/alert';
 import { Button } from '@/shared/ui/button';
@@ -106,11 +106,14 @@ export function GranularityToggle({ value, onChange }: { value: Granularity; onC
   );
 }
 
-export function PresenceLabel({ online, lastSeenAt }: { online: boolean; lastSeenAt: string | null }) {
+/** `compact` : pour une colonne de tableau — « Vu 14 oct., 16:12 », la date longue en info-bulle. */
+export function PresenceLabel({ online, lastSeenAt, compact = false }: { online: boolean; lastSeenAt: string | null; compact?: boolean }) {
+  const recent = lastSeenAt !== null && Date.now() - new Date(lastSeenAt).getTime() < 24 * 3_600_000;
+  const vu = lastSeenAt ? (compact && !recent ? formatShortDateFr(lastSeenAt, true) : formatRelativeFr(lastSeenAt)) : null;
   return (
-    <span className="inline-flex items-center gap-1.5 text-sm whitespace-nowrap">
+    <span className="inline-flex items-center gap-1.5 text-sm whitespace-nowrap" title={!online && lastSeenAt ? `Vu ${formatDateFr(lastSeenAt, true)}` : undefined}>
       <span className={cn('size-2 shrink-0 rounded-full', online ? 'bg-success' : 'bg-muted-foreground/40')} aria-hidden="true" />
-      {online ? 'En ligne' : lastSeenAt ? `Vu ${formatRelativeFr(lastSeenAt)}` : 'Hors ligne'}
+      {online ? 'En ligne' : vu ? `Vu ${vu}` : 'Hors ligne'}
     </span>
   );
 }

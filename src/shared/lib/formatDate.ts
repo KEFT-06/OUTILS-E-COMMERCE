@@ -10,6 +10,20 @@ export function formatRelativeFr(iso: string, now = Date.now()): string {
   return formatDateFr(iso, true);
 }
 
+/**
+ * Date courte, pour une colonne de tableau : « 14 oct. 2026 » ; l'année est omise quand c'est
+ * l'année en cours et que l'heure est demandée (« 14 oct., 16:12 »). La date longue reste à donner
+ * en info-bulle.
+ */
+export function formatShortDateFr(iso: string, withTime = false, now = new Date()): string {
+  const date = new Date(iso);
+  if (Number.isNaN(date.getTime())) return iso;
+  const sameYear = date.getFullYear() === now.getFullYear();
+  return withTime
+    ? date.toLocaleString('fr-FR', { day: 'numeric', month: 'short', ...(sameYear ? {} : { year: 'numeric' }), hour: '2-digit', minute: '2-digit' })
+    : date.toLocaleDateString('fr-FR', { day: 'numeric', month: 'short', year: 'numeric' });
+}
+
 /** Date lisible en français ; renvoie l'entrée telle quelle si elle n'est pas une date. */
 export function formatDateFr(iso: string, withTime = false): string {
   // « 2026-09-23 » seul est lu par JavaScript comme minuit UTC : à l'ouest de Greenwich
