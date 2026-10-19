@@ -195,7 +195,7 @@ describe('Couvertures et visuels — quel fournisseur, et avec quelle consigne',
     await generateImage({ prompt: 'un panier de mangues sur une table', aspectRatio: '9:16' });
 
     const call = cloudflareCalls.at(-1)!;
-    assert.equal(call.model, '@cf/black-forest-labs/flux-2-klein-9b', 'le modèle de qualité du catalogue Cloudflare');
+    assert.equal(call.model, '@cf/black-forest-labs/flux-2-klein-4b', 'le modèle de qualité : gratuit dans la franchise quotidienne (≈ 95 images)');
     // Mesuré sur la vraie API : un corps JSON est refusé par un 400 « required properties at
     // '/' are 'multipart' ». Rien ne l'annonce ailleurs que dans ce message d'erreur.
     assert.equal(call.contentType, 'multipart/form-data', 'la famille FLUX.2 n’accepte que le multipart');

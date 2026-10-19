@@ -251,11 +251,23 @@ const schema = z.object({
    * celui de qualité accepte un format libre (couverture verticale) ; le rapide ne produit que
    * du carré 1024 et REFUSE width/height, mais coûte une vingtaine de fois moins.
    *
-   * Le modèle de qualité est FLUX.2 [klein] 9B. Comparé le 24 septembre 2026 sur une même
-   * consigne publicitaire en 720×1280, contre Lucid Origin, Phoenix 1.0, FLUX.2 [dev] et
-   * FLUX.2 [klein] 4B : meilleure composition, et 0,015 $ l'image contre 0,034 $ pour Lucid
-   * Origin qu'il remplace. Le 4B coûte quinze fois moins mais a dessiné un logo de marque sur
-   * l'écran d'un ordinateur — inacceptable dans un visuel publicitaire destiné à un client.
+   * Le modèle de qualité est FLUX.2 [klein] 4B depuis le 19/10/2026, à la demande du
+   * propriétaire : des images GRATUITES. La franchise quotidienne de Cloudflare (10 000
+   * neurones) en donne environ 95 en 4B (≈ 104 neurones l'image d'un mégapixel), contre
+   * environ 7 en 9B (≈ 1 364) ; et les crédits Google du secours sont épuisés. Licence
+   * Apache 2.0 : usage commercial permis, quand le 9B est sous licence non commerciale.
+   *
+   * Comparé ce jour-là, sur l'API et avec les consignes du site (couverture, visuel publicitaire,
+   * scène avec ordinateur et téléphone) :
+   *   · le 4B a respecté « aucun texte » et le tiers haut vide des couvertures ; le 9B a écrit un
+   *     faux titre sur un visuel publicitaire — un tirage chacun, aucun n'est infaillible ;
+   *   · le 4B remplit parfois les écrans d'une interface aux caractères illisibles, quand le 9B
+   *     les laisse vides ; aucun logo de marque sur ses deux tirages avec garde-fous (le
+   *     24/09/2026, un tirage sans ces garde-fous en avait dessiné un : ils restent obligatoires) ;
+   *   · le 4B est plus lent chez Cloudflare : 16 à 40 s l'image, contre 3 à 6 s pour le 9B — le
+   *     nombre d'étapes n'y change rien (mesuré à 4 et à 20), et le prix non plus.
+   * Sur l'offre payante de Cloudflare (Workers Paid), le 9B coûte ≈ 0,015 $ l'image et répond plus
+   * vite : CLOUDFLARE_IMAGE_MODEL=@cf/black-forest-labs/flux-2-klein-9b le remet.
    *
    * Attention en changeant cette valeur : la famille FLUX.2 n'accepte QUE le multipart, là où
    * les autres veulent du JSON (voir `encodeRequest`), et Phoenix répond les octets du JPEG au
@@ -268,7 +280,7 @@ const schema = z.object({
   CLOUDFLARE_AI_TOKEN: z.string().min(1).optional(),
   /** Surchargeable pour tester contre un serveur factice. */
   CLOUDFLARE_AI_URL: z.string().url().default('https://api.cloudflare.com/client/v4'),
-  CLOUDFLARE_IMAGE_MODEL: z.string().regex(/^@?[\w./-]+$/).default('@cf/black-forest-labs/flux-2-klein-9b'),
+  CLOUDFLARE_IMAGE_MODEL: z.string().regex(/^@?[\w./-]+$/).default('@cf/black-forest-labs/flux-2-klein-4b'),
   CLOUDFLARE_IMAGE_MODEL_FAST: z.string().regex(/^@?[\w./-]+$/).default('@cf/black-forest-labs/flux-1-schnell'),
   /**
    * Rendu vidéo par fal.ai, payé à l'usage : 0,35 $ les cinq secondes, puis 0,07 $ par seconde,

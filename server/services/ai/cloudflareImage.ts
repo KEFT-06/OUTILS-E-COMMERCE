@@ -7,9 +7,10 @@ import type { ImageAspectRatio, ImageResult } from '@server/services/ai/imageTyp
  *
  * Deux modèles, parce qu'ils ne savent pas la même chose :
  *
- *  - « quality » (Leonardo Lucid Origin) accepte une largeur et une hauteur libres. C'est le seul
- *    des deux capable de produire une couverture verticale. Il coûte une vingtaine de fois plus
- *    cher que l'autre : réservé aux images vues de près, à l'unité.
+ *  - « quality » (FLUX.2 [klein] 4B, voir CLOUDFLARE_IMAGE_MODEL) accepte une largeur et une
+ *    hauteur libres. C'est le seul des deux capable de produire une couverture verticale. Il se
+ *    paie à la tuile de sortie (≈ 104 neurones le mégapixel) : ≈ 95 images par jour dans la
+ *    franchise gratuite.
  *  - « fast » (FLUX.1 schnell) ne produit que du carré : il REFUSE width et height, la requête
  *    échoue avec « Additional or unevaluated properties not allowed ». Mesuré sur l'API, pas
  *    déduit de la documentation. Il sert aux séries — les pages intérieures d'un conte.
@@ -47,8 +48,9 @@ const DIMENSIONS: Record<ImageAspectRatio, { width: number; height: number }> = 
 const FAST_ONLY_RATIO: ImageAspectRatio = '1:1';
 
 /**
- * Ce que le modèle ne doit pas dessiner. Lucid Origin écrit volontiers un titre inventé dès que
- * la description ressemble à une couverture de livre ; la consigne négative le retient.
+ * Ce que le modèle ne doit pas dessiner. Les modèles d'images écrivent volontiers un titre inventé
+ * dès que la description ressemble à une couverture de livre (constaté sur Lucid Origin, puis sur
+ * FLUX.2 [klein] le 19/10/2026) ; la consigne négative et les garde-fous de la consigne le retiennent.
  */
 const NEGATIVE_PROMPT =
   'text, letters, words, typography, title, caption, signage, watermark, logo, book cover layout, ' +
