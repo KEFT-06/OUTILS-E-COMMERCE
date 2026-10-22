@@ -1,4 +1,4 @@
-import { askClaude, claudeConfigured } from '@server/services/ai/claude';
+import { askGroq, groqConfigured } from '@server/services/ai/groq';
 
 /**
  * Direction artistique d'une couverture : la fiche de l'ouvrage devient la scène à peindre.
@@ -108,9 +108,9 @@ const ATTEMPT_MS = 25_000;
  * consigne lui-même. Ne lève jamais.
  */
 export async function coverArtDirection(book: CoverBook): Promise<string | null> {
-  if (!claudeConfigured()) return null;
+  if (!groqConfigured()) return null;
   try {
-    const answer = await askClaude({
+    const answer = await askGroq({
       system: COVER_DIRECTOR_SYSTEM,
       prompt: coverDirectorBrief(book),
       // Large : ce plafond couvre aussi la réflexion du modèle. La longueur est fixée par la consigne.

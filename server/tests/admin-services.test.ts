@@ -33,7 +33,7 @@ describe('État des services', () => {
     };
 
     const byId = Object.fromEntries(report.services.map((service) => [service.id, service]));
-    assert.deepEqual(Object.keys(byId).sort(), ['ad-collection', 'chariow', 'claude', 'database', 'email', 'gamma', 'gemini', 'images', 'market-reading', 'perplexity', 'radar', 'sebpay', 'storefronts', 'stripe', 'veo', 'video-archive']);
+    assert.deepEqual(Object.keys(byId).sort(), ['ad-collection', 'chariow', 'database', 'email', 'gamma', 'gemini', 'groq', 'images', 'market-reading', 'perplexity', 'radar', 'sebpay', 'storefronts', 'stripe', 'veo', 'video-archive']);
     // Sans clé Firecrawl, la ligne dit que la plateforme refuse le serveur, et quelle variable ajouter.
     assert.equal(byId.storefronts!.state, 'warning');
     assert.match(byId.storefronts!.action ?? '', /FIRECRAWL_API_KEY/);
@@ -51,8 +51,8 @@ describe('État des services', () => {
     assert.match(byId.database!.action ?? '', /Transaction pooler/);
     assert.equal(byId.perplexity!.state, 'error', 'sans Perplexity, l’analyse est refusée');
     assert.equal(byId.gamma!.state, 'off');
-    assert.equal(byId.claude!.state, 'off', 'sans clé, la direction artistique est simplement absente');
-    assert.match(byId.claude!.detail, /couvertures se font/, 'et la ligne dit que rien n’est cassé');
+    assert.equal(byId.groq!.state, 'off', 'sans clé, la direction artistique est simplement absente');
+    assert.match(byId.groq!.detail, /couvertures se font/, 'et la ligne dit que rien n’est cassé');
     assert.equal(byId.stripe!.state, 'off');
     assert.equal(byId.email!.state, 'off');
     assert.match(byId.email!.action ?? '', /Brevo/);

@@ -11,7 +11,7 @@ import { getRulesMetadata } from '@server/services/compliance';
 import { asComplianceRouteError } from '@server/services/compliance/guard';
 import { imagesConfigured } from '@server/services/creatives';
 import { CreditConfigUnavailableError, getCostTable } from '@server/services/credits';
-import { claudeConfigured } from '@server/services/ai/claude';
+import { groqConfigured } from '@server/services/ai/groq';
 import { veoConfigured } from '@server/services/veo';
 import { convertAmount, currencyForCountry, getRates, isSupportedCurrency } from '@server/services/currency';
 import { LaunchKitUnavailableError, getLaunchKitConfig } from '@server/services/launchKit';
@@ -89,7 +89,7 @@ catalogRouter.get(
       status: database ? 'ok' : 'degraded',
       database,
       providers: {
-        text: providers.gemini,
+        text: providers.gemini || providers.groq,
         /*
           Ces deux indicateurs lisaient encore `providers.higgsfield`, fournisseur abandonné :
           en production, l'écran annonçait vidéos et couvertures indisponibles alors que Veo
@@ -103,7 +103,7 @@ catalogRouter.get(
         payments: providers.payments,
         googleAuth: providers.googleAuth,
         // Maquette et relecture des couvertures : sans elle, une couverture se fait quand même, plus simple.
-        artDirection: claudeConfigured(),
+        artDirection: groqConfigured(),
         // Collecte et recherche publicitaires (Apify) : sans elle, l'espionnage ne se remplit pas.
         adLibrary: providers.apify,
         // Vitrines des boutiques lues par Firecrawl : sans elle, le radar les lit directement (refusé depuis le 11/10/2026).

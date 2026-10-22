@@ -146,42 +146,29 @@ async function createCover(agent: request.Agent) {
 
 describe('Couvertures et visuels — quel fournisseur, et avec quelle consigne', () => {
   /*
-    Une couverture part chez le modèle premium, comme un visuel publicitaire.
-
-    Elle allait chez Cloudflare tant qu'on la voyait comme une page de garde, lue par son
-    seul auteur. C'est faux : une couverture est la première chose qu'on voit d'un produit,
-    la seule qu'on voie avant de décider de l'ouvrir, et celle que l'auteur montre pour
-    vendre. Son auteur n'en est pas le seul lecteur.
-
-    Ce que ce test protège n'a pas changé de nature pour autant — la consigne reste la même,
-    quel que soit le modèle, et c'est elle qui empêche un titre inventé.
+    Couvertures et créatifs : FLUX (Cloudflare) d'abord — pile gratuite Smart Translator.
+    La consigne reste la même quel que soit le modèle : c'est elle qui empêche un titre inventé.
   */
-  it('confie la couverture au modèle premium, sans jamais lui présenter le sujet comme un titre', async () => {
+  it('confie la couverture à FLUX, sans jamais lui présenter le sujet comme un titre', async () => {
     cloudflareMode = 'ok';
     const avantCloudflare = cloudflareCalls.length;
+    const avantGemini = geminiImageCalls.length;
     const agent = await author('couverture-premium@exemple.com');
     const response = await createCover(agent);
     assert.equal(response.body.cover.status, 'ready');
 
-    assert.equal(cloudflareCalls.length, avantCloudflare, 'Cloudflare n’est pas appelé pour une couverture');
-    const prompt = geminiImageCalls.at(-1)!.prompt;
+    assert.equal(cloudflareCalls.length, avantCloudflare + 1, 'la couverture part chez FLUX');
+    assert.equal(geminiImageCalls.length, avantGemini, 'Gemini image n’est pas appelé');
+    const prompt = cloudflareCalls.at(-1)!.prompt;
 
-    /*
-      Le cœur du correctif d'origine, et il vaut plus encore ici : le sujet reste nécessaire
-      au modèle, mais il ne lui est pas présenté COMME un titre. Sur la vraie API,
-      « Cover artwork for a guide titled "…" » rendait une maquette complète, titre compris,
-      en caractères inventés. Le modèle premium écrit encore plus volontiers que l'autre —
-      mesuré : sur une consigne nue, il ajoute un slogan et un logo de marque réelle.
-    */
     assert.doesNotMatch(prompt, /titled|book cover|cover artwork/i, 'rien ne présente le sujet comme un titre');
     assert.ok(!prompt.includes(`"${GUIDE.title}"`), 'le sujet n’est jamais cité entre guillemets');
     assert.match(prompt, /no text, no letters, no numbers/);
     assert.match(prompt, /upper third stays calm and empty/, 'la place du titre est réservée dans l’image');
     assert.match(prompt, /Cameroun/, 'la scène est ancrée dans le pays du compte');
 
-    // Le format est reconnu aux premiers octets : aucun fournisseur ne le déclare.
     const image = await agent.get(`/api/covers/${response.body.cover.id as string}/image`).buffer(true).expect(200);
-    assert.equal(image.headers['content-type'], 'image/png');
+    assert.equal(image.headers['content-type'], 'image/jpeg');
   });
 
   /*
@@ -285,7 +272,7 @@ describe('Visuels publicitaires produits chez nous', () => {
 
     Une couverture de PDF, elle, reste chez Cloudflare : son auteur est son seul lecteur.
   */
-  it('confie le visuel au modèle premium, puis le garde et le sert depuis notre origine', async () => {
+  it('confie le visuel à FLUX, puis le garde et le sert depuis notre origine', async () => {
     cloudflareMode = 'ok';
     const avantCloudflare = cloudflareCalls.length;
     const avantGemini = geminiImageCalls.length;
@@ -295,12 +282,12 @@ describe('Visuels publicitaires produits chez nous', () => {
     assert.equal(lance.body.status, 'completed', 'l’image est rendue dans la réponse, pas mise en file');
     assert.equal(lance.body.mediaType, 'image');
 
-    assert.equal(geminiImageCalls.length, avantGemini + 1, 'le visuel part chez le modèle premium');
-    assert.equal(cloudflareCalls.length, avantCloudflare, 'et Cloudflare n’est pas appelé pour rien');
+    assert.equal(cloudflareCalls.length, avantCloudflare + 1, 'le visuel part chez FLUX');
+    assert.equal(geminiImageCalls.length, avantGemini, 'Gemini image n’est pas appelé');
 
-    // Les deux lignes de garde voyagent avec la consigne : sans elles, ce modèle ajoute de
+    // Les deux lignes de garde voyagent avec la consigne : sans elles, le modèle ajoute de
     // lui-même un slogan et le logo d'une marque réelle. Mesuré, pas supposé.
-    const consigne = geminiImageCalls.at(-1)!.prompt;
+    const consigne = cloudflareCalls.at(-1)!.prompt;
     assert.match(consigne, /No text anywhere: no captions, labels, headings, speech bubbles, logos or watermarks/);
     assert.match(consigne, /No real brand logos/);
     /*

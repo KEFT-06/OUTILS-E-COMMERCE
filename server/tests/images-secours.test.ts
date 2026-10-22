@@ -5,22 +5,23 @@ import { after, before, beforeEach, describe, it } from 'node:test';
 import { closeTestApp, createTestApp } from './support/helpers';
 
 /**
- * Images : un « trop de demandes » chez Google ne doit plus finir en erreur devant l'auteur
- * (couverture refusée le 29/09/2026 avec « service d'images très demandé »). Les modèles Nano
- * Banana ont chacun leurs limites : on passe de l'un à l'autre, puis, en dernier recours, à
- * l'autre moteur. Faux fournisseurs seulement.
+ * Images : FLUX (Cloudflare) d'abord, Gemini en secours. Un « trop de demandes » chez
+ * Google ne doit plus finir en erreur devant l'auteur. Faux fournisseurs seulement.
  */
 
 const PNG = 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==';
 const QUOTA = { error: { code: 429, status: 'RESOURCE_EXHAUSTED', message: 'You exceeded your current quota, please check your plan and billing details.' } };
 const IMAGE = { candidates: [{ content: { parts: [{ inlineData: { mimeType: 'image/png', data: PNG } }] } }] };
+const CF_QUOTA = { success: false, errors: [{ code: 3009, message: 'Quota exceeded: daily neuron limit' }] };
 
 /** Réponse de chaque modèle Gemini ; absent : image rendue. */
 let geminiAnswers: Record<string, { status: number; body: unknown }> = {};
 let geminiCalls: string[] = [];
 let cloudflareCalls = 0;
-/** Nombre d'images que le second moteur « écarte » avant d'en rendre une. */
+/** Nombre d'images que Cloudflare « écarte » avant d'en rendre une. */
 let cloudflareFlags = 0;
+/** Si vrai, Cloudflare refuse pour quota (déclenche le secours Gemini). */
+let cloudflareQuota = false;
 const FLAGGED = { success: false, errors: [{ code: 3030, message: 'AiError: Your output has been flagged. Please choose another prompt / input image combination' }] };
 
 const fake = createServer((req, res) => {
@@ -39,6 +40,7 @@ const fake = createServer((req, res) => {
     }
     if ((req.url ?? '').includes('/ai/run/')) {
       cloudflareCalls += 1;
+      if (cloudflareQuota) return send(429, CF_QUOTA);
       if (cloudflareCalls <= cloudflareFlags) return send(400, FLAGGED);
       return send(200, { success: true, result: { image: PNG } });
     }
@@ -68,6 +70,7 @@ beforeEach(() => {
   geminiCalls = [];
   cloudflareCalls = 0;
   cloudflareFlags = 0;
+  cloudflareQuota = false;
 });
 
 const premium = async () => {
@@ -75,16 +78,25 @@ const premium = async () => {
   return generateImage({ prompt: 'Couverture d’un guide de musculation', aspectRatio: '9:16', tier: 'premium' });
 };
 
-describe('Images — modèles de secours', () => {
-  it('passe au Nano Banana suivant quand le premier a atteint sa limite', async () => {
+describe('Images — FLUX d’abord, modèles de secours', () => {
+  it('confie premium à Cloudflare (FLUX) sans appeler Gemini', async () => {
+    const image = await premium();
+    assert.equal(cloudflareCalls, 1);
+    assert.equal(geminiCalls.length, 0);
+    assert.ok(image.bytes.length > 0);
+  });
+
+  it('passe au Nano Banana suivant quand Cloudflare est à sec et le premier Gemini a atteint sa limite', async () => {
+    cloudflareQuota = true;
     geminiAnswers = { 'gemini-3-pro-image': { status: 429, body: QUOTA } };
     const image = await premium();
     assert.equal(image.model, 'gemini-3.1-flash-image', 'le modèle qui a rendu l’image est tracé');
+    assert.equal(cloudflareCalls, 1);
     assert.deepEqual(geminiCalls, ['gemini-3-pro-image', 'gemini-3.1-flash-image'], 'un refus de débit ne se réessaie pas sur le même modèle');
-    assert.equal(cloudflareCalls, 0);
   });
 
-  it('réessaie une surcharge une fois, puis continue la chaîne', async () => {
+  it('réessaie une surcharge Gemini une fois, puis continue la chaîne, après quota Cloudflare', async () => {
+    cloudflareQuota = true;
     geminiAnswers = {
       'gemini-3-pro-image': { status: 503, body: { error: { status: 'UNAVAILABLE' } } },
       'gemini-3.1-flash-image': { status: 429, body: QUOTA },
@@ -94,24 +106,7 @@ describe('Images — modèles de secours', () => {
     assert.deepEqual(geminiCalls, ['gemini-3-pro-image', 'gemini-3-pro-image', 'gemini-3.1-flash-image', 'gemini-2.5-flash-image']);
   });
 
-  it('se replie sur l’autre moteur quand tous les Nano Banana refusent', async () => {
-    geminiAnswers = Object.fromEntries(['gemini-3-pro-image', 'gemini-3.1-flash-image', 'gemini-2.5-flash-image'].map((model) => [model, { status: 429, body: QUOTA }]));
-    const image = await premium();
-    assert.equal(cloudflareCalls, 1, 'l’image est rendue au lieu d’une erreur');
-    assert.ok(image.bytes.length > 0);
-  });
-
-  it('passe tout de suite à l’autre moteur quand le projet Google n’a plus de crédit', async () => {
-    const CREDITS = { error: { code: 429, status: 'RESOURCE_EXHAUSTED', message: 'Your prepayment credits are depleted. Please go to AI Studio to manage your project and billing.' } };
-    geminiAnswers = Object.fromEntries(['gemini-3-pro-image', 'gemini-3.1-flash-image', 'gemini-2.5-flash-image'].map((model) => [model, { status: 429, body: CREDITS }]));
-    const image = await premium();
-    assert.deepEqual(geminiCalls, ['gemini-3-pro-image'], 'les autres Nano Banana partagent le projet : inutile de les essayer');
-    assert.equal(cloudflareCalls, 1);
-    assert.ok(image.bytes.length > 0);
-  });
-
-  it('refait une image écartée par le filtre du second moteur, au lieu d’accuser la description', async () => {
-    // Mesuré le 04/10/2026 : une consigne anodine « signalée » par ce moteur, rendue sans difficulté par l'autre.
+  it('refait une image écartée par le filtre Cloudflare, au lieu d’accuser la description', async () => {
     cloudflareFlags = 1;
     const { generateImage } = await import('@server/services/ai/image');
     const image = await generateImage({ prompt: 'Une formatrice devant son ordinateur', aspectRatio: '3:4', tier: 'quality' });
@@ -120,7 +115,7 @@ describe('Images — modèles de secours', () => {
     assert.ok(image.bytes.length > 0);
   });
 
-  it('passe à l’autre moteur quand le filtre écarte deux tirages de suite', async () => {
+  it('passe à Gemini quand le filtre Cloudflare écarte deux tirages de suite', async () => {
     cloudflareFlags = 2;
     const { generateImage } = await import('@server/services/ai/image');
     const image = await generateImage({ prompt: 'Une formatrice devant son ordinateur', aspectRatio: '3:4', tier: 'quality' });
@@ -129,10 +124,11 @@ describe('Images — modèles de secours', () => {
     assert.equal(image.model, 'gemini-3-pro-image');
   });
 
-  it('ne se replie pas sur une description refusée : l’autre moteur la refuserait de même', async () => {
+  it('ne se replie pas plus loin sur une description refusée par Gemini après quota Cloudflare', async () => {
+    cloudflareQuota = true;
     geminiAnswers = { 'gemini-3-pro-image': { status: 200, body: { promptFeedback: { blockReason: 'SAFETY' } } } };
     await assert.rejects(premium(), (error: { code?: string }) => error.code === 'GEMINI_IMAGE_BLOCKED');
-    assert.equal(cloudflareCalls, 0);
+    assert.equal(cloudflareCalls, 1);
     assert.deepEqual(geminiCalls, ['gemini-3-pro-image']);
   });
 });

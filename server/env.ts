@@ -114,9 +114,25 @@ const schema = z.object({
     .regex(/^[\w.-]+$/)
     .default('gemini-3.8-flash-lite-tts'),
   /**
-   * Direction artistique des couvertures (Anthropic) : elle écrit la scène que le moteur d'images
-   * peint. Optionnelle — sans elle, la consigne est composée par le serveur, comme auparavant.
+   * Direction artistique et consignes FLUX (Groq) : écrit la scène / maquette que le moteur
+   * d'images peint, et les consignes courtes. Optionnelle — sans elle, la consigne est composée
+   * par le serveur. Remplace Claude (CLAUDE_* ci-dessous, déprécié, ignoré).
    */
+  GROQ_API_KEY: z.string().min(1).optional(),
+  GROQ_API_URL: z.string().url().default('https://api.groq.com'),
+  GROQ_MODEL: z
+    .string()
+    .regex(/^[\w./-]+$/)
+    .default('llama-3.3-70b-versatile'),
+  /**
+   * Modèle vision pour la relecture d'une couverture rendue. Sans lui, relecture désactivée
+   * (la couverture part telle quelle). Défaut : Llama 4 Scout (vision) chez Groq.
+   */
+  GROQ_VISION_MODEL: z
+    .string()
+    .regex(/^[\w./-]+$/)
+    .default('meta-llama/llama-4-scout-17b-16e-instruct'),
+  /** @deprecated Remplacé par GROQ_*. Conservé pour ne pas casser un .env existant ; ignoré. */
   CLAUDE_API_KEY: z.string().min(1).optional(),
   CLAUDE_API_URL: z.string().url().default('https://api.anthropic.com'),
   CLAUDE_MODEL: z
@@ -738,7 +754,9 @@ export const listenHost = env.HOST || (isProd ? '0.0.0.0' : '127.0.0.1');
 /** Vrai si la clé du fournisseur est présente. Aucune route ne doit la lire directement. */
 export const providers = {
   gemini: Boolean(env.GEMINI_API_KEY),
-  claude: Boolean(env.CLAUDE_API_KEY),
+  groq: Boolean(env.GROQ_API_KEY),
+  /** @deprecated Alias de `groq` — plus aucun chemin n'utilise Claude. */
+  claude: Boolean(env.GROQ_API_KEY),
   webSearch: Boolean(env.PERPLEXITY_API_KEY),
   email: Boolean(env.EMAIL_PROVIDER && env.EMAIL_API_KEY && env.EMAIL_FROM),
   payments: Boolean(env.STRIPE_API_KEY && !env.STRIPE_API_KEY.trim().startsWith('pk_')),

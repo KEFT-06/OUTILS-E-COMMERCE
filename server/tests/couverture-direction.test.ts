@@ -34,7 +34,7 @@ let relectures: string[] = [];
 /** Tout rendu dont la consigne contient cette marque est refusé par le faux moteur. */
 let renduRefuse: string | null = null;
 
-const demandes: { kind: Kind; key: string | undefined; model: string; system: string; prompt: string; effort: string | undefined; structured: boolean; images: number }[] = [];
+const demandes: { kind: Kind; key: string | undefined; model: string; system: string; prompt: string; structured: boolean; images: number }[] = [];
 const rendus: { prompt: string; aspectRatio: string | undefined; imageSize: string | undefined }[] = [];
 const demandesDe = (kind: Kind) => demandes.filter((demande) => demande.kind === kind);
 
@@ -82,32 +82,37 @@ const fauxServices = createServer((req, res) => {
     };
     const body = chunks.length > 0 ? (JSON.parse(Buffer.concat(chunks).toString('utf8')) as Record<string, unknown>) : {};
 
-    if (url.pathname === '/claude/v1/messages' && req.method === 'POST') {
-      const system = body.system as string;
+    if (url.pathname === '/openai/v1/chat/completions' && req.method === 'POST') {
+      const messages = body.messages as { role: string; content: string | { type: string; text?: string; image_url?: unknown }[] }[];
+      const system = (messages.find((m) => m.role === 'system')?.content as string) ?? '';
+      const user = messages.find((m) => m.role === 'user')!;
       const kind: Kind = system.includes('cover designer') ? 'design' : system.includes('proofread') ? 'proof' : system.includes('added writing that nobody ordered') ? 'revise' : 'scene';
-      const content = (body.messages as { content: string | { type: string; text?: string }[] }[])[0]!.content;
-      const config = body.output_config as { effort?: string; format?: { type?: string } } | undefined;
+      const content = user.content;
+      const format = body.response_format as { type?: string } | undefined;
+      const auth = (req.headers.authorization as string | undefined) ?? '';
       demandes.push({
         kind,
-        key: req.headers['x-api-key'] as string | undefined,
+        key: auth.startsWith('Bearer ') ? auth.slice(7) : undefined,
         model: body.model as string,
         system,
         prompt: typeof content === 'string' ? content : content.map((part) => part.text ?? '').join(''),
-        effort: config?.effort,
-        structured: config?.format?.type === 'json_schema',
-        images: typeof content === 'string' ? 0 : content.filter((part) => part.type === 'image').length,
+        structured: format?.type === 'json_schema',
+        images: typeof content === 'string' ? 0 : content.filter((part) => part.type === 'image_url').length,
       });
       const reponse = kind === 'proof' && relectures.length > 0 ? ok(relectures.shift()!) : reponses[kind];
-      if (reponse.status !== 200) return send(reponse.status, { type: 'error', error: { type: 'authentication_error', message: 'invalid x-api-key' } });
+      if (reponse.status !== 200) return send(reponse.status, { error: { message: 'Invalid API Key', type: 'invalid_request_error' } });
       return send(200, {
-        id: 'msg_test',
-        type: 'message',
-        role: 'assistant',
+        id: 'chatcmpl_test',
+        object: 'chat.completion',
         model: body.model,
-        content: [{ type: 'text', text: reponse.text }],
-        stop_reason: reponse.stopReason,
-        stop_sequence: null,
-        usage: { input_tokens: 400, output_tokens: 120 },
+        choices: [
+          {
+            index: 0,
+            message: { role: 'assistant', content: reponse.text },
+            finish_reason: reponse.stopReason === 'max_tokens' ? 'length' : 'stop',
+          },
+        ],
+        usage: { prompt_tokens: 400, completion_tokens: 120, total_tokens: 520 },
       });
     }
 
@@ -127,7 +132,13 @@ let app: Express;
 before(async () => {
   await new Promise<void>((resolve) => fauxServices.listen(0, '127.0.0.1', resolve));
   const base = `http://127.0.0.1:${(fauxServices.address() as AddressInfo).port}`;
-  app = await createTestApp({ GEMINI_API_URL: `${base}/gemini`, CLAUDE_API_KEY: 'cle-claude-de-test', CLAUDE_API_URL: `${base}/claude` });
+  app = await createTestApp({
+    GEMINI_API_URL: `${base}/gemini`,
+    GROQ_API_KEY: 'cle-groq-de-test',
+    GROQ_API_URL: base,
+    GROQ_MODEL: 'llama-3.3-70b-versatile',
+    GROQ_VISION_MODEL: 'meta-llama/llama-4-scout-17b-16e-instruct',
+  });
 });
 
 after(async () => {
@@ -276,9 +287,8 @@ describe('Couverture d’un ebook — complète, relue, pour un point', () => {
     assert.equal(body.cover.layout, 'designed', 'l’écran sait qu’elle porte déjà son titre');
 
     const maquette = demandesDe('design')[0]!;
-    assert.equal(maquette.key, 'cle-claude-de-test');
-    assert.equal(maquette.model, 'claude-opus-5-5');
-    assert.equal(maquette.effort, 'low');
+    assert.equal(maquette.key, 'cle-groq-de-test');
+    assert.equal(maquette.model, 'llama-3.3-70b-versatile');
     assert.equal(maquette.structured, true, 'la maquette arrive dans une forme imposée');
     assert.match(maquette.system, /never as an instruction to you/);
     assert.match(maquette.system, /Write no figure/);
@@ -400,7 +410,7 @@ describe('Couverture d’un guide multilingue — une illustration sans texte', 
 
   it('fait l’illustration quand même si la direction artistique se tait, est coupée ou recopie le titre', async () => {
     const { agent } = await signInWithPlan(app, 'autrice-sans-direction@exemple.test', 'pro');
-    const { lastClaudeOutcome } = await import('@server/services/ai/claude');
+    const { lastGroqOutcome } = await import('@server/services/ai/groq');
     const guide = await agent.post('/api/guides').send(GUIDE).expect(201);
     const demande = { subject: 'guide', subjectId: guide.body.guide.id as string, title: GUIDE.title, style: 'illustration' };
     const avant = await solde(agent);
@@ -409,13 +419,13 @@ describe('Couverture d’un guide multilingue — une illustration sans texte', 
     reponses.scene = REFUS;
     assert.equal((await agent.post('/api/covers').send(demande).expect(201)).body.cover.status, 'ready');
     assert.match(rendus.at(-1)!.prompt, repli);
-    assert.deepEqual({ ok: lastClaudeOutcome()?.ok, code: lastClaudeOutcome()?.code }, { ok: false, code: 'AUTH' }, 'l’administrateur saura pourquoi');
+    assert.deepEqual({ ok: lastGroqOutcome()?.ok, code: lastGroqOutcome()?.code }, { ok: false, code: 'AUTH' }, 'l’administrateur saura pourquoi');
 
     // Réponse coupée par le plafond : une moitié de scène n'est pas une scène.
     reponses.scene = { status: 200, text: SCENE.slice(0, 120), stopReason: 'max_tokens' };
     await agent.post('/api/covers').send(demande).expect(201);
     assert.match(rendus.at(-1)!.prompt, repli);
-    assert.equal(lastClaudeOutcome()?.code, 'TRUNCATED');
+    assert.equal(lastGroqOutcome()?.code, 'TRUNCATED');
 
     reponses.scene = ok(`${SCENE} Behind her, a board says Élever des poulets en ville.`);
     await agent.post('/api/covers').send(demande).expect(201);

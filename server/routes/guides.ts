@@ -53,7 +53,7 @@ const noStore: RequestHandler = (_req, res, next) => {
 };
 
 const requireTranslator: RequestHandler = (_req, _res, next) => {
-  next(providers.gemini ? undefined : providerUnavailable('rédaction automatique'));
+  next(providers.gemini || providers.groq ? undefined : providerUnavailable('rédaction automatique'));
 };
 
 /* -------------------------------------------------------------------------- */
@@ -187,7 +187,7 @@ coversRouter.post(
   asyncRoute(async (req, res) => {
     const input = req.body as CoverRequest;
     if (input.subject === 'guide') await ownedGuide(req.auth!, input.subjectId);
-    if (!providers.gemini) throw providerUnavailable('rédaction automatique');
+    if (!providers.cloudflareImages && !providers.gemini) throw providerUnavailable('génération d’images');
     res.status(201).json({ cover: await createCover(req.auth!, input) });
   }),
 );

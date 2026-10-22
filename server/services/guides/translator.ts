@@ -1,6 +1,6 @@
 import { z } from 'zod';
 import { AppError } from '@server/middleware';
-import { generateJson } from '@server/services/ai/gemini';
+import { generateJson } from '@server/services/ai/text';
 import type { GuideSection } from '@server/shared/guides';
 import { findLanguage } from '@server/shared/languages';
 

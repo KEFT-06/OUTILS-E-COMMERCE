@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { askClaude, claudeConfigured } from '@server/services/ai/claude';
+import { askGroq, groqConfigured } from '@server/services/ai/groq';
 import { checkText } from '@server/services/compliance';
 
 /**
@@ -332,9 +332,9 @@ const ATTEMPT_MS = 30_000;
 
 /** La maquette de l'ouvrage : celle du maquettiste, ou la maquette nue s'il ne répond pas. Ne lève jamais. */
 export async function designCover(book: DesignedBook): Promise<{ design: CoverDesign; directed: boolean }> {
-  if (!claudeConfigured()) return { design: plainDesign(book), directed: false };
+  if (!groqConfigured()) return { design: plainDesign(book), directed: false };
   try {
-    const answer = await askClaude({
+    const answer = await askGroq({
       system: COVER_DESIGNER_SYSTEM,
       prompt: designerBrief(book),
       maxTokens: 6000,
@@ -364,9 +364,9 @@ export const SCENE_REVISER_SYSTEM = [
 
 /** La scène réécrite, ou `null` si elle ne peut pas l'être maintenant. Ne lève jamais. */
 export async function reviseScene(scene: string, stray: readonly string[], timeoutMs: number): Promise<string | null> {
-  if (!claudeConfigured() || stray.length === 0) return null;
+  if (!groqConfigured() || stray.length === 0) return null;
   try {
-    const answer = await askClaude({
+    const answer = await askGroq({
       system: SCENE_REVISER_SYSTEM,
       prompt: `Scene:\n${scene}\n\nWriting that appeared in the picture and must not: ${stray.map((text) => `"${text.replace(/"/g, '')}"`).join(', ')}`,
       maxTokens: 3000,

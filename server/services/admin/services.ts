@@ -4,7 +4,7 @@ import { adSearches, alerts, auditLogs, generations, spiedAds, storybooks, watch
 import { alertWatch } from '@server/services/alerts';
 import { MARKET_RUN_AUDIT_ACTION } from '@server/services/market';
 import { env, isProd, isServerless, providers } from '@server/env';
-import { lastClaudeOutcome } from '@server/services/ai/claude';
+import { lastGroqOutcome } from '@server/services/ai/groq';
 import { sebpayMode } from '@server/services/billing/sebpay';
 import { classifyGoogleRefusal, lastGoogleRefusal, recordGoogleRefusal } from '@server/services/ai/googleRefusal';
 import { lastImageOutcome } from '@server/services/ai/image';
@@ -163,31 +163,32 @@ async function checkDatabase(): Promise<ServiceCheck> {
 }
 
 /**
- * Direction artistique des couvertures. Aucun appel de contrôle : chaque demande est payante, et
- * son absence n'empêche rien — la couverture se fait alors avec la consigne composée par le serveur.
+ * Direction artistique des couvertures (Groq). Aucun appel de contrôle : chaque demande est
+ * payante, et son absence n'empêche rien — la couverture se fait alors avec la consigne composée
+ * par le serveur.
  */
-function checkClaude(): ServiceCheck {
-  const base = { id: 'claude', name: 'Claude (direction artistique)', role: 'Écrit, d’après la fiche de l’ouvrage, la scène que le moteur d’images peint en couverture' };
-  if (!providers.claude)
+function checkGroq(): ServiceCheck {
+  const base = { id: 'groq', name: 'Groq (direction artistique)', role: 'Écrit, d’après la fiche de l’ouvrage, la scène et les consignes que FLUX peint en couverture' };
+  if (!providers.groq)
     return {
       ...base,
       state: 'off',
       detail: 'Aucune clé : les couvertures se font avec la consigne composée par le serveur.',
-      action: 'Créer une clé sur platform.claude.com et la mettre dans CLAUDE_API_KEY.',
+      action: 'Créer une clé sur console.groq.com et la mettre dans GROQ_API_KEY.',
     };
-  const last = lastClaudeOutcome();
-  if (!last) return { ...base, state: 'ok', detail: `Clé présente · modèle ${env.CLAUDE_MODEL}. Aucune couverture demandée depuis le démarrage.`, action: null };
+  const last = lastGroqOutcome();
+  if (!last) return { ...base, state: 'ok', detail: `Clé présente · modèle ${env.GROQ_MODEL}. Aucune couverture demandée depuis le démarrage.`, action: null };
   const quand = new Date(last.at).toLocaleString('fr-FR', { timeZone: env.REPORTING_TIMEZONE });
-  if (last.ok) return { ...base, state: 'ok', detail: `Modèle ${env.CLAUDE_MODEL} · dernière scène écrite le ${quand}.`, action: null };
+  if (last.ok) return { ...base, state: 'ok', detail: `Modèle ${env.GROQ_MODEL} · dernière scène écrite le ${quand}.`, action: null };
   return {
     ...base,
     state: 'warning',
     detail: `Dernière demande sans réponse utilisable (${last.code}) le ${quand} : la couverture a été faite avec la consigne composée par le serveur.`,
     action:
       last.code === 'AUTH'
-        ? 'Clé refusée : vérifier CLAUDE_API_KEY et le crédit du compte sur platform.claude.com.'
+        ? 'Clé refusée : vérifier GROQ_API_KEY et le crédit du compte sur console.groq.com.'
         : last.code === 'BAD_REQUEST'
-          ? 'Demande refusée : vérifier le nom du modèle dans CLAUDE_MODEL.'
+          ? 'Demande refusée : vérifier le nom du modèle dans GROQ_MODEL.'
           : null,
   };
 }
@@ -815,7 +816,7 @@ export async function checkServices(options: { refresh?: boolean } = {}): Promis
     checkDatabase(),
     checkGemini(),
     Promise.resolve(checkImages()),
-    Promise.resolve(checkClaude()),
+    Promise.resolve(checkGroq()),
     checkPerplexity(),
     checkGamma(),
     checkVeo(),

@@ -1,4 +1,4 @@
-import { askClaude, claudeConfigured } from '@server/services/ai/claude';
+import { askGroq, groqConfigured } from '@server/services/ai/groq';
 import { cleanScene } from '@server/services/covers/artDirection';
 
 /**
@@ -84,9 +84,9 @@ const ATTEMPT_MS = 25_000;
  * Ne lève jamais.
  */
 export async function visualArtDirection(brief: VisualBriefing): Promise<string | null> {
-  if (!claudeConfigured()) return null;
+  if (!groqConfigured()) return null;
   try {
-    const answer = await askClaude({ system: VISUAL_DIRECTOR_SYSTEM, prompt: visualDirectorBrief(brief), maxTokens: 4000, timeoutMs: ATTEMPT_MS });
+    const answer = await askGroq({ system: VISUAL_DIRECTOR_SYSTEM, prompt: visualDirectorBrief(brief), maxTokens: 4000, timeoutMs: ATTEMPT_MS });
     // Une scène qui cite le nom du produit le ferait écrire dans l'image, en plus du seul texte permis.
     return cleanScene(answer, brief.productName);
   } catch {

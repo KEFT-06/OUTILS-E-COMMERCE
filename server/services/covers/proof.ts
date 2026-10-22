@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { askClaude, claudeConfigured } from '@server/services/ai/claude';
+import { askGroq, groqConfigured } from '@server/services/ai/groq';
 import type { ImageResult } from '@server/services/ai/imageTypes';
 import type { CoverDesign } from '@server/services/covers/design';
 
@@ -100,9 +100,9 @@ const ATTEMPT_MS = 40_000;
 
 /** Relit la couverture rendue. `null` : pas de relecture possible — la couverture part telle quelle. Ne lève jamais. */
 export async function proofreadCover(image: ImageResult, design: CoverDesign, timeoutMs = ATTEMPT_MS): Promise<CoverProof | null> {
-  if (!claudeConfigured() || image.bytes.length > PROOF_MAX_BYTES) return null;
+  if (!groqConfigured() || image.bytes.length > PROOF_MAX_BYTES) return null;
   try {
-    const answer = await askClaude({
+    const answer = await askGroq({
       system: COVER_PROOF_SYSTEM,
       prompt: orderedTexts(design),
       images: [{ mimeType: mimeOf(image), bytes: image.bytes }],
