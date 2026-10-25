@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { generateJson } from '@server/services/ai/gemini';
+import { generateJson } from '@server/services/ai/text';
 import type { Outline, OutlineSection } from '@server/services/writing/outline';
 import { BOOK_FORMAT_RULE, normalizeBookText } from '@server/shared/bookText';
 import { countryName } from '@server/shared/countries';
@@ -143,6 +143,8 @@ export function sectionPrompt(input: {
  */
 export async function writeSection(input: Parameters<typeof sectionPrompt>[0] & { timeoutMs?: number }): Promise<WrittenSection> {
   const response = await generateJson({
+    // Gemini d'abord (qualité de la rédaction) ; Groq en secours quand Gemini refuse.
+    prefer: 'gemini',
     service: SERVICE,
     prompt: sectionPrompt(input),
     responseSchema: SECTION_RESPONSE_SCHEMA,

@@ -319,7 +319,7 @@ describe('Visuels publicitaires produits chez nous', () => {
       est en base, servi par nous, et ne dépend plus d'aucune rétention chez un tiers.
     */
     const fichier = await agent.get(`/api/creatives/requests/${requestId}/file`).buffer(true).expect(200);
-    assert.equal(fichier.headers['content-type'], 'image/png', 'le format vient du fournisseur qui a produit');
+    assert.equal(fichier.headers['content-type'], 'image/jpeg', 'le format vient du fournisseur qui a produit (FLUX rend du JPEG)');
     assert.ok(Number(fichier.headers['content-length']) > 0);
   });
 

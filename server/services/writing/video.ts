@@ -3,7 +3,8 @@ import { z } from 'zod';
 import { providers } from '@server/env';
 import { AppError, providerUnavailable } from '@server/middleware';
 import type { RequestAuth } from '@server/middleware/auth';
-import { type GeminiMedia, generateJson } from '@server/services/ai/gemini';
+import type { GeminiMedia } from '@server/services/ai/gemini';
+import { generateJson } from '@server/services/ai/text';
 import { currencyForCountry, getRates } from '@server/services/currency';
 import { runBilledGeneration } from '@server/services/generations';
 import { MODULE_CONTENT_MAX, findingsOf } from '@server/services/writing';
@@ -155,6 +156,8 @@ export async function videoToProduct(auth: RequestAuth, source: VideoSource) {
     provider: 'gemini',
     run: async () => {
       const response = await generateJson({
+        // Gemini d'abord (qualité de la rédaction) ; Groq en secours quand Gemini refuse.
+        prefer: 'gemini',
         service: SERVICE,
         prompt: VIDEO_PROMPT,
         media: mediaOf(source),

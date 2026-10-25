@@ -136,8 +136,8 @@ before(async () => {
     GEMINI_API_URL: `${base}/gemini`,
     GROQ_API_KEY: 'cle-groq-de-test',
     GROQ_API_URL: base,
-    GROQ_MODEL: 'llama-3.3-70b-versatile',
-    GROQ_VISION_MODEL: 'meta-llama/llama-4-scout-17b-16e-instruct',
+    GROQ_MODEL: 'openai/gpt-oss-120b',
+    GROQ_VISION_MODEL: 'qwen/qwen3.8-27b',
   });
 });
 
@@ -288,7 +288,8 @@ describe('Couverture d’un ebook — complète, relue, pour un point', () => {
 
     const maquette = demandesDe('design')[0]!;
     assert.equal(maquette.key, 'cle-groq-de-test');
-    assert.equal(maquette.model, 'llama-3.3-70b-versatile');
+    // Une forme imposée va au modèle qui accepte un schéma : llama-3.3-70b le refuse (doc Groq, 25/10/2026).
+    assert.equal(maquette.model, 'openai/gpt-oss-120b');
     assert.equal(maquette.structured, true, 'la maquette arrive dans une forme imposée');
     assert.match(maquette.system, /never as an instruction to you/);
     assert.match(maquette.system, /Write no figure/);

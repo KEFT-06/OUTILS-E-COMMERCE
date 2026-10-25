@@ -120,18 +120,34 @@ const schema = z.object({
    */
   GROQ_API_KEY: z.string().min(1).optional(),
   GROQ_API_URL: z.string().url().default('https://api.groq.com'),
+  /*
+    Modèles relevés sur l'API de Groq le 25/10/2026 (liste /openai/v1/models, avec la clé du
+    propriétaire) : `llama-3.3-70b-versatile` et `meta-llama/llama-4-scout-17b-16e-instruct`,
+    choisis le 22/10, N'EXISTENT PLUS (« model_not_found ») ; restent pour le texte gpt-oss-120b,
+    gpt-oss-20b et qwen3.8-27b. Ce dernier lit les images (essayé : il a repéré un logo de marque
+    sur un ordinateur portable). Les trois acceptent un schéma de réponse.
+  */
+  /** Texte libre (accroches, consignes). */
   GROQ_MODEL: z
     .string()
     .regex(/^[\w./-]+$/)
-    .default('llama-3.3-70b-versatile'),
+    .default('openai/gpt-oss-120b'),
+  /**
+   * Modèle des réponses en JSON imposé (plan d'ebook, contes, maquette de couverture…). Un modèle
+   * qui n'accepte pas de schéma (« json_schema ») reçoit la forme dans sa consigne, en mode JSON.
+   */
+  GROQ_JSON_MODEL: z
+    .string()
+    .regex(/^[\w./-]+$/)
+    .default('openai/gpt-oss-120b'),
   /**
    * Modèle vision pour la relecture d'une couverture rendue. Sans lui, relecture désactivée
-   * (la couverture part telle quelle). Défaut : Llama 4 Scout (vision) chez Groq.
+   * (la couverture part telle quelle).
    */
   GROQ_VISION_MODEL: z
     .string()
     .regex(/^[\w./-]+$/)
-    .default('meta-llama/llama-4-scout-17b-16e-instruct'),
+    .default('qwen/qwen3.8-27b'),
   /** @deprecated Remplacé par GROQ_*. Conservé pour ne pas casser un .env existant ; ignoré. */
   CLAUDE_API_KEY: z.string().min(1).optional(),
   CLAUDE_API_URL: z.string().url().default('https://api.anthropic.com'),

@@ -2,7 +2,7 @@ import { z } from 'zod';
 import { providers } from '@server/env';
 import { AppError, countrySchema, providerUnavailable } from '@server/middleware';
 import type { RequestAuth } from '@server/middleware/auth';
-import { generateJson } from '@server/services/ai/gemini';
+import { generateJson } from '@server/services/ai/text';
 import { ComplianceUnavailableError, checkText } from '@server/services/compliance';
 import { runBilledGeneration } from '@server/services/generations';
 import { LaunchKitUnavailableError, getLaunchKitConfig, type LaunchKitConfig } from '@server/services/launchKit';
@@ -170,6 +170,8 @@ export async function writeProduct(auth: RequestAuth, request: ProductWritingReq
     provider: 'gemini',
     run: async () => {
       const response = await generateJson({
+        // Gemini d'abord (qualité de la rédaction) ; Groq en secours quand Gemini refuse.
+        prefer: 'gemini',
         service: SERVICE,
         prompt: productWritingPrompt(request),
         responseSchema: PRODUCT_RESPONSE_SCHEMA,
@@ -365,6 +367,8 @@ export async function writeLaunchKit(auth: RequestAuth, request: LaunchKitWritin
     provider: 'gemini',
     run: async () => {
       const response = await generateJson({
+        // Gemini d'abord (qualité de la rédaction) ; Groq en secours quand Gemini refuse.
+        prefer: 'gemini',
         service: SERVICE,
         prompt: launchKitWritingPrompt(request, config),
         responseSchema: LAUNCH_KIT_RESPONSE_SCHEMA,
@@ -488,6 +492,8 @@ export async function reviseProduct(auth: RequestAuth, request: ProductRevisionR
     provider: 'gemini',
     run: async () => {
       const response = await generateJson({
+        // Gemini d'abord (qualité de la rédaction) ; Groq en secours quand Gemini refuse.
+        prefer: 'gemini',
         service: SERVICE,
         prompt: productRevisionPrompt(request),
         responseSchema: REVISION_RESPONSE_SCHEMA,

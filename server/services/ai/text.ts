@@ -72,21 +72,25 @@ export async function generateJson<T>(input: {
 }): Promise<T> {
   if (!providers.gemini && !groqConfigured()) throw providerUnavailable('rédaction automatique');
 
+  const viaGroq = async (): Promise<T> => {
+    const text = await askGroq({
+      system: `You are a precise assistant for Smart Creator. Answer with JSON only, matching the required schema. No markdown fences.`,
+      prompt: input.prompt,
+      maxTokens: 8_000,
+      timeoutMs: Math.min(input.timeoutMs, input.attemptTimeoutMs ?? input.timeoutMs),
+      retries: 0,
+      jsonSchema: toJsonSchema(input.responseSchema),
+    });
+    const value = input.parse(JSON.parse(text));
+    input.onModel?.('groq');
+    return value;
+  };
+
   const tryGroq = input.prefer !== 'gemini' && preferGroq(input.prompt, input.media);
 
   if (tryGroq) {
     try {
-      const text = await askGroq({
-        system: `You are a precise assistant for Smart Creator. Answer with JSON only, matching the required schema. No markdown fences.`,
-        prompt: input.prompt,
-        maxTokens: 8_000,
-        timeoutMs: Math.min(input.timeoutMs, input.attemptTimeoutMs ?? input.timeoutMs),
-        retries: 0,
-        jsonSchema: toJsonSchema(input.responseSchema),
-      });
-      const value = input.parse(JSON.parse(text));
-      input.onModel?.('groq');
-      return value;
+      return await viaGroq();
     } catch (error) {
       // Sans Gemini, le refus Groq remonte tel quel.
       if (!providers.gemini) {
@@ -97,8 +101,43 @@ export async function generateJson<T>(input: {
     }
   }
 
-  if (!providers.gemini) throw providerUnavailable('rédaction automatique');
-  return generateJsonGemini(input);
+  if (!providers.gemini) {
+    // Groq seul, mais la demande ne lui convenait pas d'emblée (longue) : il la tente quand même.
+    if (!tryGroq && !input.media && groqConfigured()) return viaGroqOrFail(viaGroq, input.service);
+    throw providerUnavailable('rédaction automatique');
+  }
+  try {
+    return await generateJsonGemini(input);
+  } catch (error) {
+    /*
+      Gemini refuse : crédits prépayés épuisés (constaté le 18/10/2026, toute la rédaction à
+      l'arrêt), quota, panne. Groq prend le relais quand la demande peut lui être confiée (pas de
+      vidéo ni d'audio à lire) et qu'il ne l'a pas déjà refusée. Une demande trop longue pour son
+      offre gratuite est refusée d'emblée par askGroq : l'erreur de Gemini est alors gardée.
+    */
+    if (tryGroq || input.media || !groqConfigured() || !isGeminiOutage(error)) throw error;
+    console.warn(`[${input.service.log}] Gemini indisponible (${(error as AppError).code}), repli sur Groq`);
+    try {
+      return await viaGroq();
+    } catch {
+      throw error;
+    }
+  }
+}
+
+/** Refus de Gemini qui ne disent rien de la demande : un autre fournisseur peut y répondre. */
+const GEMINI_OUTAGES = ['_INSUFFICIENT_CREDITS', '_RATE_LIMITED', '_UNAVAILABLE', '_TIMEOUT', '_ACCESS_DENIED'];
+function isGeminiOutage(error: unknown): boolean {
+  return error instanceof AppError && GEMINI_OUTAGES.some((suffix) => error.code.endsWith(suffix));
+}
+
+async function viaGroqOrFail<T>(attempt: () => Promise<T>, service: TextService): Promise<T> {
+  try {
+    return await attempt();
+  } catch (error) {
+    if (error instanceof AppError) throw error;
+    throw new AppError(502, `Le ${service.name} n’a pas pu aboutir. Vos points ont été rendus.`, `${service.code}_FAILED`);
+  }
 }
 
 /**

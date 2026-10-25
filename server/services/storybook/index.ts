@@ -8,7 +8,7 @@ import { storybooks } from '@server/db/schema';
 import { env } from '@server/env';
 import { AppError, marketSchema, providerUnavailable } from '@server/middleware';
 import type { RequestAuth } from '@server/middleware/auth';
-import { generateJson } from '@server/services/ai/gemini';
+import { generateJson } from '@server/services/ai/text';
 import { OWN_ENGINE, resumeStalled, sendOwnStorybookPdf, sendOwnStorybookPicture } from '@server/services/storybook/illustrate';
 import { countryName } from '@server/shared/countries';
 
@@ -166,6 +166,8 @@ export function parseStory(value: unknown, pages: number): StoryDraft {
 
 export async function writeStory(brief: StorybookBrief): Promise<StoryDraft> {
   return generateJson({
+    // Gemini d'abord (qualité de la rédaction) ; Groq en secours quand Gemini refuse.
+    prefer: 'gemini',
     service: WRITER,
     prompt: buildStoryPrompt(brief),
     responseSchema: STORY_RESPONSE_SCHEMA,

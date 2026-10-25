@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { generateJson } from '@server/services/ai/gemini';
+import { generateJson } from '@server/services/ai/text';
 import { WORDS_PER_PAGE } from '@server/services/plans';
 import { countryName } from '@server/shared/countries';
 
@@ -219,6 +219,8 @@ export async function buildOutline(request: OutlineRequest): Promise<Outline> {
   const shape = shapeOf(request.targetPages, request.chapters.length, request.freeChapters);
 
   const response = await generateJson({
+    // Gemini d'abord (qualité de la rédaction) ; Groq en secours quand Gemini refuse.
+    prefer: 'gemini',
     service: SERVICE,
     prompt: outlinePrompt(request),
     responseSchema: OUTLINE_RESPONSE_SCHEMA,
