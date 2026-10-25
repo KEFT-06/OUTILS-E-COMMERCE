@@ -155,8 +155,6 @@ export async function studyAdVideo(auth: RequestAuth, adId: string | undefined, 
     provider: 'gemini',
     run: () =>
       generateJson({
-        // Gemini d'abord (qualité de la rédaction) ; Groq en secours quand Gemini refuse.
-        prefer: 'gemini',
         service: SERVICE,
         prompt: adStudyPrompt(request),
         media: { inlineData: { mimeType: video.mimeType, data: video.bytes.toString('base64') } },

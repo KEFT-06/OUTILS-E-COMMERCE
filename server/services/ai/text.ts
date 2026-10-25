@@ -1,17 +1,21 @@
 import { AppError, providerUnavailable } from '@server/middleware';
 import { type GeminiMedia, type GeminiService, generateJson as generateJsonGemini } from '@server/services/ai/gemini';
-import { askGroq, groqConfigured } from '@server/services/ai/groq';
+import { GroqError, askGroq, groqConfigured } from '@server/services/ai/groq';
 import { providers } from '@server/env';
 
 /**
- * Façade texte : Groq pour les consignes courtes et lots de traduction, Gemini pour le long
- * et tout ce qui joint un média. L'analyse de niche reste hors de cette façade (Perplexity).
+ * Façade texte : Groq d'abord, pour tout texte ; Gemini seulement pour lire une vidéo ou un audio
+ * (Groq ne le sait pas), ou en dernier recours.
  *
- * Seuil ~8k jetons (≈ 32 000 caractères) : au-delà, Groq n'est pas essayé.
+ * Décision du propriétaire, 25/10/2026 : « si Gemini a des modèles gratuits on les utilise, sinon
+ * on fait sans lui ». Vérifié le même jour avec la clé du site : TOUS les modèles Gemini actuels,
+ * gratuits compris, répondent « Your project has been denied access » (403) — le projet Google est
+ * bloqué —, et les anciens (2.0 et 2.5 Flash) sont fermés aux nouveaux comptes. L'analyse de niche
+ * reste hors de cette façade (Perplexity).
+ *
+ * Une demande trop longue pour l'offre gratuite de Groq est refusée par askGroq avant de partir
+ * (jetons par minute) : pas de seuil de taille ici.
  */
-
-/** Caractères au-delà desquels on envoie directement à Gemini (~8k jetons). */
-const GROQ_CHAR_LIMIT = 32_000;
 
 export type TextService = GeminiService;
 
@@ -48,10 +52,22 @@ export function toJsonSchema(schema: Record<string, unknown>): Record<string, un
   return walk(schema) as Record<string, unknown>;
 }
 
-function preferGroq(prompt: string, media?: GeminiMedia): boolean {
-  if (media) return false;
-  if (!groqConfigured()) return false;
-  return prompt.length <= GROQ_CHAR_LIMIT;
+/**
+ * Ce que lit le client quand ni Groq ni Gemini n'ont pu écrire : jamais « clé API invalide sur le
+ * serveur », qui est l'affaire de l'administration.
+ */
+function unableToWrite(service: TextService, groqFailure: unknown): AppError {
+  if (groqFailure instanceof AppError) return groqFailure;
+  const reason = groqFailure instanceof GroqError ? groqFailure.reason : null;
+  if (reason === 'TOO_LARGE') return new AppError(413, `Ce texte est trop long pour le ${service.name} en une seule fois : vos points ont été rendus. Raccourcissez-le, ou découpez-le.`, `${service.code}_TOO_LONG`);
+  if (reason === 'RATE_LIMITED') return new AppError(429, `Le ${service.name} est très demandé en ce moment : vos points ont été rendus.`, `${service.code}_RATE_LIMITED`);
+  return new AppError(502, `Le ${service.name} n’a pas pu aboutir : vos points ont été rendus.`, `${service.code}_FAILED`);
+}
+
+/** Refus de Gemini qui ne disent rien de la demande : panne, accès bloqué, crédits, quota. */
+const GEMINI_OUTAGES = ['_INSUFFICIENT_CREDITS', '_RATE_LIMITED', '_UNAVAILABLE', '_TIMEOUT', '_ACCESS_DENIED'];
+function isGeminiOutage(error: unknown): boolean {
+  return error instanceof AppError && GEMINI_OUTAGES.some((suffix) => error.code.endsWith(suffix));
 }
 
 /**
@@ -67,8 +83,6 @@ export async function generateJson<T>(input: {
   onModel?: (model: string) => void;
   speed?: 'fast';
   attemptTimeoutMs?: number;
-  /** Forcer Gemini (analyses longues, ebooks) même sous le seuil. */
-  prefer?: 'gemini' | 'auto';
 }): Promise<T> {
   if (!providers.gemini && !groqConfigured()) throw providerUnavailable('rédaction automatique');
 
@@ -86,59 +100,25 @@ export async function generateJson<T>(input: {
     return value;
   };
 
-  const tryGroq = input.prefer !== 'gemini' && preferGroq(input.prompt, input.media);
-
-  if (tryGroq) {
+  // Groq d'abord ; Gemini seulement pour une vidéo ou un audio à lire, ou en dernier recours.
+  if (!input.media && groqConfigured()) {
     try {
       return await viaGroq();
-    } catch (error) {
-      // Sans Gemini, le refus Groq remonte tel quel.
-      if (!providers.gemini) {
-        if (error instanceof AppError) throw error;
-        throw new AppError(502, `Le ${input.service.name} n’a pas pu aboutir. Vos points ont été rendus.`, `${input.service.code}_FAILED`);
+    } catch (groqFailure) {
+      if (!providers.gemini) throw unableToWrite(input.service, groqFailure);
+      console.warn(`[${input.service.log}] Groq sans réponse utilisable, dernier recours : Gemini`);
+      try {
+        return await generateJsonGemini(input);
+      } catch (geminiFailure) {
+        // Gemini bloqué ou en panne : c'est l'échec de Groq que le client doit comprendre.
+        throw isGeminiOutage(geminiFailure) ? unableToWrite(input.service, groqFailure) : geminiFailure;
       }
-      console.warn(`[${input.service.log}] Groq indisponible, repli sur Gemini`);
     }
   }
-
-  if (!providers.gemini) {
-    // Groq seul, mais la demande ne lui convenait pas d'emblée (longue) : il la tente quand même.
-    if (!tryGroq && !input.media && groqConfigured()) return viaGroqOrFail(viaGroq, input.service);
-    throw providerUnavailable('rédaction automatique');
-  }
-  try {
-    return await generateJsonGemini(input);
-  } catch (error) {
-    /*
-      Gemini refuse : crédits prépayés épuisés (constaté le 18/10/2026, toute la rédaction à
-      l'arrêt), quota, panne. Groq prend le relais quand la demande peut lui être confiée (pas de
-      vidéo ni d'audio à lire) et qu'il ne l'a pas déjà refusée. Une demande trop longue pour son
-      offre gratuite est refusée d'emblée par askGroq : l'erreur de Gemini est alors gardée.
-    */
-    if (tryGroq || input.media || !groqConfigured() || !isGeminiOutage(error)) throw error;
-    console.warn(`[${input.service.log}] Gemini indisponible (${(error as AppError).code}), repli sur Groq`);
-    try {
-      return await viaGroq();
-    } catch {
-      throw error;
-    }
-  }
+  if (!providers.gemini) throw providerUnavailable('rédaction automatique');
+  return generateJsonGemini(input);
 }
 
-/** Refus de Gemini qui ne disent rien de la demande : un autre fournisseur peut y répondre. */
-const GEMINI_OUTAGES = ['_INSUFFICIENT_CREDITS', '_RATE_LIMITED', '_UNAVAILABLE', '_TIMEOUT', '_ACCESS_DENIED'];
-function isGeminiOutage(error: unknown): boolean {
-  return error instanceof AppError && GEMINI_OUTAGES.some((suffix) => error.code.endsWith(suffix));
-}
-
-async function viaGroqOrFail<T>(attempt: () => Promise<T>, service: TextService): Promise<T> {
-  try {
-    return await attempt();
-  } catch (error) {
-    if (error instanceof AppError) throw error;
-    throw new AppError(502, `Le ${service.name} n’a pas pu aboutir. Vos points ont été rendus.`, `${service.code}_FAILED`);
-  }
-}
 
 /**
  * Texte libre court (consignes FLUX, etc.). Groq d'abord, Gemini en secours via JSON enveloppe.
@@ -150,7 +130,8 @@ export async function generateText(input: {
   timeoutMs: number;
   maxTokens?: number;
 }): Promise<string> {
-  if (groqConfigured() && input.prompt.length + input.system.length <= GROQ_CHAR_LIMIT) {
+  let groqFailure: unknown = null;
+  if (groqConfigured()) {
     try {
       return await askGroq({
         system: input.system,
@@ -159,13 +140,14 @@ export async function generateText(input: {
         timeoutMs: input.timeoutMs,
         retries: 1,
       });
-    } catch {
-      if (!providers.gemini) throw providerUnavailable(input.service.name);
-      console.warn(`[${input.service.log}] Groq indisponible pour texte libre, repli sur Gemini`);
+    } catch (error) {
+      if (!providers.gemini) throw unableToWrite(input.service, error);
+      groqFailure = error;
+      console.warn(`[${input.service.log}] Groq sans réponse utilisable pour un texte libre, dernier recours : Gemini`);
     }
   }
   if (!providers.gemini) throw providerUnavailable(input.service.name);
-  const wrapped = await generateJsonGemini({
+  const viaGemini = generateJsonGemini({
     service: input.service,
     prompt: `${input.system}\n\n${input.prompt}\n\nRespond with JSON: { "text": "..." }`,
     responseSchema: {
@@ -180,5 +162,10 @@ export async function generateText(input: {
     },
     timeoutMs: input.timeoutMs,
   });
-  return wrapped;
+  try {
+    return await viaGemini;
+  } catch (geminiFailure) {
+    // Gemini bloqué ou en panne : c'est l'échec de Groq que le client doit comprendre.
+    throw groqFailure && isGeminiOutage(geminiFailure) ? unableToWrite(input.service, groqFailure) : geminiFailure;
+  }
 }

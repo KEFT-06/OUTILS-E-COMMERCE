@@ -143,8 +143,6 @@ export function sectionPrompt(input: {
  */
 export async function writeSection(input: Parameters<typeof sectionPrompt>[0] & { timeoutMs?: number }): Promise<WrittenSection> {
   const response = await generateJson({
-    // Gemini d'abord (qualité de la rédaction) ; Groq en secours quand Gemini refuse.
-    prefer: 'gemini',
     service: SERVICE,
     prompt: sectionPrompt(input),
     responseSchema: SECTION_RESPONSE_SCHEMA,

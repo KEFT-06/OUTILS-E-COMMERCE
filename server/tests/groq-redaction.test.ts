@@ -16,13 +16,16 @@ import { closeTestApp, createTestApp } from './support/helpers';
  *   · une demande refusée pour son CONTENU par Gemini n'est pas retentée chez Groq.
  */
 
-let geminiStatus = 402;
+let geminiStatus = 403;
 let groqReponses: ((corps: Record<string, unknown>) => { status: number; body: unknown })[] = [];
 const recues: Record<string, unknown>[] = [];
 
+let appelsGemini = 0;
+
 const fauxGemini = createServer((_req, res) => {
+  appelsGemini += 1;
   res.writeHead(geminiStatus, { 'content-type': 'application/json' });
-  res.end(JSON.stringify({ error: { code: geminiStatus, message: geminiStatus === 402 ? 'Your prepayment credits are depleted.' : 'Invalid argument', status: geminiStatus === 402 ? 'FAILED_PRECONDITION' : 'INVALID_ARGUMENT' } }));
+  res.end(JSON.stringify({ error: { code: geminiStatus, message: geminiStatus === 403 ? 'Your project has been denied access. Please contact support.' : 'Invalid argument', status: geminiStatus === 403 ? 'PERMISSION_DENIED' : 'INVALID_ARGUMENT' } }));
 });
 
 const fauxGroq = createServer((req, res) => {
@@ -64,34 +67,53 @@ after(async () => {
 });
 
 beforeEach(() => {
-  geminiStatus = 402;
+  geminiStatus = 403;
+  appelsGemini = 0;
   groqReponses = [];
   recues.length = 0;
 });
 
-describe('Rédaction — Groq en secours de Gemini', () => {
-  it('Gemini à court de crédits : Groq rédige, avec un modèle qui accepte le schéma, dans le quota gratuit', async () => {
+describe('Rédaction — Groq d’abord, Gemini en dernier recours', () => {
+  it('Groq rédige, sans passer par Gemini, avec un modèle qui accepte le schéma, dans le quota gratuit', async () => {
     const { generateJson } = await import('@server/services/ai/text');
     let modele = '';
     groqReponses = [ok({ titre: 'Élever des poulets en ville', modules: ['Le poulailler', 'Les soins'] })];
 
-    const plan = await generateJson({ service: SERVICE, prefer: 'gemini', prompt: 'Plan d’un ebook sur l’élevage de poulets en ville.', responseSchema: SCHEMA, parse, timeoutMs: 20_000, onModel: (m) => (modele = m) });
+    const plan = await generateJson({ service: SERVICE, prompt: 'Plan d’un ebook sur l’élevage de poulets en ville.', responseSchema: SCHEMA, parse, timeoutMs: 20_000, onModel: (m) => (modele = m) });
 
     assert.equal(plan.titre, 'Élever des poulets en ville');
     assert.equal(modele, 'groq');
+    assert.equal(appelsGemini, 0, 'Gemini n’est pas sollicité : son projet est bloqué');
     const demande = recues[0]!;
-    assert.equal(demande.model, 'openai/gpt-oss-120b', 'le modèle à schéma, pas llama-3.3-70b qui refuse les schémas');
-    assert.deepEqual((demande.response_format as { type: string }).type, 'json_schema');
-    assert.equal((demande.response_format as { json_schema: { strict: boolean } }).json_schema.strict, false, 'schéma « au mieux » : nos schémas ne remplissent pas les exigences du mode strict');
+    assert.equal(demande.model, 'openai/gpt-oss-120b');
+    assert.equal((demande.response_format as { type: string }).type, 'json_schema');
+    assert.equal((demande.response_format as { json_schema: { strict: boolean } }).json_schema.strict, false);
     assert.equal(demande.reasoning_effort, 'low');
     assert.ok((demande.max_tokens as number) <= 8_000 - 200, 'consigne + réponse tiennent dans 8 000 jetons par minute');
   });
 
-  it('refusée comme trop grosse par Groq (413) : pas d’insistance sur le même modèle, l’erreur de Gemini reste', async () => {
+  it('Groq sans réponse et Gemini bloqué : le client lit un échec clair, jamais « clé API invalide »', async () => {
     const { generateJson } = await import('@server/services/ai/text');
-    groqReponses = [() => ({ status: 413, body: { error: { message: 'Request too large' } } })];
-    await assert.rejects(generateJson({ service: SERVICE, prefer: 'gemini', prompt: 'Plan d’un guide.', responseSchema: SCHEMA, parse, timeoutMs: 20_000 }), { code: 'WRITING_INSUFFICIENT_CREDITS' });
-    assert.equal(recues.length, 1, 'une seule demande : la même échouerait de même');
+    groqReponses = [() => ({ status: 503, body: {} }), () => ({ status: 503, body: {} })];
+    await assert.rejects(generateJson({ service: SERVICE, prompt: 'Plan.', responseSchema: SCHEMA, parse, timeoutMs: 20_000 }), (error: { code: string; message: string }) => {
+      assert.equal(error.code, 'WRITING_FAILED');
+      assert.doesNotMatch(error.message, /clé|API|serveur/);
+      return true;
+    });
+    assert.equal(appelsGemini > 0, true, 'Gemini a été tenté en dernier recours');
+  });
+
+  it('trop long pour l’offre gratuite : rien ne part chez Groq, et le client sait pourquoi', async () => {
+    const { generateJson } = await import('@server/services/ai/text');
+    await assert.rejects(generateJson({ service: SERVICE, prompt: 'x'.repeat(60_000), responseSchema: SCHEMA, parse, timeoutMs: 20_000 }), { code: 'WRITING_TOO_LONG' });
+    assert.equal(recues.length, 0, 'aucune demande vouée au refus');
+  });
+
+  it('une vidéo à lire va à Gemini, que Groq ne sait pas lire', async () => {
+    const { generateJson } = await import('@server/services/ai/text');
+    await assert.rejects(generateJson({ service: SERVICE, prompt: 'Résume la vidéo.', media: { mimeType: 'video/mp4', data: Buffer.from('00', 'hex').toString('base64') } as never, responseSchema: SCHEMA, parse, timeoutMs: 20_000 }));
+    assert.equal(recues.length, 0);
+    assert.equal(appelsGemini > 0, true);
   });
 
   it('un modèle sans schéma natif reçoit la forme attendue dans sa consigne, en mode JSON', async () => {
@@ -102,22 +124,6 @@ describe('Rédaction — Groq en secours de Gemini', () => {
     const systeme = (recues[0]!.messages as { role: string; content: string }[])[0]!.content;
     assert.match(systeme, /JSON/);
     assert.match(systeme, /"titre"/, 'la forme attendue est dans la consigne');
-  });
-
-  it('une demande trop longue pour l’offre gratuite ne part pas chez Groq : l’erreur de Gemini reste', async () => {
-    const { generateJson } = await import('@server/services/ai/text');
-    await assert.rejects(
-      generateJson({ service: SERVICE, prefer: 'gemini', prompt: 'x'.repeat(60_000), responseSchema: SCHEMA, parse, timeoutMs: 20_000 }),
-      { code: 'WRITING_INSUFFICIENT_CREDITS' },
-    );
-    assert.equal(recues.length, 0, 'aucune demande vouée au refus');
-  });
-
-  it('une demande refusée par Gemini pour son contenu n’est pas retentée chez Groq', async () => {
-    geminiStatus = 400;
-    const { generateJson } = await import('@server/services/ai/text');
-    await assert.rejects(generateJson({ service: SERVICE, prefer: 'gemini', prompt: 'Plan.', responseSchema: SCHEMA, parse, timeoutMs: 20_000 }), { code: 'WRITING_FAILED' });
-    assert.equal(recues.length, 0);
   });
 
   it('relecture d’une image avec un schéma : le modèle vision (qwen3.8) l’accepte nativement', async () => {

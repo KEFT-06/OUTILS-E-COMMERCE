@@ -156,8 +156,6 @@ export async function videoToProduct(auth: RequestAuth, source: VideoSource) {
     provider: 'gemini',
     run: async () => {
       const response = await generateJson({
-        // Gemini d'abord (qualité de la rédaction) ; Groq en secours quand Gemini refuse.
-        prefer: 'gemini',
         service: SERVICE,
         prompt: VIDEO_PROMPT,
         media: mediaOf(source),

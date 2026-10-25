@@ -219,8 +219,6 @@ export async function buildOutline(request: OutlineRequest): Promise<Outline> {
   const shape = shapeOf(request.targetPages, request.chapters.length, request.freeChapters);
 
   const response = await generateJson({
-    // Gemini d'abord (qualité de la rédaction) ; Groq en secours quand Gemini refuse.
-    prefer: 'gemini',
     service: SERVICE,
     prompt: outlinePrompt(request),
     responseSchema: OUTLINE_RESPONSE_SCHEMA,

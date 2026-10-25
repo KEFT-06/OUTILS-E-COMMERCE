@@ -332,8 +332,6 @@ export async function textToProduct(auth: RequestAuth, rawText: string): Promise
     provider: 'gemini',
     run: async () => {
       const response = await generateJson({
-        // Gemini d'abord (qualité de la rédaction) ; Groq en secours quand Gemini refuse.
-        prefer: 'gemini',
         service: SERVICE,
         prompt: `${PASTED_TEXT_PROMPT}\n\nTEXTE DE L’AUTEUR\n<<<\n${text}\n>>>`,
         responseSchema: RESPONSE_SCHEMA,

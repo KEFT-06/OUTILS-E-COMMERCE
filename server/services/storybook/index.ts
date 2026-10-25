@@ -166,8 +166,6 @@ export function parseStory(value: unknown, pages: number): StoryDraft {
 
 export async function writeStory(brief: StorybookBrief): Promise<StoryDraft> {
   return generateJson({
-    // Gemini d'abord (qualité de la rédaction) ; Groq en secours quand Gemini refuse.
-    prefer: 'gemini',
     service: WRITER,
     prompt: buildStoryPrompt(brief),
     responseSchema: STORY_RESPONSE_SCHEMA,
