@@ -1,6 +1,7 @@
 import { COUNTRIES, findCountry } from '@server/shared/countries';
 import { formatMoney, fractionDigits } from '@server/shared/currency';
 import { CountryCombobox } from '@/shared/components/CountryCombobox';
+import { DatePicker } from '@/shared/components/DatePicker';
 import type { PlanCatalog } from '@/shared/types/auth';
 import { useEffect, useState } from 'react';
 import { parseAmount } from '@/shared/lib/parseAmount';
@@ -639,7 +640,7 @@ export function RecordPaymentDialog({
               </Field>
               <Field>
                 <FieldLabel htmlFor="payment-date">Date du paiement</FieldLabel>
-                <Input id="payment-date" type="date" max={todayIso()} value={paidOn} onChange={(event) => setPaidOn(event.target.value)} />
+                <DatePicker id="payment-date" max={todayIso()} value={paidOn} onChange={setPaidOn} />
               </Field>
             </div>
             <Field>

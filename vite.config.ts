@@ -45,6 +45,15 @@ export default defineConfig(({ mode }) => {
         '@': fileURLToPath(new URL('./src', import.meta.url)),
         '@server': fileURLToPath(new URL('./server', import.meta.url)),
       },
+      /*
+        Une seule copie des briques Radix qui gèrent les superpositions, le focus et les portails.
+        `radix-ui` 1.4.3 (épinglé : les versions suivantes dépendent de paquets introuvables) en
+        embarque ses propres copies, et `cmdk`/`vaul` en amènent de plus récentes : deux copies qui
+        s'ignorent. Constaté le 26/10/2026 : dans une fenêtre, le choix d'un pays ou d'une date ne
+        recevait aucun clic (pointer-events: none hérité), et la fenêtre reprenait le focus de la
+        recherche. Ces versions sont toutes des 1.1.x, compatibles.
+      */
+      dedupe: ['@radix-ui/react-dismissable-layer', '@radix-ui/react-focus-scope', '@radix-ui/react-focus-guards', '@radix-ui/react-portal'],
     },
 
     server: {

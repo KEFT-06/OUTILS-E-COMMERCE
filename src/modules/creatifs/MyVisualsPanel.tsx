@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { Download, Images } from 'lucide-react';
 import { NoDataState } from '@/shared/components/NoDataState';
-import { ZoomableImage } from '@/shared/components/ZoomableImage';
+import { ImageGallery } from '@/shared/components/ImageGallery';
 import { apiRequest } from '@/shared/lib/api';
 import { cacheEpoch, lastKnown, remember } from '@/shared/lib/apiCache';
 import { toApiError } from '@/shared/lib/apiError';
@@ -43,6 +43,8 @@ export function MyVisualsPanel({ version }: { version: number }) {
   const [hasMore, setHasMore] = useState(() => lastKnown<VisualPage>(FIRST_PAGE)?.hasMore ?? false);
   const [loadingMore, setLoadingMore] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  /** Visuel ouvert dans la visionneuse ; null : fermée. */
+  const [ouvert, setOuvert] = useState<number | null>(null);
 
   // Retour sur l'onglet, ou sur la fenêtre : la liste est relue, un visuel créé entre-temps s'y voit.
   const [wake, setWake] = useState(0);
@@ -117,15 +119,16 @@ export function MyVisualsPanel({ version }: { version: number }) {
         ) : visuals ? (
           <>
             <ul className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4">
-              {visuals.map((visual) => (
+              {visuals.map((visual, index) => (
                 <li key={visual.requestId} className="overflow-hidden rounded-lg border bg-muted/30">
-                  <ZoomableImage
-                    src={fileUrl(visual.requestId)}
-                    alt={visual.prompt.slice(0, 140)}
-                    className="w-full"
-                    imageClassName="aspect-square w-full bg-muted object-cover"
-                    downloadHref={fileUrl(visual.requestId, true)}
-                  />
+                  <button
+                    type="button"
+                    onClick={() => setOuvert(index)}
+                    className="block w-full cursor-zoom-in overflow-hidden outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50"
+                    aria-label={`Agrandir : ${visual.prompt.slice(0, 140)}`}
+                  >
+                    <img src={fileUrl(visual.requestId)} alt={visual.prompt.slice(0, 140)} loading="lazy" className="aspect-square w-full bg-muted object-cover" />
+                  </button>
                   <div className="flex items-center justify-between gap-2 p-2">
                     <span className="min-w-0 text-xs text-muted-foreground">
                       {formatDateFr(visual.createdAt)} · {visual.format}
@@ -139,6 +142,16 @@ export function MyVisualsPanel({ version }: { version: number }) {
                 </li>
               ))}
             </ul>
+            <ImageGallery
+              images={visuals.map((visual) => ({
+                src: fileUrl(visual.requestId),
+                alt: visual.prompt.slice(0, 140),
+                caption: `${formatDateFr(visual.createdAt)} · ${visual.format}`,
+                downloadHref: fileUrl(visual.requestId, true),
+              }))}
+              openIndex={ouvert}
+              onClose={() => setOuvert(null)}
+            />
             {hasMore && (
               <Button variant="outline" onClick={() => void loadMore()} disabled={loadingMore}>
                 {loadingMore && <Spinner />}
