@@ -18,6 +18,8 @@ import { BrandLogo } from '@/shared/components/BrandLogo';
 import { Button, buttonVariants } from '@/shared/ui/button';
 import { Card, CardContent, CardDescription, CardHeader } from '@/shared/ui/card';
 import { Marquee } from '@/shared/ui/magicui/marquee';
+import { NumberTicker } from '@/shared/ui/magicui/number-ticker';
+import { Reveal } from '@/shared/ui/magicui/reveal';
 
 /** Sections de l'accueil, servies à la fois par la barre large et par le menu compact. */
 const SECTIONS = [
@@ -383,8 +385,9 @@ export function LandingPage() {
               description="La niche analysée alimente le studio ; le produit du studio alimente les créatifs, le kit de lancement et la page de vente."
             />
             <div className="mt-10 grid gap-4 lg:grid-cols-3">
-              {MODULE_GROUPS.map((group) => (
-                <Card key={group.id} className="gap-5">
+              {MODULE_GROUPS.map((group, index) => (
+                <Reveal key={group.id} delayMs={index * 120}>
+                <Card className="h-full gap-5">
                   <CardHeader>
                     <p className="font-display text-3xl font-black tracking-tight uppercase">{group.label.fr}</p>
                     <CardDescription className="text-base">{GROUP_PITCH[group.id]}</CardDescription>
@@ -411,6 +414,7 @@ export function LandingPage() {
                     </ul>
                   </CardContent>
                 </Card>
+                </Reveal>
               ))}
             </div>
           </section>
@@ -423,10 +427,11 @@ export function LandingPage() {
                 description="Un outil d’analyse ne vaut que par ce qu’il révèle de sa propre méthode."
               />
               <div className="mt-10 grid gap-4 md:grid-cols-3">
-                {COMMITMENTS.map((commitment) => {
+                {COMMITMENTS.map((commitment, index) => {
                   const Icon = commitment.icon;
                   return (
-                    <Card key={commitment.title}>
+                    <Reveal key={commitment.title} delayMs={index * 120}>
+                    <Card className="h-full">
                       <CardHeader>
                         <span className="flex size-10 items-center justify-center rounded-lg bg-accent text-accent-foreground">
                           <Icon className="size-5" aria-hidden="true" />
@@ -437,12 +442,15 @@ export function LandingPage() {
                         <p className="leading-relaxed text-muted-foreground">{commitment.body}</p>
                       </CardContent>
                     </Card>
+                    </Reveal>
                   );
                 })}
               </div>
 
               <figure className="mt-12 grid gap-6 rounded-xl border bg-card p-8 sm:grid-cols-[auto_minmax(0,1fr)] sm:items-center">
-                <p className="font-display text-6xl font-black tracking-tighter text-brand-orange-text tabular-nums">25,7 %</p>
+                <p className="font-display text-6xl font-black tracking-tighter text-brand-orange-text tabular-nums">
+                  <NumberTicker value={25.7} decimals={1} suffix=" %" />
+                </p>
                 <figcaption className="space-y-2">
                   <p className="text-lg font-semibold">
                     des comptes de mobile money enregistrés dans le monde étaient actifs sur 30 jours en 2025.
