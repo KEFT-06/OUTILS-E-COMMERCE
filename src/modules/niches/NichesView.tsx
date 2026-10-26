@@ -84,7 +84,8 @@ export function NichesView() {
   const [query, setQuery] = useScreenMemory('niches.recherche', '');
   const [sectorId, setSectorId] = useScreenMemory('niches.secteur', 'all');
   const [expanded, setExpanded] = useScreenMemory<Record<string, boolean>>('niches.ouverts', {});
-  const [custom, setCustom] = useScreenMemory('niches.saisie', '');
+  // null : l'auteur n'a rien tapé, la case propose une recherche voisine relevée par l'analyse.
+  const [typed, setTyped] = useScreenMemory<string | null>('niches.saisie', null);
   const [target, setTarget] = useScreenMemory('niches.catalogue', AUTO);
   const [newCatalog, setNewCatalog] = useScreenMemory('niches.nouveau-catalogue', '');
   const [pending, setPending] = useState<string | null>(null);
@@ -99,6 +100,15 @@ export function NichesView() {
 
   /** Niches ajoutées par l'utilisateur, par leur clé de recherche. */
   const ownKeys = useMemo(() => new Set(own.niches.map((niche) => searchKey(niche.name))), [own.niches]);
+
+  /** Une recherche voisine de la niche analysée, que l'auteur n'a ni enregistrée, ni ajoutée, et que le catalogue n'a pas. */
+  const proposedNiche = useMemo(() => {
+    if (!currentReport) return '';
+    const known = new Set([...savedKeys, ...ownKeys, searchKey(currentReport.query), searchKey(currentReport.nicheName), ...NICHE_SECTORS.flatMap((sector) => sector.niches.map(searchKey))]);
+    const keyword = (currentReport.searchTrends ?? []).map((trend) => trend.keyword.trim()).find((candidate) => candidate.length >= 3 && !known.has(searchKey(candidate)));
+    return keyword ? keyword.charAt(0).toLocaleUpperCase('fr-FR') + keyword.slice(1) : '';
+  }, [currentReport, savedKeys, ownKeys]);
+  const custom = typed ?? proposedNiche;
 
   /** Le catalogue affiché : les catalogues de l'utilisateur d'abord, puis les secteurs du site complétés de ses niches. */
   const catalogs = useMemo<DisplayedCatalog[]>(() => {
@@ -218,7 +228,7 @@ export function NichesView() {
     const already = NICHE_SECTORS.find((sector) => sector.niches.some((niche) => searchKey(niche) === searchKey(name)));
     if (already && target === AUTO) {
       toast.info('Cette niche est déjà au catalogue', { description: `Secteur « ${already.label} ».` });
-      setCustom('');
+      setTyped(null);
       setSectorId(already.id);
       setQuery(name);
       return;
@@ -245,7 +255,7 @@ export function NichesView() {
       semblait ne rien faire pendant plus de trente secondes (06/10/2026).
     */
     toast.success('Niche ajoutée', { description: `Rangée dans « ${label} ».` });
-    setCustom('');
+    setTyped(null);
     setNewCatalog('');
     setTarget(AUTO);
     showCatalog(catalogId);
@@ -463,7 +473,7 @@ export function NichesView() {
                 <Input
                   id="custom-niche"
                   value={custom}
-                  onChange={(event) => setCustom(event.target.value)}
+                  onChange={(event) => setTyped(event.target.value)}
                   maxLength={200}
                   placeholder="Ex. Élevage d’escargots à petite échelle"
                   disabled={!own.canAddNiche}

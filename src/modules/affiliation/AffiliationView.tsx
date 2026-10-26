@@ -5,7 +5,8 @@ import { ConnectChariowLink } from '@/shared/components/ConnectChariowLink';
 import { PageHeader } from '@/shared/components/PageHeader';
 import { type ApiError, readApiError, toApiError } from '@/shared/lib/apiError';
 import { formatDateFr } from '@/shared/lib/formatDate';
-import { EMPTY_UTM, UTM_DOCUMENTATION_URL, type UtmFields, buildAffiliateLinks, buildUtmUrl } from '@/modules/affiliation/utm';
+import { EMPTY_UTM, UTM_DOCUMENTATION_URL, type UtmFields, buildAffiliateLinks, buildUtmUrl, utmDefaultsOf } from '@/modules/affiliation/utm';
+import { useWorkspace } from '@/app/providers/WorkspaceProvider';
 import type { AffiliateSummary, InvitationResult } from '@/shared/types/affiliation';
 import { Alert, AlertDescription, AlertTitle } from '@/shared/ui/alert';
 import { Badge } from '@/shared/ui/badge';
@@ -61,7 +62,11 @@ async function copyText(value: string) {
 export function AffiliationView() {
   const [outil, setOutil] = useScreenMemory('smart-gain.outil', 'utm');
   const [baseUrl, setBaseUrl] = useScreenMemory('smart-gain.adresse', '');
-  const [fields, setFields] = useScreenMemory<UtmFields>('smart-gain.champs', EMPTY_UTM);
+  const { currentReport } = useWorkspace();
+  const [storedFields, setFields] = useScreenMemory<UtmFields>('smart-gain.champs', EMPTY_UTM);
+  // Tant que l'auteur n'a rien modifié, les cases suivent la niche analysée : il n'a qu'à coller l'adresse.
+  const [edited, setEdited] = useScreenMemory('smart-gain.champs-modifies', () => JSON.stringify(storedFields) !== JSON.stringify(EMPTY_UTM));
+  const fields = edited ? storedFields : utmDefaultsOf(currentReport?.nicheName, new Date());
   const [codesInput, setCodesInput] = useScreenMemory('smart-gain.codes', '');
 
   const [affiliateCode, setAffiliateCode] = useState('');
@@ -87,7 +92,10 @@ export function AffiliationView() {
   const canInvite =
     emails.length > 0 && emails.length <= MAX_INVITATIONS && invalidEmails.length === 0 && consent && !isInviting;
 
-  const setField = (key: UtmKey, value: string) => setFields((previous) => ({ ...previous, [key]: value }));
+  const setField = (key: UtmKey, value: string) => {
+    setFields({ ...fields, [key]: value });
+    setEdited(true);
+  };
 
   const lookUp = async (event: React.FormEvent) => {
     event.preventDefault();
@@ -232,7 +240,7 @@ export function AffiliationView() {
                   </Button>
                 </div>
               ) : (
-                (baseUrl || fields.source || fields.campaign) && (
+                (baseUrl || edited) && (
                   <ul className="space-y-1">
                     {single.errors.map((error) => (
                       <li key={error} className="flex items-start gap-1.5 text-sm text-warning">

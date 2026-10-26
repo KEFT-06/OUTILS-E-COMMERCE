@@ -32,6 +32,7 @@ import { useProductCovers } from '@/shared/stores/useProductCovers';
 import { WritingFindings } from '@/shared/components/WritingFindings';
 import { usePricing } from '@/modules/studio/usePricing';
 import { roundPrice } from '@server/shared/currency';
+import { newProductFromAnalysis } from '@/shared/lib/analysisDefaults';
 import { useMoney } from '@/shared/lib/money';
 import { safeHttpUrl } from '@/shared/lib/safeUrl';
 import { blankProduct, useCustomProducts } from '@/shared/stores/useCustomProducts';
@@ -169,11 +170,12 @@ export function DigitalProductsView({ report, onSelectProductForAd, onAnalyzeNic
   };
 
   const createBlank = () => {
-    const product = blankProduct(money.currency);
+    // Après une analyse, le produit part de la niche : il ne reste qu'à relire.
+    const product = newProductFromAnalysis(report, blankProduct(money.currency));
     custom.add(product);
     setSelectedId(product.id);
     setJustCreatedId(product.id);
-    toast.success('Produit créé', { description: 'Complétez-le dans le mode Expert, ou faites rédiger ses modules automatiquement.' });
+    toast.success('Produit créé', { description: report ? 'Prérempli d’après l’analyse : relisez-le, puis faites rédiger ses modules.' : 'Complétez-le dans le mode Expert, ou faites rédiger ses modules automatiquement.' });
   };
 
   const onTextProduct = (result: TextProductResult, studied: boolean) => {

@@ -122,3 +122,30 @@ export function buildAffiliateLinks(
       return { code, result: buildUtmUrl(baseUrl, { ...fields, source: code, medium: 'affiliate' }) };
     });
 }
+
+const LINK_WORDS = new Set(['de', 'des', 'du', 'en', 'la', 'le', 'les', 'au', 'aux', 'et', 'pour', 'par', 'sur', 'un', 'une', 'avec', 'sans', 'dans']);
+const MONTHS = ['janvier', 'fevrier', 'mars', 'avril', 'mai', 'juin', 'juillet', 'aout', 'septembre', 'octobre', 'novembre', 'decembre'];
+
+/**
+ * Ce que le lien de campagne propose avant que l'auteur ne touche à rien (demande du propriétaire,
+ * 25/10/2026 : tout ce qui se remplit doit l'être d'avance). Les campagnes que prépare Smart Creator
+ * sont des publicités Meta : source « facebook », support « cpc » — le couple que Google Analytics
+ * range dans « Paid Social ». La campagne porte la niche analysée, à défaut le mois.
+ */
+export function utmDefaultsOf(nicheName: string | null | undefined, now: Date): UtmFields {
+  const month = String(now.getMonth() + 1).padStart(2, '0');
+  // Trois mots porteurs : « élevage de poulets en ville » donne « elevage_poulets_ville », jamais « …_en ».
+  const words = (nicheName ?? '')
+    .split(/[\s’'-]+/)
+    .map(normalizeUtmValue)
+    .filter((word) => word.length > 1 && !LINK_WORDS.has(word));
+  const niche = words.slice(0, 3).join('_');
+  return {
+    ...EMPTY_UTM,
+    source: 'facebook',
+    medium: 'cpc',
+    campaign: `lancement_${niche || MONTHS[now.getMonth()]}`,
+    id: `${now.getFullYear()}-${month}-lancement`,
+    sourcePlatform: 'meta_ads',
+  };
+}

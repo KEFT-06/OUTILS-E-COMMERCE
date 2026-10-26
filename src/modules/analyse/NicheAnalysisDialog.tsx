@@ -40,13 +40,16 @@ type FormValues = z.infer<typeof schema>;
  * coupée, titre et champ hors de l'écran.
  */
 export function NicheAnalysisDialog() {
-  const { analysisDialogOpen, setAnalysisDialogOpen, analyzeNiche, isAnalyzing } = useWorkspace();
+  const { analysisDialogOpen, setAnalysisDialogOpen, analyzeNiche, isAnalyzing, reports } = useWorkspace();
   const { account } = useAuth();
   const suggestions = account?.savedNiches.slice(0, 6) ?? [];
+  // La case part de la première niche enregistrée pas encore analysée : il ne reste qu'à lancer.
+  const analyzed = new Set(reports.map((entry) => entry.query.trim().toLocaleLowerCase('fr-FR')));
+  const nextNiche = account?.savedNiches.find((niche) => !analyzed.has(niche.trim().toLocaleLowerCase('fr-FR'))) ?? '';
 
   const form = useForm<FormValues>({
     resolver: zodResolver(schema),
-    values: { query: '', market: account?.country ?? null },
+    values: { query: nextNiche, market: account?.country ?? null },
   });
 
   const onSubmit = form.handleSubmit(async ({ query, market }) => {
@@ -133,7 +136,7 @@ export function NicheAnalysisDialog() {
               </div>
             )}
 
-            <Button variant="link" asChild className="h-auto justify-start p-0">
+            <Button variant="link" asChild className="h-auto justify-start p-0 text-left whitespace-normal">
               <Link to={pathOf('niches')} onClick={() => setAnalysisDialogOpen(false)}>
                 <Compass />
                 Parcourir le catalogue des niches, tous secteurs

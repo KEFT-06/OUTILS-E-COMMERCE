@@ -8,6 +8,7 @@ import {
   followableCompetitorOf,
   followableStoreOfMarket,
   launchKitDefaultsOf,
+  newProductFromAnalysis,
   productPageDefaultsOf,
   scriptFor,
   spyKeywordOf,
@@ -18,6 +19,7 @@ import type { MarketSearch } from '@/shared/types/radar';
 import { limitWords } from '@/shared/lib/text';
 import type { DigitalProductIdea, MarketAnalysisReport, MetaAdCampaign } from '@/shared/types/analysis';
 import type { CtaPlatform, ScriptFormat } from '@/shared/types/launchKit';
+import { blankProduct } from '@/shared/stores/useCustomProducts';
 
 /**
  * Ce que l'analyse d'une niche propose dans chaque module (demande du propriétaire, 11/10/2026 :
@@ -267,6 +269,36 @@ describe('Ce que l’analyse propose dans chaque module', () => {
     assert.equal('cta' in kit.scripts['15']!, false, 'aucun appel à l’action inventé');
     assert.deepEqual(kit.ctaByMarket, {}, 'sans marché, aucun bouton choisi');
     assert.deepEqual(launchKitDefaultsOf(product).scripts, {}, 'tant que les durées ne sont pas connues, pas de script');
+  });
+});
+
+describe('Studio : un nouveau produit après une analyse', () => {
+  it('part du portrait de l’acheteur : titre, public, difficulté, promesse, un module par difficulté', () => {
+    const avecMotivations = { ...report, audience: { ...report.audience!, motivations: ['avoir des œufs frais chaque matin', 'gagner un revenu d’appoint'] } };
+    const produit = newProductFromAnalysis(avecMotivations, blankProduct('XAF'));
+    assert.equal(produit.title, 'Élevage de poules pondeuses en milieu urbain');
+    assert.equal(produit.targetAudience, 'Citadins de 25 à 40 ans.');
+    assert.equal(produit.targetProblem, 'Le bruit des voisins');
+    assert.equal(produit.transformationPromise, 'Avoir des œufs frais chaque matin');
+    assert.equal(produit.subtitle, 'Gagner un revenu d’appoint');
+    assert.deepEqual(
+      produit.tableOfContents.map((module) => module.title),
+      ['Le bruit des voisins', 'Le manque de place', 'Le coût de l’aliment', 'Les maladies'],
+    );
+    assert.equal(produit.currency, 'XAF');
+  });
+
+  it('ne reprend un prix que dans la devise de l’utilisateur ; sans portrait, l’acheteur de la première idée ; rien sans analyse', () => {
+    const idee = (currency: string, recommendedPrice: number) => ({ recommendedPrice, currency }) as DigitalProductIdea;
+    const enDollars = { ...report, digitalProducts: [idee('USD', 9)] } as MarketAnalysisReport;
+    assert.equal(newProductFromAnalysis(enDollars, blankProduct('XAF')).recommendedPrice, null);
+    const enFrancs = { ...report, digitalProducts: [idee('USD', 9), idee('XAF', 5000)] } as MarketAnalysisReport;
+    assert.equal(newProductFromAnalysis(enFrancs, blankProduct('XAF')).recommendedPrice, 5000);
+    const ancien = { ...report, audience: null, digitalProducts: [{ ...idee('XAF', 5000), targetAudience: 'Jeunes citadins', targetProblem: 'Des œufs trop chers', transformationPromise: 'Des œufs frais chaque jour' }] } as unknown as MarketAnalysisReport;
+    const repris = newProductFromAnalysis(ancien, blankProduct('XAF'));
+    assert.deepEqual([repris.targetAudience, repris.targetProblem, repris.transformationPromise], ['Jeunes citadins', 'Des œufs trop chers', 'Des œufs frais chaque jour'], 'sans portrait, le même acheteur que la première idée');
+    const vide = blankProduct('XAF');
+    assert.equal(newProductFromAnalysis(null, vide), vide);
   });
 });
 

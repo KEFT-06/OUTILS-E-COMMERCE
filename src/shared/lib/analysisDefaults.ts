@@ -297,3 +297,40 @@ export function launchKitDefaultsOf(
     ctaByMarket: market ? { [market]: button?.id ?? '' } : {},
   };
 }
+
+const capitalized = (text: string) => (text ? text.charAt(0).toLocaleUpperCase('fr-FR') + text.slice(1) : text);
+
+/**
+ * « Nouveau produit » du Studio après une analyse : le produit part de la niche — titre de travail,
+ * public, difficulté, promesse, plan et repère de prix — au lieu d'une fiche vide (demande du
+ * propriétaire, 25/10/2026 : « l'utilisateur est paresseux, tout ce qu'il y a à remplir doit l'être »).
+ *
+ * Tout vient du portrait de l'acheteur, pas des idées de produit déjà proposées à côté : en copier
+ * une ferait un doublon. Un module par difficulté du public, la première étant le problème visé.
+ * Un rapport sans portrait (analyses antérieures au 04/10/2026) prête le public, la difficulté et la
+ * promesse de sa première idée : c'est le même acheteur. Rien d'inventé : sans analyse, la fiche
+ * reste celle de départ. Le prix n'est repris que dans la devise de l'utilisateur.
+ */
+export function newProductFromAnalysis(
+  report: Pick<MarketAnalysisReport, 'nicheName' | 'query' | 'audience' | 'digitalProducts' | 'pricing'> | null | undefined,
+  base: DigitalProductIdea,
+): DigitalProductIdea {
+  if (!report) return base;
+  const pains = (report.audience?.pains ?? []).map((pain) => pain.trim()).filter(Boolean);
+  const motivations = (report.audience?.motivations ?? []).map((motivation) => motivation.trim()).filter(Boolean);
+  const niche = shorten((report.nicheName || report.query || '').trim(), 120);
+  const modules = pains.slice(0, 6).map((pain, index) => ({ moduleNumber: index + 1, title: shorten(capitalized(pain), 90), details: '' }));
+  const idea = report.digitalProducts?.[0];
+  const priced = report.digitalProducts?.find((idea) => idea.recommendedPrice != null && idea.currency === base.currency);
+  return {
+    ...base,
+    title: niche ? capitalized(niche) : base.title,
+    subtitle: motivations[1] ? shorten(capitalized(motivations[1]), 150) : base.subtitle,
+    recommendedPrice: priced?.recommendedPrice ?? base.recommendedPrice,
+    pricingNote: report.pricing?.recommendation?.trim() || base.pricingNote,
+    targetAudience: report.audience?.profile?.trim() || idea?.targetAudience?.trim() || base.targetAudience,
+    ...(pains[0] || idea?.targetProblem?.trim() ? { targetProblem: pains[0] ? capitalized(pains[0]) : idea!.targetProblem!.trim() } : {}),
+    transformationPromise: motivations[0] ? capitalized(motivations[0]) : idea?.transformationPromise?.trim() || base.transformationPromise,
+    tableOfContents: modules.length >= 3 ? modules : base.tableOfContents,
+  };
+}
