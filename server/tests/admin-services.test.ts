@@ -33,10 +33,13 @@ describe('État des services', () => {
     };
 
     const byId = Object.fromEntries(report.services.map((service) => [service.id, service]));
-    assert.deepEqual(Object.keys(byId).sort(), ['ad-collection', 'chariow', 'database', 'email', 'gamma', 'gemini', 'groq', 'images', 'market-reading', 'perplexity', 'radar', 'sebpay', 'storefronts', 'stripe', 'veo', 'video-archive']);
+    assert.deepEqual(Object.keys(byId).sort(), ['ad-collection', 'chariow', 'database', 'email', 'fal', 'gamma', 'gemini', 'groq', 'images', 'market-reading', 'perplexity', 'radar', 'sebpay', 'storefronts', 'stripe', 'veo', 'video-archive']);
     // Sans clé Firecrawl, la ligne dit que la plateforme refuse le serveur, et quelle variable ajouter.
     assert.equal(byId.storefronts!.state, 'warning');
     assert.match(byId.storefronts!.action ?? '', /FIRECRAWL_API_KEY/);
+    // Sans clé fal.ai, la ligne dit par où passent les vidéos, et quelle variable ajouter.
+    assert.equal(byId.fal!.state, 'off');
+    assert.match(byId.fal!.action ?? '', /FAL_KEY/);
 
     assert.equal(byId.database!.state, 'warning', 'base embarquée : pas en ligne');
     // Le mode de connexion se lit dans l'adresse, sans rien afficher du mot de passe.

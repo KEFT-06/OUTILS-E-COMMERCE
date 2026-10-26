@@ -1,7 +1,8 @@
-import { and, eq, gt, isNotNull, isNull, lt } from 'drizzle-orm';
+import { and, eq, gt, inArray, isNotNull, isNull, lt } from 'drizzle-orm';
 import { getDb } from '@server/db/client';
 import { generations, users } from '@server/db/schema';
-import { env } from '@server/env';
+import { env, isProd } from '@server/env';
+import { getFalGeneration } from '@server/services/fal';
 import { UNLIMITED, getPlan } from '@server/services/plans';
 import { type BucketOptions, getObject, putObject, removeObjects, supabaseStorage } from '@server/services/storage/supabase';
 import { fetchVeoMedia, getVeoGeneration } from '@server/services/veo';
@@ -25,6 +26,10 @@ export { supabaseProjectUrl } from '@server/services/storage/supabase';
  *
  * L'espace de stockage est PRIVÉ : le fichier ne sort que par le serveur, à son auteur ou à
  * l'administration.
+ *
+ * Les vidéos rendues chez fal.ai (depuis le 26/10/2026) suivent les mêmes règles. fal.ai ne
+ * publie pas de durée de conservation vérifiée : on lui prête les deux jours de Google, la
+ * borne prudente — la copie part donc dans les mêmes cas.
  */
 
 /** Limite de dépôt de l'offre gratuite de Supabase. */
@@ -39,8 +44,29 @@ export function videoArchiveConfigured(): boolean {
   return supabaseStorage() !== null;
 }
 
-/** Chemin de l'objet : l'identifiant d'opération, déjà validé par son schéma (lettres et chiffres). */
-const objectPath = (requestId: string) => `veo/${requestId}.mp4`;
+/** Fournisseurs dont les vidéos sont copiées. */
+export type ArchivedProvider = 'veo' | 'fal';
+const ARCHIVED_PROVIDERS: ArchivedProvider[] = ['veo', 'fal'];
+
+/** Chemin de l'objet : l'identifiant de la demande, déjà validé par son schéma (lettres, chiffres, tirets). */
+const objectPath = (requestId: string, provider: ArchivedProvider = 'veo') => `${provider}/${requestId}.mp4`;
+const archivedProviderOf = (provider: string): ArchivedProvider => (provider === 'fal' ? 'fal' : 'veo');
+
+/** Le fichier de la vidéo terminée chez son fournisseur, ou null s'il n'est pas (encore) prêt. */
+async function providerVideo(provider: ArchivedProvider, requestId: string): Promise<Response | null> {
+  if (provider === 'veo') {
+    const veo = await getVeoGeneration(requestId);
+    return veo.status === 'completed' && veo.mediaUrl ? fetchVeoMedia(veo.mediaUrl) : null;
+  }
+  const fal = await getFalGeneration(env.FAL_VIDEO_MODEL, requestId);
+  if (fal.status !== 'COMPLETED' || !fal.mediaUrl || fal.mediaType !== 'video') return null;
+  const url = new URL(fal.mediaUrl);
+  // Lien chiffré exigé ; la boucle locale n'est tolérée qu'hors production, pour les tests.
+  if (url.protocol !== 'https:' && (isProd || !/^(127\.0\.0\.1|localhost)$/.test(url.hostname))) throw new Error('lien de fichier non chiffré');
+  const response = await fetch(url, { signal: AbortSignal.timeout(60_000) });
+  if (!response.ok) throw new Error(`fichier injoignable (${response.status})`);
+  return response;
+}
 
 /** Jours de conservation promis à l'auteur : ceux de son palier (administration : le plus long). */
 export async function videoRetentionDaysFor(userId: string): Promise<number> {
@@ -56,6 +82,7 @@ export const needsArchive = (retentionDays: number) => retentionDays > VEO_KEEPS
 interface ArchivableGeneration {
   id: string;
   userId: string;
+  provider: string;
   providerRef: string | null;
   archivedAt: Date | null;
   parentId: string | null;
@@ -64,13 +91,13 @@ interface ArchivableGeneration {
 }
 
 /**
- * Copie la vidéo d'une génération Veo terminée, une seule fois, si le palier de l'auteur le
- * justifie. Ne lève jamais : un échec est journalisé, et le balayage de nuit réessaie tant que
- * Google garde le fichier.
+ * Copie la vidéo d'une génération terminée (Veo ou fal.ai), une seule fois, si le palier de
+ * l'auteur le justifie. Ne lève jamais : un échec est journalisé, et le balayage de nuit
+ * réessaie tant que le fournisseur garde le fichier.
  *
  * @returns vrai si la vidéo est (désormais) archivée.
  */
-export async function archiveVeoVideo(generation: ArchivableGeneration): Promise<boolean> {
+export async function archiveVideo(generation: ArchivableGeneration): Promise<boolean> {
   if (generation.archivedAt) return true;
   const target = supabaseStorage();
   if (!target || !generation.providerRef) return false;
@@ -79,15 +106,15 @@ export async function archiveVeoVideo(generation: ArchivableGeneration): Promise
     const retentionDays = await videoRetentionDaysFor(generation.userId);
     if (!needsArchive(retentionDays)) return false;
 
-    const veo = await getVeoGeneration(generation.providerRef);
-    if (veo.status !== 'completed' || !veo.mediaUrl) return false;
-    const media = await fetchVeoMedia(veo.mediaUrl);
+    const provider = archivedProviderOf(generation.provider);
+    const media = await providerVideo(provider, generation.providerRef);
+    if (!media) return false;
     const declared = Number(media.headers.get('content-length') ?? 0);
     if (declared > MAX_BYTES) throw new Error(`vidéo de ${declared} octets, au-delà de la limite de dépôt`);
     const bytes = await media.arrayBuffer();
     if (bytes.byteLength > MAX_BYTES) throw new Error(`vidéo de ${bytes.byteLength} octets, au-delà de la limite de dépôt`);
 
-    await putObject(target, bucket(), objectPath(generation.providerRef), bytes, 'video/mp4');
+    await putObject(target, bucket(), objectPath(generation.providerRef, provider), bytes, 'video/mp4');
 
     const ready = generation.completedAt ?? generation.createdAt;
     await getDb()
@@ -110,19 +137,19 @@ export async function archiveVeoVideo(generation: ArchivableGeneration): Promise
 async function dropReplacedVersion(parentId: string): Promise<void> {
   const target = supabaseStorage();
   const [parent] = await getDb()
-    .select({ id: generations.id, providerRef: generations.providerRef, archivedAt: generations.archivedAt })
+    .select({ id: generations.id, provider: generations.provider, providerRef: generations.providerRef, archivedAt: generations.archivedAt })
     .from(generations)
     .where(eq(generations.id, parentId))
     .limit(1);
   if (!target || !parent?.archivedAt || !parent.providerRef) return;
-  await removeObjects(target, env.CREATIVES_BUCKET, [objectPath(parent.providerRef)]);
+  await removeObjects(target, env.CREATIVES_BUCKET, [objectPath(parent.providerRef, archivedProviderOf(parent.provider))]);
   await getDb().update(generations).set({ archivedAt: null, archiveExpiresAt: new Date() }).where(eq(generations.id, parent.id));
 }
 
-/** La copie archivée, ou null si elle n'existe pas (l'appelant se rabat alors sur Google). */
-export async function fetchArchivedVideo(requestId: string): Promise<Response | null> {
+/** La copie archivée, ou null si elle n'existe pas (l'appelant se rabat alors sur le fournisseur). */
+export async function fetchArchivedVideo(requestId: string, provider: ArchivedProvider = 'veo'): Promise<Response | null> {
   const target = supabaseStorage();
-  return target ? getObject(target, env.CREATIVES_BUCKET, objectPath(requestId)) : null;
+  return target ? getObject(target, env.CREATIVES_BUCKET, objectPath(requestId, provider)) : null;
 }
 
 /**
@@ -137,6 +164,7 @@ export function videoAvailableUntil(generation: { archivedAt: Date | null; archi
 const archivableColumns = {
   id: generations.id,
   userId: generations.userId,
+  provider: generations.provider,
   providerRef: generations.providerRef,
   archivedAt: generations.archivedAt,
   parentId: generations.parentId,
@@ -145,9 +173,9 @@ const archivableColumns = {
 };
 
 /**
- * Filet du balayage de nuit : copie les vidéos Veo terminées depuis moins de deux jours et
- * pas encore archivées (dépôt interrompu, ou clé ajoutée après leur création). Les vidéos
- * dont le palier ne prévoit pas de copie sont écartées par `archiveVeoVideo`.
+ * Filet du balayage de nuit : copie les vidéos (Veo, fal.ai) terminées depuis moins de deux
+ * jours et pas encore archivées (dépôt interrompu, ou clé ajoutée après leur création). Les
+ * vidéos dont le palier ne prévoit pas de copie sont écartées par `archiveVideo`.
  */
 export async function archivePendingVideos(now = new Date(), limit = 20): Promise<{ archived: number; failed: number }> {
   if (!videoArchiveConfigured()) return { archived: 0, failed: 0 };
@@ -156,7 +184,7 @@ export async function archivePendingVideos(now = new Date(), limit = 20): Promis
     .from(generations)
     .where(
       and(
-        eq(generations.provider, 'veo'),
+        inArray(generations.provider, ARCHIVED_PROVIDERS),
         eq(generations.status, 'completed'),
         isNull(generations.archivedAt),
         isNull(generations.archiveExpiresAt),
@@ -165,7 +193,7 @@ export async function archivePendingVideos(now = new Date(), limit = 20): Promis
     )
     .limit(limit);
   let archived = 0;
-  for (const row of rows) if (await archiveVeoVideo(row)) archived += 1;
+  for (const row of rows) if (await archiveVideo(row)) archived += 1;
   return { archived, failed: rows.length - archived };
 }
 
@@ -177,7 +205,7 @@ export async function purgeExpiredVideos(now = new Date(), limit = 500): Promise
   const target = supabaseStorage();
   if (!target) return { purged: 0 };
   const rows = await getDb()
-    .select({ id: generations.id, providerRef: generations.providerRef })
+    .select({ id: generations.id, provider: generations.provider, providerRef: generations.providerRef })
     .from(generations)
     .where(and(isNotNull(generations.archivedAt), isNotNull(generations.archiveExpiresAt), lt(generations.archiveExpiresAt, now)))
     .limit(limit);
@@ -186,7 +214,7 @@ export async function purgeExpiredVideos(now = new Date(), limit = 500): Promise
   await removeObjects(
     target,
     env.CREATIVES_BUCKET,
-    rows.flatMap((row) => (row.providerRef ? [objectPath(row.providerRef)] : [])),
+    rows.flatMap((row) => (row.providerRef ? [objectPath(row.providerRef, archivedProviderOf(row.provider))] : [])),
   );
   for (const row of rows) await getDb().update(generations).set({ archivedAt: null }).where(eq(generations.id, row.id));
   return { purged: rows.length };

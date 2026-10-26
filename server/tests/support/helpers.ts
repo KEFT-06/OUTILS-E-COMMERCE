@@ -68,6 +68,9 @@ export async function createTestApp(overrides: Record<string, string> = {}): Pro
     // Jamais le vrai Firecrawl sous test : il est payant, et lirait la vitrine d'un tiers.
     FIRECRAWL_API_KEY: '',
     FIRECRAWL_API_URL: 'http://127.0.0.1:9',
+    // Jamais un vrai rendu vidéo sous test : fal.ai est payé à la seconde, et le poste en porte la clé.
+    FAL_KEY: '',
+    FAL_API_URL: 'http://127.0.0.1:9',
     GITHUB_API_URL: 'http://127.0.0.1:9',
     STRIPE_API_KEY: '',
     STRIPE_WEBHOOK_SECRET: '',

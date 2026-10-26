@@ -6,8 +6,10 @@ export interface ServerProviders {
   text: boolean;
   /** Visuels et couvertures (Cloudflare ou Gemini). */
   images: boolean;
-  /** Vidéos (Veo). */
+  /** Vidéos. */
   video: boolean;
+  /** « Vidéo longue », prolongée par étapes : seulement quand Veo rend les vidéos. */
+  videoExtension: boolean;
   /** Recherche web des analyses de niche. */
   webSearch: boolean;
   /** Envoi des e-mails (mot de passe oublié, confirmation d'adresse). */
@@ -45,6 +47,8 @@ export function useProviders(): ServerProviders | null {
             // fournisseur faisait les deux, et une couverture était refusée quand la vidéo l'était.
             images: Boolean(data.providers.image ?? data.providers.video),
             video: Boolean(data.providers.video),
+            // Ancien serveur, sans l'indicateur : il rendait par Veo, qui sait prolonger.
+            videoExtension: Boolean(data.providers.videoExtension ?? data.providers.video),
             webSearch: Boolean(data.providers.webSearch),
             email: Boolean(data.providers.email),
             payments: Boolean(data.providers.payments),

@@ -1,4 +1,4 @@
-import { and, desc, eq, sql } from 'drizzle-orm';
+import { and, desc, eq, inArray, sql } from 'drizzle-orm';
 import { databaseKind, getDb } from '@server/db/client';
 import { adSearches, alerts, auditLogs, generations, spiedAds, storybooks, watches } from '@server/db/schema';
 import { alertWatch } from '@server/services/alerts';
@@ -9,6 +9,8 @@ import { sebpayMode } from '@server/services/billing/sebpay';
 import { classifyGoogleRefusal, lastGoogleRefusal, recordGoogleRefusal } from '@server/services/ai/googleRefusal';
 import { lastImageOutcome } from '@server/services/ai/image';
 import { videoArchiveConfigured } from '@server/services/creatives/archive';
+import { falAppOf, falConfigured } from '@server/services/fal';
+import { veoConfigured } from '@server/services/veo';
 import { ownIllustrationAvailable } from '@server/services/storybook/illustrate';
 import { firecrawlPagesToday } from '@server/services/radar/sources/firecrawl';
 
@@ -414,11 +416,44 @@ async function checkGamma(): Promise<ServiceCheck> {
 }
 
 /**
+ * Vidéos : fal.ai, le moteur dès que sa clé est là (26/10/2026). La clé est éprouvée par une
+ * lecture d'état sur une demande qui n'existe pas — gratuite : une clé refusée répond 401, une
+ * clé acceptée 404. Le solde, lui, n'est lisible qu'avec une clé « ADMIN » (403 sinon) : un
+ * compte à sec ne se voit qu'au premier rendu refusé, d'où l'action rappelée ici.
+ */
+async function checkFal(): Promise<ServiceCheck> {
+  const base = { id: 'fal', name: 'fal.ai (vidéos)', role: 'Vidéos publicitaires, formats 9:16 et 16:9, son compris' };
+  if (!falConfigured())
+    return {
+      ...base,
+      state: 'off',
+      detail: veoConfigured() ? 'Aucune clé : les vidéos passent par Veo.' : 'Aucune clé : les vidéos sont fermées.',
+      action: 'Créer une clé de portée « API » sur fal.ai/dashboard/keys, la mettre dans FAL_KEY, puis redéployer.',
+    };
+  const result = await probe(`${trimmed(env.FAL_API_URL)}/${falAppOf(env.FAL_VIDEO_MODEL)}/requests/00000000-0000-0000-0000-000000000000/status`, {
+    Authorization: `Key ${env.FAL_KEY}`,
+  });
+  if (!result) return unreachable(base);
+  if (result.status === 401 || result.status === 403) return refused(base, 'FAL_KEY');
+  if (result.status !== 404 && result.status !== 200) return unreachable(base);
+  return {
+    ...base,
+    state: 'ok',
+    detail: `Clé acceptée · modèle ${env.FAL_VIDEO_MODEL}, en 720p. Prépayé, facturé à la seconde rendue.`,
+    action: 'Le solde ne se lit que sur fal.ai/dashboard/billing : sans solde, chaque vidéo est refusée et ses points rendus.',
+  };
+}
+
+/**
  * Vidéos : Veo, par la clé Gemini. Le modèle est interrogé (lecture, gratuite) : une clé
  * valide mais sans accès à Veo se voit ici, et non au premier client qui paie une vidéo.
  */
 async function checkVeo(): Promise<ServiceCheck> {
-  const base = { id: 'veo', name: 'Veo (vidéos)', role: 'Vidéos publicitaires, formats 9:16 et 16:9' };
+  const base = {
+    id: 'veo',
+    name: 'Veo (vidéos)',
+    role: falConfigured() ? 'Secours des vidéos, et prolongation des vidéos déjà rendues par Veo' : 'Vidéos publicitaires, formats 9:16 et 16:9',
+  };
   if (!env.GEMINI_API_KEY)
     return { ...base, state: 'off', detail: 'Aucune clé Gemini : les vidéos sont fermées.', action: 'Renseigner GEMINI_API_KEY.' };
   const result = await probe(`${trimmed(env.GEMINI_API_URL)}/v1beta/models/${encodeURIComponent(env.VEO_VIDEO_MODEL)}`, {
@@ -442,9 +477,9 @@ async function checkVeo(): Promise<ServiceCheck> {
   };
 }
 
-/** Copie des vidéos Veo dans le stockage de Supabase : Google n'en garde une que deux jours. */
+/** Copie des vidéos (Veo, fal.ai) dans le stockage de Supabase : le fournisseur n'en garde une que deux jours. */
 async function checkVideoArchive(): Promise<ServiceCheck> {
-  const base = { id: 'video-archive', name: 'Copie des vidéos', role: 'Garde les vidéos Veo au-delà des 2 jours de Google' };
+  const base = { id: 'video-archive', name: 'Copie des vidéos', role: 'Garde les vidéos au-delà des 2 jours du fournisseur' };
   if (!videoArchiveConfigured())
     return {
       ...base,
@@ -460,7 +495,7 @@ async function checkVideoArchive(): Promise<ServiceCheck> {
       last: sql<string | null>`max(${generations.archivedAt})`,
     })
     .from(generations)
-    .where(and(eq(generations.provider, 'veo'), eq(generations.status, 'completed')));
+    .where(and(inArray(generations.provider, ['veo', 'fal']), eq(generations.status, 'completed')));
   const archived = counts?.archived ?? 0;
   const waiting = counts?.waiting ?? 0;
   const last = counts?.last ? new Date(counts.last).toLocaleString('fr-FR', { timeZone: env.REPORTING_TIMEZONE }) : null;
@@ -472,7 +507,7 @@ async function checkVideoArchive(): Promise<ServiceCheck> {
       (last ? ` · dernière copie : ${last}` : ' · aucune vidéo copiée pour l’instant') +
       (waiting > 0 ? ` · ${waiting} en attente de copie` : '') +
       '.',
-    action: waiting > 0 ? 'Les copies manquées sont refaites par le relevé de nuit tant que Google garde l’original (2 jours).' : null,
+    action: waiting > 0 ? 'Les copies manquées sont refaites par le relevé de nuit tant que le fournisseur garde l’original (2 jours).' : null,
   };
 }
 
@@ -819,6 +854,7 @@ export async function checkServices(options: { refresh?: boolean } = {}): Promis
     Promise.resolve(checkGroq()),
     checkPerplexity(),
     checkGamma(),
+    checkFal(),
     checkVeo(),
     checkVideoArchive(),
     checkChariow(),

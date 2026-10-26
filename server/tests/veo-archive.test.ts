@@ -229,8 +229,8 @@ describe('Copie des vidéos Veo', () => {
         completedAt: new Date(),
       })
       .returning();
-    const { archiveVeoVideo, purgeExpiredVideos } = await import('@server/services/creatives/archive');
-    assert.equal(await archiveVeoVideo(enfant!), true);
+    const { archiveVideo, purgeExpiredVideos } = await import('@server/services/creatives/archive');
+    assert.equal(await archiveVideo(enfant!), true);
     assert.ok(objets.has('veo/op-9999.mp4'), 'la nouvelle version est copiée');
     assert.equal(objets.has(`veo/${requestId}.mp4`), false, 'l’ancienne version est effacée');
 

@@ -320,8 +320,8 @@ const schema = z.object({
   CLOUDFLARE_IMAGE_MODEL: z.string().regex(/^@?[\w./-]+$/).default('@cf/black-forest-labs/flux-2-klein-4b'),
   CLOUDFLARE_IMAGE_MODEL_FAST: z.string().regex(/^@?[\w./-]+$/).default('@cf/black-forest-labs/flux-1-schnell'),
   /**
-   * Rendu vidéo par fal.ai, payé à l'usage : 0,35 $ les cinq secondes, puis 0,07 $ par seconde,
-   * contre un abonnement mensuel chez Higgsfield dont les crédits périmaient chaque mois.
+   * Rendu vidéo par fal.ai, payé à l'usage. Depuis le 26/10/2026, c'est le moteur vidéo dès que la
+   * clé est là : le projet Gemini (Veo) est refusé par Google. Veo ne reste qu'en secours.
    * Le jeton s'obtient sur fal.ai/dashboard/keys, portée « API » et non « ADMIN ».
    *
    * L'en-tête est « Authorization: Key <clé> », et non « Bearer » : l'erreur donne un 401
@@ -330,7 +330,13 @@ const schema = z.object({
   FAL_KEY: z.string().min(1).optional(),
   /** File d'attente de fal.ai. Surchargeable pour tester contre un serveur factice. */
   FAL_API_URL: z.string().url().default('https://queue.fal.run'),
-  FAL_VIDEO_MODEL: z.string().regex(/^[\w./-]+$/).default('fal-ai/kling-video/v2.5-turbo/pro/text-to-video'),
+  /**
+   * Gemini Omni Flash 1.1 : 0,10 $ la seconde en 720p, son compris ; 3 à 10 s, 9:16 et 16:9, sans
+   * fin annoncée (fal.ai, 26/10/2026). Veo 3.1 Fast (« fal-ai/veo3.1/fast », 0,15 $/s avec le son)
+   * a le même schéma que notre formulaire mais s'arrête le 17/11/2026 ; Kling 3 traduit la voix
+   * en anglais. Les deux familles sont comprises par buildFalVideoInput.
+   */
+  FAL_VIDEO_MODEL: z.string().regex(/^[\w./-]+$/).default('google/gemini-omni-flash/v1.1/text-to-video'),
   /**
    * Rendu vidéo par Veo 3.1, sur la clé Gemini — un seul abonnement pour l'image et la vidéo.
    *

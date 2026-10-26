@@ -16,7 +16,11 @@ import { AppError } from '@server/middleware';
  *    que l'on prendrait pour une clé invalide ;
  *  - l'identifiant du modèle fait partie du chemin, y compris pour lire un état. Un
  *    request_id seul ne suffit donc pas à suivre une génération : l'appelant doit dire de
- *    quel modèle elle vient.
+ *    quel modèle elle vient ;
+ *  - le suivi se lit sur la RACINE de l'application, pas sur le chemin complet du modèle :
+ *    « google/gemini-omni-flash/requests/{id}/status » répond, « google/gemini-omni-flash/v1.1/
+ *    text-to-video/requests/{id}/status » rend un 405 (mesuré le 26/10/2026, idem chez Veo 3.1).
+ *    Seul le dépôt prend le chemin complet.
  *
  * fal.ai ne facture que les rendus réussis : ni les erreurs, ni l'attente en file.
  */
@@ -28,6 +32,8 @@ const falStatusSchema = z.object({
   status: z.enum(['IN_QUEUE', 'IN_PROGRESS', 'COMPLETED']),
   request_id: z.string().min(1),
   queue_position: z.number().int().optional(),
+  /** Présent quand le rendu a échoué : l'état dit alors COMPLETED, sans fichier. */
+  error: z.unknown().optional(),
 });
 
 const falResultSchema = z.object({
@@ -43,12 +49,19 @@ export interface FalGeneration {
   /** Renseigné seulement quand le rendu est terminé. */
   mediaUrl?: string;
   mediaType?: 'video' | 'image';
+  /** Rendu terminé SANS fichier : refusé par le modèle ou échoué chez fal. Rien n'est facturé par fal. */
+  failed?: boolean;
 }
 
 /** Identifiant rendu par fal : alphanumérique et tirets, jamais un chemin. */
 export const falRequestIdSchema = z
   .string()
   .regex(/^[A-Za-z0-9_-]{8,128}$/, 'Identifiant de génération invalide.');
+
+/** Racine de l'application d'un modèle : ses deux premiers segments, où se lit le suivi. */
+export function falAppOf(model: string): string {
+  return model.split('/').slice(0, 2).join('/');
+}
 
 export function falConfigured(): boolean {
   return Boolean(env.FAL_KEY);
@@ -63,15 +76,16 @@ function detailOf(payload: unknown): string {
 
 function falFailure(status: number, detail: string): AppError {
   console.error('[fal] le fournisseur a répondu', status, detail);
-  if (status === 401 || status === 403) {
+  if ((status === 401 || status === 403) && !/balance|locked/i.test(detail)) {
     return new AppError(
       503,
       'Le service vidéo refuse l’accès du serveur : l’administrateur doit vérifier sa configuration.',
       'FAL_ACCESS_DENIED',
     );
   }
-  // fal.ai est prépayé : sans solde, aucun rendu ne part.
-  if (status === 402) {
+  // fal.ai est prépayé : sans solde, aucun rendu ne part. Un compte à sec répond 403 « User is
+  // locked. Reason: Exhausted balance » (constaté le 26/10/2026), pas 402.
+  if (status === 402 || /balance|locked/i.test(detail)) {
     return new AppError(
       503,
       'Le service vidéo est momentanément indisponible. Vos points ont été rendus.',
@@ -134,14 +148,30 @@ export async function submitFalGeneration(model: string, input: unknown): Promis
  */
 export async function getFalGeneration(model: string, requestId: string): Promise<FalGeneration> {
   const id = falRequestIdSchema.parse(requestId);
-  const etat = falStatusSchema.safeParse(await call(`/${model}/requests/${encodeURIComponent(id)}/status`, 'GET'));
+  const app = falAppOf(model);
+  const etat = falStatusSchema.safeParse(await call(`/${app}/requests/${encodeURIComponent(id)}/status`, 'GET'));
   if (!etat.success) {
     console.error('[fal] état inattendu pour', id);
     throw new AppError(502, 'Réponse inattendue du service vidéo.', 'FAL_UNEXPECTED');
   }
   if (etat.data.status !== 'COMPLETED') return { requestId: id, status: etat.data.status };
+  if (etat.data.error) {
+    console.error('[fal] rendu échoué', id, detailOf({ error: etat.data.error }));
+    return { requestId: id, status: 'COMPLETED', failed: true };
+  }
 
-  const resultat = falResultSchema.safeParse(await call(`/${model}/requests/${encodeURIComponent(id)}`, 'GET'));
+  let brut: unknown;
+  try {
+    brut = await call(`/${app}/requests/${encodeURIComponent(id)}`, 'GET');
+  } catch (error) {
+    // Un rendu terminé dont le résultat est refusé (422 : consigne rejetée, 5xx : panne du modèle)
+    // a échoué : le dire, pour rendre les points, plutôt que de le sonder sans fin.
+    if (error instanceof AppError && ['FAL_BAD_INPUT', 'FAL_UNAVAILABLE', 'FAL_FAILED'].includes(error.code ?? '')) {
+      return { requestId: id, status: 'COMPLETED', failed: true };
+    }
+    throw error;
+  }
+  const resultat = falResultSchema.safeParse(brut);
   if (!resultat.success) {
     console.error('[fal] résultat inattendu pour', id);
     throw new AppError(502, 'Réponse inattendue du service vidéo.', 'FAL_UNEXPECTED');

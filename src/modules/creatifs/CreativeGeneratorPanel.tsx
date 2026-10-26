@@ -3,6 +3,7 @@ import { useLocation } from 'react-router-dom';
 import { AlertTriangle, BookOpen, Clapperboard, Download, Eye, Image as ImageIcon, PenLine, ShieldCheck, Sparkles } from 'lucide-react';
 import { toast } from 'sonner';
 import { useCreditGate } from '@/app/providers/CreditGateProvider';
+import { useProviders } from '@/shared/hooks/useProviders';
 import { apiRequest } from '@/shared/lib/api';
 import { ApiError, readApiError, toApiError } from '@/shared/lib/apiError';
 import { MAX_POLL_MISSES, lostTrackMessage, pollStatus } from '@/shared/lib/polling';
@@ -93,6 +94,8 @@ export function CreativeGeneratorPanel({
 }: { onVisualCreated?: () => void; onVideoChanged?: () => void; suggestion?: ProductStartInput | null } = {}) {
   const { runWithCredits, costTable } = useCreditGate();
   const extensionCost = costTable?.actions.find((action) => action.id === 'video_extension')?.cost ?? null;
+  // « Vidéo longue » n'est proposée que si le moteur du moment sait prolonger une vidéo.
+  const canExtend = useProviders()?.videoExtension ?? false;
 
   // Lu une seule fois, au montage : relire le stockage à chaque rendu coûterait pour rien.
   const [brouillon] = useState(lireBrouillon);
@@ -323,7 +326,8 @@ export function CreativeGeneratorPanel({
     maxDurationSeconds?: number;
   } | null>(null);
   /** Premier plan d'une vidéo longue : 8 s en 720p, à prolonger ensuite par étapes. */
-  const [longue, setLongue] = useState(false);
+  const [longueChoisie, setLongue] = useState(false);
+  const longue = longueChoisie && canExtend;
   const [sceneSuivante, setSceneSuivante] = useState('');
   const [isExtending, setIsExtending] = useState(false);
   const [attested, setAttested] = useState<boolean[]>(() => ATTESTATIONS.map(() => false));
@@ -791,9 +795,11 @@ export function CreativeGeneratorPanel({
                       {value} s
                     </Button>
                   ))}
-                  <Button type="button" variant="outline" size="sm" aria-pressed={longue} onClick={() => setLongue(true)} className={choiceClass(longue)}>
-                    Vidéo longue
-                  </Button>
+                  {canExtend && (
+                    <Button type="button" variant="outline" size="sm" aria-pressed={longue} onClick={() => setLongue(true)} className={choiceClass(longue)}>
+                      Vidéo longue
+                    </Button>
+                  )}
                 </div>
                 {longue && (
                   <p className="text-xs leading-relaxed text-muted-foreground">

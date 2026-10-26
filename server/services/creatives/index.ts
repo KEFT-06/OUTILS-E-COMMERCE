@@ -5,7 +5,7 @@ import type { Response as ExpressResponse } from 'express';
 import { z } from 'zod';
 import { env, isProd } from '@server/env';
 import { AppError, marketSchema } from '@server/middleware';
-import { type FalQueueStatus, getFalGeneration } from '@server/services/fal';
+import { type FalQueueStatus, falConfigured, getFalGeneration, submitFalGeneration } from '@server/services/fal';
 import {
   VEO_FORMATS,
   type VeoGeneration,
@@ -13,6 +13,7 @@ import {
   getVeoGeneration,
   submitVeoExtension,
   submitVeoGeneration,
+  veoConfigured,
 } from '@server/services/veo';
 import { cloudflareImagesConfigured } from '@server/services/ai/cloudflareImage';
 import { geminiImagesConfigured } from '@server/services/ai/geminiImage';
@@ -71,7 +72,8 @@ export const CREATIVE_FORMATS = ['1:1', '9:16', '16:9'] as const;
  * d'après le modèle la rendrait fausse une fois sur dix, et c'est une valeur qui reste en
  * base pour toujours.
  *
- * La vidéo est rendue par Veo ; « fal » ne reste que pour les vidéos d'avant la bascule.
+ * La vidéo est rendue par fal.ai quand sa clé est là (depuis le 26/10/2026 : le projet Gemini est
+ * refusé par Google), sinon par Veo. Chaque vidéo garde en base le fournisseur qui l'a rendue.
  * Higgsfield, abandonné, n'est plus un fournisseur : ses anciennes lignes restent en base comme
  * historique, sans fichier (il effaçait tout au bout de sept jours).
  */
@@ -88,7 +90,19 @@ export function imagesConfigured(): boolean {
   return cloudflareImagesConfigured() || geminiImagesConfigured();
 }
 
-export const VIDEO_PROVIDER: CreativeProvider = 'veo';
+/** Le moteur des nouvelles vidéos : fal.ai d'abord, Veo en secours. */
+export function videoProvider(): 'fal' | 'veo' {
+  return falConfigured() ? 'fal' : 'veo';
+}
+
+export function videoConfigured(): boolean {
+  return falConfigured() || veoConfigured();
+}
+
+/** Prolonger une vidéo par étapes n'existe que chez Veo : avec fal.ai, l'option n'est pas proposée. */
+export function videoExtensionAvailable(): boolean {
+  return videoProvider() === 'veo' && veoConfigured();
+}
 
 /**
  * Jours pendant lesquels le fichier reste récupérable, par fournisseur ; null : sans limite.
@@ -313,6 +327,22 @@ export function buildVideoInput(brief: VideoBrief) {
   };
 }
 
+/**
+ * Corps envoyé à fal.ai, selon la famille du modèle (schémas lus sur fal.ai le 26/10/2026) :
+ *  - Veo 3.1 : durée en texte (« 8s »), consigne négative, son demandé explicitement ;
+ *  - Gemini Omni Flash, et tout autre : durée en nombre, pas de consigne négative — les mêmes
+ *    interdits (marques, texte illisible) passent alors dans la consigne elle-même.
+ * Toujours en 720p : le palier le moins cher qui reste net sur un téléphone.
+ */
+export function buildFalVideoInput(brief: VideoBrief, model: string) {
+  const input = buildVideoInput(brief);
+  const base = { aspect_ratio: input.aspectRatio, resolution: '720p' };
+  if (/\/veo3/.test(model)) {
+    return { ...base, prompt: input.prompt, negative_prompt: input.negativePrompt, duration: `${input.durationSeconds}s`, generate_audio: true };
+  }
+  return { ...base, prompt: `${input.prompt} Avoid: ${input.negativePrompt}.`, duration: input.durationSeconds };
+}
+
 /** États d'une génération, communs à tous les fournisseurs. « nsfw » : refusée par le filtre de sécurité. */
 export type CreativeState = 'queued' | 'in_progress' | 'completed' | 'failed' | 'nsfw' | 'canceled';
 
@@ -352,7 +382,11 @@ const FAL_STATUS: Record<FalQueueStatus, CreativeStatus['status']> = {
   COMPLETED: 'completed',
 };
 
-function falToClientStatus(generation: { requestId: string; status: FalQueueStatus; mediaType?: 'video' | 'image' }): CreativeStatus {
+function falToClientStatus(generation: { requestId: string; status: FalQueueStatus; mediaType?: 'video' | 'image'; failed?: boolean }): CreativeStatus {
+  // Terminé sans fichier : un échec, jamais une réussite facturée sans rien à livrer.
+  if (generation.status === 'COMPLETED' && (generation.failed || !generation.mediaType)) {
+    return { requestId: generation.requestId, status: 'failed', message: 'La vidéo n’a pas pu être rendue : vos points ont été rendus.' };
+  }
   return {
     requestId: generation.requestId,
     status: FAL_STATUS[generation.status],
@@ -379,6 +413,7 @@ function veoToClientStatus(generation: VeoGeneration): CreativeStatus {
 
 /** `safe` : réglages les plus sûrs (720p), pour la dernière relance d'un rendu que le fournisseur a fait échouer. */
 export async function submitVideo(brief: VideoBrief, options: { safe?: boolean } = {}): Promise<CreativeStatus> {
+  if (videoProvider() === 'fal') return falToClientStatus(await submitFalGeneration(env.FAL_VIDEO_MODEL, buildFalVideoInput(brief, env.FAL_VIDEO_MODEL)));
   const input = buildVideoInput(brief);
   return veoToClientStatus(
     await submitVeoGeneration({
@@ -540,15 +575,21 @@ export async function streamCreativeFile(
     return;
   }
 
-  // Vidéos d'avant Veo, rendues chez fal.ai : suivies jusqu'à ce que fal efface le fichier.
+  // Vidéos rendues chez fal.ai : la copie archivée d'abord, puis le fichier chez fal, avec un second essai.
   if (provider !== 'fal') throw new AppError(404, 'Contenu introuvable.', 'CREATIVE_NOT_FOUND');
-  const generation = await getFalGeneration(env.FAL_VIDEO_MODEL, requestId);
-  const media = generation.mediaUrl && generation.mediaType ? { mediaType: generation.mediaType, url: generation.mediaUrl } : null;
-  if (!media) {
-    throw new AppError(409, "Aucun fichier disponible : la génération n'est pas terminée.", 'CREATIVE_NOT_READY');
+  const archived = await fetchArchivedVideo(requestId, 'fal');
+  if (archived) {
+    await relayMedia(archived, 'video', requestId, disposition, res);
+    return;
   }
-
-  await relayMedia(await fetchGeneratedMedia(media.url), media.mediaType, requestId, disposition, res);
+  const { media, upstream } = await withOneRetry(async () => {
+    const generation = await getFalGeneration(env.FAL_VIDEO_MODEL, requestId);
+    if (!generation.mediaUrl || !generation.mediaType) {
+      throw new AppError(409, "Aucun fichier disponible : la génération n'est pas terminée.", 'CREATIVE_NOT_READY');
+    }
+    return { media: generation.mediaType, upstream: await fetchGeneratedMedia(generation.mediaUrl) };
+  });
+  await relayMedia(upstream, media, requestId, disposition, res);
 }
 
 /** Réessaie une fois, après une courte pause, quand le fournisseur est injoignable ou trop lent. Jamais sur un refus. */

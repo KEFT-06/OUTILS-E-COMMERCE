@@ -21,7 +21,9 @@ import {
   submitVideo,
   videoBriefSchema,
   visualBriefSchema,
-  VIDEO_PROVIDER,
+  videoConfigured,
+  videoExtensionAvailable,
+  videoProvider,
 } from '@server/services/creatives';
 import { VEO_KEEPS_DAYS, videoArchiveConfigured, videoRetentionDaysFor } from '@server/services/creatives/archive';
 import { visualArtDirection } from '@server/services/creatives/artDirection';
@@ -34,7 +36,6 @@ import {
   VEO_EXTENSION_WINDOW_MS,
   VEO_MAX_INPUT_SECONDS,
   VEO_MAX_TOTAL_SECONDS,
-  veoConfigured,
   veoRequestIdSchema,
   veoResolutionFor,
 } from '@server/services/veo';
@@ -51,7 +52,7 @@ import {
 } from '@server/services/generations';
 import { findAdFramework, isAdFrameworkAvailable } from '@server/shared/adFrameworks';
 
-/** Créatifs publicitaires : visuels par le moteur d'images interne (Google), vidéos par Veo (feuille de route 4.1, 4.2, 4.4). */
+/** Créatifs publicitaires : visuels par le moteur d'images interne, vidéos par fal.ai ou, à défaut, Veo (feuille de route 4.1, 4.2, 4.4). */
 
 /** Identifiant d'un visuel interne : un UUID, frappé par le serveur à l'enregistrement. */
 const internalRequestIdSchema = z.string().uuid();
@@ -154,27 +155,30 @@ creativesRouter.post(
   aiLimiter,
   validateBody(videoBriefSchema),
   asyncRoute(async (req, res) => {
-    const brief = req.body as VideoBrief;
+    const provider = videoProvider();
+    const asked = req.body as VideoBrief;
+    // La vidéo longue se prolonge chez Veo seulement : ailleurs, elle part comme un plan de 8 s.
+    const brief: VideoBrief = asked.extendable && provider !== 'veo' ? { ...asked, duration: 8, extendable: false } : asked;
     assertFrameworkAllowed(req, brief);
     await assertCompliantBrief(
       creativeText(brief),
       'Le brief de la vidéo contient des formulations non conformes : corrigez-les avant de lancer la génération.',
     );
-    if (!veoConfigured()) throw providerUnavailable('rendu vidéo');
+    if (!videoConfigured()) throw providerUnavailable('rendu vidéo');
 
     const duree = brief.extendable ? 8 : brief.duration;
     const { result } = await runBilledGeneration({
       auth: req.auth!,
       actionId: 'video_generation',
       kind: 'video',
-      provider: VIDEO_PROVIDER,
+      provider,
       run: () => submitVideo(brief),
       describe: (status) => ({
         providerRef: status.requestId,
         state: generationStateOf(status.status),
         fileFormat: fileFormatOf(status),
       }),
-      video: { durationSeconds: duree, resolution: veoResolutionFor(duree, brief.extendable) },
+      video: { durationSeconds: duree, resolution: provider === 'veo' ? veoResolutionFor(duree, brief.extendable) : '720p' },
       // Le brief est gardé : si le fournisseur fait échouer le rendu, le site le relance de lui-même.
       request: { brief, attempts: 0 },
     });
@@ -202,13 +206,13 @@ creativesRouter.post(
 
     const { sceneDescription, language } = req.body as { sceneDescription: string; language?: string };
     await assertCompliantBrief(sceneDescription, 'La scène décrite contient des formulations non conformes : corrigez-la avant de prolonger la vidéo.');
-    if (!veoConfigured()) throw providerUnavailable('rendu vidéo');
+    if (!videoExtensionAvailable()) throw providerUnavailable('prolongation des vidéos');
 
     const { result } = await runBilledGeneration({
       auth: req.auth!,
       actionId: 'video_extension',
       kind: 'video',
-      provider: VIDEO_PROVIDER,
+      provider: 'veo',
       run: () => extendVideo(parsedId.data, sceneDescription, language),
       describe: (status) => ({ providerRef: status.requestId, state: generationStateOf(status.status), fileFormat: fileFormatOf(status) }),
       video: { parentId: parent.id, durationSeconds: (parent.durationSeconds ?? 8) + VEO_EXTENSION_SECONDS, resolution: VEO_EXTENSION_RESOLUTION },
@@ -219,9 +223,18 @@ creativesRouter.post(
 
 /**
  * Raison pour laquelle une vidéo ne peut pas être prolongée, ou null si elle le peut.
- * Règles de Google : vidéo Veo en 720p, de 141 s au plus, et de moins de deux jours.
+ * Règles de Google : vidéo Veo en 720p, de 141 s au plus, et de moins de deux jours. Une vidéo
+ * rendue ailleurs (fal.ai) ne se prolonge pas.
  */
-function extensionRefusal(video: { status: string; resolution: string | null; durationSeconds: number | null; completedAt: Date | null; createdAt: Date }): string | null {
+function extensionRefusal(video: {
+  provider: string;
+  status: string;
+  resolution: string | null;
+  durationSeconds: number | null;
+  completedAt: Date | null;
+  createdAt: Date;
+}): string | null {
+  if (video.provider !== 'veo' || !videoExtensionAvailable()) return 'Cette vidéo ne peut pas être prolongée.';
   if (video.status !== 'completed') return 'La vidéo n’est pas encore terminée.';
   if (video.resolution !== VEO_EXTENSION_RESOLUTION || video.durationSeconds === null) {
     return 'Seule une vidéo créée en mode « vidéo longue » (720p) peut être prolongée.';
@@ -276,7 +289,8 @@ async function relaunchVideo(generation: GenerationRow): Promise<CreativeStatus 
   const stored = (generation.request ?? {}) as StoredRequest;
   const brief = videoBriefSchema.safeParse(stored.brief);
   const attempts = stored.attempts ?? 0;
-  if (!brief.success || attempts >= VIDEO_RELAUNCHES || generation.status !== 'pending' || !generation.providerRef) return null;
+  // Relancée chez le moteur du moment seulement s'il est celui qui a échoué : la ligne garde son fournisseur.
+  if (!brief.success || attempts >= VIDEO_RELAUNCHES || generation.status !== 'pending' || !generation.providerRef || generation.provider !== videoProvider()) return null;
   // Une autre sonde s'en charge déjà : celle-ci continue simplement d'attendre.
   if (!(await claimRelaunch(generation))) return { requestId: generation.providerRef, status: 'in_progress' };
   try {
@@ -321,11 +335,11 @@ creativesRouter.get(
       return;
     }
 
-    if (provider === 'veo') {
+    if (provider === 'veo' || provider === 'fal') {
       const retentionDays = await videoRetentionDays(generation.userId);
       const deadline = videoDeadline(generation, retentionDays);
       /*
-        Vidéo échue : ni Google ni notre stockage ne l'ont plus. Le dire, sans interroger
+        Vidéo échue : ni le fournisseur ni notre stockage ne l'ont plus. Le dire, sans interroger
         Google — qui répondrait « introuvable », affiché comme une panne.
       */
       if (generation.status === 'completed' && deadline.getTime() < Date.now()) {
@@ -446,7 +460,7 @@ creativesRouter.get(
     const requestId = parseCreativeRequestId(req.params.requestId);
     const { generation, provider } = await findCreative(req, requestId);
     const disposition = req.query.disposition === 'attachment' ? 'attachment' : 'inline';
-    if (provider === 'veo' && generation.status === 'completed') {
+    if ((provider === 'veo' || provider === 'fal') && generation.status === 'completed') {
       const retentionDays = await videoRetentionDays(generation.userId);
       const deadline = videoDeadline(generation, retentionDays);
       if (deadline.getTime() < Date.now()) {
