@@ -88,23 +88,32 @@ ne passe par la ligne de commande. Se connecter, puis activer un second facteur 
 | Voir | Niches | `/app/niches` | 594 niches dans 41 secteurs, enregistrement et analyse en un clic |
 | Voir | Radar | `/app/radar` | Boutiques Chariow surveillées jour après jour : prix, ventes, produits apparus ou retirés (section 16) |
 | Voir | Espionnage | `/app/espionnage` | Publicités Meta qui mènent à une boutique de la plateforme, classées par ancienneté (section 16) |
+| Voir | Alertes | `/app/alertes` | Ce que le radar et l'espionnage ont relevé de nouveau : produit apparu ou retiré, prix changé, publicité qui dure |
 | Voir | Analyse stratégique | `/app/analyse` | Les 5 taux, la concurrence, les produits proposés, le plan d'action |
 | Voir | Dossier PDF | `/app/dossier-pdf` | Le rapport A4 à télécharger, après contrôle de conformité |
-| Créer | Studio de création | `/app/studio` | Produits issus d'une analyse, créés à la main ou à partir d'une vidéo ; rédaction par IA ; export PDF/DOCX |
-| Créer | Créatifs publicitaires | `/app/creatifs` | Visuels (Cloudflare Workers AI) et vidéos (fal.ai), 12 méthodes publicitaires |
-| Créer | Storybook illustré | `/app/storybook` | Contes illustrés ancrés dans un pays (Gamma) |
+| Créer | Studio de création | `/app/studio` | Produits issus d'une analyse, créés à la main, depuis un texte collé ou depuis une vidéo ; rédaction, couverture, parcours audio (lecture par module, MP3) ; export PDF/DOCX |
+| Créer | Créatifs publicitaires | `/app/creatifs` | Visuels (Cloudflare Workers AI) et vidéos (fal.ai, Veo en secours), 12 méthodes publicitaires |
+| Créer | Storybook illustré | `/app/storybook` | Contes illustrés ancrés dans un pays |
 | Créer | Pages produits | `/app/pages-produits` | Pages de vente en 7 sections, export HTML |
 | Créer | Guides multilingues | `/app/multilingue` | Traduction, relecture, export (section 11) |
+| Créer | Mes créations | `/app/creations` | Tout ce que le compte a produit : ouvrages, visuels, vidéos (avec leur échéance), contes |
 | Vendre | Kit de lancement | `/app/kit-lancement` | Textes, scripts vidéo et boutons par marché, rédigés par l'IA |
 | Vendre | Structures de campagnes | `/app/campagnes` | Modèles de campagnes Meta Ads et TikTok |
 | Vendre | Distribution | `/app/distribution` | Catalogue et ventes de la boutique Chariow |
-| Vendre | Affiliation | `/app/affiliation` | Liens UTM, suivi et invitations d'affiliés Chariow |
+| Vendre | Affiliation | `/app/affiliation` | Parrainage Smart Creator (20 % des paiements des filleuls), liens UTM, suivi et invitations d'affiliés Chariow |
 | — | Mon compte | `/app/compte` | Profil, sécurité, paiement, connexions, données personnelles |
+
+**Après une analyse, tout ce qui se remplit l'est d'avance** (`src/shared/lib/analysisDefaults.ts`) :
+mot-clé de l'espionnage, boutique à suivre au radar, brief des créatifs et du conte, chiffres des
+campagnes, page produit, kit de lancement, nouveau produit du Studio, liens UTM, prochaine niche à
+analyser. Rien n'y est inventé : ce que l'analyse n'a pas établi reste vide (un lien de paiement,
+par exemple).
 
 ### Administration (`/app/admin`, privilèges requis)
 
 Vue d'ensemble, utilisateurs (fiche détaillée), connexions, messages de contact, audience du site,
-revenus, contenus créés, sécurité et journal d'audit. Voir section 6.
+revenus, prix des paliers, contenus créés, **services** (état réel de chaque fournisseur et des
+réglages du serveur), sécurité et journal d'audit. Voir section 6.
 
 ---
 
@@ -178,11 +187,32 @@ n'importe du serveur que des types et des données pures (`server/shared`).
 
 ```
 Niche + marché ─► POST /api/analyze-niche (compte, palier, 5 points réservés)
-   ├─► Perplexity Search : 3 recherches, jusqu'à 15 pages numérotées
-   ├─► Gemini : rapport JSON structuré, rédigé à partir de ces seules pages
+   ├─► Perplexity (Agent API, recherche approfondie en arrière-plan) : étude sourcée « [web:n] »
+   │      repli : API Search de Perplexity, pages brutes
+   ├─► Perplexity : rapport JSON structuré, rédigé à partir de ces seules pages
    ├─► Serveur : écarte tout fait dont la source n'existe pas, recale les scripts
    └─► Rapport enregistré sur le compte (50 derniers), points rendus en cas d'échec
 ```
+
+L'analyse tourne en arrière-plan (`server/services/analysis/jobs.ts`) : l'écran peut être fermé,
+l'étude reprend son suivi au lieu d'être repayée si le serveur redémarre.
+
+### Qui écrit, qui dessine, qui parle
+
+| Travail | Fournisseur d'abord | Secours |
+| --- | --- | --- |
+| Tout texte rédigé (produits, kit, rapport rédigé, conte, traductions, relectures) | Groq, `openai/gpt-oss-120b` (`server/services/ai/text.ts`) | Gemini, en dernier recours |
+| Lecture d'une image (vision) | Groq, `qwen/qwen3.8-27b` | — |
+| Transcription d'une vidéo (Vidéo → Produit, fichier envoyé) | Groq, Whisper `whisper-large-v3-turbo` | — ; un lien YouTube passe par Gemini |
+| Visuels, couvertures | Cloudflare Workers AI, FLUX.2 klein 4B (direction artistique par Groq) | Gemini |
+| Lecture à voix haute (parcours audio) | Cloudflare Workers AI, MeloTTS (une voix française) | Gemini (quatre voix) |
+| Vidéos publicitaires | fal.ai, Gemini Omni Flash 1.1 | Veo (clé Gemini) |
+| Conte illustré | Illustration maison : images Gemini avec images de référence, pour garder le même personnage d'une page à l'autre (`server/services/storybook/illustrate.ts`) — **bloquée tant que le projet Google l'est** | Gamma |
+
+Depuis le 25/10/2026, le projet Google de la clé Gemini est refusé par Google (« Your project has
+been denied access ») : le site fonctionne sans lui, et ce qui en dépend encore (lien YouTube,
+secours) le dit à l'écran. Les écrans ne nomment jamais un fournisseur : ils parlent du service
+rendu (« la rédaction », « la lecture à voix haute »).
 
 ---
 
@@ -192,28 +222,38 @@ Toutes les clés se renseignent dans `.env` (jamais dans Git) en local, et dans 
 l'hébergeur en production. `.env.example` décrit chaque variable. Sans une clé, la fonction concernée
 l'annonce à l'écran et répond 503 : rien ne casse.
 
+Les noms de variables se recopient **lettre pour lettre** : le 26/10/2026, un jeton nommé
+`CLOUDFLARE_IA_TOKEN` (« IA » à la française) chez l'hébergeur a laissé Cloudflare éteint en
+production pendant des heures, sans aucune erreur. Une variable au mauvais **format** est signalée
+dans *Administration → Services → Réglages du serveur* ; une variable au mauvais **nom** ne l'est
+pas. Témoin rapide : `GET /api/health` (`providers`, sans aucune clé).
+
 | Service | Rôle | Variables | Sans clé |
 | --- | --- | --- | --- |
-| **Gemini** | Rédaction du rapport d'analyse, rédaction des produits et du kit, traduction des guides, Vidéo → Produit ; secours des images | `GEMINI_API_KEY`, `GEMINI_MODEL` (défaut `gemini-3.6-flash`), `GEMINI_FALLBACK_MODEL` (défaut `gemini-3.5-flash`) | Analyse, rédaction et traduction fermées |
-| **Perplexity** (API Search) | Sources web des analyses de niche | `PERPLEXITY_API_KEY` | L'analyse fonctionne mais n'avance aucun fait de marché et le dit |
-| **Cloudflare Workers AI** | **Toutes les images** : visuels publicitaires, couvertures de guides et d'ebooks | `CLOUDFLARE_ACCOUNT_ID`, `CLOUDFLARE_AI_TOKEN` (droits Workers AI en lecture **et** écriture), `CLOUDFLARE_IMAGE_MODEL`, `CLOUDFLARE_IMAGE_MODEL_FAST` | Repli sur Gemini, une vingtaine de fois plus cher ; sans les deux, images fermées |
-| **fal.ai** | Vidéos publicitaires (Kling 2.5 Turbo Pro, 5 ou 10 s) | `FAL_KEY` (portée « API », pas « ADMIN »), `FAL_VIDEO_MODEL` | Vidéos fermées |
-| **Apify** | Découverte de boutiques et mur d'espionnage (section 16) | `APIFY_TOKEN` | Le radar et le mur fonctionnent sur ce qui est déjà collecté ; aucune nouvelle collecte |
-| **Higgsfield** | *Historique seulement.* Visuels d'avant la bascule vers Cloudflare, encore consultables | `HIGGSFIELD_API_KEY_ID`, `HIGGSFIELD_API_KEY_SECRET` | Les anciens visuels ne s'ouvrent plus ; rien de neuf n'y est envoyé |
-| **Gamma** | Storybooks illustrés | `GAMMA_API_KEY` | Storybook fermé |
-| **Stripe** | Paiement des paliers par carte | `STRIPE_API_KEY` (clé secrète `sk_…`), `STRIPE_WEBHOOK_SECRET` | Paiement en ligne masqué ; paiements saisis par l'équipe |
-| **Brevo** ou **Resend** | E-mails de sécurité | `EMAIL_PROVIDER`, `EMAIL_API_KEY`, `EMAIL_FROM` | Mot de passe oublié via l'équipe, pas de confirmation d'adresse |
+| **Groq** | Toute la rédaction (gpt-oss-120b), la vision (Qwen 3.8), la transcription Whisper, la direction artistique des couvertures | `GROQ_API_KEY`, `GROQ_MODEL`, `GROQ_JSON_MODEL`, `GROQ_VISION_MODEL`, `GROQ_TRANSCRIPTION_MODEL` | Rédaction sur Gemini seul ; Vidéo → Produit par fichier fermé |
+| **Gemini** | Dernier recours de la rédaction ; lien YouTube de Vidéo → Produit ; illustrations des contes ; secours des images, de la voix et de la vidéo (Veo) | `GEMINI_API_KEY`, `GEMINI_MODEL`, `GEMINI_FALLBACK_MODEL`, `VEO_VIDEO_MODEL` | Ces secours disparaissent. **Projet refusé par Google depuis le 25/10/2026** |
+| **Perplexity** | Étude de marché et rédaction du rapport d'analyse | `PERPLEXITY_API_KEY`, `PERPLEXITY_RESEARCH_PRESET` | L'analyse n'avance aucun fait de marché et le dit |
+| **Cloudflare Workers AI** | Visuels et couvertures (FLUX.2 klein 4B, environ 95 images gratuites par jour), voix française du parcours audio (MeloTTS) | `CLOUDFLARE_ACCOUNT_ID` (32 caractères hexadécimaux), `CLOUDFLARE_AI_TOKEN` (droits Workers AI en lecture **et** écriture), `CLOUDFLARE_IMAGE_MODEL`, `CLOUDFLARE_IMAGE_MODEL_FAST` | Images et voix sur Gemini |
+| **fal.ai** | Vidéos publicitaires (Gemini Omni Flash 1.1, 720p, son compris, 4/6/8 s) | `FAL_KEY` (portée « API », pas « ADMIN »), `FAL_VIDEO_MODEL` | Vidéos sur Veo. Compte prépayé : à sec, la vidéo se ferme à l'écran 20 minutes après chaque refus |
+| **Firecrawl** | Lecture des vitrines Chariow pour le radar (la plateforme refuse le serveur en direct) | `FIRECRAWL_API_KEY`, `RADAR_FIRECRAWL_DAILY_PAGES` (défaut 30 pages par jour) | Vitrines lues par le collecteur (`collecteur/vitrines.mjs`) seulement |
+| **Apify** | Découverte de boutiques et mur d'espionnage (section 16) | `APIFY_TOKEN` | Le collecteur maison prend le relais |
+| **Supabase Storage** | Copie des vidéos et des illustrations au-delà de ce que garde le fournisseur | `SUPABASE_URL`, `SUPABASE_API_SECRET_KEY`, `CREATIVES_BUCKET` | Une vidéo n'est téléchargeable que 2 jours |
+| **Gamma** | Secours des contes illustrés | `GAMMA_API_KEY` | Contes sur l'illustration maison seule |
+| **Stripe** | Paiement des paliers par carte | `STRIPE_API_KEY` (clé secrète `sk_…`), `STRIPE_WEBHOOK_SECRET` | Paiement par carte masqué |
+| **SebPay** | Paiement par Mobile Money | `SEBPAY_PUBLIC_KEY`, `SEBPAY_SECRET_KEY` | Mobile Money masqué. **Ne jamais créer de collecte « live » depuis un poste** |
+| **Google** (OAuth) | « Continuer avec Google » | `GOOGLE_OAUTH_CLIENT_ID`, `GOOGLE_OAUTH_CLIENT_SECRET` | Bouton masqué |
+| **Brevo** ou **Resend** | E-mails de sécurité et résumés du radar | `EMAIL_PROVIDER`, `EMAIL_API_KEY`, `EMAIL_FROM` | Mot de passe oublié via l'équipe, pas de confirmation d'adresse |
 | **Chariow** | Catalogue, ventes, affiliés | `CHARIOW_API_KEY` : boutique du propriétaire, réservée aux administrateurs | Chaque utilisateur enregistre sa propre clé dans *Mon compte → Connexions* (vérifiée, chiffrée) |
+| **GitHub** | Lancer le collecteur à la demande (atelier `veille.yml`) | `COLLECTOR_DISPATCH_TOKEN` | Le collecteur ne passe qu'à ses horaires |
 | **ExchangeRate-API** | Taux de change du jour (sans clé, aucune donnée personnelle) | `EXCHANGE_RATES_URL` (`off` pour couper) | Taux de repli de `server/config/exchange-rates.json` |
 
-**Pourquoi ce partage.** La recherche Google intégrée à Gemini interdit de conserver ou d'exporter
-ses résultats, alors qu'un rapport est enregistré et exporté en PDF : la recherche passe donc par
-Perplexity, et Gemini rédige à partir des pages trouvées.
+**Pourquoi Perplexity pour l'analyse.** La recherche Google intégrée à Gemini interdit de conserver
+ou d'exporter ses résultats, alors qu'un rapport est enregistré et exporté en PDF.
 
-**Saturation de Gemini.** Google répond parfois 503 (« high demand »). Le serveur réessaie le modèle
-principal, puis passe au modèle de secours ; si tout reste saturé, l'utilisateur lit « surchargé chez
-Google, réessayez dans quelques minutes » et ses points sont rendus. Le rapport d'analyse indique le
-modèle qui l'a réellement rédigé.
+**Pourquoi Groq d'abord.** Offre gratuite (environ 1 000 demandes par jour, 8 000 jetons par
+minute), JSON structuré sur gpt-oss, réponses en une à trois secondes. Une demande trop longue (413)
+ou trop rapprochée (429) rend les points et un message clair ; Gemini n'est plus qu'un dernier
+recours.
 
 **Pourquoi les images sont parties chez Cloudflare.** Higgsfield se payait par abonnement mensuel,
 dont les crédits périmaient sans report : on payait les mois sans visuel, et on perdait ce qu'on
@@ -228,13 +268,23 @@ documentation : la famille FLUX.2 REFUSE un corps JSON (400, « required propert
 enveloppe JSON. `server/services/ai/cloudflareImage.ts` déduit l'encodage du nom du modèle et la
 lecture du type de contenu de la réponse — à relire avant de changer `CLOUDFLARE_IMAGE_MODEL`.
 
-**Vérifié contre les vrais services.** Gemini (16/09/2026) : analyse, rédaction des modules, kit de
-lancement, Vidéo → Produit (lien YouTube) et traduction répondent ; la génération d'images y est
-refusée tant que la facturation du projet Google n'est pas ouverte (429 `RESOURCE_EXHAUSTED`).
-Cloudflare (24/09/2026) : les quatre formats produisent une image par le code de l'application —
-9:16, 1:1 et 16:9 en FLUX.2 klein 9B, le carré rapide en FLUX.1 schnell à 172,8 neurones.
-Chariow : catalogue et ventes lus avec la clé administrateur. Perplexity : format conforme à la
-documentation, à essayer dès que la clé est fournie.
+**Pourquoi FLUX.2 klein 4B.** Environ 104 neurones par image d'un mégapixel contre 1 364 pour le
+9B : une centaine d'images par jour dans la franchise gratuite de Cloudflare (10 000 neurones)
+au lieu de sept, sous licence Apache 2.0 (le 9B interdit l'usage commercial). Plus lent (16 à 40 s
+contre 3 à 6 s). `CLOUDFLARE_IMAGE_MODEL=@cf/black-forest-labs/flux-2-klein-9b` remet le 9B.
+
+**Vérifié contre les vrais services.**
+
+| Service | Date | Ce qui a été constaté |
+| --- | --- | --- |
+| Cloudflare | 24/09 et 25/10/2026 | Les quatre formats d'image ; MeloTTS : 16,7 s d'audio français rendues en MP3 |
+| Groq | 25/10/2026 | JSON, texte et vision en 1 à 3 s ; Whisper : 35 s de français transcrites en 2 s ; Vidéo → Produit en 3 s |
+| Firecrawl | 18/10/2026 | Vitrines Chariow lues, 0 refus sur 28 boutiques |
+| Chariow | — | Catalogue et ventes lus avec la clé administrateur |
+| fal.ai | 26/10/2026 | Clé acceptée, suivi sur la racine de l'application (le chemin complet rend 405) ; **aucun rendu : solde épuisé** |
+| Gemini | 25/10/2026 | 403 « Your project has been denied access » sur tous les modèles |
+
+Non vérifié à l'oreille : la voix MeloTTS (Whisper l'a relue avec quelques mots déformés).
 
 **Retirés du site.** La bibliothèque publicitaire Meta (radar marché, galerie de publicités, swipe
 file, score d'intensité concurrentielle) et Brave Search ne sont plus utilisés. Les campagnes
@@ -289,7 +339,9 @@ session ouverte avec lui.
 | Messages | Messages du formulaire de contact : nouveau, lu, archivé |
 | Audience | Visites et visiteurs uniques des pages publiques, sans cookie, sur 30 jours |
 | Revenus | Revenus par jour, mois et année, paiements Stripe et saisis à la main, remboursements |
-| Contenus | Nombre de vidéos, visuels, storybooks mesurés par le serveur et d'exports déclarés par le navigateur ; **bibliothèque des créatifs** : chaque vidéo et visuel avec son créateur, sa date et ses points, lecture et téléchargement (privilège « Voir les vidéos et visuels créés », chaque ouverture inscrite au journal ; un visuel produit chez nous ne périme pas ; une vidéo reste chez fal.ai, qui ne la garde qu'environ 7 jours — au-delà, la ligne demeure mais le fichier est annoncé expiré) |
+| Prix | Prix des paliers par devise, modifiables sans redéployer |
+| Contenus | Nombre de vidéos, visuels, storybooks mesurés par le serveur et d'exports déclarés par le navigateur ; **bibliothèque des créatifs** : chaque vidéo et visuel avec son créateur, sa date et ses points, lecture et téléchargement (privilège « Voir les vidéos et visuels créés », chaque ouverture inscrite au journal ; un visuel produit chez nous ne périme pas ; une vidéo est gardée la durée du palier — copie dans Supabase Storage au-delà des 2 jours du fournisseur — puis annoncée expirée) |
+| Services | État réel de chaque fournisseur, éprouvé par une lecture gratuite : clé acceptée ou refusée, modèle, réserve du jour, solde épuisé (fal.ai), copies de vidéos en attente, **réglages du serveur ignorés pour mauvais format** (noms seuls) |
 | Sécurité | Journal des connexions et des codes, verrous actifs, journal d'audit des actions de l'équipe |
 
 Un accès accordé ou retiré (fonction, palier, points) vaut dès la requête suivante. Bloquer un compte
@@ -358,27 +410,53 @@ que seul l'éditeur peut fournir sont surlignés « À compléter ».
 Les paliers vivent dans `server/config/plans.json` et les coûts dans
 `server/config/credit-costs.json`, modifiables sans redéployer.
 
-| Palier | Prix mensuel provisoire | Points / mois | Niches | Méthodes pub | Langues par guide | Fermé |
+| Palier | Prix mensuel provisoire | Points / mois | Niches | Méthodes pub | Boutiques suivies | Vidéos gardées |
 | --- | --- | --- | --- | --- | --- | --- |
-| Gratuit | 0 | 3 | 3 | 2 | 1 | vidéos, storybook, relecture native |
-| Plus | 4 900 FCFA · 7,99 € | 20 | 15 | 4 | 3 | relecture native |
-| Pro | 9 900 FCFA · 14,99 € | 60 | 50 | 7 | 5 | — |
-| Max | 19 900 FCFA · 29,99 € | 150 | 150 | 10 | 10 | — |
-| Elite Enterprise | 49 900 FCFA · 74,99 € | illimités | illimitées | toutes | illimitées | — |
+| Gratuit | 0 | 3 | 3 | 2 | 1 | 24 h |
+| Plus | 4 900 FCFA · 7,99 € | 20 | 15 | 4 | 3 | 24 h |
+| Pro | 9 900 FCFA · 14,99 € | 60 | 50 | 7 | 5 | 30 jours |
+| Max | 19 900 FCFA · 29,99 € | 150 | 150 | 10 | 20 | 90 jours |
+| Elite Enterprise | 49 900 FCFA · 74,99 € | illimités | illimitées | toutes | illimitées | 90 jours |
+
+Fermé au palier Gratuit : vidéos, contes illustrés, relecture native et comparaison de marché ; au
+palier Plus : relecture native. Les paliers Pro et au-delà ouvrent tout.
 
 Un an payé d'avance vaut 10 mois. Les autres devises sont converties depuis l'euro puis arrondies.
+Chaque utilisateur ne voit que la devise de son pays. Toutes les limites sont dans
+`server/config/plans.json` ; ce tableau en est un résumé.
 
 | Action | Points |
 | --- | --- |
-| Analyse de niche | 5 |
-| Rédaction d'un produit | 4 |
-| Vidéo → Produit | 6 |
-| Kit de lancement rédigé par l'IA | 3 |
+| Analyse stratégique d'une niche | 5 |
+| Rapport rédigé d'une analyse | 3 |
+| Rédaction du contenu d'un produit | 4 |
+| Retouche d'un texte | 1 |
+| Ebook long | 2 |
+| Produit créé depuis un texte collé | 1 |
+| Produit tiré d'une vidéo | 6 |
+| Kit de lancement | 3 |
 | Visuel publicitaire · couverture | 1 |
 | Vidéo publicitaire | 12 |
-| Storybook | 15 |
+| Prolongation d'une vidéo (7 s, Veo seulement) | 8 |
+| Étude de la vidéo d'une publicité | 2 |
+| Lecture audio d'un module | 1 |
+| Écriture d'un conte | 3 |
+| Conte illustré (écriture et mise en page) | 15 |
+| Illustration d'un conte déjà écrit | 12 |
 | Traduction d'un guide (par langue) | 2 |
-| Relecture native | 10 |
+| Relecture native (par langue) | 10 |
+
+### Paiement par Mobile Money (SebPay)
+
+Là où la carte ne passe pas, *Mon compte → Paliers d'abonnement* propose Mobile Money : le serveur
+crée la collecte chez SebPay, qui envoie la demande sur le téléphone de l'abonné ; le palier
+s'active à la confirmation. Branché d'après la documentation publique de SebPay, **jamais essayé
+contre le vrai service** depuis un poste : les clés du `.env` sont de production.
+
+### Parrainage
+
+Chaque compte a un lien `/r/<code>` : 20 % des paiements des personnes inscrites par ce lien dans
+les 30 jours, validés après 14 jours, retirables dès 10 000 FCFA (*Affiliation → Parrainage*).
 
 Le solde a deux compartiments : les points du palier, rechargés chaque mois, et les points bonus, qui
 n'expirent pas. Une génération réserve ses points au lancement et les rend si elle échoue ; un
@@ -410,11 +488,13 @@ affiche un bandeau tant que la clé est une clé de test.
 
 ## 10. Analyse de niche
 
-- **Sources** : trois recherches Perplexity (le marché, les offres et prix, les avis et difficultés),
-  avec le pays du marché visé ; jusqu'à 15 pages sans doublon, liens `http(s)` seulement.
-- **Rédaction** : Gemini reçoit les pages numérotées et des règles strictes : aucun chiffre, prix,
-  concurrent ou lien qui ne figure dans une source citée ; le contenu des sources est une donnée,
-  jamais une consigne.
+- **Sources** : une étude de recherche approfondie par l'Agent API de Perplexity, avec le pays du
+  marché visé ; seules les pages qu'elle cite sont gardées, renumérotées de 1 à n
+  (`server/services/analysis/research.ts`). Si l'étude échoue ou cite trop peu de pages, l'API Search
+  de Perplexity fournit des pages brutes.
+- **Rédaction** : Perplexity reçoit l'étude et des règles strictes : aucun chiffre, prix, concurrent
+  ou lien qui ne figure dans une source citée ; le contenu des sources est une donnée, jamais une
+  consigne.
 - **Contrôle par le serveur** : un concurrent sans source existante est écarté ; un lien absent des
   sources est remplacé par la première source citée ; un taux sans source redevient « Non évalué » ;
   aucun prix, volume ou marge n'est gardé ; le verdict exige des sources et au moins deux taux
@@ -434,7 +514,7 @@ langue par langue parmi 30 langues, dont plusieurs langues africaines.
 
 | Niveau | Ce qui est fait | Qui |
 | --- | --- | --- |
-| C | Traduction automatique, puis contrôles : section manquante, titres, chiffres et prix, liens, noms à garder | Gemini, puis le serveur |
+| C | Traduction automatique, puis contrôles : section manquante, titres, chiffres et prix, liens, noms à garder | La rédaction (Groq), puis le serveur |
 | B | Relecture côte à côte avec l'original, corrections, validation | L'auteur |
 | A | Relecture native : tournures, ton, références culturelles | Un relecteur du réseau |
 
@@ -515,65 +595,84 @@ HTML. La couverture, générée sans texte par Cloudflare Workers AI, est recopi
 npm run typecheck && npm run lint && npm test && npm run build
 ```
 
-Les tests (`server/tests/*.test.ts`, `src/**/*.test.ts`) couvrent l'authentification (TOTP RFC 6238,
-verrous, énumération, liens), les privilèges, les paliers et prix par pays, la facturation et le
-remboursement des générations, les paiements Stripe (signature, montants, idempotence), l'analyse de
-niche (sources inexistantes écartées, absence de recherche web), la rédaction et Vidéo → Produit, les
-brouillons, les guides multilingues, les e-mails, le contact, l'audience, les données personnelles,
-le référencement et les correctifs de sécurité. Tous les fournisseurs sont simulés : aucun test
-n'appelle Gemini, Perplexity, Cloudflare, fal.ai, Apify, Gamma, Stripe, Brevo, Resend ni Chariow, et aucun ne touche
-la vraie base.
+Sur le poste du propriétaire, `bash .data/verifier.sh` enchaîne les quatre et sort en échec au
+premier défaut (tests quatre fichiers à la fois : au-delà, la mémoire du poste ne suffit pas). Le
+lancer **avant** chaque envoi, puis envoyer dans une commande séparée : il n'y a plus de
+vérification automatique chez GitHub.
 
-L'intégration continue (`.github/workflows/verifications.yml`) lance à chaque envoi : installation,
-types, relecture, tests, construction, et la recherche de toute variable `VITE_` dans `src/`.
+Environ 580 tests dans 101 fichiers (`server/tests/*.test.ts`, `src/**/*.test.ts`) couvrent
+l'authentification (TOTP RFC 6238, verrous, énumération, liens), les privilèges, les paliers et prix
+par pays, la facturation et le remboursement des générations, Stripe et SebPay, l'analyse de niche,
+la rédaction (Groq, Gemini), Vidéo → Produit, les images et la voix Cloudflare, les vidéos (fal.ai,
+Veo, copie archivée), le radar, l'espionnage, les alertes, les guides multilingues, les e-mails,
+l'audience, les données personnelles, le référencement et le préremplissage après une analyse.
+
+**Aucun test n'appelle un vrai fournisseur ni la vraie base.** `server/tests/support/helpers.ts`
+neutralise toutes les clés que le `.env` du poste porte réellement (Groq, Firecrawl, fal.ai,
+Cloudflare, Supabase, SebPay, GitHub…) : une nouvelle clé ajoutée au `.env` doit l'être aussi
+là, sinon une suite de tests la dépenserait. Les tests qui veulent un fournisseur montent un faux
+serveur local et redéfinissent sa clé.
 
 ---
 
 ## 15. Mise en production
 
-### Choix de l'hébergement (vérifié le 16 septembre 2026)
+### Où tourne le site
 
-| Offre gratuite | Verdict pour ce site |
+| Élément | Où |
 | --- | --- |
-| **Render** (retenu) | Fait tourner le serveur tel quel, paiements autorisés, HTTPS inclus. Mise en veille après 15 minutes sans visite : la visite suivante attend environ une minute. 750 heures par mois. Passer à *Starter* (environ 7 $/mois) pour un site toujours éveillé |
-| Vercel *Hobby* | Exclu : usage non commercial seulement (« any method of requesting or processing payment »), fichiers limités à 4,5 Mo, tâches planifiées une fois par jour |
-| Netlify | Exclu : 60 secondes par requête (Vidéo → Produit et certaines analyses dépassent), envois limités à 6 Mo, serveur à réécrire en fonctions |
-| **Supabase** (base, retenu) | 500 Mo, région Paris ; un projet gratuit est mis en pause après une semaine sans activité (à relancer depuis son tableau de bord) |
+| Site et API | **Vercel**, une seule fonction (`api/index.js`) en région Dublin (`dub1`), 300 s au plus par requête (`vercel.json`) |
+| Construction | `npm run vercel-build` : migrations de la base, site, puis serveur empaqueté |
+| Base | **Supabase**, PostgreSQL, chaîne *Transaction pooler* (port 6543) |
+| Fichiers (vidéos, illustrations) | Supabase Storage, espace privé `CREATIVES_BUCKET` |
+| Domaine | `smartcreatorcm.com`, enregistré chez LWS (DNS LWS) ; `www` pointe vers Vercel |
+| Tâches planifiées Vercel | `/api/cron/radar` à 3 h et `/api/cron/marche` à 4 h (UTC), protégées par `CRON_SECRET` |
+| Ateliers GitHub | `collecte.yml` (publicités, toutes les 4 h), `veille.yml` (toutes les 30 min), `firecrawl.yml` (à la demande) |
 
-### Mise en ligne sur Render avec Supabase
+Chaque envoi sur la branche suivie par Vercel déclenche un déploiement. **Un envoi n'est pas un
+déploiement** : lire son état (`https://api.github.com/repos/<dépôt>/commits/<sha>/statuses`),
+puis `/api/health`.
 
-`render.yaml` décrit le service : Node 22, région Francfort (la plus proche de Supabase Paris),
-construction `npm ci --include=dev && npm run build`, démarrage `npm start`, sonde `/api/health`,
-déploiement automatique à chaque envoi sur la branche `main`.
+**Vercel *Hobby*.** Le compte est sur l'offre gratuite, que les conditions de Vercel réservent à un
+usage non commercial (« any method of requesting or processing payment »). Un site qui encaisse des
+paliers relève de l'offre *Pro* : à régler par le propriétaire avant d'encaisser pour de vrai.
 
-1. **Code** : un dépôt GitHub **privé** contenant ce projet (`.env` et `.data/` n'y partent jamais).
-2. **Base** : sur supabase.com, créer un projet en région *West EU (Paris)*, puis copier la chaîne
-   *Connect → Transaction pooler* (port 6543), mot de passe de la base inclus : sur un hébergement sans
-   serveur, le mode « session » (port 5432) réserve une place de la base à chaque instance du site,
-   même endormie, et finit par en refuser. Les tables se créent au premier démarrage.
-3. **Clé de chiffrement de production** : dans un terminal,
-   `node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"`. La garder dans un
-   gestionnaire de mots de passe : la perdre rend illisibles les seconds facteurs et les clés Chariow.
-4. **Render** : se connecter avec GitHub, *New → Blueprint*, choisir le dépôt. Render demande les
-   valeurs secrètes :
-   - `DATABASE_URL` (étape 2), `DATA_ENCRYPTION_KEY` (étape 3) ;
-   - `ADMIN_BOOTSTRAP_EMAIL` : l'adresse du premier administrateur ;
-   - `CONTACT_INBOX_EMAIL` : la boîte de l'équipe ;
-   - les clés des fournisseurs, recopiées depuis `.env` (section 4) ;
-   - `APP_URL` et `CORS_ORIGINS` : vides tant qu'il n'y a pas de nom de domaine, l'adresse
-     `https://….onrender.com` attribuée par Render est alors utilisée.
-5. **Premier administrateur** : une fois le déploiement terminé, *Logs* du service → lien
-   « Lien à usage unique pour choisir le mot de passe » (24 h). Choisir le mot de passe, puis
-   *Mon compte → Sécurité* pour le second facteur. `ADMIN_BOOTSTRAP_EMAIL` n'a plus d'effet ensuite.
-6. **Stripe** : webhook `https://<adresse du site>/api/billing/webhook` (section 9), puis
-   `STRIPE_WEBHOOK_SECRET` dans Render.
-7. **Plus tard** : nom de domaine (*Settings → Custom Domains* de Render, puis `APP_URL` et
-   `CORS_ORIGINS`), service d'e-mails avec un domaine vérifié, paiements réels (`sk_live_…`).
+**Variables chez Vercel.** *Settings → Environment Variables*, cochées pour **Production**, puis
+redéployer : une variable ajoutée n'existe pour le site qu'au déploiement suivant. Recopier les noms
+lettre pour lettre (section 4). Obligatoires en production : `DATABASE_URL`,
+`DATA_ENCRYPTION_KEY` (`openssl rand -hex 32`, à garder hors de Git : la perdre rend illisibles les
+seconds facteurs et les clés Chariow), `APP_URL` en `https://`, `CRON_SECRET`.
 
-Autre hébergeur : un serveur Node.js lancé depuis la racine du projet (`npm run build` puis
-`npm start`), avec `NODE_ENV=production`, `DATABASE_URL`, `DATA_ENCRYPTION_KEY`, `APP_URL` en
-`https://`, `TRUST_PROXY=1` derrière un proxy, et `npm run admin:create` ou
-`ADMIN_BOOTSTRAP_EMAIL` pour le premier administrateur.
+**Premier administrateur** : `ADMIN_BOOTSTRAP_EMAIL`, puis le lien à usage unique (24 h) affiché dans
+les journaux du déploiement ; ou `npm run admin:create` contre la base. Activer ensuite le second
+facteur dans *Mon compte → Sécurité*.
+
+**Stripe** : webhook `https://<adresse du site>/api/billing/webhook` (section 9), puis
+`STRIPE_WEBHOOK_SECRET` chez Vercel.
+
+**Le dépôt GitHub est public.** `.env` et `.data/` n'y partent jamais ; les journaux des ateliers
+GitHub sont publics aussi : n'y écrire ni clé, ni nom de boutique, ni nom de compte.
+
+`render.yaml` décrit l'ancien hébergement sur Render (Francfort), abandonné pour Vercel ; il reste
+utilisable pour un serveur Node classique (`npm run build` puis `npm start`, avec
+`NODE_ENV=production`, `TRUST_PROXY=1` derrière un proxy).
+
+### Quand l'écran dit « Le serveur est injoignable »
+
+Ce message (`src/shared/lib/api.ts`) ne paraît que si le navigateur n'a reçu **aucune** réponse :
+une erreur du serveur (500, 504) donne un autre texte. Les causes, dans l'ordre où les chercher :
+
+1. **La connexion du visiteur** : réseau coupé, changement entre Wi-Fi et câble, résolveur DNS lent.
+   Mesuré le 26/10/2026 sur le poste du propriétaire : 2,6 s pour résoudre l'adresse avec le DNS de
+   la box, 0,26 s avec 1.1.1.1 ou 8.8.8.8.
+2. **Le domaine** : état au registre (RDAP, `rdap.verisign.com/com/v1/domain/smartcreatorcm.com`) ;
+   il a déjà été suspendu par le bureau d'enregistrement.
+3. **Un bloqueur de publicité** : écarté le 26/10/2026 — aucune des 173 adresses de l'API ne
+   tombe sous EasyList, EasyPrivacy ou Liste FR.
+
+Une lecture qui échoue vite est redemandée une fois sans rien montrer ; une action (paiement,
+génération) ne l'est jamais. Un visuel ou une vidéo dont la réponse s'est perdue est retrouvé sur
+le compte (`src/modules/creatifs/launchCreative.ts`).
 
 ---
 
@@ -601,6 +700,15 @@ que son présent ; seul celui qui la relevait la veille sait ce qui en a disparu
   s'exécuter et **le radar ne balaie jamais** : les écrans restent figés sur le dernier relevé,
   sans rien signaler. Le planificateur est déclaré dans `vercel.json` (`0 3 * * *`) ; le secret se
   pose dans les variables d'environnement de l'hébergeur.
+- **Chariow refuse le serveur en lecture directe depuis le 11/10/2026.** Les vitrines se lisent
+  donc par Firecrawl (`server/services/radar/sources/firecrawl.ts`, lecture ordinaire, jamais de
+  contournement), dans la limite de `RADAR_FIRECRAWL_DAILY_PAGES` pages par jour (30 par défaut,
+  dont au plus deux tiers pour l'index du marché). Ouvrir une boutique dans le radar la relit à la
+  demande si son dernier relevé a plus de 6 heures. Sans clé Firecrawl chez l'hébergeur, seul le
+  collecteur du poste lit les vitrines (`collecteur/vitrines.mjs`) et les verse par
+  `POST /api/cron/vitrines`.
+- Une boutique ajoutée « en attente » (adresse seule) est résolue au premier relevé ; le premier
+  passage sur une boutique sert de référence et n'annonce aucune « nouveauté ».
 
 ### Espionnage (`/app/espionnage`) — qui paie de la publicité, et depuis quand
 
@@ -633,6 +741,11 @@ deux fois.
 - Sans `APIFY_TOKEN`, le panneau n'apparaît pas et tout le reste fonctionne.
 - Le résultat étant mutualisé, la dépense dépend du rythme configuré, jamais du nombre de comptes.
   Le calcul du coût est dans `.env.example`.
+- **Le collecteur maison** (`collecteur/collecte.mjs`, Crawlee + Playwright) lit la bibliothèque
+  publicitaire publique comme un visiteur et verse les annonces au site. Il tourne dans les ateliers
+  GitHub (`collecte.yml` toutes les 4 heures, `veille.yml` toutes les 30 minutes pour les recherches
+  des clients) ; le site le déclenche à la demande avec `COLLECTOR_DISPATCH_TOKEN`. L'horaire de
+  GitHub n'est pas tenu à la minute (passages espacés de 2 à 4 heures constatés).
 - Ne jamais activer les options `includeCreatorLeads` / `enrichCreatorEmails` de l'acteur Apify :
   elles collectent des données personnelles de tiers, et la prospection non sollicitée qui en
   découlerait abîmerait la réputation du domaine d'envoi.
@@ -651,12 +764,13 @@ le nombre de lignes servies.
 | Élément | Où |
 | --- | --- |
 | Identité de l'éditeur, hébergeurs, durée de conservation comptable, rétractation et remboursement, droit applicable | Pages légales (`À compléter`) |
-| `DATABASE_URL` Supabase (région Paris) | `.env` / secrets de l'hébergeur |
-| `CRON_SECRET` sur l'hébergeur — sans lui le radar ne balaie jamais | Variables d'environnement |
-| Service d'e-mails et domaine vérifié | `.env` |
-| `STRIPE_WEBHOOK_SECRET` et activation du compte Stripe pour les paiements réels (profil d'entreprise, puis clé `sk_live_…`) | Tableau de bord Stripe |
-| Prix définitifs des paliers | `server/config/plans.json` |
-| Garanties des transferts hors Union européenne (Google, Perplexity, Cloudflare, fal.ai, Apify, Stripe, Higgsfield, Gamma) | Politique de confidentialité |
+| Recharger le compte fal.ai (solde épuisé le 26/10/2026 : aucune vidéo ne part) | fal.ai/dashboard/billing |
+| Projet Google refusé (« denied access ») : Veo, lien YouTube, illustrations des contes, secours | Console Google Cloud, ou faire sans |
+| Offre Vercel *Pro* avant d'encaisser pour de vrai (l'offre *Hobby* exclut l'usage commercial) | Vercel |
+| Service d'e-mails et domaine vérifié | Variables chez Vercel |
+| `STRIPE_WEBHOOK_SECRET` et activation du compte Stripe pour les paiements réels (profil d'entreprise, puis clé `sk_live_…`) ; paiements Stripe encore en clé de test | Tableau de bord Stripe |
+| Prix définitifs des paliers | *Administration → Prix* |
+| Garanties des transferts hors Union européenne (Google, Groq, Perplexity, Cloudflare, fal.ai, Firecrawl, Apify, Stripe, SebPay, Gamma) | Politique de confidentialité |
 
 **Clés à régénérer** : toute clé qui a été copiée hors du fichier `.env` (messages, captures) doit
 être régénérée chez son fournisseur, puis remplacée dans `.env`.
