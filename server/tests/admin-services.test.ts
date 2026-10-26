@@ -33,7 +33,7 @@ describe('État des services', () => {
     };
 
     const byId = Object.fromEntries(report.services.map((service) => [service.id, service]));
-    assert.deepEqual(Object.keys(byId).sort(), ['ad-collection', 'chariow', 'database', 'email', 'fal', 'gamma', 'gemini', 'groq', 'images', 'market-reading', 'perplexity', 'radar', 'sebpay', 'storefronts', 'stripe', 'veo', 'video-archive']);
+    assert.deepEqual(Object.keys(byId).sort(), ['ad-collection', 'chariow', 'database', 'email', 'fal', 'gamma', 'gemini', 'groq', 'images', 'market-reading', 'perplexity', 'radar', 'sebpay', 'settings', 'storefronts', 'stripe', 'veo', 'video-archive']);
     // Sans clé Firecrawl, la ligne dit que la plateforme refuse le serveur, et quelle variable ajouter.
     assert.equal(byId.storefronts!.state, 'warning');
     assert.match(byId.storefronts!.action ?? '', /FIRECRAWL_API_KEY/);

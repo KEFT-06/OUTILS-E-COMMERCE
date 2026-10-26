@@ -120,6 +120,12 @@ describe('Configuration au démarrage', () => {
     assert.deepEqual(result.ignoredSettings.sort(), ['CLOUDFLARE_ACCOUNT_ID', 'GOOGLE_SITE_VERIFICATION']);
   });
 
+  it('tolère les erreurs de collage chez l’hébergeur : guillemets autour, identifiant en majuscules', async () => {
+    const result = await readEnv({ CLOUDFLARE_ACCOUNT_ID: '"0123456789ABCDEF0123456789ABCDEF"' });
+    assert.equal(result.cloudflareAccount, '0123456789abcdef0123456789abcdef');
+    assert.deepEqual(result.ignoredSettings, []);
+  });
+
   it('refuse toujours de démarrer sur une valeur renseignée mais invalide', async () => {
     await assert.rejects(
       () => readEnv({ PORT: 'abc' }),

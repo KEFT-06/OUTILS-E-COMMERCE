@@ -3,7 +3,7 @@ import { databaseKind, getDb } from '@server/db/client';
 import { adSearches, alerts, auditLogs, generations, spiedAds, storybooks, watches } from '@server/db/schema';
 import { alertWatch } from '@server/services/alerts';
 import { MARKET_RUN_AUDIT_ACTION } from '@server/services/market';
-import { env, isProd, isServerless, providers } from '@server/env';
+import { env, ignoredSettings, isProd, isServerless, providers } from '@server/env';
 import { lastGroqOutcome } from '@server/services/ai/groq';
 import { sebpayMode } from '@server/services/billing/sebpay';
 import { classifyGoogleRefusal, lastGoogleRefusal, recordGoogleRefusal } from '@server/services/ai/googleRefusal';
@@ -851,11 +851,29 @@ export function cachedServicesReport(maxAgeMs: number): ServicesReport | null {
   return cached && Date.now() - cached.at < maxAgeMs ? cached.report : null;
 }
 
+/**
+ * Réglages écartés au démarrage parce que leur valeur n'a pas la forme attendue : leur fonction
+ * est éteinte comme s'ils manquaient. Rien ne le montrait ailleurs (26/10/2026 : clé Cloudflare
+ * « bien chez Vercel » selon le propriétaire, invisible pour le serveur). Les noms seuls, jamais
+ * les valeurs.
+ */
+function checkSettings(): ServiceCheck {
+  const base = { id: 'settings', name: 'Réglages du serveur', role: 'Variables lues au démarrage chez l’hébergeur' };
+  if (ignoredSettings.length === 0) return { ...base, state: 'ok', detail: 'Toutes les variables renseignées ont la forme attendue.', action: null };
+  return {
+    ...base,
+    state: 'error',
+    detail: `Ignorée${ignoredSettings.length > 1 ? 's' : ''}, valeur au mauvais format : ${ignoredSettings.join(', ')}. La fonction correspondante est éteinte.`,
+    action: 'Recoller la valeur chez l’hébergeur, sans guillemets ni espace, pour l’environnement « Production », puis redéployer.',
+  };
+}
+
 export async function checkServices(options: { refresh?: boolean } = {}): Promise<ServicesReport> {
   if (!options.refresh && cached && Date.now() - cached.at < CACHE_MS) return cached.report;
 
   const serverIp = await publicIp();
   const services = await Promise.all([
+    Promise.resolve(checkSettings()),
     checkDatabase(),
     checkGemini(),
     Promise.resolve(checkImages()),

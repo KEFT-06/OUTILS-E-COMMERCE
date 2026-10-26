@@ -22,9 +22,21 @@ import { z } from 'zod';
 function cleanedEnv(source: NodeJS.ProcessEnv): NodeJS.ProcessEnv {
   return Object.fromEntries(
     Object.entries(source)
-      .map(([name, value]) => [name, value?.trim()] as const)
+      .map(([name, value]) => [name, unquoted(value?.trim())] as const)
       .filter(([, value]) => value !== undefined && value !== ''),
   );
+}
+
+/**
+ * Une valeur collée chez l'hébergeur AVEC ses guillemets (« "abc" », recopiée d'un .env) les garde :
+ * l'hébergeur ne les retire pas, contrairement au chargeur du .env local. Un identifiant ainsi
+ * entouré n'avait plus la forme attendue et sa fonction s'éteignait en silence (26/10/2026,
+ * Cloudflare). Une seule paire, identique aux deux bouts, est retirée.
+ */
+function unquoted(value: string | undefined): string | undefined {
+  if (!value || value.length < 2) return value;
+  const first = value[0];
+  return (first === '"' || first === "'") && value.endsWith(first) ? value.slice(1, -1).trim() : value;
 }
 
 /**
@@ -312,7 +324,9 @@ const schema = z.object({
    */
   CLOUDFLARE_ACCOUNT_ID: z
     .string()
-    .regex(/^[0-9a-f]{32}$/, 'Identifiant de compte Cloudflare attendu : 32 caractères hexadécimaux.')
+    // Le tableau de bord le montre en minuscules, mais une copie en majuscules désigne le même compte.
+    .transform((value) => value.toLowerCase())
+    .pipe(z.string().regex(/^[0-9a-f]{32}$/, 'Identifiant de compte Cloudflare attendu : 32 caractères hexadécimaux.'))
     .optional(),
   CLOUDFLARE_AI_TOKEN: z.string().min(1).optional(),
   /** Surchargeable pour tester contre un serveur factice. */
