@@ -12,6 +12,8 @@ import { asComplianceRouteError } from '@server/services/compliance/guard';
 import { imagesConfigured } from '@server/services/creatives';
 import { CreditConfigUnavailableError, getCostTable } from '@server/services/credits';
 import { groqConfigured } from '@server/services/ai/groq';
+import { cloudflareSpeechConfigured } from '@server/services/ai/cloudflareSpeech';
+import { speechConfigured } from '@server/services/ai/geminiSpeech';
 import { veoConfigured } from '@server/services/veo';
 import { convertAmount, currencyForCountry, getRates, isSupportedCurrency } from '@server/services/currency';
 import { LaunchKitUnavailableError, getLaunchKitConfig } from '@server/services/launchKit';
@@ -108,6 +110,9 @@ catalogRouter.get(
         adLibrary: providers.apify,
         // Vitrines des boutiques lues par Firecrawl : sans elle, le radar les lit directement (refusé depuis le 11/10/2026).
         storefronts: providers.firecrawl,
+        // Lecture à voix haute : la voix gratuite de Cloudflare, ou celle de Gemini. Le choix de voix n'existe qu'avec Gemini.
+        speech: cloudflareSpeechConfigured() || speechConfigured(),
+        voiceChoice: !cloudflareSpeechConfigured() && speechConfigured(),
       },
       /** test : aucune carte réelle débitée. */
       paymentMode: stripeMode(),

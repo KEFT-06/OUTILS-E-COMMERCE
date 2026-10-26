@@ -28,7 +28,7 @@ const megabytes = (bytes: number) => `${(bytes / 1_048_576).toLocaleString('fr-F
 /** Tranches facturées pour une durée : toute tranche entamée est due. */
 const unitsFor = (minutes: number) => Math.max(1, Math.ceil(minutes / AUDIO_MINUTES_PER_UNIT)) * AUDIO_MINUTES_PER_UNIT;
 
-export function AudioCoursePanel({ product, available }: { product: DigitalProductIdea; available: boolean }) {
+export function AudioCoursePanel({ product, available, voiceChoice }: { product: DigitalProductIdea; available: boolean; voiceChoice: boolean }) {
   const { runWithCredits } = useCreditGate();
   const [tracks, setTracks] = useState<Record<number, AudioTrack>>({});
   const [voice, setVoice] = useState<AudioVoiceId>('posee');
@@ -146,6 +146,15 @@ export function AudioCoursePanel({ product, available }: { product: DigitalProdu
         )}
       </div>
 
+      {/*
+        Une seule voix française avec le service gratuit (Cloudflare) : quatre choix qui sonneraient
+        pareil seraient une incohérence. Les voix du catalogue reviennent avec un service qui les a.
+      */}
+      {!voiceChoice ? (
+        <p className="text-sm">
+          <span className="font-medium">Voix</span> <span className="text-muted-foreground">· voix française, posée et claire</span>
+        </p>
+      ) : (
       <div className="space-y-1.5">
         <p id={`voix-${product.id}`} className="text-sm font-medium">
           Voix
@@ -168,6 +177,7 @@ export function AudioCoursePanel({ product, available }: { product: DigitalProdu
         </ToggleGroup>
         <p className="text-xs text-muted-foreground">{AUDIO_VOICES.find((option) => option.id === voice)?.tone}</p>
       </div>
+      )}
 
       {written.length === 0 ? (
         <p className="rounded-lg bg-muted/50 p-3 text-sm leading-relaxed text-muted-foreground">

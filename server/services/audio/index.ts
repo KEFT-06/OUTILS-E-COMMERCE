@@ -10,6 +10,7 @@ import { env } from '@server/env';
 import { AppError, providerUnavailable } from '@server/middleware';
 import type { RequestAuth } from '@server/middleware/auth';
 import { speakPassages, speechConfigured } from '@server/services/ai/geminiSpeech';
+import { cloudflareSpeechConfigured, speakPassagesCloudflare } from '@server/services/ai/cloudflareSpeech';
 import { MP3_BYTES_PER_SECOND, encodeMp3 } from '@server/services/audio/mp3';
 import { videoRetentionDaysFor } from '@server/services/creatives/archive';
 import { runBilledGeneration } from '@server/services/generations';
@@ -91,7 +92,9 @@ const SUMMARY = {
 
 /** Lit un module à voix haute et l'enregistre. La piste précédente de ce module, s'il y en avait une, est remplacée. */
 export async function createAudioTrack(auth: RequestAuth, input: AudioRequest): Promise<AudioTrack> {
-  if (!speechConfigured()) throw providerUnavailable('lecture à voix haute');
+  // La voix gratuite (Cloudflare) d'abord ; celle de Gemini seulement à défaut — son projet est bloqué depuis le 25/10/2026.
+  const voixGratuite = cloudflareSpeechConfigured();
+  if (!voixGratuite && !speechConfigured()) throw providerUnavailable('lecture à voix haute');
   const userId = auth.account.user.id;
   const script = audioScript(input.title, input.text);
   if (script.length < AUDIO_TEXT_MIN) throw new AppError(400, 'Ce module est trop court pour être lu : rédigez-le d’abord.', 'AUDIO_TEXT_TOO_SHORT');
@@ -104,9 +107,11 @@ export async function createAudioTrack(auth: RequestAuth, input: AudioRequest): 
     // Toute tranche de dix minutes entamée est due : le même calcul que celui que l'écran annonce.
     units: audioMinutes(input.title, input.text),
     kind: 'audio',
-    provider: 'gemini',
+    provider: voixGratuite ? 'cloudflare' : 'gemini',
     run: async () => {
-      const spoken = await speakPassages(splitForSpeech(script), { voice: voice.name, style: voice.style, budgetMs: SPEAK_BUDGET_MS });
+      const spoken = voixGratuite
+        ? await speakPassagesCloudflare(splitForSpeech(script), { budgetMs: SPEAK_BUDGET_MS })
+        : await speakPassages(splitForSpeech(script), { voice: voice.name, style: voice.style, budgetMs: SPEAK_BUDGET_MS });
       const mp3 = encodeMp3(spoken.pcm);
       if (!storage && mp3.length > DB_MAX_BYTES) throw providerUnavailable('enregistrement des fichiers audio');
       return { mp3, seconds: Math.round(spoken.seconds) };

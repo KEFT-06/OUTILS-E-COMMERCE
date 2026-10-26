@@ -16,6 +16,10 @@ export interface ServerProviders {
   payments: boolean;
   /** « Continuer avec Google » à la connexion et à l'inscription. */
   googleAuth: boolean;
+  /** Lecture à voix haute du parcours audio. */
+  speech: boolean;
+  /** Plusieurs voix proposées (Gemini) ; sinon une seule voix française (Cloudflare). */
+  voiceChoice: boolean;
   /** test : aucune carte réelle débitée ; null : paiement non configuré. */
   paymentMode: 'test' | 'live' | null;
   /** Mobile Money : test (bac à sable), live, ou null quand il n'est pas configuré. */
@@ -45,6 +49,9 @@ export function useProviders(): ServerProviders | null {
             email: Boolean(data.providers.email),
             payments: Boolean(data.providers.payments),
             googleAuth: Boolean(data.providers.googleAuth),
+            // Ancien serveur, sans l'indicateur : la voix suivait la rédaction, avec son choix de voix.
+            speech: Boolean(data.providers.speech ?? data.providers.text),
+            voiceChoice: Boolean(data.providers.voiceChoice ?? true),
             paymentMode: data.paymentMode ?? null,
             mobileMoneyMode: data.mobileMoneyMode ?? null,
           };

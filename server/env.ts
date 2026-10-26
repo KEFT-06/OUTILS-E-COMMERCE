@@ -140,6 +140,11 @@ const schema = z.object({
     .string()
     .regex(/^[\w./-]+$/)
     .default('openai/gpt-oss-120b'),
+  /** Transcription des vidéos et audios (Whisper chez Groq) : « Depuis une vidéo » du Studio. */
+  GROQ_TRANSCRIPTION_MODEL: z
+    .string()
+    .regex(/^[\w./-]+$/)
+    .default('whisper-large-v3-turbo'),
   /**
    * Modèle vision pour la relecture d'une couverture rendue. Sans lui, relecture désactivée
    * (la couverture part telle quelle).

@@ -227,3 +227,36 @@ export async function askGroq(input: {
     throw error instanceof GroqError ? error : new GroqError(reason);
   }
 }
+
+/**
+ * Transcription d'une vidéo ou d'un audio par Whisper, chez Groq (« Depuis une vidéo » du Studio).
+ *
+ * Gemini regardait la vidéo lui-même ; son projet est bloqué depuis le 25/10/2026. Whisper ne lit
+ * que le son — c'est ce que dit le créateur qui fait le produit. Formats acceptés (documentation
+ * Groq) : flac, mp3, mp4, mpeg, mpga, m4a, ogg, wav, webm ; 25 Mo au plus en offre gratuite.
+ */
+export async function transcribeWithGroq(input: { data: Buffer; mimeType: string; fileName: string; timeoutMs: number }): Promise<string> {
+  if (!env.GROQ_API_KEY) throw new GroqError('NOT_CONFIGURED');
+  const form = new FormData();
+  form.append('file', new Blob([new Uint8Array(input.data)], { type: input.mimeType }), input.fileName || 'video.mp4');
+  form.append('model', env.GROQ_TRANSCRIPTION_MODEL);
+  form.append('response_format', 'text');
+  let response: Response;
+  try {
+    response = await fetch(`${env.GROQ_API_URL.replace(/\/+$/, '')}/openai/v1/audio/transcriptions`, {
+      method: 'POST',
+      headers: { authorization: `Bearer ${env.GROQ_API_KEY}` },
+      body: form,
+      signal: AbortSignal.timeout(input.timeoutMs),
+    });
+  } catch (error) {
+    throw new GroqError(error instanceof Error && error.name === 'TimeoutError' ? 'TIMEOUT' : 'UNREACHABLE');
+  }
+  if (!response.ok) {
+    console.warn(`[groq] transcription refusée (${response.status}) :`, (await response.text().catch(() => '')).slice(0, 200));
+    throw new GroqError(reasonOfStatus(response.status));
+  }
+  const text = (await response.text()).trim();
+  if (!text) throw new GroqError('EMPTY');
+  return text;
+}

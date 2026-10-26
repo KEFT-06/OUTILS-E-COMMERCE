@@ -34,7 +34,7 @@ export function VideoToProductDialog({
   onCreated: (result: VideoProductResult) => void;
 }) {
   const { runWithCredits } = useCreditGate();
-  const [mode, setMode] = useState<'link' | 'file'>('link');
+  const [mode, setMode] = useState<'link' | 'file'>('file');
   const [url, setUrl] = useState('');
   const [file, setFile] = useState<File | null>(null);
   const [busy, setBusy] = useState(false);
@@ -92,13 +92,14 @@ export function VideoToProductDialog({
             onValueChange={(value) => value && setMode(value as 'link' | 'file')}
             aria-label="Source de la vidéo"
           >
-            <ToggleGroupItem value="link">
-              <BrandIcon brand="youtube" decorative />
-              Lien YouTube
-            </ToggleGroupItem>
+            {/* Le fichier d'abord : il est écouté (transcription) puis structuré ; un lien YouTube ne peut être lu que par un moteur qui regarde la vidéo. */}
             <ToggleGroupItem value="file">
               <FileVideo />
               Fichier
+            </ToggleGroupItem>
+            <ToggleGroupItem value="link">
+              <BrandIcon brand="youtube" decorative />
+              Lien YouTube
             </ToggleGroupItem>
           </ToggleGroup>
 
@@ -127,7 +128,7 @@ export function VideoToProductDialog({
               />
               <FieldDescription>
                 {tooLarge
-                  ? 'Ce fichier dépasse 14 Mo : envoyez un extrait, la bande son seule, ou publiez la vidéo sur YouTube.'
+                  ? 'Ce fichier dépasse 14 Mo : envoyez un extrait, ou la bande son seule (un MP3 de dix minutes pèse moins de 10 Mo).'
                   : '14 Mo au plus (quelques minutes de vidéo, ou bien plus en audio seul).'}
               </FieldDescription>
             </Field>

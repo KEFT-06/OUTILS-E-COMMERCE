@@ -303,7 +303,7 @@ export function ProductStudioPanel({ baseProduct, report, initialExpertOpen = fa
         )}
 
         {/* L'ouvrage rédigé se fait aussi écouter : un module, une piste. */}
-        <AudioCoursePanel key={baseProduct.id} product={product} available={textReady} />
+        <AudioCoursePanel key={baseProduct.id} product={product} available={providers?.speech ?? false} voiceChoice={providers?.voiceChoice ?? false} />
 
         {writtenPages !== null && (
           <Alert variant="info">
