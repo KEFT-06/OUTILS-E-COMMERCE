@@ -227,7 +227,8 @@ function AdMedia({ ad, grand = false }: { ad: LibraryAd; grand?: boolean }) {
           className="h-full w-full object-contain"
           onError={() => setCassee(true)}
         />
-      ) : (
+      ) : ad.mediaKind === 'video' ? null : (
+        // Une vidéo sans vignette se lit quand même : « aperçu indisponible » sous le bouton de lecture se contredisait.
         <div className="flex flex-col items-center justify-center gap-2 p-6 text-center text-muted-foreground">
           <ImageOff className="size-6" aria-hidden="true" />
           <span className="text-xs">Aperçu pas encore disponible</span>
@@ -243,10 +244,11 @@ function AdMedia({ ad, grand = false }: { ad: LibraryAd; grand?: boolean }) {
             </a>
           </div>
         ) : sources.length > 0 ? (
-          <button type="button" className="group absolute inset-0 flex cursor-pointer items-center justify-center" aria-label="Lire la vidéo" onClick={() => setLecture(0)}>
+          <button type="button" className="group absolute inset-0 flex cursor-pointer flex-col items-center justify-center gap-2" aria-label="Lire la vidéo" onClick={() => setLecture(0)}>
             <span className={bouton}>
               <Play className="size-7 translate-x-0.5 fill-current" aria-hidden="true" />
             </span>
+            {(!source || cassee) && <span className="text-xs font-medium text-muted-foreground">Lire la vidéo</span>}
           </button>
         ) : (
           <a

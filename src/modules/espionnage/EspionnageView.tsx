@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "react-router-dom";
-import { RefreshCw, Store } from "lucide-react";
+import { RefreshCw, SlidersHorizontal, Store } from "lucide-react";
 import { toast } from "sonner";
 import { countryName } from "@server/shared/countries";
 import { STOREFRONT_LABELS, type Storefront } from "@server/shared/storefronts";
@@ -10,6 +10,7 @@ import { MetaSearchPanel } from "@/modules/espionnage/MetaSearchPanel";
 import { SeriesNav } from "@/modules/espionnage/SeriesNav";
 import { PageHeader } from "@/shared/components/PageHeader";
 import { apiRequest } from "@/shared/lib/api";
+import { VirtualGrid } from "@/shared/components/VirtualGrid";
 import { useCachedState } from "@/shared/lib/apiCache";
 import { toApiError } from "@/shared/lib/apiError";
 import type {
@@ -17,7 +18,9 @@ import type {
   LibraryAd,
 } from "@/shared/types/radar";
 import { Alert, AlertDescription, AlertTitle } from "@/shared/ui/alert";
+import { Badge } from "@/shared/ui/badge";
 import { Button } from "@/shared/ui/button";
+import { Drawer, DrawerClose, DrawerContent, DrawerDescription, DrawerFooter, DrawerHeader, DrawerTitle, DrawerTrigger } from "@/shared/ui/drawer";
 import {
   Empty,
   EmptyDescription,
@@ -33,6 +36,7 @@ import {
 } from "@/shared/ui/select";
 import { Skeleton } from "@/shared/ui/skeleton";
 import { useScreenMemory } from "@/shared/lib/apiCache";
+import { useIsMobile } from "@/shared/hooks/use-mobile";
 
 /**
  * Mur d'espionnage : les publicités qui tournent en ce moment et qui mènent à une boutique de la
@@ -240,6 +244,123 @@ export function EspionnageView() {
     }
   }
 
+  const mobile = useIsMobile();
+  /** Réglages qui s'écartent de ceux d'arrivée : leur nombre s'affiche sur le bouton du tiroir. */
+  const filtresActifs = [anciennete !== "0", etat !== "active", format !== "tous", plateforme !== "toutes", pays !== "tous", tri !== "oldest"].filter(Boolean).length;
+  const filtres = (
+    <>
+    <Select value={anciennete} onValueChange={regler(setAnciennete)}>
+      <SelectTrigger
+        className="w-full sm:w-72"
+        aria-label="Ancienneté de diffusion"
+      >
+        <SelectValue />
+      </SelectTrigger>
+      <SelectContent>
+        {ANCIENNETE.map((option) => (
+          <SelectItem key={option.value} value={option.value}>
+            {option.label}
+          </SelectItem>
+        ))}
+      </SelectContent>
+    </Select>
+
+    <Select
+      value={etat}
+      onValueChange={regler((value: string) => setEtat(value as typeof etat))}
+    >
+      <SelectTrigger
+        className="w-full sm:w-44"
+        aria-label="État de l’annonce"
+      >
+        <SelectValue />
+      </SelectTrigger>
+      <SelectContent>
+        <SelectItem value="active">Annonces en cours</SelectItem>
+        <SelectItem value="arretee">Annonces arrêtées</SelectItem>
+        <SelectItem value="toutes">Tous les états</SelectItem>
+      </SelectContent>
+    </Select>
+
+    <Select
+      value={format}
+      onValueChange={regler((value: string) => setFormat(value as typeof format))}
+    >
+      <SelectTrigger
+        className="w-full sm:w-40"
+        aria-label="Format de l’annonce"
+      >
+        <SelectValue />
+      </SelectTrigger>
+      <SelectContent>
+        <SelectItem value="tous">Tous formats</SelectItem>
+        <SelectItem value="image">Images</SelectItem>
+        <SelectItem value="video">Vidéos</SelectItem>
+      </SelectContent>
+    </Select>
+
+    {/* Proposé seulement quand le mur porte plus d'une plateforme : un filtre à un seul choix n'en est pas un. */}
+    {data && (data.storefronts?.length ?? 0) > 1 && (
+      <Select
+        value={plateforme}
+        onValueChange={regler((value: string) => setPlateforme(value as typeof plateforme))}
+      >
+        <SelectTrigger className="w-full sm:w-56" aria-label="Plateforme de la boutique">
+          <SelectValue />
+        </SelectTrigger>
+        <SelectContent>
+          <SelectItem value="toutes">Toutes les plateformes</SelectItem>
+          {data.storefronts.map((entry) => (
+            <SelectItem key={entry.id} value={entry.id}>
+              <BrandIcon brand={entry.id} decorative />
+              {STOREFRONT_LABELS[entry.id]} · {entry.ads.toLocaleString("fr-FR")}
+            </SelectItem>
+          ))}
+        </SelectContent>
+      </Select>
+    )}
+
+    {data && data.countries.length > 0 && (
+      <Select value={pays} onValueChange={regler(setPays)}>
+        <SelectTrigger className="w-full sm:w-48" aria-label="Pays de diffusion">
+          <SelectValue />
+        </SelectTrigger>
+        <SelectContent>
+          <SelectItem value="tous">Tous les pays</SelectItem>
+          {data.countries.map((code) => (
+            <SelectItem key={code} value={code}>
+              {countryName(code)}
+            </SelectItem>
+          ))}
+        </SelectContent>
+      </Select>
+    )}
+
+    <Select
+      value={tri}
+      onValueChange={regler((value: string) => setTri(value as typeof tri))}
+    >
+      <SelectTrigger
+        className="w-full sm:w-64"
+        aria-label="Trier par"
+      >
+        <SelectValue />
+      </SelectTrigger>
+      <SelectContent>
+        <SelectItem value="oldest">
+          Les plus anciennes d’abord
+        </SelectItem>
+        <SelectItem value="newest">
+          Les plus récentes d’abord
+        </SelectItem>
+        <SelectItem value="variants">
+          Le plus de variantes d’abord
+        </SelectItem>
+      </SelectContent>
+    </Select>
+    </>
+  );
+
   const hint =
     ANCIENNETE.find((option) => option.value === anciennete)?.hint ?? "";
 
@@ -321,117 +442,37 @@ export function EspionnageView() {
                 </p>
               </div>
 
-              <div className="flex flex-wrap gap-2 md:justify-end">
-                <Select value={anciennete} onValueChange={regler(setAnciennete)}>
-                  <SelectTrigger
-                    className="w-full sm:w-72"
-                    aria-label="Ancienneté de diffusion"
-                  >
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {ANCIENNETE.map((option) => (
-                      <SelectItem key={option.value} value={option.value}>
-                        {option.label}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-
-                <Select
-                  value={etat}
-                  onValueChange={regler((value: string) => setEtat(value as typeof etat))}
-                >
-                  <SelectTrigger
-                    className="w-full sm:w-44"
-                    aria-label="État de l’annonce"
-                  >
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="active">Annonces en cours</SelectItem>
-                    <SelectItem value="arretee">Annonces arrêtées</SelectItem>
-                    <SelectItem value="toutes">Tous les états</SelectItem>
-                  </SelectContent>
-                </Select>
-
-                <Select
-                  value={format}
-                  onValueChange={regler((value: string) => setFormat(value as typeof format))}
-                >
-                  <SelectTrigger
-                    className="w-full sm:w-40"
-                    aria-label="Format de l’annonce"
-                  >
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="tous">Tous formats</SelectItem>
-                    <SelectItem value="image">Images</SelectItem>
-                    <SelectItem value="video">Vidéos</SelectItem>
-                  </SelectContent>
-                </Select>
-
-                {/* Proposé seulement quand le mur porte plus d'une plateforme : un filtre à un seul choix n'en est pas un. */}
-                {data && (data.storefronts?.length ?? 0) > 1 && (
-                  <Select
-                    value={plateforme}
-                    onValueChange={regler((value: string) => setPlateforme(value as typeof plateforme))}
-                  >
-                    <SelectTrigger className="w-full sm:w-56" aria-label="Plateforme de la boutique">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="toutes">Toutes les plateformes</SelectItem>
-                      {data.storefronts.map((entry) => (
-                        <SelectItem key={entry.id} value={entry.id}>
-                          <BrandIcon brand={entry.id} decorative />
-                          {STOREFRONT_LABELS[entry.id]} · {entry.ads.toLocaleString("fr-FR")}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                )}
-
-                {data && data.countries.length > 0 && (
-                  <Select value={pays} onValueChange={regler(setPays)}>
-                    <SelectTrigger className="w-full sm:w-48" aria-label="Pays de diffusion">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="tous">Tous les pays</SelectItem>
-                      {data.countries.map((code) => (
-                        <SelectItem key={code} value={code}>
-                          {countryName(code)}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                )}
-
-                <Select
-                  value={tri}
-                  onValueChange={regler((value: string) => setTri(value as typeof tri))}
-                >
-                  <SelectTrigger
-                    className="w-full sm:w-64"
-                    aria-label="Trier par"
-                  >
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="oldest">
-                      Les plus anciennes d’abord
-                    </SelectItem>
-                    <SelectItem value="newest">
-                      Les plus récentes d’abord
-                    </SelectItem>
-                    <SelectItem value="variants">
-                      Le plus de variantes d’abord
-                    </SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
+              {/*
+                Sur téléphone, les six listes empilées repoussaient la première annonce d'environ
+                300 px : elles se rangent dans un tiroir qui monte du bas, ouvert par un seul bouton.
+              */}
+              {mobile ? (
+                <Drawer>
+                  <DrawerTrigger asChild>
+                    <Button variant="outline" className="w-full justify-between">
+                      <span className="flex items-center gap-2">
+                        <SlidersHorizontal aria-hidden="true" />
+                        Filtres et tri
+                      </span>
+                      {filtresActifs > 0 && <Badge variant="secondary">{filtresActifs}</Badge>}
+                    </Button>
+                  </DrawerTrigger>
+                  <DrawerContent>
+                    <DrawerHeader>
+                      <DrawerTitle>Filtres et tri</DrawerTitle>
+                      <DrawerDescription>Le mur se met à jour dès que vous changez un réglage.</DrawerDescription>
+                    </DrawerHeader>
+                    <div className="grid gap-2 px-4">{filtres}</div>
+                    <DrawerFooter>
+                      <DrawerClose asChild>
+                        <Button>Voir les annonces</Button>
+                      </DrawerClose>
+                    </DrawerFooter>
+                  </DrawerContent>
+                </Drawer>
+              ) : (
+                <div className="flex flex-wrap gap-2 md:justify-end">{filtres}</div>
+              )}
             </div>
           </div>
 
@@ -449,18 +490,15 @@ export function EspionnageView() {
           )}
 
           {data && data.ads.length > 0 && (
-            <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4">
-              {data.ads.map((ad) => (
-                <AdCard
-                  key={ad.id}
-                  ad={ad}
-                  onWatch={surveiller}
-                  onShowDetails={setDetails}
-                  onShowAdvertiser={voirAnnonceur}
-                  busy={busy}
-                />
-              ))}
-            </div>
+            // Seules les cartes proches de l’écran sont fabriquées : cent d’un coup figeaient un téléphone plusieurs secondes.
+            <VirtualGrid
+              items={data.ads}
+              getKey={(ad) => ad.id}
+              estimateRowHeight={520}
+              renderItem={(ad) => (
+                <AdCard ad={ad} onWatch={surveiller} onShowDetails={setDetails} onShowAdvertiser={voirAnnonceur} busy={busy} />
+              )}
+            />
           )}
 
           {/* En bas aussi : après cent annonces, on ne remonte pas pour passer à la suite. */}
