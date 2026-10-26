@@ -1,4 +1,7 @@
+import { desc, eq } from 'drizzle-orm';
 import { z } from 'zod';
+import { getDb } from '@server/db/client';
+import { providerDailyUsage } from '@server/db/schema';
 import { env } from '@server/env';
 import { AppError } from '@server/middleware';
 
@@ -131,9 +134,56 @@ async function call(path: string, method: 'GET' | 'POST', body?: unknown): Promi
   return payload;
 }
 
+/*
+  Solde épuisé, retenu en base : sans quoi chaque client lancerait une vidéo vouée au refus. Le
+  serveur tourne sur plusieurs instances, une mémoire locale n'y suffirait pas. La ligne de
+  `provider_daily_usage` garde, dans « units », la minute (temps universel) du dernier refus ;
+  elle est effacée au premier dépôt accepté. Passé OUT_OF_CREDIT_HOLD_MS, la vidéo se rouvre
+  d'elle-même : un client la retente alors, gratuitement si le compte est toujours à sec.
+*/
+const OUT_OF_CREDIT = 'fal-solde-epuise';
+const OUT_OF_CREDIT_HOLD_MS = 20 * 60_000;
+
+async function rememberOutOfCredit(now = new Date()): Promise<void> {
+  const minute = Math.floor(now.getTime() / 60_000);
+  await getDb()
+    .insert(providerDailyUsage)
+    .values({ day: now.toISOString().slice(0, 10), provider: OUT_OF_CREDIT, units: minute })
+    .onConflictDoUpdate({ target: [providerDailyUsage.day, providerDailyUsage.provider], set: { units: minute } })
+    .catch((error: unknown) => console.error('[fal] solde épuisé non retenu :', error instanceof Error ? error.message : error));
+}
+
+/** Date du dernier refus pour solde épuisé, ou null. */
+export async function falOutOfCreditSince(): Promise<Date | null> {
+  const [row] = await getDb()
+    .select({ units: providerDailyUsage.units })
+    .from(providerDailyUsage)
+    .where(eq(providerDailyUsage.provider, OUT_OF_CREDIT))
+    .orderBy(desc(providerDailyUsage.units))
+    .limit(1);
+  return row && row.units > 0 ? new Date(row.units * 60_000) : null;
+}
+
+/** Vrai tant que le dernier refus pour solde épuisé est récent. */
+export async function falOutOfCredit(now = new Date()): Promise<boolean> {
+  const since = await falOutOfCreditSince().catch(() => null);
+  return since !== null && now.getTime() - since.getTime() < OUT_OF_CREDIT_HOLD_MS;
+}
+
 /** Dépose une demande dans la file. Le modèle fait partie du chemin. */
 export async function submitFalGeneration(model: string, input: unknown): Promise<FalGeneration> {
-  const payload = await call(`/${model}`, 'POST', input);
+  let payload: unknown;
+  try {
+    payload = await call(`/${model}`, 'POST', input);
+  } catch (error) {
+    if (error instanceof AppError && error.code === 'FAL_OUT_OF_CREDIT') await rememberOutOfCredit();
+    throw error;
+  }
+  // Dépôt accepté : le compte a du solde, la vidéo est rouverte à tous.
+  await getDb()
+    .delete(providerDailyUsage)
+    .where(eq(providerDailyUsage.provider, OUT_OF_CREDIT))
+    .catch(() => undefined);
   const parsed = falStatusSchema.safeParse(payload);
   if (!parsed.success) {
     console.error('[fal] réponse de dépôt inattendue', JSON.stringify(payload).slice(0, 300));

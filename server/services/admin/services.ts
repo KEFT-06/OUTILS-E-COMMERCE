@@ -9,7 +9,7 @@ import { sebpayMode } from '@server/services/billing/sebpay';
 import { classifyGoogleRefusal, lastGoogleRefusal, recordGoogleRefusal } from '@server/services/ai/googleRefusal';
 import { lastImageOutcome } from '@server/services/ai/image';
 import { videoArchiveConfigured } from '@server/services/creatives/archive';
-import { falAppOf, falConfigured } from '@server/services/fal';
+import { falAppOf, falConfigured, falOutOfCreditSince } from '@server/services/fal';
 import { veoConfigured } from '@server/services/veo';
 import { ownIllustrationAvailable } from '@server/services/storybook/illustrate';
 import { firecrawlPagesToday } from '@server/services/radar/sources/firecrawl';
@@ -436,6 +436,14 @@ async function checkFal(): Promise<ServiceCheck> {
   if (!result) return unreachable(base);
   if (result.status === 401 || result.status === 403) return refused(base, 'FAL_KEY');
   if (result.status !== 404 && result.status !== 200) return unreachable(base);
+  const sansSolde = await falOutOfCreditSince().catch(() => null);
+  if (sansSolde)
+    return {
+      ...base,
+      state: 'error',
+      detail: `Solde épuisé : un dépôt a été refusé le ${sansSolde.toLocaleString('fr-FR', { timeZone: env.REPORTING_TIMEZONE })}. Les vidéos sont fermées aux clients pendant 20 minutes après chaque refus, puis rouvertes à l'essai.`,
+      action: 'Recharger le compte sur fal.ai/dashboard/billing : la première vidéo acceptée rouvre tout.',
+    };
   return {
     ...base,
     state: 'ok',

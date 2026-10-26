@@ -9,7 +9,7 @@ import { stripeMode } from '@server/services/billing/stripe';
 import { BlueprintsUnavailableError, getCampaignBlueprints } from '@server/services/blueprints';
 import { getRulesMetadata } from '@server/services/compliance';
 import { asComplianceRouteError } from '@server/services/compliance/guard';
-import { imagesConfigured, videoConfigured, videoExtensionAvailable } from '@server/services/creatives';
+import { imagesConfigured, videoAvailable, videoExtensionAvailable } from '@server/services/creatives';
 import { CreditConfigUnavailableError, getCostTable } from '@server/services/credits';
 import { groqConfigured } from '@server/services/ai/groq';
 import { cloudflareSpeechConfigured } from '@server/services/ai/cloudflareSpeech';
@@ -79,9 +79,11 @@ catalogRouter.get(
   cachePublic(30),
   asyncRoute(async (_req, res) => {
     let database = false;
+    let video = false;
     try {
       await queryRows(sql`select 1`);
       database = true;
+      video = await videoAvailable();
     } catch (error) {
       console.error('[santé] base de données injoignable :', error instanceof Error ? error.message : error);
     }
@@ -97,7 +99,8 @@ catalogRouter.get(
           (clé Gemini) et le moteur d'images (Cloudflare ou Gemini) répondaient.
         */
         image: imagesConfigured(),
-        video: videoConfigured(),
+        // Faux aussi quand fal.ai vient de refuser un dépôt faute de solde : le bouton se ferme.
+        video,
         // Prolonger une vidéo par étapes : propre à Veo, absent quand fal.ai rend les vidéos.
         videoExtension: videoExtensionAvailable(),
         storybook: providers.gamma || ownIllustrationAvailable(),

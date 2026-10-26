@@ -94,8 +94,11 @@ export function CreativeGeneratorPanel({
 }: { onVisualCreated?: () => void; onVideoChanged?: () => void; suggestion?: ProductStartInput | null } = {}) {
   const { runWithCredits, costTable } = useCreditGate();
   const extensionCost = costTable?.actions.find((action) => action.id === 'video_extension')?.cost ?? null;
+  const providers = useProviders();
   // « Vidéo longue » n'est proposée que si le moteur du moment sait prolonger une vidéo.
-  const canExtend = useProviders()?.videoExtension ?? false;
+  const canExtend = providers?.videoExtension ?? false;
+  // Vidéo fermée (aucun moteur, ou compte du moteur à sec) : le bouton ne promet pas ce qui échouerait.
+  const videoClosed = providers !== null && !providers.video;
 
   // Lu une seule fois, au montage : relire le stockage à chaque rendu coûterait pour rien.
   const [brouillon] = useState(lireBrouillon);
@@ -825,7 +828,9 @@ export function CreativeGeneratorPanel({
           <div className="flex flex-col gap-3 border-t pt-4 sm:flex-row sm:items-center sm:justify-between">
             <p className="text-xs leading-relaxed text-muted-foreground">
               {kind === 'video'
-                ? 'Vous pouvez quitter cet écran pendant le rendu : la vidéo vous attendra dans « Mes vidéos ».'
+                ? videoClosed
+                  ? 'La création de vidéos n’est pas ouverte en ce moment. Votre brief est gardé, et les visuels restent disponibles.'
+                  : 'Vous pouvez quitter cet écran pendant le rendu : la vidéo vous attendra dans « Mes vidéos ».'
                 : 'Votre visuel sera gardé dans « Mes visuels ».'}
               {!awarenessLevel && (
                 <span className="mt-1 block text-warning">Choisissez le niveau de conscience du prospect pour continuer.</span>
@@ -843,7 +848,7 @@ export function CreativeGeneratorPanel({
               <Button type="button" variant="ghost" onClick={nouveauBrief} disabled={isGenerating}>
                 Nouveau brief
               </Button>
-              <Button type="submit" disabled={!canSubmit}>
+              <Button type="submit" disabled={!canSubmit || (kind === 'video' && videoClosed)}>
                 {isGenerating ? <Spinner /> : <Sparkles />}
                 {isGenerating ? 'Génération en cours…' : kind === 'visual' ? 'Générer le visuel' : 'Générer la vidéo'}
               </Button>

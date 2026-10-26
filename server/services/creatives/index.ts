@@ -5,7 +5,7 @@ import type { Response as ExpressResponse } from 'express';
 import { z } from 'zod';
 import { env, isProd } from '@server/env';
 import { AppError, marketSchema } from '@server/middleware';
-import { type FalQueueStatus, falConfigured, getFalGeneration, submitFalGeneration } from '@server/services/fal';
+import { type FalQueueStatus, falConfigured, falOutOfCredit, getFalGeneration, submitFalGeneration } from '@server/services/fal';
 import {
   VEO_FORMATS,
   type VeoGeneration,
@@ -97,6 +97,16 @@ export function videoProvider(): 'fal' | 'veo' {
 
 export function videoConfigured(): boolean {
   return falConfigured() || veoConfigured();
+}
+
+/**
+ * Une vidéo peut-elle partir maintenant ? Le moteur doit être configuré, et fal.ai ne doit pas
+ * avoir refusé un dépôt pour solde épuisé il y a peu : l'écran ferme alors le bouton au lieu de
+ * laisser chaque client essuyer le même refus.
+ */
+export async function videoAvailable(): Promise<boolean> {
+  if (videoProvider() === 'fal') return !(await falOutOfCredit());
+  return veoConfigured();
 }
 
 /** Prolonger une vidéo par étapes n'existe que chez Veo : avec fal.ai, l'option n'est pas proposée. */

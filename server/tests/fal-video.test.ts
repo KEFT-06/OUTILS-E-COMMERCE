@@ -35,6 +35,8 @@ const objets = new Map<string, Buffer>();
 let espaceCree = false;
 /** fal a effacé le fichier : seule la copie archivée peut encore le servir. */
 let falEfface = false;
+/** Compte fal à sec : tout dépôt est refusé, comme le 26/10/2026. */
+let aSec = false;
 
 const fauxFal = createServer((req, res) => {
   const chunks: Buffer[] = [];
@@ -72,6 +74,10 @@ const fauxFal = createServer((req, res) => {
       res.writeHead(200, { 'content-type': 'video/mp4', 'content-length': String(MP4.length) });
       res.end(MP4);
       return;
+    }
+    if (req.method === 'POST' && url.pathname === `/${MODELE}` && aSec) {
+      // Réponse exacte de fal.ai le 26/10/2026.
+      return envoyer(403, { detail: 'User is locked. Reason: Exhausted balance. Top up your balance at fal.ai/dashboard/billing.' });
     }
     if (req.method === 'POST' && url.pathname === `/${MODELE}`) {
       depots.push({ cle: req.headers.authorization, corps: JSON.parse(Buffer.concat(chunks).toString('utf8')) as Record<string, unknown> });
@@ -213,6 +219,32 @@ describe('Rendu vidéo par fal.ai', () => {
     const { agent } = await signInWithPlan(app, 'fal-longue@exemple.test', 'pro');
     await agent.post('/api/creatives/videos').send({ ...BRIEF, duration: 8, extendable: true }).expect(202);
     assert.equal(depots.at(-1)!.corps.duration, 8);
+  });
+});
+
+describe('Compte fal.ai à sec', () => {
+  it('rend les points, ferme la vidéo à l’écran, le dit à l’administration, et rouvre au premier dépôt accepté', async () => {
+    const { default: request } = await import('supertest');
+    const { agent } = await signInWithPlan(app, 'fal-a-sec@exemple.test', 'pro');
+    const solde = async () => (await agent.get('/api/account/credits').expect(200)).body.credits.total as number;
+    const depart = await solde();
+
+    aSec = true;
+    const refus = await agent.post('/api/creatives/videos').send(BRIEF);
+    assert.equal(refus.status, 503);
+    assert.doesNotMatch(JSON.stringify(refus.body), /\bfal\b|balance|locked|billing/i, 'rien du fournisseur ne sort');
+    assert.equal(await solde(), depart, 'les points sont rendus');
+    assert.equal((await request(app).get('/api/health').expect(200)).body.providers.video, false, 'le bouton se ferme pour tous');
+
+    const { checkServices } = await import('@server/services/admin/services');
+    const ligne = (await checkServices({ refresh: true })).services.find((service) => service.id === 'fal');
+    assert.equal(ligne?.state, 'error');
+    assert.match(ligne?.action ?? '', /fal\.ai\/dashboard\/billing/);
+
+    // Le propriétaire recharge : le premier dépôt accepté rouvre la vidéo.
+    aSec = false;
+    await agent.post('/api/creatives/videos').send(BRIEF).expect(202);
+    assert.equal((await request(app).get('/api/health').expect(200)).body.providers.video, true);
   });
 });
 
