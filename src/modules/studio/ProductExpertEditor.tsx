@@ -1,5 +1,7 @@
 import { useState } from 'react';
+import { arrayMove } from '@dnd-kit/sortable';
 import { AlertTriangle, Plus, RotateCcw, Save, Trash2 } from 'lucide-react';
+import { SortableModule, SortableModules } from '@/modules/studio/SortableModules';
 import type { DigitalProductIdea } from '@/shared/types/analysis';
 import { Alert, AlertDescription } from '@/shared/ui/alert';
 import { Button } from '@/shared/ui/button';
@@ -34,9 +36,18 @@ interface ProductExpertEditorProps {
 
 type ModuleItem = DigitalProductIdea['tableOfContents'][number];
 
+/**
+ * Le numéro d'un module, c'est sa place. Il se saisissait à la main : deux modules « 2 », ou un
+ * ordre affiché qui n'était pas celui du produit, étaient possibles.
+ */
+const renumbered = (modules: ModuleItem[]): ModuleItem[] => modules.map((module, index) => ({ ...module, moduleNumber: index + 1 }));
+const newId = () => crypto.randomUUID();
+
 export function ProductExpertEditor({ product, hasDraft, writeFailed, onSave, onDiscard }: ProductExpertEditorProps) {
   const [form, setForm] = useState<DigitalProductIdea>(product);
   const [confirmDiscardOpen, setConfirmDiscardOpen] = useState(false);
+  /** Identifiants stables des modules, le temps de l'édition : la liste se réordonne sans perdre la saisie. */
+  const [ids, setIds] = useState<string[]>(() => product.tableOfContents.map(newId));
 
   const isDirty = JSON.stringify(form) !== JSON.stringify(product);
   const titleMissing = form.title.trim().length === 0;
@@ -50,24 +61,26 @@ export function ProductExpertEditor({ product, hasDraft, writeFailed, onSave, on
       tableOfContents: previous.tableOfContents.map((module, i) => (i === index ? { ...module, ...changes } : module)),
     }));
 
-  const addModule = () =>
+  const addModule = () => {
     setForm((previous) => ({
       ...previous,
-      tableOfContents: [
-        ...previous.tableOfContents,
-        {
-          moduleNumber: previous.tableOfContents.reduce((max, module) => Math.max(max, module.moduleNumber), 0) + 1,
-          title: '',
-          details: '',
-        },
-      ],
+      tableOfContents: renumbered([...previous.tableOfContents, { moduleNumber: 0, title: '', details: '' }]),
     }));
+    setIds((previous) => [...previous, newId()]);
+  };
 
-  const removeModule = (index: number) =>
+  const removeModule = (index: number) => {
     setForm((previous) => ({
       ...previous,
-      tableOfContents: previous.tableOfContents.filter((_module, i) => i !== index),
+      tableOfContents: renumbered(previous.tableOfContents.filter((_module, i) => i !== index)),
     }));
+    setIds((previous) => previous.filter((_id, i) => i !== index));
+  };
+
+  const moveModule = (from: number, to: number) => {
+    setForm((previous) => ({ ...previous, tableOfContents: renumbered(arrayMove(previous.tableOfContents, from, to)) }));
+    setIds((previous) => arrayMove(previous, from, to));
+  };
 
   const updateLeadMagnet = (changes: Partial<DigitalProductIdea['leadMagnet']>) =>
     setForm((previous) => ({ ...previous, leadMagnet: { ...previous.leadMagnet, ...changes } }));
@@ -85,7 +98,7 @@ export function ProductExpertEditor({ product, hasDraft, writeFailed, onSave, on
               Version d’origine
             </Button>
           )}
-          <Button size="sm" onClick={() => onSave(form)} disabled={!isDirty || titleMissing}>
+          <Button size="sm" onClick={() => onSave({ ...form, tableOfContents: renumbered(form.tableOfContents) })} disabled={!isDirty || titleMissing}>
             <Save />
             Enregistrer le brouillon
           </Button>
@@ -156,15 +169,22 @@ export function ProductExpertEditor({ product, hasDraft, writeFailed, onSave, on
           </Button>
         </div>
 
+        <SortableModules ids={ids} onMove={moveModule}>
         {form.tableOfContents.map((module, index) => (
-          <div key={index} className="grid grid-cols-[4.5rem_minmax(0,1fr)_auto] gap-2 rounded-lg border bg-card p-3">
-            <Input
-              type="number"
-              min={1}
-              value={module.moduleNumber}
-              onChange={(event) => updateModule(index, { moduleNumber: Math.max(1, Number(event.target.value) || 1) })}
-              aria-label={`Numéro du module ${index + 1}`}
-            />
+          <SortableModule
+            key={ids[index]}
+            id={ids[index]!}
+            label={`Déplacer le module ${index + 1}`}
+            className="grid grid-cols-[2rem_minmax(0,1fr)_auto] gap-2 rounded-lg border bg-card p-3"
+          >
+            {(handle) => (
+              <>
+            <div className="flex flex-col items-center gap-1">
+              {handle}
+              <span className="text-sm font-semibold text-muted-foreground tabular-nums" aria-hidden="true">
+                {index + 1}
+              </span>
+            </div>
             <div className="space-y-2">
               <Input
                 value={module.title}
@@ -191,8 +211,11 @@ export function ProductExpertEditor({ product, hasDraft, writeFailed, onSave, on
             >
               <Trash2 />
             </Button>
-          </div>
+              </>
+            )}
+          </SortableModule>
         ))}
+        </SortableModules>
       </div>
 
       <div className="grid gap-4 sm:grid-cols-3">
