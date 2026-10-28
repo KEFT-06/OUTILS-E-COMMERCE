@@ -69,22 +69,22 @@ describe('Administration : crédits, palier et fonctions', () => {
 
     await admin.agent
       .put(`/api/admin/users/${kwame.account.id}/features`)
-      .send({ feature: 'image_generation', access: 'revoked' })
+      .send({ feature: 'storybook_generation', access: 'revoked' })
       .expect(200);
-    const locked = await kwame.agent.post('/api/creatives/visuals').send({}).expect(403);
+    const locked = await kwame.agent.post('/api/storybook/stories').send({}).expect(403);
     assert.equal(locked.body.error.code, 'FEATURE_LOCKED');
 
     const reopened = await admin.agent
       .put(`/api/admin/users/${kwame.account.id}/features`)
-      .send({ feature: 'video_generation', access: 'revoked' })
+      .send({ feature: 'affiliate_invitations', access: 'revoked' })
       .expect(200);
-    const video = reopened.body.features.find((feature: { id: string }) => feature.id === 'video_generation');
-    assert.equal(video.planDefault, true);
-    assert.equal(video.effective, false, 'accès retiré malgré le palier Pro');
+    const invitations = reopened.body.features.find((feature: { id: string }) => feature.id === 'affiliate_invitations');
+    assert.equal(invitations.planDefault, true);
+    assert.equal(invitations.effective, false, 'accès retiré malgré le palier Pro');
 
     await admin.agent
       .put(`/api/admin/users/${kwame.account.id}/features`)
-      .send({ feature: 'image_generation', access: 'default' })
+      .send({ feature: 'storybook_generation', access: 'default' })
       .expect(200);
   });
 });

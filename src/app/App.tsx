@@ -40,8 +40,8 @@ const PasswordTokenPage = lazyPage(() => import('@/features/auth/PasswordTokenPa
 const VerifyEmailPage = lazyPage(() => import('@/features/auth/VerifyEmailPage'), 'VerifyEmailPage');
 const ContactPage = lazyPage(() => import('@/features/contact/ContactPage'), 'ContactPage');
 const LegalPage = lazyPage(() => import('@/features/legal/LegalPage'), 'LegalPage');
-/** Page d'impression d'un guide, hors de la mise en page de l'espace de travail. */
-const GuidePrintPage = lazyPage(() => import('@/modules/multilingue/GuidePrintView'), 'GuidePrintView');
+/** Page d'impression d'un guide déjà écrit (le module des guides est retiré), hors de la mise en page de l'espace de travail. */
+const GuidePrintPage = lazyPage(() => import('@/modules/guides/GuidePrintView'), 'GuidePrintView');
 const AppLayout = lazyPage(() => import('@/app/layout/AppLayout'), 'AppLayout');
 
 const modulePages = () => import('@/app/routes/ModulePages');
@@ -50,14 +50,9 @@ const AffiliationPage = lazyPage(modulePages, 'AffiliationPage');
 const AnalysePage = lazyPage(modulePages, 'AnalysePage');
 const CampagnesPage = lazyPage(modulePages, 'CampagnesPage');
 const CockpitPage = lazyPage(modulePages, 'CockpitPage');
-const CreatifsPage = lazyPage(modulePages, 'CreatifsPage');
 const DistributionPage = lazyPage(modulePages, 'DistributionPage');
 const DossierPdfPage = lazyPage(modulePages, 'DossierPdfPage');
-const GuidePage = lazyPage(modulePages, 'GuidePage');
-const GuideReviewPage = lazyPage(modulePages, 'GuideReviewPage');
-const GuideTranslationPage = lazyPage(modulePages, 'GuideTranslationPage');
 const KitLancementPage = lazyPage(modulePages, 'KitLancementPage');
-const MultilinguePage = lazyPage(modulePages, 'MultilinguePage');
 const NichesPage = lazyPage(modulePages, 'NichesPage');
 const RadarPage = lazyPage(modulePages, 'RadarPage');
 const EspionnagePage = lazyPage(modulePages, 'EspionnagePage');
@@ -119,13 +114,14 @@ export default function App() {
                   <Route path="analyse" element={<AnalysePage />} />
                   <Route path="dossier-pdf" element={<DossierPdfPage />} />
                   <Route path="studio" element={<StudioPage />} />
-                  <Route path="creatifs" element={<CreatifsPage />} />
+                  {/*
+                    Créatifs publicitaires et guides multilingues retirés le 28/10/2026 : un ancien lien
+                    mène à « Mes créations », où restent les visuels, vidéos et guides déjà faits.
+                  */}
+                  <Route path="creatifs" element={<Navigate to="/app/creations?onglet=medias" replace />} />
+                  <Route path="multilingue/*" element={<Navigate to="/app/creations" replace />} />
                   <Route path="storybook" element={<StorybookPage />} />
                   <Route path="pages-produits" element={<PagesProduitsPage />} />
-                  <Route path="multilingue" element={<MultilinguePage />} />
-                  <Route path="multilingue/relectures/:translationId" element={<GuideReviewPage />} />
-                  <Route path="multilingue/:guideId" element={<GuidePage />} />
-                  <Route path="multilingue/:guideId/:language" element={<GuideTranslationPage />} />
                   <Route path="creations" element={<CreationsPage />} />
                   <Route path="kit-lancement" element={<KitLancementPage />} />
                   <Route path="campagnes" element={<CampagnesPage />} />

@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { Clapperboard, Download } from 'lucide-react';
-import { CREATIVE_ATTESTATIONS } from '@/modules/creatifs/attestations';
+import { CREATIVE_ATTESTATIONS } from '@/modules/creations/attestations';
 import { apiRequest } from '@/shared/lib/api';
 import { formatDateFr } from '@/shared/lib/formatDate';
 import { cn } from '@/shared/lib/utils';
@@ -112,7 +112,7 @@ export function MyVideosPanel({
             <Clapperboard className="size-4 text-brand-green-text" aria-hidden="true" />
             Mes vidéos
           </CardTitle>
-          <CardDescription>Aucune vidéo pour l’instant : celles que vous générez dans les Créatifs publicitaires arrivent ici.</CardDescription>
+          <CardDescription>Aucune vidéo n’a été créée sur votre compte.</CardDescription>
         </CardHeader>
       </Card>
     );
@@ -128,7 +128,7 @@ export function MyVideosPanel({
           Mes vidéos
         </CardTitle>
         <CardDescription>
-          Vos vidéos, dès leur lancement. Vous pouvez quitter cet écran pendant un rendu : la vidéo vous attend ici.
+          Les vidéos créées sur votre compte, à télécharger tant qu’elles sont conservées.
         </CardDescription>
       </CardHeader>
       <CardContent>

@@ -2,10 +2,6 @@
 
 export type AwarenessLevel = 'unaware' | 'problem_aware' | 'solution_aware' | 'product_aware' | 'most_aware';
 
-export type CreativeFormat = '1:1' | '9:16' | '16:9';
-
-export type CreativeKind = 'visual' | 'video';
-
 export interface CreativeStatus {
   requestId: string;
   status: 'queued' | 'in_progress' | 'completed' | 'failed' | 'nsfw' | 'canceled';
@@ -18,10 +14,6 @@ export interface CreativeStatus {
   availableUntil?: string;
   /** Vidéo : conservation échue, le fichier n'existe plus. */
   expired?: boolean;
-  /** Vidéo Veo : durée totale en secondes. */
+  /** Vidéo : durée en secondes. */
   durationSeconds?: number | null;
-  /** Vidéo longue (720p) prolongeable de 7 s maintenant. */
-  extendable?: boolean;
-  /** Durée maximale atteignable par prolongations (148 s). */
-  maxDurationSeconds?: number;
 }

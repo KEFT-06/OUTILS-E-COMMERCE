@@ -1,15 +1,12 @@
 import { useEffect, useRef, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
-import { AlertTriangle, BookOpen, CheckCircle2, Clapperboard, Download, PenLine, Sparkles } from 'lucide-react';
+import { AlertTriangle, BookOpen, CheckCircle2, Download, PenLine, Sparkles } from 'lucide-react';
 import { useCreditGate } from '@/app/providers/CreditGateProvider';
 import { PageHeader } from '@/shared/components/PageHeader';
 import { ApiError, readApiError, toApiError } from '@/shared/lib/apiError';
-import { MAX_POLL_MISSES, lostTrackMessage, pollStatus } from '@/shared/lib/polling';
 import { useAuth } from '@/features/auth/AuthContext';
 import { CountryCombobox } from '@/shared/components/CountryCombobox';
 import { guessCountryCode } from '@/shared/lib/geo';
-import { type StoryDraft, type StorybookBrief, type StorybookStatus, storybookPdfPath, storybookPicturePath } from '@/shared/types/storybook';
-import { VIDEO_SCREEN, videoFromStorybook } from '@/modules/creatifs/videoStart';
+import { type StoryDraft, type StorybookBrief, storybookPdfPath } from '@/shared/types/storybook';
 import { StorybookLibrary } from '@/modules/storybook/StorybookLibrary';
 import { StoryPreviewPanel } from '@/modules/storybook/StoryPreviewPanel';
 import { Alert, AlertDescription, AlertTitle } from '@/shared/ui/alert';
@@ -27,21 +24,13 @@ import { culturalElementsOf } from '@/shared/lib/culturalElements';
 import { usePrefill } from '@/shared/lib/prefill';
 
 /**
- * Storybook africain : le conte est rédigé, relu par son auteur, puis illustré une page à la
- * fois ; le PDF se télécharge depuis le site.
+ * Storybook africain : le conte est rédigé, relu et corrigé par son auteur, puis enregistré ; le PDF
+ * se télécharge depuis le site. Les éléments culturels — proposés d'après le pays d'ancrage (voir
+ * culturalElements.ts) et corrigés par l'auteur — nourrissent l'histoire.
  *
- * L'écran ne demande plus à l'auteur de vérifier quoi que ce soit après coup. Le personnage
- * reste le même d'une page à l'autre parce que le serveur le dessine d'après une planche de
- * référence ; les éléments culturels — proposés d'après le pays d'ancrage (repères familiers, voir
- * culturalElements.ts) et corrigés par l'auteur — servent de références précises. L'avancée affichée est le compte réel des illustrations terminées.
+ * Les contes ne sont plus illustrés depuis le 28/10/2026 (génération d'images retirée du site) ;
+ * ceux qui l'ont été restent téléchargeables dans « Mes contes ».
  */
-
-/** Cadence de sondage recommandée par le service de mise en page. */
-const POLL_INTERVAL_MS = 5_000;
-/** Au-delà, l'écran cesse de suivre ; le serveur continue de vérifier la génération et rend les points si elle échoue. */
-const MAX_WAIT_MS = 10 * 60_000;
-
-const wait = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
 
 const INITIAL_BRIEF: StorybookBrief = {
   country: 'CI',
@@ -56,14 +45,7 @@ const INITIAL_BRIEF: StorybookBrief = {
 };
 
 export function StorybookView() {
-  const { runWithCredits, costTable } = useCreditGate();
-  const navigate = useNavigate();
-  /*
-    Le prix vient de la grille servie par le serveur, jamais d’une constante recopiée ici :
-    un tarif affiché sur un bouton et un tarif facturé qui divergent est la pire des
-    surprises. Tant que la grille n’est pas chargée, le bouton ne promet aucun chiffre.
-  */
-  const coutIllustration = costTable?.actions.find((action) => action.id === 'storybook_illustration')?.cost ?? null;
+  const { runWithCredits } = useCreditGate();
 
   const { account } = useAuth();
   // Le brief en cours et le conte écrit en attente de relecture se retrouvent en revenant sur l'écran.
@@ -71,14 +53,12 @@ export function StorybookView() {
     ...INITIAL_BRIEF,
     country: account?.country ?? guessCountryCode() ?? INITIAL_BRIEF.country,
   }));
-  const [isGenerating, setIsGenerating] = useState(false);
+  const [isSaving, setIsSaving] = useState(false);
   const [isWriting, setIsWriting] = useState(false);
   /** Conte écrit, en attente de relecture. Null : rien à relire pour l’instant. */
   const [story, setStory] = useScreenMemory<StoryDraft | null>('storybook.conte', null);
-  const [elapsedSeconds, setElapsedSeconds] = useState(0);
-  const [result, setResult] = useState<StorybookStatus | null>(null);
-  /** Illustrations terminées sur attendues, tel que le serveur le compte. */
-  const [progress, setProgress] = useState<StorybookStatus['progress'] | null>(null);
+  /** Conte enregistré : son PDF se télécharge. */
+  const [result, setResult] = useState<{ storybookId: string } | null>(null);
   const [error, setError] = useState<ApiError | null>(null);
   const [title, setTitle] = useScreenMemory<string | null>('storybook.titre', null);
   /** Change à chaque conte créé : la liste « Mes contes » se recharge. */
@@ -93,14 +73,6 @@ export function StorybookView() {
     };
   }, []);
 
-  useEffect(() => {
-    if (!isGenerating) return;
-    const startedAt = Date.now();
-    setElapsedSeconds(0);
-    const timer = setInterval(() => setElapsedSeconds(Math.round((Date.now() - startedAt) / 1000)), 1000);
-    return () => clearInterval(timer);
-  }, [isGenerating]);
-
   const update = <K extends keyof StorybookBrief>(key: K, value: StorybookBrief[K]) =>
     setBrief((previous) => ({ ...previous, [key]: value }));
 
@@ -110,7 +82,6 @@ export function StorybookView() {
   usePrefill(brief.heroName, (value) => update('heroName', value), propose.heroName, 'storybook.prenom');
   usePrefill(brief.heroDescription ?? '', (value) => update('heroDescription', value), propose.heroDescription, 'storybook.personnage');
   usePrefill(brief.theme, (value) => update('theme', value), propose.theme, 'storybook.theme');
-  usePrefill(brief.visualStyle ?? '', (value) => update('visualStyle', value), propose.visualStyle, 'storybook.style');
   // D'après le pays d'ancrage : la case suit le pays tant que l'auteur ne l'a pas retouchée.
   usePrefill(brief.culturalElements ?? '', (value) => update('culturalElements', value), culturalElementsOf(brief.country), 'storybook.culture');
 
@@ -134,7 +105,7 @@ export function StorybookView() {
     update('pages', borne);
   };
 
-  const canSubmit = brief.heroName.trim().length > 0 && brief.theme.trim().length >= 3 && !isGenerating;
+  const canSubmit = brief.heroName.trim().length > 0 && brief.theme.trim().length >= 3 && !isSaving;
 
   const requestBody = () => {
     const optional = (value: string | undefined) => (value && value.trim() ? value.trim() : undefined);
@@ -147,16 +118,13 @@ export function StorybookView() {
       theme: brief.theme.trim(),
       heroDescription: optional(brief.heroDescription),
       culturalElements: optional(brief.culturalElements),
-      visualStyle: optional(brief.visualStyle),
     };
   };
 
   /**
    * Première étape : écrire le conte, et rien de plus.
    *
-   * Elle ne touche pas à la mise en page, donc elle coûte trois points au lieu de quinze.
-   * L'auteur lit son histoire avant d'engager l'étape chère — c'est tout l'objet de la
-   * séparation, et c'est ce qui permet de recommencer sans payer une illustration perdue.
+   * L'auteur lit son histoire, la corrige, puis l'enregistre — sans payer de nouveau.
    */
   const ecrireLeConte = async (event: React.FormEvent) => {
     event.preventDefault();
@@ -189,81 +157,37 @@ export function StorybookView() {
     }
   };
 
-  /** Seconde étape : illustrer le conte tel que l'auteur vient de le valider, corrections comprises. */
-  const illustrer = async (approuve: StoryDraft) => {
+
+  /** Seconde étape : enregistrer le conte tel que l'auteur vient de le relire, corrections comprises. Gratuit. */
+  const enregistrer = async (approuve: StoryDraft) => {
     setError(null);
-    setResult(null);
-    setProgress(null);
-
+    setIsSaving(true);
     try {
-      // Points réservés par le serveur au lancement, rendus automatiquement si le conte échoue.
-      await runWithCredits('storybook_illustration', async () => {
-        setIsGenerating(true);
-        try {
-          const created = await fetch('/api/storybook/generations', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ ...requestBody(), story: approuve }),
-          });
-          if (!created.ok) throw await readApiError(created, `La demande a échoué (${created.status}).`);
-
-          const {
-            generationId,
-            storybookId,
-            title: storyTitle,
-          } = (await created.json()) as { generationId: string; storybookId: string; title: string };
-          setTitle(storyTitle);
-          setLibraryVersion((version) => version + 1);
-          const deadline = Date.now() + MAX_WAIT_MS;
-          let misses = 0;
-
-          while (Date.now() < deadline) {
-            await wait(POLL_INTERVAL_MS);
-            if (unmountedRef.current) {
-              throw new ApiError("Suivi interrompu : l'écran a été quitté pendant la génération.");
-            }
-
-            const status = await pollStatus<StorybookStatus>(
-              `/api/storybook/generations/${encodeURIComponent(generationId)}`,
-              'Le suivi a échoué',
-            );
-            if (!status) {
-              misses += 1;
-              if (misses >= MAX_POLL_MISSES) throw new ApiError(lostTrackMessage('dans « Mes contes » ci-dessous'));
-              continue;
-            }
-            misses = 0;
-            if (status.progress) setProgress(status.progress);
-            if (status.status === 'completed') {
-              setResult({ ...status, storybookId: status.storybookId ?? storybookId });
-              setLibraryVersion((version) => version + 1);
-              return;
-            }
-            if (status.status === 'failed') {
-              setLibraryVersion((version) => version + 1);
-              throw new ApiError(status.errorMessage ?? 'La génération a échoué.');
-            }
-          }
-
-          throw new ApiError(
-            'La génération dépasse 10 minutes : suivi abandonné sur cet écran. Si le conte échoue, vos points vous seront rendus automatiquement.',
-          );
-        } finally {
-          if (!unmountedRef.current) setIsGenerating(false);
-        }
+      const response = await fetch('/api/storybook/books', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ...requestBody(), story: approuve }),
       });
+      if (!response.ok) throw await readApiError(response, `L’enregistrement a échoué (${response.status}).`);
+      const saved = (await response.json()) as { storybookId: string; title: string };
+      if (unmountedRef.current) return;
+      setTitle(saved.title);
+      setResult({ storybookId: saved.storybookId });
+      setStory(null);
+      setLibraryVersion((version) => version + 1);
     } catch (caught) {
-      if (!unmountedRef.current) setError(toApiError(caught, 'La génération a échoué.'));
+      if (!unmountedRef.current) setError(toApiError(caught, 'L’enregistrement du conte a échoué.'));
+    } finally {
+      if (!unmountedRef.current) setIsSaving(false);
     }
   };
-
 
   return (
     <div className="space-y-6">
       <PageHeader
         eyebrow="Créer"
-        title="Storybook illustré"
-        description="Des contes illustrés ancrés dans le pays de vos lecteurs, à télécharger en PDF."
+        title="Storybook"
+        description="Des contes ancrés dans le pays de vos lecteurs, à relire, corriger et télécharger en PDF."
       />
 
       <Card>
@@ -272,7 +196,7 @@ export function StorybookView() {
             <BookOpen className="size-4 text-brand-green-text" aria-hidden="true" />
             Brief du conte
           </CardTitle>
-          <CardDescription>Le prénom du personnage et le thème suffisent pour lancer la génération.</CardDescription>
+          <CardDescription>Le prénom du personnage et le thème suffisent pour écrire le conte.</CardDescription>
         </CardHeader>
         <CardContent>
           <form onSubmit={ecrireLeConte} className="space-y-5">
@@ -369,20 +293,10 @@ export function StorybookView() {
                 />
               </Field>
 
-              <Field className="sm:col-span-2">
-                <FieldLabel htmlFor="story-style">Style visuel</FieldLabel>
-                <Input
-                  id="story-style"
-                  value={brief.visualStyle}
-                  onChange={(event) => update('visualStyle', event.target.value)}
-                  maxLength={300}
-                  placeholder="ex. aquarelle aux couleurs chaudes"
-                />
-              </Field>
             </div>
 
             <div className="flex flex-col gap-3 border-t pt-4 sm:flex-row sm:items-center sm:justify-between">
-              <p className="text-xs leading-relaxed text-muted-foreground">Vous relisez l’histoire avant de lancer son illustration.</p>
+              <p className="text-xs leading-relaxed text-muted-foreground">Vous relisez l’histoire avant de l’enregistrer.</p>
               <Button type="submit" disabled={!canSubmit || isWriting} className="shrink-0">
                 {isWriting ? <Spinner /> : <Sparkles />}
                 {isWriting ? 'Écriture en cours…' : 'Écrire le conte'}
@@ -392,57 +306,12 @@ export function StorybookView() {
         </CardContent>
       </Card>
 
-      {/*
-        L'aperçu disparaît dès que l'illustration part : on ne relit plus un texte dont la
-        mise en page est déjà lancée, et le laisser affiché inviterait à corriger ce qui
-        n'est plus modifiable.
-      */}
-      {story && !isGenerating && !result && (
-        <StoryPreviewPanel
-          story={story}
-          busy={isGenerating}
-          coutIllustration={coutIllustration}
-          onIllustrate={(approuve) => void illustrer(approuve)}
-          onRewrite={() => setStory(null)}
-        />
-      )}
-
-      {isGenerating && (
-        <Alert variant="info" role="status">
-          <Spinner />
-          <AlertDescription className="w-full space-y-2 tabular-nums">
-            <p>
-              {title ? `« ${title} » : ` : ''}
-              {progress
-                ? progress.done === 0
-                  ? 'personnages dessinés, illustration des pages en cours'
-                  : `illustration ${progress.done} sur ${progress.total}`
-                : 'illustration de chaque page en cours'}{' '}
-              — {elapsedSeconds} s
-            </p>
-            {progress && (
-              <div
-                className="h-1.5 w-full overflow-hidden rounded-full bg-muted"
-                role="progressbar"
-                aria-valuemin={0}
-                aria-valuemax={progress.total}
-                aria-valuenow={progress.done}
-                aria-label="Illustrations terminées"
-              >
-                <div
-                  className="h-full rounded-full bg-brand-green-text transition-[width] duration-500"
-                  style={{ width: `${Math.round((progress.done / Math.max(1, progress.total)) * 100)}%` }}
-                />
-              </div>
-            )}
-          </AlertDescription>
-        </Alert>
-      )}
+      {story && !result && <StoryPreviewPanel story={story} busy={isSaving} onSave={(approuve) => void enregistrer(approuve)} onRewrite={() => setStory(null)} />}
 
       {error && (
         <Alert variant="danger">
           <AlertTriangle />
-          <AlertTitle>La génération n’a pas abouti</AlertTitle>
+          <AlertTitle>Le conte n’a pas pu être écrit ou enregistré</AlertTitle>
           <AlertDescription>
             <p>{error.message}</p>
             {error.findings.length > 0 && (
@@ -463,23 +332,15 @@ export function StorybookView() {
         </Alert>
       )}
 
-      {result && result.storybookId && (
+      {result && (
         <Card className="border-success-border">
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
               <CheckCircle2 className="size-5 text-success" aria-hidden="true" />
-              Votre conte est prêt
+              {title ? `« ${title} » est prêt` : 'Votre conte est prêt'}
             </CardTitle>
           </CardHeader>
           <CardContent className="space-y-4">
-            {/* La couverture, quand le serveur a illustré le conte lui-même : on voit ce qu'on télécharge. */}
-            {result.progress && (
-              <img
-                src={storybookPicturePath(result.storybookId, 0)}
-                alt={title ? `Couverture de « ${title} »` : 'Couverture du conte'}
-                className="aspect-[3/4] w-full max-w-56 rounded-lg border object-cover"
-              />
-            )}
             <div className="flex flex-wrap gap-2">
               <Button asChild>
                 <a href={storybookPdfPath(result.storybookId)} download>
@@ -487,15 +348,6 @@ export function StorybookView() {
                   Télécharger le PDF
                 </a>
               </Button>
-              {story && (
-                <Button
-                  variant="outline"
-                  onClick={() => void navigate(VIDEO_SCREEN, { state: videoFromStorybook({ title: title ?? story.title, story, language: brief.language, country: brief.country }) })}
-                >
-                  <Clapperboard />
-                  Générer une vidéo pour le vendre
-                </Button>
-              )}
             </div>
           </CardContent>
         </Card>

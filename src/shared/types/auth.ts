@@ -5,12 +5,8 @@ export type PlanId = 'free' | 'plus' | 'pro' | 'max' | 'elite';
 export type FeatureId =
   | 'niche_analysis'
   | 'ai_writing'
-  | 'image_generation'
-  | 'video_generation'
   | 'storybook_generation'
-  | 'affiliate_invitations'
-  | 'guide_translation'
-  | 'native_review';
+  | 'affiliate_invitations';
 
 export type Permission =
   | 'admin.dashboard.read'
@@ -22,8 +18,7 @@ export type Permission =
   | 'admin.content.view'
   | 'admin.pricing.read'
   | 'admin.market.collect'
-  | 'admin.security.read'
-  | 'guides.review';
+  | 'admin.security.read';
 
 export interface CreditBalance {
   /** Points du quota mensuel du palier. */
@@ -40,10 +35,6 @@ export interface CreditBalance {
 export interface PlanLimits {
   /** Niches qu'un compte peut enregistrer ; null : illimité. */
   savedNiches: number | null;
-  /** Méthodes publicitaires ouvertes ; null : toutes. */
-  adFrameworks: number | null;
-  /** Langues de traduction par guide ; null : illimité. */
-  guideLanguages: number | null;
   /** Pages au plus pour un ebook rédigé par l'IA. Jamais illimité : le plafond absolu est 250. */
   ebookPages: number;
 }
@@ -148,6 +139,5 @@ export interface PlanCatalog {
     ratesSource: 'live' | 'fallback';
   };
   features: Record<FeatureId, string>;
-  adFrameworksTotal: number;
   plans: PlanDefinition[];
 }

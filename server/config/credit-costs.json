@@ -1,6 +1,6 @@
 {
   "version": "2026.09.12",
-  "updatedAt": "2026-09-29",
+  "updatedAt": "2026-10-28",
   "note": "Grille tarifaire des research points (CdC §8). Table de configuration éditable sans déploiement, au même titre que la table de conformité. À migrer en base lors du Lot 2, avec un historique de versions : un coût qui change doit rester traçable pour les factures déjà émises.",
   "currency": "FCFA",
   "pointValueFcfa": 250,
@@ -24,19 +24,7 @@
       "id": "storybook_story",
       "label": "Écriture d’un conte",
       "cost": 3,
-      "description": "Le texte du conte, page par page, à partir de votre brief. Un cinquième du prix complet : on lit avant d’illustrer, et on recommence si l’histoire ne va pas. Points rendus si l’écriture échoue."
-    },
-    {
-      "id": "storybook_generation",
-      "label": "Conte illustré, écriture et mise en page",
-      "cost": 15,
-      "description": "Le conte écrit puis illustré d’un seul geste, sans relecture intermédiaire. Les deux étapes séparées coûtent le même total et permettent de lire avant d’illustrer. Points rendus si la génération échoue."
-    },
-    {
-      "id": "storybook_illustration",
-      "label": "Illustration d’un conte déjà écrit",
-      "cost": 12,
-      "description": "Chaque page illustrée et mise en page, puis le PDF, à partir d’un texte que vous avez lu et validé. C’est l’étape qui coûte : elle ne part plus à l’aveugle. Points rendus si la génération échoue."
+      "description": "Le conte, page par page, à partir de votre brief : vous le relisez, le corrigez, puis le téléchargez en PDF. Points rendus si l’écriture échoue."
     },
     {
       "id": "product_generation",
@@ -77,54 +65,12 @@
       "description": "Trois textes publicitaires et les scripts de 15, 30 et 60 secondes rédigés à partir du produit, avec contrôle de conformité immédiat. Points rendus si la rédaction échoue."
     },
     {
-      "id": "video_generation",
-      "label": "Génération d'une vidéo",
-      "cost": 12,
-      "description": "Rendu vidéo par le fournisseur externe. Coût le plus élevé de la grille."
-    },
-    {
-      "id": "video_extension",
-      "label": "Prolongation d'une vidéo (7 s)",
-      "cost": 8,
-      "description": "Ajoute 7 secondes à une vidéo longue (720p), jusqu'à 2 min 28. Même marge qu'une vidéo : environ 0,70 $ de rendu chez Google. Points rendus si la prolongation échoue."
-    },
-    {
-      "id": "image_generation",
-      "label": "Génération d'un visuel",
-      "cost": 1,
-      "description": "Visuel unique au format demandé."
-    },
-    {
-      "id": "ad_video_study",
-      "label": "Étude de la vidéo d’une publicité",
-      "cost": 2,
-      "description": "La vidéo d’une publicité du mur est regardée pour vous : son accroche, ses temps dans l’ordre, ce qui la fait marcher — puis la scène d’une vidéo semblable est écrite pour votre produit, prête à générer. On reprend une mécanique, jamais le texte ni les images d’un autre. Points rendus si l’étude échoue ; rien n’est débité si la vidéo n’est plus en ligne."
-    },
-    {
       "id": "audio_reading",
       "label": "Lecture audio d’un module",
       "cost": 1,
       "perUnit": 10,
       "unitLabel": "minutes",
       "description": "Un module de votre ouvrage lu à voix haute, avec la voix que vous choisissez, à écouter ici et à télécharger en MP3 pour le vendre. Compté par tranche de 10 minutes d’audio entamée ; la durée est annoncée avant de lancer. Points rendus si la lecture échoue."
-    },
-    {
-      "id": "cover_generation",
-      "label": "Couverture d'un ebook ou d'un guide",
-      "cost": 1,
-      "description": "Pour un ebook : sa couverture complète — livre en relief, titre, points forts, bandeau —, relue avant de vous être remise et prête à montrer pour vendre. Pour un guide multilingue : une illustration, sur laquelle le titre est posé dans chaque langue. Conservée sur votre compte. Points rendus si la génération échoue."
-    },
-    {
-      "id": "guide_translation",
-      "label": "Traduction d'un guide (par langue)",
-      "cost": 2,
-      "description": "Traduction automatique contrôlée (niveau C) d'un guide dans une langue. Points rendus si la traduction échoue."
-    },
-    {
-      "id": "native_review",
-      "label": "Relecture par un locuteur natif (par langue)",
-      "cost": 10,
-      "description": "Relecture humaine de niveau A. Points rendus si vous annulez la demande avant qu'un relecteur la prenne en charge."
     }
   ]
 }

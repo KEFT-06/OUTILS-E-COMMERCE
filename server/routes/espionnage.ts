@@ -1,11 +1,10 @@
 import { Router } from 'express';
 import { z } from 'zod';
-import { aiLimiter, asyncRoute, routeLimiter, validateBody } from '@server/middleware';
-import { requireAuth, requireFeature } from '@server/middleware/auth';
+import { asyncRoute, routeLimiter, validateBody } from '@server/middleware';
+import { requireAuth } from '@server/middleware/auth';
 import { effectiveLimits } from '@server/services/accounts';
 import { listSpiedAds, refreshWall, refreshWallInBackground, spiedStores } from '@server/services/espionnage';
 import { adDownloadKind, sendAdDownload, sendAdThumbnail, sendAdVideo, sendPageAvatar } from '@server/services/espionnage/media';
-import { type AdStudyRequest, adStudyRequestSchema, studyAdVideo } from '@server/services/espionnage/study';
 import { watchOnVisit } from '@server/services/watch';
 import { STOREFRONTS } from '@server/shared/storefronts';
 import {
@@ -95,17 +94,6 @@ espionnageRouter.get(
   routeLimiter(10, 60),
   asyncRoute(async (req, res) => {
     await sendAdDownload(req.params.id, res);
-  }),
-);
-
-/** La vidéo d'une publicité, regardée pour l'auteur : sa mécanique, et la scène d'une vidéo semblable pour son produit. */
-espionnageRouter.post(
-  '/ads/:id/study',
-  requireFeature('ai_writing'),
-  aiLimiter,
-  validateBody(adStudyRequestSchema),
-  asyncRoute(async (req, res) => {
-    res.json({ study: await studyAdVideo(req.auth!, req.params.id, req.body as AdStudyRequest) });
   }),
 );
 

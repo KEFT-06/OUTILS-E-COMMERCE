@@ -236,35 +236,6 @@ const schema = z.object({
     .regex(/^(preset:(fast|low|medium|high)|[\w.-]+\/[\w.-]+)$/)
     .default('preset:low'),
   /**
-   * Modèle d'image de Gemini (couvertures des guides et des ebooks). Exige la facturation activée
-   * sur le projet Google de la clé : l'offre gratuite n'autorise aucune image.
-   */
-  /**
-   * Modèle d'image de Gemini : secours des couvertures, et PREMIER CHOIX des visuels
-   * publicitaires (voir `services/ai/image.ts`).
-   *
-   * « gemini-3-pro-image » (Nano Banana Pro) et non le modèle Flash : comparé le
-   * 27 septembre 2026 sur la même consigne, il rend une scène du pays visé reconnaissable
-   * là où les autres rendent un intérieur qui pourrait être partout. Il coûte 0,134 $
-   * l'image contre 0,067 $ pour le Flash — réservé, pour cette raison, aux images qu'un
-   * public verra.
-   *
-   * Ce modèle écrit du texte et dessine des marques de lui-même dès que la consigne ne le
-   * lui interdit pas : les deux lignes de garde de `buildPrompt` ne sont pas décoratives.
-   */
-  GEMINI_IMAGE_MODEL: z.string().regex(/^[\w.-]+$/).default('gemini-3-pro-image'),
-  /**
-   * Autres modèles Nano Banana, essayés dans l'ordre quand le principal refuse (débit par minute
-   * dépassé, surcharge). Chaque modèle a ses propres limites chez Google : un refus « quota
-   * dépassé » sur l'un laisse passer l'autre. Présents dans la liste des modèles de la clé au
-   * 29/09/2026. Séparés par des virgules ; « off » : aucun.
-   */
-  GEMINI_IMAGE_FALLBACK_MODELS: z
-    .string()
-    .regex(/^(off|[\w.-]+(,[\w.-]+)*)$/)
-    .default('gemini-3.1-flash-image,gemini-2.5-flash-image')
-    .transform((list) => (list === 'off' ? [] : list.split(','))),
-  /**
    * Modèle d'image que Gamma utilise pour illustrer les storybooks.
    *
    * Liste des valeurs acceptées : developers.gamma.app, « Image model accepted values ».
@@ -277,50 +248,9 @@ const schema = z.object({
    */
   GAMMA_IMAGE_MODEL: z.string().regex(/^[\w.-]+$/).default('gemini-3-pro-image'),
   /**
-   * Modèles qui dessinent les pages d'un conte À PARTIR DE LA PLANCHE DES PERSONNAGES, essayés
-   * dans l'ordre. Ils doivent accepter une image en entrée : c'est elle qui garde le même
-   * visage et les mêmes vêtements d'une page à l'autre.
-   *
-   * Mesuré le 04/10/2026 sur « gemini-3.1-flash-image » : 9 à 13 secondes par page, personnage
-   * principal ET personnage secondaire identiques sur toutes les scènes. Le modèle Pro n'est
-   * pas pris ici : un conte de vingt pages compte vingt-deux images, et il coûte le double.
-   */
-  STORYBOOK_IMAGE_MODELS: z
-    .string()
-    .regex(/^[\w.-]+(,[\w.-]+)*$/)
-    .default('gemini-3.1-flash-image,gemini-2.5-flash-image')
-    .transform((list) => list.split(',')),
-  /**
-   * Génération d'images par Cloudflare Workers AI : fournisseur principal, Gemini en secours.
-   * Le jeton demande les droits « Workers AI » en lecture ET en écriture
-   * (dash.cloudflare.com → Workers AI → Use REST API). Sans ces deux variables, tout repasse
-   * par Gemini, une vingtaine de fois plus cher.
-   *
-   * Deux modèles, aux capacités différentes — mesurées sur l'API, pas déduites de la doc :
-   * celui de qualité accepte un format libre (couverture verticale) ; le rapide ne produit que
-   * du carré 1024 et REFUSE width/height, mais coûte une vingtaine de fois moins.
-   *
-   * Le modèle de qualité est FLUX.2 [klein] 4B depuis le 19/10/2026, à la demande du
-   * propriétaire : des images GRATUITES. La franchise quotidienne de Cloudflare (10 000
-   * neurones) en donne environ 95 en 4B (≈ 104 neurones l'image d'un mégapixel), contre
-   * environ 7 en 9B (≈ 1 364) ; et les crédits Google du secours sont épuisés. Licence
-   * Apache 2.0 : usage commercial permis, quand le 9B est sous licence non commerciale.
-   *
-   * Comparé ce jour-là, sur l'API et avec les consignes du site (couverture, visuel publicitaire,
-   * scène avec ordinateur et téléphone) :
-   *   · le 4B a respecté « aucun texte » et le tiers haut vide des couvertures ; le 9B a écrit un
-   *     faux titre sur un visuel publicitaire — un tirage chacun, aucun n'est infaillible ;
-   *   · le 4B remplit parfois les écrans d'une interface aux caractères illisibles, quand le 9B
-   *     les laisse vides ; aucun logo de marque sur ses deux tirages avec garde-fous (le
-   *     24/09/2026, un tirage sans ces garde-fous en avait dessiné un : ils restent obligatoires) ;
-   *   · le 4B est plus lent chez Cloudflare : 16 à 40 s l'image, contre 3 à 6 s pour le 9B — le
-   *     nombre d'étapes n'y change rien (mesuré à 4 et à 20), et le prix non plus.
-   * Sur l'offre payante de Cloudflare (Workers Paid), le 9B coûte ≈ 0,015 $ l'image et répond plus
-   * vite : CLOUDFLARE_IMAGE_MODEL=@cf/black-forest-labs/flux-2-klein-9b le remet.
-   *
-   * Attention en changeant cette valeur : la famille FLUX.2 n'accepte QUE le multipart, là où
-   * les autres veulent du JSON (voir `encodeRequest`), et Phoenix répond les octets du JPEG au
-   * lieu d'un JSON (voir `readImage`). Les deux cas sont gérés, mais ils existent.
+   * Cloudflare Workers AI : la voix française du parcours audio (MeloTTS). Le jeton demande les
+   * droits « Workers AI » en lecture ET en écriture (dash.cloudflare.com → Workers AI → Use REST
+   * API). Cloudflare rendait aussi les visuels et couvertures, retirés du site le 28/10/2026.
    */
   CLOUDFLARE_ACCOUNT_ID: z
     .string()
@@ -331,8 +261,6 @@ const schema = z.object({
   CLOUDFLARE_AI_TOKEN: z.string().min(1).optional(),
   /** Surchargeable pour tester contre un serveur factice. */
   CLOUDFLARE_AI_URL: z.string().url().default('https://api.cloudflare.com/client/v4'),
-  CLOUDFLARE_IMAGE_MODEL: z.string().regex(/^@?[\w./-]+$/).default('@cf/black-forest-labs/flux-2-klein-4b'),
-  CLOUDFLARE_IMAGE_MODEL_FAST: z.string().regex(/^@?[\w./-]+$/).default('@cf/black-forest-labs/flux-1-schnell'),
   /**
    * Rendu vidéo par fal.ai, payé à l'usage. Depuis le 26/10/2026, c'est le moteur vidéo dès que la
    * clé est là : le projet Gemini (Veo) est refusé par Google. Veo ne reste qu'en secours.
@@ -373,8 +301,6 @@ const schema = z.object({
     .regex(/^(off|[\w.-]+(,[\w.-]+)*)$/)
     .default('veo-3.1-lite-generate-preview')
     .transform((list) => (list === 'off' ? [] : list.split(','))),
-  /** 720p, 1080p ou 4k — mesuré ; « 2160p » est refusé bien qu'il désigne la même chose. */
-  VEO_RESOLUTION: z.enum(['720p', '1080p', '4k']).default('1080p'),
   GAMMA_API_KEY: z.string().min(1).optional(),
   /** Surchargeable pour tester contre un serveur factice. */
   GAMMA_API_URL: z.string().url().default('https://public-api.gamma.app'),
@@ -801,7 +727,6 @@ export const providers = {
   webSearch: Boolean(env.PERPLEXITY_API_KEY),
   email: Boolean(env.EMAIL_PROVIDER && env.EMAIL_API_KEY && env.EMAIL_FROM),
   payments: Boolean(env.STRIPE_API_KEY && !env.STRIPE_API_KEY.trim().startsWith('pk_')),
-  cloudflareImages: Boolean(env.CLOUDFLARE_ACCOUNT_ID && env.CLOUDFLARE_AI_TOKEN),
   fal: Boolean(env.FAL_KEY),
   gamma: Boolean(env.GAMMA_API_KEY),
   chariow: Boolean(env.CHARIOW_API_KEY),

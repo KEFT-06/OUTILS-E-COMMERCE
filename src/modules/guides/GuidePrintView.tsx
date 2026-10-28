@@ -1,8 +1,8 @@
 import { useEffect, useRef, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import { ArrowLeft, Printer } from 'lucide-react';
-import { type Guide, coversApi, guidesApi } from '@/modules/multilingue/guidesApi';
-import { GUIDE_DOCUMENT_CSS, exportNotice, guideComplianceSections, guideDocumentOf, paragraphsOf } from '@/modules/multilingue/guideExport';
+import { type Guide, coversApi, guidesApi } from '@/modules/guides/guidesApi';
+import { GUIDE_DOCUMENT_CSS, exportNotice, guideComplianceSections, guideDocumentOf, paragraphsOf } from '@/modules/guides/guideExport';
 import { ComplianceFindingsList } from '@/shared/components/ComplianceFindingsList';
 import { toApiError } from '@/shared/lib/apiError';
 import { checkSectionsCompliance } from '@/shared/lib/complianceGate';

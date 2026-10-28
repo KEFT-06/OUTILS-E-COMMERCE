@@ -4,14 +4,12 @@ import {
   Banknote,
   Bell,
   BookOpen,
-  Clapperboard,
   Compass,
   Eye,
   FileText,
   Film,
   Gauge,
   History,
-  Languages,
   LayoutDashboard,
   LayoutTemplate,
   Megaphone,
@@ -48,14 +46,12 @@ export type ModuleId =
   | 'analyse'
   | 'dossier-pdf'
   | 'studio'
-  | 'creatifs'
   | 'storybook'
   | 'pages-produits'
   | 'kit-lancement'
   | 'campagnes'
   | 'distribution'
   | 'affiliation'
-  | 'multilingue'
   | 'creations';
 
 export interface Bilingual {
@@ -154,20 +150,11 @@ export const MODULES: readonly ModuleEntry[] = [
     ready: true,
   },
   {
-    id: 'creatifs',
-    path: '/app/creatifs',
-    group: 'creer',
-    label: { fr: 'Créatifs publicitaires', en: 'Ad creatives' },
-    description: { fr: 'Visuels, vidéos et scripts', en: 'Visuals, videos and scripts' },
-    icon: Clapperboard,
-    ready: true,
-  },
-  {
     id: 'storybook',
     path: '/app/storybook',
     group: 'creer',
-    label: { fr: 'Storybook illustré', en: 'Illustrated storybook' },
-    description: { fr: 'Contes illustrés ancrés dans un pays', en: 'Illustrated tales grounded in a country' },
+    label: { fr: 'Storybook', en: 'Storybook' },
+    description: { fr: 'Contes ancrés dans un pays, en PDF', en: 'Tales grounded in a country, as PDF' },
     icon: BookOpen,
     ready: true,
   },
@@ -215,15 +202,6 @@ export const MODULES: readonly ModuleEntry[] = [
     label: { fr: 'Smart Gain', en: 'Smart Gain' },
     description: { fr: 'Parrainage, liens de campagne et affiliés', en: 'Referrals, campaign links and affiliates' },
     icon: Users,
-    ready: true,
-  },
-  {
-    id: 'multilingue',
-    path: '/app/multilingue',
-    group: 'creer',
-    label: { fr: 'Guides multilingues', en: 'Multilingual guides' },
-    description: { fr: 'Traduire, relire et exporter vos guides', en: 'Translate, review and export your guides' },
-    icon: Languages,
     ready: true,
   },
   {

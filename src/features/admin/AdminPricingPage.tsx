@@ -29,7 +29,6 @@ interface Pricing {
   yearlyMonthsCharged: number;
   point: { value: number; currency: string; status: string | null };
   features: Record<string, string>;
-  adFrameworksTotal: number;
   plans: {
     id: string;
     label: string;
@@ -44,13 +43,11 @@ interface Pricing {
 }
 
 /** Libellés des limites, dans l'ordre où elles racontent le parcours : voir, suivre, produire. */
-const LIMITES: { key: string; label: string; suffixe?: (total: number) => string; format?: (v: number | null | undefined) => string }[] = [
+const LIMITES: { key: string; label: string; format?: (v: number | null | undefined) => string }[] = [
   { key: 'spiedAdsVisible', label: 'Annonces du mur d’espionnage' },
   { key: 'adSearchesPerMonth', label: 'Recherches publicitaires par mois' },
   { key: 'watchedStores', label: 'Boutiques surveillées par le radar' },
   { key: 'savedNiches', label: 'Niches enregistrées' },
-  { key: 'adFrameworks', label: 'Méthodes publicitaires', suffixe: (total) => ` sur ${total}` },
-  { key: 'guideLanguages', label: 'Langues par guide' },
   { key: 'ebookPages', label: 'Pages par ebook' },
   { key: 'videoRetentionDays', label: 'Conservation des vidéos', format: (v) => (v === 1 ? '24 h' : v ? `${v} jours` : '—') },
 ];
@@ -169,12 +166,7 @@ export function AdminPricingPage() {
               </TableRow>
               {LIMITES.map((limite) => (
                 <TableRow key={limite.key}>
-                  <TableCell className="font-medium">
-                    {limite.label}
-                    {limite.suffixe && (
-                      <span className="text-xs text-muted-foreground">{limite.suffixe(data.adFrameworksTotal)}</span>
-                    )}
-                  </TableCell>
+                  <TableCell className="font-medium">{limite.label}</TableCell>
                   {data.plans.map((plan) => (
                     <TableCell key={plan.id} className="text-right tabular-nums">
                       {(limite.format ?? valeur)(plan.limits[limite.key])}

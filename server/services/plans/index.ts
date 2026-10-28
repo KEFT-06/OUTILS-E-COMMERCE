@@ -4,7 +4,6 @@ import { z } from 'zod';
 import { PLAN_IDS, type PlanId } from '@server/db/schema';
 import { env } from '@server/env';
 import { convertAmount, type RatesSnapshot } from '@server/services/currency';
-import { AD_FRAMEWORKS } from '@server/shared/adFrameworks';
 import { roundPrice } from '@server/shared/currency';
 
 /**
@@ -17,12 +16,8 @@ import { roundPrice } from '@server/shared/currency';
 export const FEATURES = {
   niche_analysis: 'Analyse stratégique',
   ai_writing: 'Rédaction automatique',
-  image_generation: 'Visuels publicitaires',
-  video_generation: 'Vidéos publicitaires',
-  storybook_generation: 'Storybook illustré',
+  storybook_generation: 'Storybook',
   affiliate_invitations: 'Invitations d’affiliés',
-  guide_translation: 'Guides multilingues',
-  native_review: 'Relecture par un locuteur natif',
   /**
    * Déclencher une mesure de marché neuve. LIRE une mesure déjà en cache reste ouvert à tous :
    * elle est mutualisée et ne coûte rien de plus. C'est la COLLECTE qui se paie chez le
@@ -72,10 +67,6 @@ const limitsSchema = z.object({
    * c'est-à-dire tout ce qui fait sa valeur.
    */
   watchedStores: z.number().int().min(0).nullable(),
-  /** Méthodes publicitaires ouvertes, dans l'ordre de server/shared/adFrameworks.ts ; null : toutes. */
-  adFrameworks: z.number().int().min(0).max(AD_FRAMEWORKS.length).nullable(),
-  /** Langues de traduction par guide ; null : illimité. */
-  guideLanguages: z.number().int().min(0).nullable(),
   /**
    * Pages au plus pour un ebook rédigé par l'IA. Le plafond absolu de 250 vaut pour tous
    * les paliers : au-delà, la rédaction perd le fil et le lecteur aussi. Jamais null —
@@ -139,8 +130,6 @@ export const UNLIMITED: PlanLimits = {
   savedNiches: null,
   watchedStores: null,
   spiedAdsVisible: null,
-  adFrameworks: null,
-  guideLanguages: null,
   ebookPages: EBOOK_PAGES_CEILING,
   videoRetentionDays: 90,
   adSearchesPerMonth: null,

@@ -9,8 +9,12 @@ import { signInWithPlan } from './support/analysis-fixtures';
 import { STRONG_PASSWORD, closeTestApp, createAdmin, createTestApp, signUp } from './support/helpers';
 
 /**
- * Faux Google (images et Veo) et faux Chariow : les générations et les boutiques sont testées
- * de bout en bout sans jamais toucher un vrai fournisseur.
+ * Faux Google (Veo) et faux Chariow : les générations et les boutiques sont testées de bout en bout
+ * sans jamais toucher un vrai fournisseur.
+ *
+ * Depuis le 28/10/2026, plus aucun visuel ni aucune vidéo ne se crée : ces tests portent sur les
+ * créations D'AVANT, insérées en base telles que le site les avait enregistrées — elles restent à
+ * leur auteur, une vidéo encore en rendu ce jour-là va au bout, et un échec rend ses points.
  */
 
 const OWNER_KEY = 'sk_test_cle_du_proprietaire_0000';
@@ -23,8 +27,6 @@ const PNG = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR
 /** État de chaque opération Veo : en cours, échouée (refus du filtre, panne) ou terminée. */
 const veoOperations = new Map<string, 'encours' | 'echec' | 'termine'>();
 const chariowAuthorizations: string[] = [];
-let submissionFails = false;
-let compteurVeo = 0;
 
 const fakeProviders = createServer((req, res) => {
   const url = new URL(req.url ?? '/', 'http://fournisseurs.test');
@@ -33,18 +35,7 @@ const fakeProviders = createServer((req, res) => {
     res.end(JSON.stringify(body));
   };
 
-  // Modèle d'image de Google : l'image arrive dans la réponse.
-  if (req.method === 'POST' && /^\/v1beta\/models\/[\w.-]+-image:generateContent$/.test(url.pathname)) {
-    return send(200, { candidates: [{ content: { parts: [{ inlineData: { mimeType: 'image/png', data: PNG.toString('base64') } }] } }] });
-  }
-  // Veo : dépôt, puis suivi de l'opération.
-  if (req.method === 'POST' && url.pathname === `/v1beta/models/${VEO}:predictLongRunning`) {
-    if (submissionFails) return send(500, { error: { message: 'panne simulée' } });
-    compteurVeo += 1;
-    const id = `op-${String(compteurVeo).padStart(4, '0')}`;
-    veoOperations.set(id, 'encours');
-    return send(200, { name: `models/${VEO}/operations/${id}` });
-  }
+  // Veo : suivi d'une opération lancée avant le retrait de la création de vidéos.
   const suivi = new RegExp(`^/v1beta/models/${VEO}/operations/(op-\\d{4})$`).exec(url.pathname);
   if (req.method === 'GET' && suivi) {
     const etat = veoOperations.get(suivi[1]!);
@@ -78,14 +69,6 @@ const fakeProviders = createServer((req, res) => {
   send(404, {});
 });
 
-const visualBrief = {
-  productName: 'Formation Excel pour commerçantes',
-  awarenessLevel: 'problem_aware',
-  format: '9:16',
-  market: 'CI',
-  sceneDescription: 'une commerçante vérifie ses ventes du jour sur son téléphone, au marché, en fin d’après-midi',
-};
-
 let app: Express;
 
 before(async () => {
@@ -103,12 +86,10 @@ async function balanceOf(agent: ReturnType<typeof request.agent>): Promise<numbe
   return (await agent.get('/api/auth/me').expect(200)).body.account.credits.total;
 }
 
-describe('Générations facturées', () => {
+describe('Créations d’avant le retrait des visuels et des vidéos', () => {
   let owner: Awaited<ReturnType<typeof signUp>>;
   let stranger: Awaited<ReturnType<typeof signUp>>;
-  /** Compte Pro : le palier Gratuit n'ouvre pas la vidéo. */
   let videaste: Awaited<ReturnType<typeof signInWithPlan>>;
-  const videoBrief = { ...visualBrief, duration: 6 };
 
   before(async () => {
     owner = await signUp(app, { name: 'Mariam Coulibaly', email: 'mariam@exemple.com' });
@@ -116,29 +97,48 @@ describe('Générations facturées', () => {
     videaste = await signInWithPlan(app, 'videaste@exemple.com', 'pro');
   });
 
-  it('facture le visuel, le rattache à son auteur et le garde sur son compte', async () => {
-    const submitted = await owner.agent.post('/api/creatives/visuals').send(visualBrief).expect(202);
-    const requestId = submitted.body.requestId as string;
-    assert.equal(submitted.body.status, 'completed', 'le moteur d’images de Google rend l’image dans la réponse');
-    assert.equal(await balanceOf(owner.agent), 2);
+  /** Une vidéo Veo lancée avant le retrait, facturée comme le site le faisait : points réservés, rendu en cours. */
+  async function videoEnCours(userId: string, operation: string) {
+    const { debitCredits } = await import('@server/services/accounts');
+    const { getDb } = await import('@server/db/client');
+    const { generations } = await import('@server/db/schema');
+    const debit = await debitCredits({ userId, cost: 12, actionId: 'video_to_product', unlimited: false });
+    veoOperations.set(operation, 'encours');
+    await getDb().insert(generations).values({
+      userId,
+      kind: 'video',
+      provider: 'veo',
+      providerRef: operation,
+      status: 'pending',
+      creditsCharged: debit.charged,
+      debitTransactionId: debit.transactionId,
+    });
+  }
+
+  it('ne propose plus aucune route de création de visuel, de vidéo ou de prolongation', async () => {
+    await owner.agent.post('/api/creatives/visuals').send({}).expect(404);
+    await owner.agent.post('/api/creatives/videos').send({}).expect(404);
+    await owner.agent.post('/api/creatives/videos/op-0001/extend').send({}).expect(404);
+  });
+
+  it('garde à son seul auteur le visuel créé avant le retrait, sans échéance', async () => {
+    const { getDb } = await import('@server/db/client');
+    const { creativeImages, generations } = await import('@server/db/schema');
+    const requestId = randomUUID();
+    await getDb().insert(creativeImages).values({ userId: owner.account.id, requestId, prompt: 'une commerçante au marché', format: '9:16', mimeType: 'image/png', data: PNG.toString('base64') });
+    await getDb().insert(generations).values({ userId: owner.account.id, kind: 'image', provider: 'interne', providerRef: requestId, status: 'completed', fileFormat: 'png', creditsCharged: 1 });
 
     const polled = await owner.agent.get(`/api/creatives/requests/${requestId}`).expect(200);
     assert.equal(polled.body.status, 'completed');
     assert.equal(polled.body.retentionDays, null, 'un visuel gardé chez nous ne périme pas');
-
-    const { getDb } = await import('@server/db/client');
-    const { generations } = await import('@server/db/schema');
-    const { eq } = await import('drizzle-orm');
-    const [row] = await getDb().select().from(generations).where(eq(generations.providerRef, requestId));
-    assert.equal(row?.status, 'completed');
-    assert.equal(row?.fileFormat, 'png');
-    assert.equal(row?.creditsCharged, 1);
+    const listed = await owner.agent.get('/api/creatives/visuals?page=1').expect(200);
+    assert.ok((listed.body.visuals as { requestId: string }[]).some((visual) => visual.requestId === requestId));
+    const file = await owner.agent.get(`/api/creatives/requests/${requestId}/file`).expect(200);
+    assert.equal(file.headers['content-type'], 'image/png');
 
     const spied = await stranger.agent.get(`/api/creatives/requests/${requestId}`).expect(404);
     assert.equal(spied.body.error.code, 'GENERATION_NOT_FOUND');
     await stranger.agent.get(`/api/creatives/requests/${requestId}/file`).expect(404);
-    const ownFile = await owner.agent.get(`/api/creatives/requests/${requestId}/file`);
-    assert.notEqual(ownFile.status, 404, 'l’auteur passe le contrôle de propriété');
   });
 
   /*
@@ -206,55 +206,31 @@ describe('Générations facturées', () => {
     assert.ok(logged.some((row) => row.actorEmail === 'admin-creatifs@smartcreator.test'), 'ouverture inscrite au journal');
   });
 
-  it('réserve les points d’une vidéo au lancement, et les garde quand elle aboutit', async () => {
+  it('mène à son terme une vidéo encore en rendu, et la garde facturée quand elle aboutit', async () => {
     const avant = await balanceOf(videaste.agent);
-    const submitted = await videaste.agent.post('/api/creatives/videos').send(videoBrief).expect(202);
-    const requestId = submitted.body.requestId as string;
+    await videoEnCours(videaste.userId, 'op-0101');
     const reserve = avant - (await balanceOf(videaste.agent));
-    assert.ok(reserve > 0, 'les points sont réservés dès le lancement');
+    assert.ok(reserve > 0);
 
-    await videaste.agent.get(`/api/creatives/requests/${requestId}`).expect(200);
-    veoOperations.set(requestId, 'termine');
-    const fini = await videaste.agent.get(`/api/creatives/requests/${requestId}`).expect(200);
+    const enCours = await videaste.agent.get('/api/creatives/requests/op-0101').expect(200);
+    assert.notEqual(enCours.body.status, 'completed');
+    veoOperations.set('op-0101', 'termine');
+    const fini = await videaste.agent.get('/api/creatives/requests/op-0101').expect(200);
     assert.equal(fini.body.status, 'completed');
     assert.equal(fini.body.mediaType, 'video');
     assert.equal(await balanceOf(videaste.agent), avant - reserve, 'une vidéo réussie reste facturée');
   });
 
-  it('rend les points une seule fois quand le fournisseur refuse le contenu', async () => {
+  it('rend les points une seule fois quand le rendu échoue, et ne relance plus rien', async () => {
     const avant = await balanceOf(videaste.agent);
-    const submitted = await videaste.agent.post('/api/creatives/videos').send(videoBrief).expect(202);
+    await videoEnCours(videaste.userId, 'op-0102');
     assert.ok((await balanceOf(videaste.agent)) < avant);
 
-    veoOperations.set(submitted.body.requestId, 'echec');
-    await videaste.agent.get(`/api/creatives/requests/${submitted.body.requestId}`).expect(200);
-    await videaste.agent.get(`/api/creatives/requests/${submitted.body.requestId}`).expect(200);
+    veoOperations.set('op-0102', 'echec');
+    const echec = await videaste.agent.get('/api/creatives/requests/op-0102').expect(200);
+    assert.equal(echec.body.status, 'failed');
+    await videaste.agent.get('/api/creatives/requests/op-0102').expect(200);
     assert.equal(await balanceOf(videaste.agent), avant, 'remboursé une fois, pas deux');
-  });
-
-  it('rend les points quand l’envoi au fournisseur échoue', async () => {
-    const avant = await balanceOf(videaste.agent);
-    submissionFails = true;
-    try {
-      const refused = await videaste.agent.post('/api/creatives/videos').send(videoBrief).expect(503);
-      assert.equal(refused.body.error.code, 'VIDEO_UNAVAILABLE', 'code neutre : aucun nom de fournisseur');
-    } finally {
-      submissionFails = false;
-    }
-    assert.equal(await balanceOf(videaste.agent), avant);
-  });
-
-  it('refuse sans solde suffisant, et une fonction absente du palier', async () => {
-    const { getDb } = await import('@server/db/client');
-    const { users } = await import('@server/db/schema');
-    const { eq } = await import('drizzle-orm');
-    await getDb().update(users).set({ planCredits: 0, bonusCredits: 0 }).where(eq(users.id, stranger.account.id));
-
-    const broke = await stranger.agent.post('/api/creatives/visuals').send(visualBrief).expect(402);
-    assert.equal(broke.body.error.code, 'INSUFFICIENT_CREDITS');
-
-    const video = await stranger.agent.post('/api/creatives/videos').send({ ...visualBrief, duration: 5 }).expect(403);
-    assert.equal(video.body.error.code, 'FEATURE_LOCKED');
   });
 
   it('compte les exports faits dans le navigateur, en les marquant comme déclarés', async () => {
@@ -278,24 +254,29 @@ describe('Suivi des générations abandonnées', () => {
     const creator = await signInWithPlan(app, 'binta@exemple.com', 'pro');
     const { getDb } = await import('@server/db/client');
     const { generations } = await import('@server/db/schema');
-    const { eq } = await import('drizzle-orm');
-    const video = { ...visualBrief, duration: 6 };
+    const { debitCredits } = await import('@server/services/accounts');
     const initial = await balanceOf(creator.agent);
+    // Deux vidéos lancées avant le retrait, facturées comme le site le faisait.
+    const lancee = async (operation: string, ageMs: number) => {
+      const debit = await debitCredits({ userId: creator.userId, cost: 12, actionId: 'video_to_product', unlimited: false });
+      veoOperations.set(operation, 'encours');
+      await getDb().insert(generations).values({
+        userId: creator.userId,
+        kind: 'video',
+        provider: 'veo',
+        providerRef: operation,
+        status: 'pending',
+        creditsCharged: debit.charged,
+        debitTransactionId: debit.transactionId,
+        createdAt: new Date(Date.now() - ageMs),
+      });
+    };
 
     // Échouée chez Google, mais plus aucun écran ne la suit.
-    const failed = await creator.agent.post('/api/creatives/videos').send(video).expect(202);
-    veoOperations.set(failed.body.requestId, 'echec');
-    await getDb()
-      .update(generations)
-      .set({ createdAt: new Date(Date.now() - 20 * 60_000) })
-      .where(eq(generations.providerRef, failed.body.requestId));
-
+    await lancee('op-0201', 20 * 60_000);
+    veoOperations.set('op-0201', 'echec');
     // Toujours « en cours » chez Google au bout de trois jours : abandonnée.
-    const forgotten = await creator.agent.post('/api/creatives/videos').send(video).expect(202);
-    await getDb()
-      .update(generations)
-      .set({ createdAt: new Date(Date.now() - 72 * 3_600_000) })
-      .where(eq(generations.providerRef, forgotten.body.requestId));
+    await lancee('op-0202', 72 * 3_600_000);
     assert.ok((await balanceOf(creator.agent)) < initial);
 
     const { sweepPendingGenerations } = await import('@server/services/generations/sweeper');

@@ -7,8 +7,9 @@ import { signInWithPlan } from './support/analysis-fixtures';
 import { closeTestApp, createTestApp } from './support/helpers';
 
 /**
- * Storybook : Gemini rédige, Gamma met en page et illustre, le serveur sert le PDF. Contre un faux
- * Gemini et un faux Gamma : aucun vrai conte, aucune image, aucun crédit consommé.
+ * Storybook : le conte est écrit, relu et corrigé par son auteur, enregistré, puis téléchargé en PDF.
+ * L'illustration des contes est retirée depuis le 28/10/2026 ; les contes illustrés d'avant (Gamma)
+ * restent téléchargeables. Contre un faux Gemini et un faux Gamma : aucun vrai conte, aucun crédit.
  */
 
 interface GammaCall {
@@ -137,163 +138,75 @@ const BRIEF = {
 };
 
 describe('Storybook', () => {
-  it('fait rédiger le conte par Gemini, l’illustre page par page chez Gamma et sert le PDF sans révéler le lien d’export', async () => {
-    const { agent } = await signInWithPlan(app, 'conteuse@exemple.com', 'pro');
-    const before = (await agent.get('/api/account/credits').expect(200)).body.credits.total as number;
+  it('écrit le conte pour 3 points, enregistre le texte corrigé sans rien de plus, et sert son PDF', async () => {
+    const { agent } = await signInWithPlan(app, 'conte-ecrit@exemple.test', 'pro');
+    const solde = async () => (await agent.get('/api/auth/me').expect(200)).body.account.credits.total as number;
+    const depart = await solde();
 
-    const created = await agent.post('/api/storybook/generations').send(BRIEF).expect(202);
-    assert.equal(created.body.title, 'Awa et le manguier');
-    const { generationId, storybookId } = created.body as { generationId: string; storybookId: string };
-
-    // Rédaction : consignes d'âge, de pays, de culture et nombre exact de pages.
-    const prompt = geminiPrompts.at(-1)!;
-    assert.match(prompt, /en exactement 6 pages/);
-    assert.match(prompt, /enfants de 6 à 8 ans/);
-    assert.match(prompt, /Cameroun/);
-    assert.match(prompt, /le marché de Mokolo/);
-    assert.match(prompt, /N’invente aucun fait historique, aucune tradition ni aucun proverbe/);
-
-    // Mise en page : texte gardé tel quel, une carte par page plus la couverture, une illustration Gemini par carte.
-    const submission = gammaCalls.find((call) => call.path === '/generations' && call.method === 'POST')!;
-    assert.equal(submission.key, 'cle-gamma-de-test');
-    const request = submission.body as {
-      inputText: string;
-      textMode: string;
-      cardSplit: string;
-      additionalInstructions: string;
-      imageOptions: { source: string; model: string; style: string };
-      exportAs: string;
-      cardOptions: { dimensions: string };
-    };
-    assert.equal(request.textMode, 'preserve');
-    assert.equal(request.cardSplit, 'inputTextBreaks');
-    const cards = request.inputText.split('\n---\n');
-    assert.equal(cards.length, 7, 'couverture + 6 pages');
-    assert.match(cards[0]!, /^# Awa et le manguier/);
-    assert.match(cards[3]!, /^# Scène 3\nAwa découvre la scène 3/);
-    assert.equal(request.imageOptions.source, 'aiGenerated');
-    assert.equal(request.imageOptions.model, 'gemini-3-pro-image');
-    assert.ok(request.imageOptions.style.length <= 500);
-    assert.ok(request.additionalInstructions.length <= 5000, 'limite de Gamma respectée malgré de longues descriptions');
-    assert.match(request.additionalInstructions, /Card 1: Awa smiling under a young mango tree/);
-    assert.match(request.additionalInstructions, /Card 7: Awa and her grandfather, scene 6/);
-    assert.match(request.additionalInstructions, /two puff braids/);
-    assert.equal(request.exportAs, 'pdf');
-    assert.equal(request.cardOptions.dimensions, '4x3');
-
-    // Suivi : en cours, puis terminé ; ni lien d'export ni crédits Gamma dans la réponse.
-    assert.equal((await agent.get(`/api/storybook/generations/${generationId}`).expect(200)).body.status, 'pending');
-    const done = await agent.get(`/api/storybook/generations/${generationId}`).expect(200);
-    assert.equal(done.body.status, 'completed');
-    assert.equal(done.body.storybookId, storybookId);
-    assert.doesNotMatch(JSON.stringify(done.body), /gamma-export|credits|3788/);
-
-    const list = await agent.get('/api/storybook/books').expect(200);
-    const [entry] = list.body.storybooks as {
-      id: string;
-      status: string;
-      pages: number;
-      story: { pages: { text: string }[] };
-      gammaUrl: string;
-    }[];
-    assert.equal(entry!.id, storybookId);
-    assert.equal(entry!.status, 'completed');
-    assert.equal(entry!.story.pages.length, 6);
-    assert.equal(entry!.gammaUrl, `https://gamma.app/docs/${generationId}`);
-    assert.doesNotMatch(JSON.stringify(list.body), /gamma-export/);
-
-    // PDF : servi par le serveur, puis réexporté (gratuitement) quand le lien de Gamma a expiré.
-    const first = await agent.get(`/api/storybook/books/${storybookId}/pdf`).buffer(true).expect(200);
-    assert.equal(first.headers['content-type'], 'application/pdf');
-    assert.match(first.headers['content-disposition'] ?? '', /attachment; filename="Awa-et-le-manguier\.pdf"/);
-    assert.ok(PDF.equals(first.body as Buffer));
-
-    liveExports.clear();
-    const again = await agent.get(`/api/storybook/books/${storybookId}/pdf`).buffer(true).expect(200);
-    assert.ok(PDF.equals(again.body as Buffer));
-    assert.ok(
-      gammaCalls.some((call) => call.method === 'POST' && call.path === `/gammas/g_${generationId}/export`),
-      'nouvel export demandé',
-    );
-
-    assert.equal((await agent.get('/api/account/credits').expect(200)).body.credits.total, before - 15);
-
-    const { agent: stranger } = await signInWithPlan(app, 'voisin-conte@exemple.com', 'pro');
-    await stranger.get(`/api/storybook/books/${storybookId}/pdf`).expect(404);
-    await stranger.get(`/api/storybook/generations/${generationId}`).expect(404);
-    assert.deepEqual((await stranger.get('/api/storybook/books').expect(200)).body.storybooks, []);
-  });
-
-  /*
-    Lire avant d'illustrer, et payer chaque étape à son prix.
-
-    Les deux gestes partaient ensemble : quinze points engagés avant que l'auteur ait lu une
-    seule ligne de son histoire. Une histoire qui ne lui convenait pas était déjà entièrement
-    illustrée — l'étape qui coûte.
-
-    Écrire vaut trois points, illustrer douze. Le total ne bouge pas ; ce qui change, c'est
-    qu'on peut refuser une histoire pour un cinquième du prix.
-  */
-  it('écrit le conte sans appeler Gamma, puis n’illustre que le texte validé', async () => {
-    const { agent } = await signInWithPlan(app, 'conteuse-apercu@exemple.com', 'pro');
-    const depart = (await agent.get('/api/account/credits').expect(200)).body.credits.total as number;
-    const gammaAvant = gammaCalls.length;
-
-    // Étape 1 : le texte seul.
     const ecrit = await agent.post('/api/storybook/stories').send(BRIEF).expect(200);
-    assert.equal(ecrit.body.story.title, 'Awa et le manguier');
-    assert.equal(ecrit.body.story.pages.length, BRIEF.pages, 'toutes les pages demandées sont écrites');
-    assert.equal(gammaCalls.length, gammaAvant, 'aucun appel à Gamma : rien n’a encore été illustré');
+    const story = ecrit.body.story as { title: string; pages: { heading: string; text: string; illustration: string }[] };
+    assert.equal(story.pages.length, BRIEF.pages);
+    assert.equal(depart - (await solde()), 3, 'l’écriture seule est facturée');
+    assert.equal(gammaCalls.length, 0, 'aucune mise en page externe');
 
-    const apresEcriture = (await agent.get('/api/account/credits').expect(200)).body.credits.total as number;
-    assert.equal(apresEcriture, depart - 3, 'l’écriture seule coûte trois points');
+    const corrige = { ...story, pages: story.pages.map((page, index) => (index === 0 ? { ...page, text: 'Awa se lève avant le soleil, le cœur battant.' } : page)) };
+    const enregistre = await agent.post('/api/storybook/books').send({ ...BRIEF, story: corrige }).expect(201);
+    const storybookId = enregistre.body.storybookId as string;
+    assert.equal(depart - (await solde()), 3, 'enregistrer ne coûte rien de plus');
 
-    /*
-      Étape 2 : l'auteur a corrigé une page, et c'est SON texte qui doit être illustré. Le
-      réécrire produirait une autre histoire que celle qu'il vient de valider, et referait
-      payer l'écriture.
-    */
-    const corrige = {
-      ...ecrit.body.story,
-      pages: ecrit.body.story.pages.map((page: { text: string }, rang: number) =>
-        rang === 0 ? { ...page, text: 'Awa corrige elle-même la première page.' } : page,
-      ),
-    };
+    const liste = (await agent.get('/api/storybook/books').expect(200)).body.storybooks as { id: string; status: string; story: typeof story }[];
+    const conte = liste.find((entry) => entry.id === storybookId);
+    assert.equal(conte?.status, 'completed');
+    assert.equal(conte?.story.pages[0]?.text, 'Awa se lève avant le soleil, le cœur battant.', 'le texte corrigé est celui qui est gardé');
 
-    await agent.post('/api/storybook/generations').send({ ...BRIEF, story: corrige }).expect(202);
+    const pdf = await agent.get(`/api/storybook/books/${storybookId}/pdf`).buffer(true).expect(200);
+    assert.equal(pdf.headers['content-type'], 'application/pdf');
+    assert.equal(Buffer.from(pdf.body as Buffer).subarray(0, 4).toString('latin1'), '%PDF');
 
-    // Le DERNIER envoi : les tests précédents en ont déjà déposé un dans le journal partagé.
-    const envoi = gammaCalls.filter((call) => call.method === 'POST' && call.path === '/generations').at(-1);
-    assert.ok(envoi, 'Gamma reçoit bien la demande d’illustration');
-    assert.match(JSON.stringify(envoi.body), /Awa corrige elle-même la première page/, 'c’est le texte corrigé qui part');
-
-    const total = (await agent.get('/api/account/credits').expect(200)).body.credits.total as number;
-    assert.equal(total, depart - 15, 'trois plus douze : le total ne change pas');
+    const { agent: intrus } = await signInWithPlan(app, 'conte-intrus@exemple.test', 'pro');
+    await intrus.get(`/api/storybook/books/${storybookId}/pdf`).expect(404);
   });
 
-  it('rend les points et n’enregistre rien quand la rédaction ou Gamma échoue', async () => {
-    const { agent } = await signInWithPlan(app, 'conte-rate@exemple.com', 'pro');
-    const before = (await agent.get('/api/account/credits').expect(200)).body.credits.total as number;
-    const submissionsBefore = gammaCalls.filter((call) => call.path === '/generations' && call.method === 'POST').length;
+  it('refuse d’enregistrer un conte rendu non conforme par une correction', async () => {
+    const { agent } = await signInWithPlan(app, 'conte-conformite@exemple.test', 'pro');
+    const ecrit = await agent.post('/api/storybook/stories').send(BRIEF).expect(200);
+    const story = ecrit.body.story as { pages: { text: string }[] };
+    const corrige = { ...ecrit.body.story, pages: story.pages.map((page, index) => (index === 0 ? { ...page, text: '500 000 FCFA/mois garantis dès le premier mois.' } : page)) };
+    const refus = await agent.post('/api/storybook/books').send({ ...BRIEF, story: corrige }).expect(422);
+    assert.equal(refus.body.error.code, 'BRIEF_NON_COMPLIANT');
+  });
 
-    const incomplete = await agent
-      .post('/api/storybook/generations')
-      .send({ ...BRIEF, theme: 'conte incomplet sur la patience' })
-      .expect(502);
-    assert.equal(incomplete.body.error.code, 'STORY_UNREADABLE');
-    assert.equal(
-      gammaCalls.filter((call) => call.path === '/generations' && call.method === 'POST').length,
-      submissionsBefore,
-      'Gamma n’est pas appelé',
-    );
+  it('ne propose plus d’illustration, et reste fermé au palier Gratuit', async () => {
+    const { agent } = await signInWithPlan(app, 'conte-illustration@exemple.test', 'pro');
+    await agent.post('/api/storybook/generations').send(BRIEF).expect(404);
 
-    const noCredits = await agent
-      .post('/api/storybook/generations')
-      .send({ ...BRIEF, heroName: 'Sans crédit' })
-      .expect(503);
-    assert.equal(noCredits.body.error.code, 'LAYOUT_INSUFFICIENT_CREDITS', 'code neutre : aucun nom de fournisseur');
+    const { agent: gratuit } = await signInWithPlan(app, 'conte-gratuit@exemple.test', 'free');
+    const ferme = await gratuit.post('/api/storybook/stories').send(BRIEF).expect(403);
+    assert.equal(ferme.body.error.code, 'FEATURE_LOCKED');
+  });
 
-    assert.equal((await agent.get('/api/account/credits').expect(200)).body.credits.total, before, 'points rendus');
-    assert.deepEqual((await agent.get('/api/storybook/books').expect(200)).body.storybooks, []);
+  it('sert toujours le PDF d’un conte illustré d’avant, sans révéler le lien d’export', async () => {
+    const { agent, userId } = await signInWithPlan(app, 'conte-avant@exemple.test', 'pro');
+    const { getDb } = await import('@server/db/client');
+    const { storybooks } = await import('@server/db/schema');
+    const [row] = await getDb()
+      .insert(storybooks)
+      .values({
+        userId,
+        generationRef: 'gen_avant',
+        gammaId: 'g_gen_avant',
+        title: 'Awa et le manguier',
+        language: 'fr',
+        country: 'CM',
+        pages: 6,
+        story: fakeStory(6, '') as unknown as Record<string, unknown>,
+        status: 'completed',
+      })
+      .returning({ id: storybooks.id });
+
+    const pdf = await agent.get(`/api/storybook/books/${row!.id}/pdf`).buffer(true).expect(200);
+    assert.equal(pdf.headers['content-type'], 'application/pdf');
+    assert.equal(Buffer.from(pdf.body as Buffer).subarray(0, 4).toString('latin1'), '%PDF');
+    assert.ok(!JSON.stringify(pdf.headers).includes('gamma-export.test'), 'le lien d’export ne sort pas du serveur');
   });
 });

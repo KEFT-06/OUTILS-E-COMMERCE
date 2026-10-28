@@ -51,7 +51,7 @@ describe('Paliers — répartition des fonctions', () => {
       `le palier Gratuit donne ${gratuit.monthlyCredits} points et l’analyse en coûte ${analyse} : l’écart est voulu`,
     );
     // Mais il permet les actions à l'unité : sans cela, le palier ne servirait à rien du tout.
-    assert.ok((gratuit.monthlyCredits ?? 0) >= await getActionCost('image_generation'), 'le Gratuit peut au moins produire un visuel');
+    assert.ok((gratuit.monthlyCredits ?? 0) >= await getActionCost('product_revision'), 'le Gratuit peut au moins retoucher un texte');
   });
 
   it('ferme au Gratuit ce qui engage de l’argent, et ouvre le reste au fil des paliers', async () => {
@@ -60,19 +60,13 @@ describe('Paliers — répartition des fonctions', () => {
 
     const ferme = (id: string, fonction: string) => plans[id]!.features[fonction] === false;
 
-    // Gratuit : ni vidéo (rendu payé chez fal.ai), ni conte (crédits Gamma), ni relecture
-    // humaine, ni collecte de marché (relevé payé chez le fournisseur).
-    for (const fonction of ['video_generation', 'storybook_generation', 'native_review', 'market_benchmark']) {
+    // Gratuit : ni conte, ni collecte de marché (relevé payé chez le fournisseur).
+    for (const fonction of ['storybook_generation', 'market_benchmark']) {
       assert.ok(ferme('free', fonction), `le palier Gratuit devrait fermer ${fonction}`);
     }
 
-    // Plus ouvre la production ; seule la relecture humaine reste réservée.
-    assert.ok(!ferme('plus', 'video_generation'));
-    assert.ok(!ferme('plus', 'market_benchmark'));
-    assert.ok(ferme('plus', 'native_review'), 'la relecture par un humain s’ouvre au palier Pro');
-
-    // À partir de Pro, plus rien n'est fermé.
-    for (const id of ['pro', 'max', 'elite']) {
+    // À partir de Plus, plus rien n'est fermé (vidéos et relecture native retirées le 28/10/2026).
+    for (const id of ['plus', 'pro', 'max', 'elite']) {
       assert.deepEqual(Object.keys(plans[id]!.features), [], `le palier ${id} ne devrait rien fermer`);
     }
   });
@@ -86,7 +80,7 @@ describe('Paliers — répartition des fonctions', () => {
     // null vaut « illimité » : on le compare comme l'infini.
     const valeur = (v: number | null) => (v === null ? Number.POSITIVE_INFINITY : v);
 
-    for (const limite of ['savedNiches', 'watchedStores', 'spiedAdsVisible', 'adFrameworks', 'guideLanguages', 'ebookPages'] as const) {
+    for (const limite of ['savedNiches', 'watchedStores', 'spiedAdsVisible', 'ebookPages'] as const) {
       for (let i = 1; i < plans.length; i += 1) {
         const avant = valeur(plans[i - 1]!.limits[limite]);
         const apres = valeur(plans[i]!.limits[limite]);
@@ -142,7 +136,7 @@ describe('Administration — grille tarifaire et droits', () => {
     });
     const compte = await loadAccount(patron.id);
 
-    for (const fonction of ['video_generation', 'storybook_generation', 'native_review', 'market_benchmark'] as const) {
+    for (const fonction of ['storybook_generation', 'market_benchmark'] as const) {
       assert.equal(compte!.features[fonction], true, `un administrateur devrait avoir ${fonction}`);
     }
   });

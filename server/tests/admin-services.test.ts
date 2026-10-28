@@ -33,13 +33,13 @@ describe('État des services', () => {
     };
 
     const byId = Object.fromEntries(report.services.map((service) => [service.id, service]));
-    assert.deepEqual(Object.keys(byId).sort(), ['ad-collection', 'chariow', 'database', 'email', 'fal', 'gamma', 'gemini', 'groq', 'images', 'market-reading', 'perplexity', 'radar', 'sebpay', 'settings', 'storefronts', 'stripe', 'veo', 'video-archive']);
+    assert.deepEqual(Object.keys(byId).sort(), ['ad-collection', 'chariow', 'database', 'email', 'gemini', 'groq', 'market-reading', 'perplexity', 'radar', 'sebpay', 'settings', 'storefronts', 'stripe', 'video-archive', 'voice']);
     // Sans clé Firecrawl, la ligne dit que la plateforme refuse le serveur, et quelle variable ajouter.
     assert.equal(byId.storefronts!.state, 'warning');
     assert.match(byId.storefronts!.action ?? '', /FIRECRAWL_API_KEY/);
-    // Sans clé fal.ai, la ligne dit par où passent les vidéos, et quelle variable ajouter.
-    assert.equal(byId.fal!.state, 'off');
-    assert.match(byId.fal!.action ?? '', /FAL_KEY/);
+    // Cloudflare configuré mais injoignable ici (adresse locale fermée) : la voix le dit, sans montrer le jeton.
+    assert.equal(byId.voice!.state, 'warning');
+    assert.ok(!JSON.stringify(byId.voice).includes('jeton-cloudflare-de-test'));
 
     assert.equal(byId.database!.state, 'warning', 'base embarquée : pas en ligne');
     // Le mode de connexion se lit dans l'adresse, sans rien afficher du mot de passe.
@@ -53,15 +53,12 @@ describe('État des services', () => {
     assert.match(byId['ad-collection']!.action ?? '', /secret CRON_SECRET du dépôt GitHub/);
     assert.match(byId.database!.action ?? '', /Transaction pooler/);
     assert.equal(byId.perplexity!.state, 'error', 'sans Perplexity, l’analyse est refusée');
-    assert.equal(byId.gamma!.state, 'off');
-    assert.equal(byId.groq!.state, 'off', 'sans clé, la direction artistique est simplement absente');
-    assert.match(byId.groq!.detail, /couvertures se font/, 'et la ligne dit que rien n’est cassé');
+    assert.equal(byId.groq!.state, 'warning', 'sans clé Groq, la rédaction ne tient plus qu’à Gemini');
+    assert.match(byId.groq!.detail, /Gemini seul/);
     assert.equal(byId.stripe!.state, 'off');
     assert.equal(byId.email!.state, 'off');
     assert.match(byId.email!.action ?? '', /Brevo/);
     assert.equal(byId.gemini!.state, 'warning', 'fournisseur injoignable : à surveiller, pas en panne');
-    assert.equal(byId['images']!.state, 'warning', 'Cloudflare configuré mais pas encore éprouvé');
-    assert.match(byId['images']!.detail, /Cloudflare/, 'la ligne dit quel fournisseur travaille');
     assert.equal(byId.sebpay!.state, 'warning');
     assert.equal(report.serverIp, null);
 

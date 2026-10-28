@@ -2,14 +2,8 @@ import { useEffect, useState } from 'react';
 import { lastKnown, remember } from '@/shared/lib/apiCache';
 
 export interface ServerProviders {
-  /** Analyse, rédaction et traduction. */
+  /** Analyse et rédaction. */
   text: boolean;
-  /** Visuels et couvertures (Cloudflare ou Gemini). */
-  images: boolean;
-  /** Vidéos. */
-  video: boolean;
-  /** « Vidéo longue », prolongée par étapes : seulement quand Veo rend les vidéos. */
-  videoExtension: boolean;
   /** Recherche web des analyses de niche. */
   webSearch: boolean;
   /** Envoi des e-mails (mot de passe oublié, confirmation d'adresse). */
@@ -43,12 +37,6 @@ export function useProviders(): ServerProviders | null {
         if (!cancelled && data?.providers) {
           const next: ServerProviders = {
             text: Boolean(data.providers.text),
-            // « images » est lu à part : il suivait l'indicateur vidéo du temps où un seul
-            // fournisseur faisait les deux, et une couverture était refusée quand la vidéo l'était.
-            images: Boolean(data.providers.image ?? data.providers.video),
-            video: Boolean(data.providers.video),
-            // Ancien serveur, sans l'indicateur : il rendait par Veo, qui sait prolonger.
-            videoExtension: Boolean(data.providers.videoExtension ?? data.providers.video),
             webSearch: Boolean(data.providers.webSearch),
             email: Boolean(data.providers.email),
             payments: Boolean(data.providers.payments),

@@ -1,77 +1,34 @@
 import { Router, type Request } from 'express';
 import { z } from 'zod';
-import { AppError, aiLimiter, asyncRoute, providerUnavailable, validateBody } from '@server/middleware';
-import { requireAuth, requireFeature } from '@server/middleware/auth';
-import { effectiveLimits } from '@server/services/accounts';
-import { assertCompliantBrief } from '@server/services/compliance/guard';
+import { AppError, asyncRoute } from '@server/middleware';
+import { requireAuth } from '@server/middleware/auth';
 import {
-  type VideoBrief,
-  type VisualBrief,
-  buildVisualInput,
-  visualBriefingOf,
-  creativeText,
-  extendVideo,
-  extensionSchema,
   fileFormatOf,
   generationStateOf,
   getCreativeStatus,
-  imagesConfigured,
   PROVIDER_RETENTION_DAYS,
   streamCreativeFile,
-  submitVideo,
-  videoBriefSchema,
-  visualBriefSchema,
-  videoConfigured,
-  videoExtensionAvailable,
-  videoProvider,
 } from '@server/services/creatives';
 import { VEO_KEEPS_DAYS, videoArchiveConfigured, videoRetentionDaysFor } from '@server/services/creatives/archive';
-import { visualArtDirection } from '@server/services/creatives/artDirection';
-import { createLocalVisual, listLocalVisuals, localVisualExists, sendLocalVisual } from '@server/services/creatives/local';
-import type { CreativeProvider, CreativeStatus } from '@server/services/creatives';
+import { listLocalVisuals, localVisualExists, sendLocalVisual } from '@server/services/creatives/local';
+import type { CreativeProvider } from '@server/services/creatives';
 import { falRequestIdSchema } from '@server/services/fal';
-import {
-  VEO_EXTENSION_RESOLUTION,
-  VEO_EXTENSION_SECONDS,
-  VEO_EXTENSION_WINDOW_MS,
-  VEO_MAX_INPUT_SECONDS,
-  VEO_MAX_TOTAL_SECONDS,
-  veoRequestIdSchema,
-  veoResolutionFor,
-} from '@server/services/veo';
-import {
-  type GenerationRow,
-  type StoredRequest,
-  claimRelaunch,
-  continueUnderNewRef,
-  findOwnedGeneration,
-  findOwnedGenerationByFormerRef,
-  listOwnVideoGenerations,
-  runBilledGeneration,
-  settleGeneration,
-} from '@server/services/generations';
-import { findAdFramework, isAdFrameworkAvailable } from '@server/shared/adFrameworks';
+import { veoRequestIdSchema } from '@server/services/veo';
+import { findOwnedGeneration, findOwnedGenerationByFormerRef, listOwnVideoGenerations, settleGeneration } from '@server/services/generations';
 
-/** Créatifs publicitaires : visuels par le moteur d'images interne, vidéos par fal.ai ou, à défaut, Veo (feuille de route 4.1, 4.2, 4.4). */
+/**
+ * Visuels et vidéos DÉJÀ créés : suivi, listes et fichiers.
+ *
+ * La création de visuels et de vidéos est retirée du site le 28/10/2026 (décision du propriétaire).
+ * Ce qui a été produit avant reste à son auteur : il le retrouve dans « Mes créations », le
+ * télécharge, et une vidéo encore en rendu ce jour-là va au bout de son suivi. Aucune route ne
+ * lance plus de génération.
+ */
 
 /** Identifiant d'un visuel interne : un UUID, frappé par le serveur à l'enregistrement. */
 const internalRequestIdSchema = z.string().uuid();
 
 export const creativesRouter = Router();
-
-/** Une méthode publicitaire hors du palier est refusée par le serveur, pas seulement grisée à l'écran. */
-function assertFrameworkAllowed(req: Request, brief: VisualBrief | VideoBrief): void {
-  if (brief.purpose !== 'ad' || !brief.adFramework) return;
-  const { account } = req.auth!;
-  if (isAdFrameworkAvailable(brief.adFramework, effectiveLimits(account).adFrameworks)) return;
-  const framework = findAdFramework(brief.adFramework);
-  throw new AppError(
-    403,
-    `La méthode ${framework?.acronym ?? brief.adFramework} n’est pas incluse dans votre palier ${account.plan.label}. Choisissez une autre méthode, ou passez à un palier supérieur.`,
-    'FRAMEWORK_LOCKED',
-    { framework: brief.adFramework },
-  );
-}
 
 /**
  * Les fournisseurs ne nomment pas leurs demandes de la même façon : un visuel interne porte un
@@ -95,8 +52,6 @@ function parseCreativeRequestId(value: string | undefined): string {
 
 /** Retrouve la génération de son auteur, quel que soit le fournisseur qui l'a produite, et dit lequel c'est. */
 async function findCreative(req: Request, requestId: string) {
-  // « fal » reste dans la liste : les vidéos lancées avant la bascule vers Veo doivent
-  // rester suivies et téléchargeables jusqu'à leur terme.
   const candidats: CreativeProvider[] = ['interne', 'veo', 'fal'];
   for (const provider of candidats) {
     try {
@@ -109,159 +64,11 @@ async function findCreative(req: Request, requestId: string) {
   throw new AppError(404, 'Génération introuvable sur votre compte.', 'GENERATION_NOT_FOUND');
 }
 
-creativesRouter.post(
-  '/visuals',
-  requireAuth,
-  requireFeature('image_generation'),
-  aiLimiter,
-  validateBody(visualBriefSchema),
-  asyncRoute(async (req, res) => {
-    const brief = req.body as VisualBrief;
-    assertFrameworkAllowed(req, brief);
-    await assertCompliantBrief(
-      creativeText(brief),
-      'Le brief du visuel contient des formulations non conformes : corrigez-les avant de lancer la génération.',
-    );
-    /*
-      Un seul chemin : le moteur d'images interne (Google, Cloudflare en secours s'il est
-      configuré) rend l'image elle-même, enregistrée sur le compte de son auteur. Higgsfield,
-      qui rendait un lien à relayer, est abandonné.
-    */
-    if (!imagesConfigured()) throw providerUnavailable('création de visuels');
-    const { result } = await runBilledGeneration({
-      auth: req.auth!,
-      actionId: 'image_generation',
-      kind: 'image',
-      provider: 'interne',
-      run: async () => {
-        // La direction artistique écrit la scène ; si elle se tait, la description de l'auteur part telle quelle.
-        const scene = await visualArtDirection(visualBriefingOf(brief));
-        return createLocalVisual(req.auth!, { prompt: buildVisualInput(brief, scene).prompt, format: brief.format });
-      },
-      describe: (image) => ({
-        providerRef: image.requestId,
-        state: 'completed',
-        fileFormat: image.mimeType === 'image/jpeg' ? 'jpg' : (image.mimeType.split('/')[1] ?? 'png'),
-      }),
-    });
-    res.status(202).json({ requestId: result.requestId, status: 'completed', mediaType: 'image', retentionDays: PROVIDER_RETENTION_DAYS.interne });
-  }),
-);
-
-creativesRouter.post(
-  '/videos',
-  requireAuth,
-  requireFeature('video_generation'),
-  aiLimiter,
-  validateBody(videoBriefSchema),
-  asyncRoute(async (req, res) => {
-    const provider = videoProvider();
-    const asked = req.body as VideoBrief;
-    // La vidéo longue se prolonge chez Veo seulement : ailleurs, elle part comme un plan de 8 s.
-    const brief: VideoBrief = asked.extendable && provider !== 'veo' ? { ...asked, duration: 8, extendable: false } : asked;
-    assertFrameworkAllowed(req, brief);
-    await assertCompliantBrief(
-      creativeText(brief),
-      'Le brief de la vidéo contient des formulations non conformes : corrigez-les avant de lancer la génération.',
-    );
-    if (!videoConfigured()) throw providerUnavailable('rendu vidéo');
-
-    const duree = brief.extendable ? 8 : brief.duration;
-    const { result } = await runBilledGeneration({
-      auth: req.auth!,
-      actionId: 'video_generation',
-      kind: 'video',
-      provider,
-      run: () => submitVideo(brief),
-      describe: (status) => ({
-        providerRef: status.requestId,
-        state: generationStateOf(status.status),
-        fileFormat: fileFormatOf(status),
-      }),
-      video: { durationSeconds: duree, resolution: provider === 'veo' ? veoResolutionFor(duree, brief.extendable) : '720p' },
-      // Le brief est gardé : si le fournisseur fait échouer le rendu, le site le relance de lui-même.
-      request: { brief, attempts: 0 },
-    });
-
-    res.status(202).json({ ...result, retentionDays: await videoRetentionDays(req.auth!.account.user.id) });
-  }),
-);
-
-/**
- * Prolonge de 7 secondes une vidéo longue de son auteur. Toutes les règles de Google sont
- * vérifiées AVANT de retirer le moindre point : une prolongation vouée à l'échec ne se paie pas.
- */
-creativesRouter.post(
-  '/videos/:requestId/extend',
-  requireAuth,
-  requireFeature('video_generation'),
-  aiLimiter,
-  validateBody(extensionSchema),
-  asyncRoute(async (req, res) => {
-    const parsedId = veoRequestIdSchema.safeParse(req.params.requestId);
-    if (!parsedId.success) throw new AppError(400, 'Identifiant de vidéo invalide.', 'INVALID_GENERATION_ID');
-    const parent = await findOwnedGeneration(req.auth!, 'veo', parsedId.data);
-    const refus = extensionRefusal(parent);
-    if (refus) throw new AppError(409, refus, 'VIDEO_NOT_EXTENDABLE');
-
-    const { sceneDescription, language } = req.body as { sceneDescription: string; language?: string };
-    await assertCompliantBrief(sceneDescription, 'La scène décrite contient des formulations non conformes : corrigez-la avant de prolonger la vidéo.');
-    if (!videoExtensionAvailable()) throw providerUnavailable('prolongation des vidéos');
-
-    const { result } = await runBilledGeneration({
-      auth: req.auth!,
-      actionId: 'video_extension',
-      kind: 'video',
-      provider: 'veo',
-      run: () => extendVideo(parsedId.data, sceneDescription, language),
-      describe: (status) => ({ providerRef: status.requestId, state: generationStateOf(status.status), fileFormat: fileFormatOf(status) }),
-      video: { parentId: parent.id, durationSeconds: (parent.durationSeconds ?? 8) + VEO_EXTENSION_SECONDS, resolution: VEO_EXTENSION_RESOLUTION },
-    });
-    res.status(202).json({ ...result, retentionDays: await videoRetentionDays(req.auth!.account.user.id) });
-  }),
-);
-
-/**
- * Raison pour laquelle une vidéo ne peut pas être prolongée, ou null si elle le peut.
- * Règles de Google : vidéo Veo en 720p, de 141 s au plus, et de moins de deux jours. Une vidéo
- * rendue ailleurs (fal.ai) ne se prolonge pas.
- */
-function extensionRefusal(video: {
-  provider: string;
-  status: string;
-  resolution: string | null;
-  durationSeconds: number | null;
-  completedAt: Date | null;
-  createdAt: Date;
-}): string | null {
-  if (video.provider !== 'veo' || !videoExtensionAvailable()) return 'Cette vidéo ne peut pas être prolongée.';
-  if (video.status !== 'completed') return 'La vidéo n’est pas encore terminée.';
-  if (video.resolution !== VEO_EXTENSION_RESOLUTION || video.durationSeconds === null) {
-    return 'Seule une vidéo créée en mode « vidéo longue » (720p) peut être prolongée.';
-  }
-  if (video.durationSeconds + VEO_EXTENSION_SECONDS > VEO_MAX_TOTAL_SECONDS || video.durationSeconds > VEO_MAX_INPUT_SECONDS) {
-    return `La vidéo atteint la durée maximale de ${VEO_MAX_TOTAL_SECONDS} secondes.`;
-  }
-  if (Date.now() - (video.completedAt ?? video.createdAt).getTime() > VEO_EXTENSION_WINDOW_MS) {
-    return 'Une vidéo ne peut être prolongée que dans les deux jours qui suivent sa création.';
-  }
-  return null;
-}
-
-/** Durée et possibilité de prolonger, renvoyées avec l'état d'une vidéo Veo. */
-function videoChainInfo(video: Parameters<typeof extensionRefusal>[0]) {
-  return {
-    durationSeconds: video.durationSeconds,
-    extendable: video.status === 'completed' && extensionRefusal(video) === null,
-    maxDurationSeconds: VEO_MAX_TOTAL_SECONDS,
-  };
-}
-
 const DAY_MS = 24 * 3_600_000;
 
 /**
  * Jours pendant lesquels une vidéo de cet auteur reste téléchargeable : ceux de son palier,
- * ou les deux jours de Google quand aucune copie ne peut être faite (stockage non configuré).
+ * ou les deux jours du fournisseur quand aucune copie ne peut être faite (stockage non configuré).
  */
 async function videoRetentionDays(userId: string): Promise<number> {
   const planned = await videoRetentionDaysFor(userId);
@@ -276,35 +83,7 @@ function videoDeadline(
   return video.archiveExpiresAt ?? new Date((video.completedAt ?? video.createdAt).getTime() + retentionDays * DAY_MS);
 }
 
-/** Relances au plus d'un rendu que le fournisseur a fait échouer, avant de rendre l'échec — et les points. */
-const VIDEO_RELAUNCHES = 2;
-
-/**
- * Relance d'elle-même une vidéo dont le rendu a échoué CHEZ LE FOURNISSEUR (panne, surcharge) :
- * la demande était bonne, la refaire a toutes les chances d'aboutir. L'auteur ne voit qu'un rendu
- * un peu plus long ; rien n'est débité de plus. La dernière relance part aux réglages les plus
- * sûrs. Rend le nouvel état à suivre, ou null quand il n'y a plus rien à tenter.
- */
-async function relaunchVideo(generation: GenerationRow): Promise<CreativeStatus | null> {
-  const stored = (generation.request ?? {}) as StoredRequest;
-  const brief = videoBriefSchema.safeParse(stored.brief);
-  const attempts = stored.attempts ?? 0;
-  // Relancée chez le moteur du moment seulement s'il est celui qui a échoué : la ligne garde son fournisseur.
-  if (!brief.success || attempts >= VIDEO_RELAUNCHES || generation.status !== 'pending' || !generation.providerRef || generation.provider !== videoProvider()) return null;
-  // Une autre sonde s'en charge déjà : celle-ci continue simplement d'attendre.
-  if (!(await claimRelaunch(generation))) return { requestId: generation.providerRef, status: 'in_progress' };
-  try {
-    const next = await submitVideo(brief.data, { safe: attempts + 1 >= VIDEO_RELAUNCHES });
-    await continueUnderNewRef(generation, next.requestId);
-    console.warn(`[vidéo] rendu échoué chez le fournisseur : relance ${attempts + 1}/${VIDEO_RELAUNCHES}`);
-    return { requestId: next.requestId, status: 'in_progress' };
-  } catch (error) {
-    console.error('[vidéo] relance impossible :', error instanceof AppError ? error.code : error);
-    return null;
-  }
-}
-
-/** Suivi d'une génération de son auteur. Hors `aiLimiter` : le client sonde toutes les 5 secondes. */
+/** Suivi d'une génération de son auteur. Hors limites de génération : l'écran sonde toutes les 5 secondes. */
 creativesRouter.get(
   '/requests/:requestId',
   requireAuth,
@@ -314,7 +93,7 @@ creativesRouter.get(
     try {
       found = await findCreative(req, requestId);
     } catch (error) {
-      // Rendu relancé depuis : l'écran qui suit encore l'ancien identifiant est remis sur le nouveau.
+      // Rendu relancé autrefois : l'écran qui suit encore l'ancien identifiant est remis sur le nouveau.
       const moved =
         error instanceof AppError && error.code === 'GENERATION_NOT_FOUND' ? await findOwnedGenerationByFormerRef(req.auth!, 'veo', requestId) : null;
       if (!moved?.providerRef) throw error;
@@ -335,57 +114,31 @@ creativesRouter.get(
       return;
     }
 
-    if (provider === 'veo' || provider === 'fal') {
-      const retentionDays = await videoRetentionDays(generation.userId);
-      const deadline = videoDeadline(generation, retentionDays);
-      /*
-        Vidéo échue : ni le fournisseur ni notre stockage ne l'ont plus. Le dire, sans interroger
-        Google — qui répondrait « introuvable », affiché comme une panne.
-      */
-      if (generation.status === 'completed' && deadline.getTime() < Date.now()) {
-        res.json({
-          requestId,
-          status: 'completed',
-          mediaType: 'video',
-          retentionDays,
-          availableUntil: deadline.toISOString(),
-          expired: true,
-          ...videoChainInfo(generation),
-        });
-        return;
-      }
-      const { retryable, ...status } = await getCreativeStatus(requestId, provider);
-      if (status.status === 'failed' && retryable) {
-        const relaunched = await relaunchVideo(generation);
-        if (relaunched) {
-          res.json({ ...relaunched, retentionDays, ...videoChainInfo(generation) });
-          return;
-        }
-      }
-      const settled = await settleGeneration(generation, generationStateOf(status.status), fileFormatOf(status));
-      res.json({
-        ...status,
-        retentionDays,
-        ...(settled.status === 'completed' ? { availableUntil: videoDeadline(settled, retentionDays).toISOString() } : {}),
-        ...videoChainInfo(settled),
-      });
+    const retentionDays = await videoRetentionDays(generation.userId);
+    const deadline = videoDeadline(generation, retentionDays);
+    /*
+      Vidéo échue : ni le fournisseur ni notre stockage ne l'ont plus. Le dire, sans interroger
+      le fournisseur — qui répondrait « introuvable », affiché comme une panne.
+    */
+    if (generation.status === 'completed' && deadline.getTime() < Date.now()) {
+      res.json({ requestId, status: 'completed', mediaType: 'video', retentionDays, availableUntil: deadline.toISOString(), expired: true, durationSeconds: generation.durationSeconds });
       return;
     }
-
-    const status = await getCreativeStatus(requestId, provider);
-    await settleGeneration(generation, generationStateOf(status.status), fileFormatOf(status));
-    res.json({ ...status, retentionDays: PROVIDER_RETENTION_DAYS[provider] });
+    // Un échec n'est plus relancé : aucune nouvelle vidéo ne part. Il est soldé, et les points rendus.
+    const { retryable: _retryable, ...status } = await getCreativeStatus(requestId, provider);
+    const settled = await settleGeneration(generation, generationStateOf(status.status), fileFormatOf(status));
+    res.json({
+      ...status,
+      retentionDays,
+      ...(settled.status === 'completed' ? { availableUntil: videoDeadline(settled, retentionDays).toISOString() } : {}),
+      durationSeconds: settled.durationSeconds,
+    });
   }),
 );
 
 /**
- * « Mes vidéos » : les vidéos de l'auteur, en cours ou rendues.
- *
- * Le suivi d'une vidéo ne vivait que dans l'écran qui l'avait lancée. Écran quitté, page
- * rechargée, connexion coupée une minute : la vidéo continuait chez le fournisseur, elle était
- * payée, et plus rien ne permettait de la retrouver — le message renvoyait vers « Mes visuels »,
- * qui ne liste que les images (constaté le 06/10/2026). L'état rendu ici est celui de la base :
- * une vidéo encore « en cours » est sondée par l'écran, qui la solde comme le suivi d'origine.
+ * « Mes vidéos » : les vidéos de l'auteur, en cours ou rendues. L'état rendu ici est celui de la
+ * base : une vidéo encore « en cours » est sondée par l'écran, qui la solde.
  */
 creativesRouter.get(
   '/videos',
@@ -393,11 +146,10 @@ creativesRouter.get(
   asyncRoute(async (req, res) => {
     const userId = req.auth!.account.user.id;
     const retentionDays = await videoRetentionDays(userId);
-    // « Mes créations » en demande davantage que le panneau sous le générateur.
     const demandees = Number(req.query.limit);
     const limite = Number.isInteger(demandees) ? Math.min(Math.max(demandees, 1), 60) : 12;
     const rows = await listOwnVideoGenerations(userId, ['veo', 'fal'], new Date(Date.now() - 120 * DAY_MS), 120);
-    // Une vidéo longue se construit par étapes : seule sa dernière version est montrée.
+    // Une vidéo longue se construisait par étapes : seule sa dernière version est montrée.
     const prolongees = new Set(rows.map((row) => row.parentId).filter((id): id is string => id !== null));
     const now = Date.now();
     res.json({

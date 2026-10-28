@@ -54,10 +54,10 @@ const RAPPORT_UTILE = [
   '/app/analyse',
   '/app/dossier-pdf',
   '/app/studio',
-  '/app/creatifs',
   '/app/pages-produits',
   '/app/kit-lancement',
-  '/app/multilingue',
+  // Les scripts vidéo de la niche y sont, depuis le retrait des créatifs.
+  '/app/campagnes',
 ];
 
 export function AppHeader() {

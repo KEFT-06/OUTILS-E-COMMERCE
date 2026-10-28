@@ -92,17 +92,6 @@ export function storybookBriefOf(report: Pick<Report, 'nicheName' | 'query'> | n
 /*  Couverture                                                                 */
 /* -------------------------------------------------------------------------- */
 
-/** Ce que la couverture montre, d'après l'ouvrage : son lecteur, déjà arrivé au résultat promis. */
-export function coverWishOf(book: { audience?: string | null; promise?: string | null } | null | undefined): string {
-  const audience = (book?.audience ?? '').replace(/\s+/g, ' ').trim();
-  const promise = (book?.promise ?? '').replace(/\s+/g, ' ').trim();
-  if (!promise) return '';
-  return shorten(
-    audience ? `Une personne du public visé (${audience}) qui vit déjà ce que l’ouvrage promet : ${promise}` : `Une scène qui montre ce que l’ouvrage promet : ${promise}`,
-    280,
-  );
-}
-
 /* -------------------------------------------------------------------------- */
 /*  Page produit                                                               */
 /* -------------------------------------------------------------------------- */

@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
-import { type GuideExportDocument, guideComplianceSections } from '@/modules/multilingue/guideExport';
+import { type GuideExportDocument, guideComplianceSections } from '@/modules/guides/guideExport';
 
 const guide = (sections: GuideExportDocument['sections']): GuideExportDocument => ({
   guideId: 'g1',

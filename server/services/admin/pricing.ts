@@ -1,4 +1,3 @@
-import { AD_FRAMEWORKS } from '@server/shared/adFrameworks';
 import { getCostTable } from '@server/services/credits';
 import { FEATURES, getPlanConfig, type FeatureId } from '@server/services/plans';
 
@@ -26,8 +25,6 @@ export interface PricingOverview {
   /** Valeur d'un point, et son état de validation. */
   point: { value: number; currency: string; status: string | null };
   features: Record<string, string>;
-  /** Méthodes publicitaires existantes : sert à lire la limite `adFrameworks`. */
-  adFrameworksTotal: number;
   plans: {
     id: string;
     label: string;
@@ -56,7 +53,6 @@ export async function pricingOverview(): Promise<PricingOverview> {
     yearlyMonthsCharged: config.pricing.yearlyMonthsCharged,
     point: { value: costs.pointValue, currency: costs.currency, status: costs.pointValueStatus ?? null },
     features: FEATURES,
-    adFrameworksTotal: AD_FRAMEWORKS.length,
     plans: config.plans.map((plan) => ({
       id: plan.id,
       label: plan.label,

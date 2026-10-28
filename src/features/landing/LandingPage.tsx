@@ -476,7 +476,7 @@ export function LandingPage() {
             <SectionHeading
               eyebrow="Paliers"
               title="Un palier pour chaque étape"
-              description="Chaque carte détaille ce que comprend le palier : points de recherche, niches enregistrées, méthodes publicitaires et fonctions. Prix dans la devise de votre pays."
+              description="Chaque carte détaille ce que comprend le palier : points de recherche, niches enregistrées et fonctions incluses. Prix dans la devise de votre pays."
             />
             <div className="mt-8 flex flex-col gap-2 sm:flex-row sm:items-center">
               <label htmlFor="landing-price-country" className="text-sm font-medium">

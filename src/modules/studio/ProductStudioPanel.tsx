@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { toast } from 'sonner';
 import { AlertTriangle, BookOpen, FileDown, FileText, PenSquare, Sparkles } from 'lucide-react';
 import { AudioCoursePanel } from '@/modules/studio/AudioCoursePanel';
@@ -7,7 +7,6 @@ import { ProductExpertEditor } from '@/modules/studio/ProductExpertEditor';
 import { ProductPreviewPanel } from '@/modules/studio/ProductPreviewPanel';
 import { useEbookJob } from '@/modules/studio/useEbookJob';
 import { BookCover } from '@/shared/components/BookCover';
-import { CoverGenerator } from '@/shared/components/CoverGenerator';
 import { downloadBookCover } from '@/shared/lib/downloadBookCover';
 import { rememberProductCover } from '@/shared/stores/useProductCovers';
 import { WritingFindings } from '@/shared/components/WritingFindings';
@@ -69,6 +68,25 @@ export function ProductStudioPanel({ baseProduct, report, initialExpertOpen = fa
   const [blockedVerdict, setBlockedVerdict] = useState<ProductExportVerdict | null>(null);
   const [cover, setCover] = useState<CoverView | null>(null);
   const [downloadingCover, setDownloadingCover] = useState(false);
+
+  /*
+    Couverture déjà générée (avant le retrait de la génération d'images, le 28/10/2026) : elle reste
+    affichée et ouvre toujours les exports. Le générateur la chargeait ; sans lui, on la lit ici.
+  */
+  useEffect(() => {
+    let cancelled = false;
+    coversApi
+      .latest('product', baseProduct.id)
+      .then((existing) => {
+        if (cancelled) return;
+        setCover(existing);
+        rememberProductCover(baseProduct.id, existing);
+      })
+      .catch(() => undefined);
+    return () => {
+      cancelled = true;
+    };
+  }, [baseProduct.id]);
   const [generateOpen, setGenerateOpen] = useState(false);
   const [isPreviewOpen, setIsPreviewOpen] = useState(false);
   /** Vrai quand l'ouvrage vient d'être rédigé : la vue s'ouvre et vient à l'écran d'elle-même. */
@@ -270,22 +288,9 @@ export function ProductStudioPanel({ baseProduct, report, initialExpertOpen = fa
             </div>
             <div className="min-w-0 flex-1 space-y-2">
               <p className="text-sm leading-relaxed text-muted-foreground">
-                Cette couverture ouvre le PDF et le DOCX, et accompagne le produit partout sur le site. Générez sa version complète :
-                livre en relief, titre, points forts et bandeau, prête à montrer pour vendre.
+                Cette couverture ouvre le PDF et le DOCX, et accompagne le produit partout sur le site. Elle reprend le titre et le
+                sous-titre : modifiez-les, elle suit.
               </p>
-              <CoverGenerator
-                key={baseProduct.id}
-                subject="product"
-                subjectId={baseProduct.id}
-                title={product.title}
-                subtitle={product.subtitle}
-                book={{ audience: product.targetAudience, promise: product.transformationPromise, chapters: product.tableOfContents.map((module) => module.title) }}
-                hidePreview
-                onChange={(next) => {
-                  setCover(next);
-                  rememberProductCover(baseProduct.id, next);
-                }}
-              />
             </div>
           </div>
         </div>

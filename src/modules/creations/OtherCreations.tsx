@@ -1,10 +1,9 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { BarChart3, BookImage, Clapperboard, Download, FileText, Image as ImageIcon, Languages, PenSquare } from 'lucide-react';
+import { BarChart3, BookImage, Download, FileText, Image as ImageIcon, PenSquare } from 'lucide-react';
 import { countryName } from '@server/shared/countries';
 import { useWorkspace } from '@/app/providers/WorkspaceProvider';
-import { VIDEO_SCREEN, videoFromStorybook } from '@/modules/creatifs/videoStart';
-import type { GuideSummary } from '@/modules/multilingue/guidesApi';
+import type { GuideSummary } from '@/modules/guides/guidesApi';
 import { apiRequest } from '@/shared/lib/api';
 import { useCachedState } from '@/shared/lib/apiCache';
 import { type CoverView, coversApi } from '@/shared/lib/covers';
@@ -75,10 +74,6 @@ export function ReportsCard({ recherche }: { recherche: string }) {
                       <FileText />
                       Dossier PDF
                     </Button>
-                    <Button size="sm" variant="outline" onClick={() => void navigate('/app/multilingue', { state: { rapport: report.id } })}>
-                      <Languages />
-                      Traduire
-                    </Button>
                   </div>
                 </div>
               </li>
@@ -111,7 +106,6 @@ function StorybookThumbnail({ entry }: { entry: StorybookEntry }) {
 
 /** Contes illustrés du compte, avec leur couverture quand elle est prête. */
 export function StorybooksCard({ recherche }: { recherche: string }) {
-  const navigate = useNavigate();
   const [entries, setEntries] = useCachedState<StorybookEntry[]>('/api/storybook/books');
   useEffect(() => {
     apiRequest<{ storybooks: StorybookEntry[] }>('/api/storybook/books')
@@ -125,8 +119,8 @@ export function StorybooksCard({ recherche }: { recherche: string }) {
   return (
     <Card>
       <CardHeader>
-        <CardTitle>Contes illustrés</CardTitle>
-        <CardDescription>Vos storybooks : l’histoire, ses illustrations et son PDF.</CardDescription>
+        <CardTitle>Contes</CardTitle>
+        <CardDescription>Vos storybooks : l’histoire et son PDF.</CardDescription>
       </CardHeader>
       <CardContent>
         {entries === null ? (
@@ -137,7 +131,7 @@ export function StorybooksCard({ recherche }: { recherche: string }) {
               <>
                 Aucun conte pour l’instant :{' '}
                 <Link to="/app/storybook" className="font-medium text-foreground underline underline-offset-2">
-                  le Storybook illustré
+                  le Storybook
                 </Link>{' '}
                 en crée un à partir d’un prénom et d’un thème.
               </>
@@ -174,14 +168,6 @@ export function StorybooksCard({ recherche }: { recherche: string }) {
                               <Download />
                               Télécharger le PDF
                             </a>
-                          </Button>
-                          <Button size="sm" variant="outline" onClick={() => void navigate('/app/multilingue', { state: { conte: entry.id } })}>
-                            <Languages />
-                            Traduire
-                          </Button>
-                          <Button size="sm" variant="outline" onClick={() => void navigate(VIDEO_SCREEN, { state: videoFromStorybook(entry) })}>
-                            <Clapperboard />
-                            Générer la vidéo
                           </Button>
                         </>
                       )}

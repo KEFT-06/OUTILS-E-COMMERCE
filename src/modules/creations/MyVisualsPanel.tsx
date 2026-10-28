@@ -114,7 +114,7 @@ export function MyVisualsPanel({ version }: { version: number }) {
           <NoDataState
             icon={Images}
             title="Aucun visuel pour l’instant"
-            reason="Les visuels que vous créez ci-dessus s’ajoutent ici, et y restent : vous pourrez les télécharger à tout moment."
+            reason="Aucun visuel n’a été créé sur votre compte."
           />
         ) : visuals ? (
           <>

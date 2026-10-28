@@ -29,14 +29,6 @@ const TIMEOUT_MS = 120_000;
 /** Adresse de boucle locale : la seule tolérée hors HTTPS, et seulement hors production. */
 const LOOPBACK = /^(127.0.0.1|[::1]|localhost)$/;
 
-/** Formats rendus par Veo. Le carré n'en fait pas partie, et cela ne se contourne pas. */
-export const VEO_FORMATS = ['9:16', '16:9'] as const;
-/** Durées rendues par Veo. Jeu discret : toute autre valeur est refusée. */
-export const VEO_DURATIONS = [4, 6, 8] as const;
-
-export type VeoFormat = (typeof VEO_FORMATS)[number];
-export type VeoDuration = (typeof VEO_DURATIONS)[number];
-
 /**
  * Identifiant de demande servi au client.
  *
@@ -137,9 +129,6 @@ const operationSchema = z.object({
     .optional(),
 });
 
-/** Ne garde que l'identifiant de l'opération : le chemin complet ne sort pas du serveur. */
-const operationId = (name: string): string => name.split('/').pop() ?? name;
-
 /** Modèles Veo dans l'ordre d'essai : chacun a son propre quota chez Google. */
 function veoModels(): string[] {
   return [...new Set([env.VEO_VIDEO_MODEL, ...env.VEO_FALLBACK_MODELS])];
@@ -150,138 +139,11 @@ function veoModels(): string[] {
   garde donc son rang dans l'identifiant (« m1-… ») ; celui du modèle principal reste nu, comme
   les rendus déjà enregistrés avant cette bascule.
 */
-const encodeRequestId = (index: number, id: string) => (index === 0 ? id : `m${index}-${id}`);
 function decodeRequestId(requestId: string): { model: string; id: string } {
   const match = /^m(\d)-(.+)$/.exec(requestId);
   const models = veoModels();
   if (match && models[Number(match[1])]) return { model: models[Number(match[1])]!, id: match[2]! };
   return { model: env.VEO_VIDEO_MODEL, id: requestId };
-}
-
-/**
- * Réglage des personnes autorisé en Europe. Les fonctions tournent à Dublin depuis le
- * 29/09/2026 ; Google n'y admet que « allow_adult » pour les personnes. Le site n'envoie aucun
- * réglage (Google applique celui de la région) ; si Google refusait quand même la demande pour
- * ce motif, elle repart une fois avec le réglage européen explicite.
- */
-const EU_PERSON_GENERATION = 'allow_adult';
-const personRefusal = (error: unknown) => error instanceof AppError && personRefusals.has(error);
-
-function withPersonGeneration(body: unknown): unknown {
-  const request = body as { parameters?: Record<string, unknown> };
-  return { ...request, parameters: { ...(request.parameters ?? {}), personGeneration: EU_PERSON_GENERATION } };
-}
-
-/** Refus qui tiennent au modèle sollicité, pas à la demande : on passe au suivant. */
-const NEXT_MODEL_CODES = new Set(['VEO_QUOTA_EXHAUSTED', 'VEO_UNAVAILABLE', 'VEO_TIMEOUT']);
-
-/**
- * Lance un rendu, en passant au modèle Veo suivant quand le précédent est à bout de quota, en
- * panne ou muet. Un refus de facturation ou une description refusée ne changent pas de modèle.
- */
-async function submitWithFallback(body: unknown): Promise<VeoGeneration> {
-  const models = veoModels();
-  let last: unknown = null;
-  for (const [index, model] of models.entries()) {
-    try {
-      let payload: unknown;
-      try {
-        payload = await veoFetch(`models/${model}:predictLongRunning`, { method: 'POST', body: JSON.stringify(body) });
-      } catch (error) {
-        if (!personRefusal(error)) throw error;
-        console.warn('[veo] réglage des personnes refusé dans cette région : nouvel essai avec « allow_adult »');
-        payload = await veoFetch(`models/${model}:predictLongRunning`, { method: 'POST', body: JSON.stringify(withPersonGeneration(body)) });
-      }
-      const parsed = operationSchema.safeParse(payload);
-      if (!parsed.success) throw new AppError(502, 'Réponse inattendue du service de rendu vidéo.', 'VEO_BAD_RESPONSE');
-      return { requestId: encodeRequestId(index, operationId(parsed.data.name)), status: 'queued' };
-    } catch (error) {
-      // Quota atteint, panne ou silence de ce modèle : le suivant a son propre quota et sa propre flotte.
-      if (error instanceof AppError && NEXT_MODEL_CODES.has(error.code)) {
-        console.warn(`[veo] ${error.code} sur ${model}${index + 1 < models.length ? ', modèle suivant' : ''}`);
-        last = error;
-        continue;
-      }
-      /*
-        Un modèle de secours qui échoue pour une raison à lui (retiré, mal nommé) ne doit pas
-        masquer la panne du principal : c'est elle qu'on rend. Une description refusée, en
-        revanche, est le vrai motif — elle le serait partout.
-      */
-      if (last !== null && !(error instanceof AppError && error.code === 'VEO_BAD_INPUT')) {
-        console.warn(`[veo] le modèle de secours ${model} n’a pas pris le relais :`, error instanceof AppError ? error.code : error);
-        continue;
-      }
-      throw error;
-    }
-  }
-  throw last;
-}
-
-export interface VeoInput {
-  prompt: string;
-  negativePrompt: string;
-  aspectRatio: VeoFormat;
-  durationSeconds: VeoDuration;
-  /** Premier plan d'une vidéo longue : rendu en 720p, seule résolution que Google sait prolonger. */
-  extendable?: boolean;
-  /** Résolution imposée, pour une relance aux réglages les plus sûrs. Absente : celle de la durée. */
-  resolution?: string;
-}
-
-/** Résolution des prolongations, imposée par Google (« 720p only for extension »). */
-export const VEO_EXTENSION_RESOLUTION = '720p';
-/** Secondes ajoutées par une prolongation, et plafonds de Google (148 s au total, 141 s au plus en entrée). */
-export const VEO_EXTENSION_SECONDS = 7;
-export const VEO_MAX_TOTAL_SECONDS = 148;
-export const VEO_MAX_INPUT_SECONDS = 141;
-/** Une vidéo ne se prolonge que dans les deux jours où Google la garde. */
-export const VEO_EXTENSION_WINDOW_MS = 2 * 86_400_000;
-
-/**
- * Résolution demandée pour une durée donnée.
- *
- * Google n'accepte le 1080p et le 4K QU'EN 8 secondes (« must be 8s with 1080p/4k »,
- * ai.google.dev/gemini-api/docs/veo, lu le 28 septembre 2026). La résolution configurée était
- * envoyée pour toutes les durées : une vidéo de 4 ou 6 secondes était refusée, les points
- * rendus, et l'utilisateur repartait sans vidéo. En dessous de 8 secondes, c'est donc 720p.
- */
-export function veoResolutionFor(durationSeconds: VeoDuration, extendable = false): string {
-  if (extendable) return VEO_EXTENSION_RESOLUTION;
-  return durationSeconds === 8 ? env.VEO_RESOLUTION : '720p';
-}
-
-/** Corps envoyé à Veo. Fonction pure, testable sans appel réseau. */
-export function buildVeoRequest(input: VeoInput) {
-  return {
-    instances: [{ prompt: input.prompt }],
-    parameters: {
-      aspectRatio: input.aspectRatio,
-      durationSeconds: input.durationSeconds,
-      resolution: input.resolution ?? veoResolutionFor(input.durationSeconds, input.extendable),
-      negativePrompt: input.negativePrompt,
-    },
-  };
-}
-
-export async function submitVeoGeneration(input: VeoInput): Promise<VeoGeneration> {
-  return submitWithFallback(buildVeoRequest(input));
-}
-
-/**
- * Corps d'une prolongation, tel que documenté par Google (ai.google.dev/gemini-api/docs/veo,
- * exemple REST, lu le 28 septembre 2026) : la vidéo précédente part en octets (`inlineData`),
- * et la résolution est forcément 720p. Google rend la vidéo ENTIÈRE, prolongée de 7 secondes.
- * Fonction pure, testable sans appel réseau.
- */
-export function buildVeoExtensionRequest(input: { prompt: string; video: Buffer }) {
-  return {
-    instances: [{ prompt: input.prompt, video: { inlineData: { mimeType: 'video/mp4', data: input.video.toString('base64') } } }],
-    parameters: { numberOfVideos: 1, resolution: VEO_EXTENSION_RESOLUTION },
-  };
-}
-
-export async function submitVeoExtension(input: { prompt: string; video: Buffer }): Promise<VeoGeneration> {
-  return submitWithFallback(buildVeoExtensionRequest(input));
 }
 
 export async function getVeoGeneration(requestId: string): Promise<VeoGeneration> {

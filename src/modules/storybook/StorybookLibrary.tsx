@@ -1,8 +1,6 @@
 import { useEffect, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
-import { BookOpen, Clapperboard, Download } from 'lucide-react';
+import { BookOpen, Download } from 'lucide-react';
 import { countryName } from '@server/shared/countries';
-import { VIDEO_SCREEN, videoFromStorybook } from '@/modules/creatifs/videoStart';
 import { NoDataState } from '@/shared/components/NoDataState';
 import { ZoomableImage } from '@/shared/components/ZoomableImage';
 import { apiRequest } from '@/shared/lib/api';
@@ -36,7 +34,6 @@ const STATUS: Record<StorybookEntry['status'], { label: string; variant: 'succes
 const formatDate = (iso: string) => new Date(iso).toLocaleDateString('fr-FR', { day: 'numeric', month: 'long', year: 'numeric' });
 
 export function StorybookLibrary({ version }: { version: number }) {
-  const navigate = useNavigate();
   const [entries, setEntries, keepEntries] = useCachedState<StorybookEntry[]>('/api/storybook/books');
   const [error, setError] = useState<string | null>(null);
   /** Avance à chaque relecture automatique, tant qu'un conte est en cours. */
@@ -93,7 +90,7 @@ export function StorybookLibrary({ version }: { version: number }) {
           <NoDataState
             icon={BookOpen}
             title="Aucun conte pour l’instant"
-            reason="Le brief ci-dessus suffit à en créer un : le prénom du personnage et le thème. L’histoire est écrite page par page, puis chaque page est illustrée et mise en page — vous téléchargez le PDF."
+            reason="Le brief ci-dessus suffit à en créer un : le prénom du personnage et le thème. L’histoire est écrite page par page, vous la relisez et la corrigez, puis vous téléchargez le PDF."
           />
         ) : (
           <Accordion type="single" collapsible className="w-full">
@@ -121,11 +118,6 @@ export function StorybookLibrary({ version }: { version: number }) {
                             <Download />
                             Télécharger le PDF
                           </a>
-                        </Button>
-                        {/* Le conte est prêt : il lui faut maintenant de quoi se vendre. */}
-                        <Button size="sm" variant="outline" onClick={() => void navigate(VIDEO_SCREEN, { state: videoFromStorybook(entry) })}>
-                          <Clapperboard />
-                          Générer une vidéo pour le vendre
                         </Button>
                       </div>
                     )}

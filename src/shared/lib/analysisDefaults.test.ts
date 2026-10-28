@@ -3,7 +3,6 @@ import { describe, it } from 'node:test';
 import {
   campaignNumbersOf,
   completeKitDraft,
-  coverWishOf,
   faqFromObjections,
   followableCompetitorOf,
   followableStoreOfMarket,
@@ -120,13 +119,6 @@ describe('Ce que l’analyse propose dans chaque module', () => {
     assert.notEqual(culturalElementsOf('CI'), culturalElementsOf('CM'), 'chaque pays a ses repères');
     assert.ok(culturalElementsOf('ZZ').length > 0, 'un pays sans repères propres reçoit des éléments familiers partout');
     assert.ok(culturalElementsOf(null).length > 0);
-  });
-
-  it('Couverture : la scène part du lecteur et de la promesse de l’ouvrage', () => {
-    assert.equal(coverWishOf({ audience: 'Citadins de 25 à 40 ans', promise: 'Avoir ses œufs frais toute l’année.' }), 'Une personne du public visé (Citadins de 25 à 40 ans) qui vit déjà ce que l’ouvrage promet : Avoir ses œufs frais toute l’année.');
-    assert.match(coverWishOf({ promise: 'Avoir ses œufs frais.' }), /^Une scène qui montre ce que l’ouvrage promet/);
-    assert.equal(coverWishOf({ audience: 'Citadins' }), '', 'sans promesse, pas de scène inventée');
-    assert.equal(coverWishOf(null), '');
   });
 
   it('Radar : à défaut d’une boutique citée, celle que le marché de la niche désigne, jamais une déjà suivie', () => {

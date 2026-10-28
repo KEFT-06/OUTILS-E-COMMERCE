@@ -47,7 +47,8 @@ import { Spinner } from '@/shared/ui/spinner';
 interface StrategicAnalysisViewProps {
   report: MarketAnalysisReport;
   onNavigateToProducts: () => void;
-  onNavigateToMetaAds: () => void;
+  /** Suite du parcours : le kit de lancement. */
+  onNavigateToLaunch: () => void;
   /** Supprime le rapport du compte. */
   onDelete?: () => Promise<void>;
 }
@@ -86,7 +87,7 @@ function Bullets({ items, tone = 'default' }: { items: string[]; tone?: 'default
   );
 }
 
-export function StrategicAnalysisView({ report, onNavigateToProducts, onNavigateToMetaAds, onDelete }: StrategicAnalysisViewProps) {
+export function StrategicAnalysisView({ report, onNavigateToProducts, onNavigateToLaunch, onDelete }: StrategicAnalysisViewProps) {
   // Toujours un verdict : celui du rapport, ou celui que ses niveaux donnent (rapports d'avant le 04/10/2026).
   const verdict = settledVerdict(report);
   const isExampleReport = report.dataProvenance?.rates?.isDemonstration ?? false;
@@ -152,8 +153,8 @@ export function StrategicAnalysisView({ report, onNavigateToProducts, onNavigate
               {report.authorWork ? 'Ouvrir mon ouvrage dans le Studio' : `Idées de produits (${report.digitalProducts.length})`}
               <ArrowRight />
             </Button>
-            <Button onClick={onNavigateToMetaAds}>
-              Préparer les créatifs
+            <Button onClick={onNavigateToLaunch}>
+              Préparer le lancement
               <ArrowRight />
             </Button>
             {onDelete && (

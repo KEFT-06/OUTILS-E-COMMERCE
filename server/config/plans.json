@@ -1,6 +1,6 @@
 {
   "version": "2026.09.11",
-  "updatedAt": "2026-09-28",
+  "updatedAt": "2026-10-28",
   "note": "Paliers d'abonnement, éditables sans redéploiement. « prices » : prix mensuel par devise ; une devise absente est convertie depuis la devise de base puis arrondie. null : prix pas encore fixé. « limits » : null = illimité. « guideLanguages » : langues de traduction par guide. « ebookPages » : pages au plus pour un ebook rédigé par l'IA (plafond absolu 250). « videoRetentionDays » : jours pendant lesquels une vidéo générée reste téléchargeable ; au-delà de 2, une copie est gardée dans Supabase puis effacée à échéance. « adSearchesPerMonth » : recherches nouvelles par mois dans la bibliothèque publicitaire (relire une recherche déjà faite ne compte pas). Une fonction absente de « features » est ouverte ; false la ferme pour le palier.",
   "pricing": {
     "baseCurrency": "EUR",
@@ -20,16 +20,12 @@
         "savedNiches": 3,
         "watchedStores": 1,
         "spiedAdsVisible": 6,
-        "adFrameworks": 2,
-        "guideLanguages": 1,
         "ebookPages": 15,
         "videoRetentionDays": 1,
         "adSearchesPerMonth": 0
       },
       "features": {
-        "video_generation": false,
         "storybook_generation": false,
-        "native_review": false,
         "market_benchmark": false
       }
     },
@@ -47,15 +43,11 @@
         "savedNiches": 15,
         "watchedStores": 3,
         "spiedAdsVisible": 30,
-        "adFrameworks": 4,
-        "guideLanguages": 3,
         "ebookPages": 40,
         "videoRetentionDays": 1,
         "adSearchesPerMonth": 3
       },
-      "features": {
-        "native_review": false
-      }
+      "features": {}
     },
     {
       "id": "pro",
@@ -72,8 +64,6 @@
         "savedNiches": 50,
         "watchedStores": 5,
         "spiedAdsVisible": 100,
-        "adFrameworks": 7,
-        "guideLanguages": 5,
         "ebookPages": 100,
         "videoRetentionDays": 30,
         "adSearchesPerMonth": 10
@@ -94,8 +84,6 @@
         "savedNiches": 150,
         "watchedStores": 20,
         "spiedAdsVisible": 200,
-        "adFrameworks": 10,
-        "guideLanguages": 10,
         "ebookPages": 180,
         "videoRetentionDays": 90,
         "adSearchesPerMonth": 25
@@ -116,8 +104,6 @@
         "savedNiches": null,
         "watchedStores": null,
         "spiedAdsVisible": null,
-        "adFrameworks": null,
-        "guideLanguages": null,
         "ebookPages": 250,
         "videoRetentionDays": 90,
         "adSearchesPerMonth": 60

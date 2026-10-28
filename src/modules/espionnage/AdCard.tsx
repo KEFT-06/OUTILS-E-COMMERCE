@@ -2,7 +2,6 @@ import { useState } from 'react';
 import { Link } from 'react-router-dom';
 import {
   CheckCircle2,
-  Clapperboard,
   Download,
   ExternalLink,
   Eye,
@@ -16,7 +15,6 @@ import {
 import { countryName } from '@server/shared/countries';
 import { followableOnRadar, storefrontOfHost } from '@server/shared/storefronts';
 import { toast } from 'sonner';
-import type { AdReference } from '@/modules/creatifs/adReference';
 import { type Brand, BrandIcon } from '@/shared/components/BrandIcon';
 import { apiRequest } from '@/shared/lib/api';
 import { CountryFlag } from '@/shared/components/CountryFlag';
@@ -92,18 +90,6 @@ async function telecharger(ad: LibraryAd): Promise<void> {
     toast.error('Le téléchargement n’a pas pu démarrer', { id: attente, description: 'Votre connexion semble instable.' });
   }
 }
-
-/** Ce qu'une publicité donne comme point de départ aux Créatifs : son annonceur, son titre, son texte. */
-const referenceDe = (ad: LibraryAd): { reference: AdReference } => ({
-  reference: {
-    annonceur: ad.advertiser ?? ad.storeHost ?? 'Annonceur',
-    titre: ad.title ?? '',
-    texte: (ad.bodyText ?? '').replace(/\{\{[^}]*\}\}/g, '').trim().slice(0, 900),
-    video: ad.mediaKind === 'video',
-    // Une annonce du mur porte un identifiant à nous : sa vidéo peut être regardée par l'outil.
-    ...(ad.mediaKind === 'video' && /^[0-9a-f-]{36}$/.test(ad.id) ? { adId: ad.id } : {}),
-  },
-});
 
 /** Logo de la plateforme qui héberge la boutique ; l'icône de boutique quand elle n'est pas reconnue. */
 function StoreIcon({ host }: { host: string }) {
@@ -428,12 +414,6 @@ export function AdCard({
                   Télécharger {fichierDe(ad)}
                 </DropdownMenuItem>
               )}
-              <DropdownMenuItem asChild>
-                <Link to="/app/creatifs" state={referenceDe(ad)}>
-                  <Clapperboard />
-                  Créer ma vidéo à partir de cette publicité
-                </Link>
-              </DropdownMenuItem>
               {lien && (
                 <DropdownMenuItem asChild>
                   <a href={lien} target="_blank" rel="noreferrer noopener">
@@ -668,12 +648,6 @@ export function AdDetailsDialog({
                   Télécharger {fichierDe(ad)}
                 </Button>
               )}
-              <Button asChild size="sm" variant="outline">
-                <Link to="/app/creatifs" state={referenceDe(ad)}>
-                  <Clapperboard />
-                  Créer ma vidéo à partir de cette publicité
-                </Link>
-              </Button>
               <Button size="sm" variant="outline" onClick={() => onShowAdvertiser(ad)}>
                 <Store />
                 Toutes les publicités de cet annonceur

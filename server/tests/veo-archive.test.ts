@@ -112,15 +112,18 @@ after(async () => {
   await new Promise<void>((r) => faux.close(() => r()));
 });
 
-const BRIEF = {
-  productName: 'Formation bureautique',
-  awarenessLevel: 'solution_aware',
-  format: '9:16',
-  market: 'CM',
-  sceneDescription: 'une formatrice devant son ordinateur, lumière du matin',
-  purpose: 'content',
-  duration: 6,
-};
+/**
+ * Une vidéo Veo lancée avant le retrait de la création de vidéos (28/10/2026) : la ligne telle que
+ * le site l'enregistrait. Le suivi la mène à son terme, et c'est là que la copie part.
+ */
+async function videoLancee(userId: string): Promise<string> {
+  const { getDb } = await import('@server/db/client');
+  const { generations } = await import('@server/db/schema');
+  compteur += 1;
+  const requestId = `op-${String(compteur).padStart(4, '0')}`;
+  await getDb().insert(generations).values({ userId, kind: 'video', provider: 'veo', providerRef: requestId, status: 'pending', durationSeconds: 6, resolution: '720p' });
+  return requestId;
+}
 
 /** La copie part après la réponse : on attend qu'elle arrive, sans dormir au hasard. */
 async function attendreObjet(requestId: string): Promise<Buffer | undefined> {
@@ -134,9 +137,8 @@ describe('Copie des vidéos Veo', () => {
   it('copie la vidéo terminée dans un espace privé, puis la sert même effacée chez Google', async () => {
     googleEfface = false;
     stockagePanne = false;
-    const { agent } = await signInWithPlan(app, 'veo-archive@exemple.test', 'pro');
-    const lance = await agent.post('/api/creatives/videos').send(BRIEF).expect(202);
-    const requestId = lance.body.requestId as string;
+    const { agent, userId } = await signInWithPlan(app, 'veo-archive@exemple.test', 'pro');
+    const requestId = await videoLancee(userId);
 
     const suivi = await agent.get(`/api/creatives/requests/${requestId}`).expect(200);
     assert.equal(suivi.body.status, 'completed');
@@ -157,9 +159,8 @@ describe('Copie des vidéos Veo', () => {
   it('rattrape au balayage de nuit une copie manquée au premier dépôt', async () => {
     googleEfface = false;
     stockagePanne = true;
-    const { agent } = await signInWithPlan(app, 'veo-archive-rattrapage@exemple.test', 'pro');
-    const lance = await agent.post('/api/creatives/videos').send(BRIEF).expect(202);
-    const requestId = lance.body.requestId as string;
+    const { agent, userId } = await signInWithPlan(app, 'veo-archive-rattrapage@exemple.test', 'pro');
+    const requestId = await videoLancee(userId);
     await agent.get(`/api/creatives/requests/${requestId}`).expect(200);
     // Laisse le dépôt en arrière-plan échouer.
     await new Promise((r) => setTimeout(r, 300));
@@ -175,10 +176,8 @@ describe('Copie des vidéos Veo', () => {
   it('ne copie rien pour un palier à 24 h, puis annonce la vidéo expirée au lieu d’une erreur', async () => {
     googleEfface = false;
     stockagePanne = false;
-    const { agent } = await signInWithPlan(app, 'veo-plus@exemple.test', 'plus');
-    const lance = await agent.post('/api/creatives/videos').send(BRIEF).expect(202);
-    const requestId = lance.body.requestId as string;
-    assert.equal(lance.body.retentionDays, 1);
+    const { agent, userId } = await signInWithPlan(app, 'veo-plus@exemple.test', 'plus');
+    const requestId = await videoLancee(userId);
 
     const suivi = await agent.get(`/api/creatives/requests/${requestId}`).expect(200);
     assert.equal(suivi.body.retentionDays, 1);
@@ -201,9 +200,8 @@ describe('Copie des vidéos Veo', () => {
   it('efface la copie à son échéance, et ne garde que la dernière version d’une vidéo longue', async () => {
     googleEfface = false;
     stockagePanne = false;
-    const { agent } = await signInWithPlan(app, 'veo-echeance@exemple.test', 'max');
-    const lance = await agent.post('/api/creatives/videos').send(BRIEF).expect(202);
-    const requestId = lance.body.requestId as string;
+    const { agent, userId } = await signInWithPlan(app, 'veo-echeance@exemple.test', 'max');
+    const requestId = await videoLancee(userId);
     await agent.get(`/api/creatives/requests/${requestId}`).expect(200);
     assert.ok(await attendreObjet(requestId), 'copiée');
 

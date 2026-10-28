@@ -21,23 +21,8 @@ export interface CoverView {
   updatedAt: string;
 }
 
-export interface CoverInput {
-  subject: 'guide' | 'product';
-  subjectId: string;
-  title: string;
-  subtitle?: string;
-  description?: string;
-  /** Technique d'une illustration (guides) ; sans objet pour la couverture complète d'un ebook. */
-  style?: 'illustration' | 'photo' | 'minimal';
-  /** Fiche de l'ouvrage : la scène de la couverture en est tirée. */
-  audience?: string;
-  promise?: string;
-  chapters?: string[];
-}
 
 /** Ce que l'écran sait de l'ouvrage au moment de demander sa couverture. */
-export type CoverBook = Pick<CoverInput, 'audience' | 'promise' | 'chapters'>;
-
 export interface CoverImage {
   bytes: Uint8Array;
   mimeType: string;
@@ -56,8 +41,6 @@ export const coversApi = {
     ),
   /** Les couvertures prêtes du compte pour un type de sujet, une par sujet. */
   mine: (subject: 'guide' | 'product') => apiRequest<{ covers: CoverView[] }>(`/api/covers/mine?subject=${subject}`).then((response) => response.covers),
-  create: (input: CoverInput) => apiRequest<{ cover: CoverView }>('/api/covers', { method: 'POST', body: input }).then((response) => response.cover),
-  refresh: (coverId: string) => apiRequest<{ cover: CoverView }>(`/api/covers/${coverId}`).then((response) => response.cover),
   remove: (coverId: string) => apiRequest<void>(`/api/covers/${coverId}`, { method: 'DELETE' }),
   imageUrl: (cover: Pick<CoverView, 'id' | 'updatedAt'>) => `/api/covers/${cover.id}/image?v=${encodeURIComponent(cover.updatedAt)}`,
   /** Image prête, lue pour être intégrée à un export (PDF, DOCX, HTML). */

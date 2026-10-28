@@ -29,7 +29,6 @@ const PREPAYE = {
   },
 };
 const SANS_FRANCHISE = refus('Quota exceeded for metric: generate_content_free_tier_requests, limit: 0');
-const IMAGE = { candidates: [{ content: { parts: [{ inlineData: { mimeType: 'image/png', data: 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==' } }] } }] };
 const MINUTE = refus('You exceeded your current quota, please check your plan and billing details.', 'GenerateRequestsPerMinutePerProjectPerModel', '10');
 
 let app: Express;
@@ -101,42 +100,6 @@ describe('Refus de Google', () => {
     assert.equal(lastGoogleRefusal()?.kind, 'billing', 'la cause est gardée pour l’état des services');
   });
 
-  it('essaie les modèles d’image suivants quand le premier n’a pas de franchise gratuite', async () => {
-    // Constaté en production le 04/10/2026 : le modèle principal refusait ainsi, et le site
-    // annonçait « images pas encore activées » sans essayer les modèles voisins.
-    reponses = { 'gemini-3-pro-image': { status: 429, body: SANS_FRANCHISE }, 'gemini-3.1-flash-image': { status: 200, body: IMAGE } };
-    const { generateGeminiImage } = await import('@server/services/ai/geminiImage');
-    const image = await generateGeminiImage({ prompt: 'Une couturière dans son atelier', aspectRatio: '1:1' });
-    assert.equal(image.model, 'gemini-3.1-flash-image');
-    assert.equal(appels.length, 2, 'le modèle refusé, puis le suivant');
-  });
-
-  it('ne conclut à la facturation que si tous les modèles d’image refusent faute de franchise', async () => {
-    reponses = Object.fromEntries(['gemini-3-pro-image', 'gemini-3.1-flash-image', 'gemini-2.5-flash-image'].map((m) => [m, { status: 429, body: SANS_FRANCHISE }]));
-    const { generateGeminiImage } = await import('@server/services/ai/geminiImage');
-    await assert.rejects(generateGeminiImage({ prompt: 'Une couturière', aspectRatio: '1:1' }), (error: { code?: string }) => error.code === 'GEMINI_IMAGE_BILLING_REQUIRED');
-    assert.equal(appels.length, 3, 'chaque modèle a eu sa chance');
-  });
-
-  it('n’essaie aucun autre modèle d’image quand le projet n’a plus de crédit', async () => {
-    reponses = { 'gemini-3-pro-image': { status: 429, body: CREDITS } };
-    const { generateGeminiImage } = await import('@server/services/ai/geminiImage');
-    await assert.rejects(generateGeminiImage({ prompt: 'Une couturière', aspectRatio: '1:1' }), (error: { code?: string }) => error.code === 'GEMINI_IMAGE_BILLING_REQUIRED');
-    assert.equal(appels.length, 1);
-  });
-
-  it('passe la vidéo au modèle lite quand le quota du modèle principal est atteint, et la suit au bon endroit', async () => {
-    reponses = { 'veo-3.1-fast-generate-preview': { status: 429, body: MINUTE } };
-    const { getVeoGeneration, submitVeoGeneration } = await import('@server/services/veo');
-    const lance = await submitVeoGeneration({ prompt: 'Une couturière dans son atelier', negativePrompt: '', aspectRatio: '9:16', durationSeconds: 8 });
-    assert.equal(lance.status, 'queued');
-    assert.deepEqual(appels, ['POST /v1beta/models/veo-3.1-fast-generate-preview:predictLongRunning', 'POST /v1beta/models/veo-3.1-lite-generate-preview:predictLongRunning']);
-
-    appels = [];
-    await getVeoGeneration(lance.requestId);
-    assert.deepEqual(appels, ['GET /v1beta/models/veo-3.1-lite-generate-preview/operations/opvideo42'], 'le suivi interroge le modèle qui a lancé le rendu');
-  });
-
   describe('crédits prépayés épuisés, dits par un 402 (réponse réelle de Google, 18/10/2026)', () => {
     it('le reconnaît comme un projet sans crédit', async () => {
       const { classifyGoogleRefusal } = await import('@server/services/ai/googleRefusal');
@@ -157,30 +120,10 @@ describe('Refus de Google', () => {
       assert.equal(lastGoogleRefusal()?.kind, 'billing');
     });
 
-    it('n’essaie pas les autres modèles d’image : le code obtenu fait passer au secours', async () => {
-      reponses = { 'gemini-3-pro-image': { status: 402, body: PREPAYE } };
-      const { generateGeminiImage } = await import('@server/services/ai/geminiImage');
-      await assert.rejects(generateGeminiImage({ prompt: 'Une couturière', aspectRatio: '1:1' }), (error: { code?: string; message?: string }) => {
-        // Le client lit un message neutre, ni « configuration » ni nom de fournisseur.
-        return error.code === 'GEMINI_IMAGE_BILLING_REQUIRED' && !/configuration|Google|Gemini/i.test(error.message ?? '');
-      });
-      assert.equal(appels.length, 1);
-    });
-
     it('arrête la voix sans essayer le second modèle', async () => {
       reponses = { 'gemini-3.8-flash-tts': { status: 402, body: PREPAYE } };
       const { synthesizeSpeech } = await import('@server/services/ai/geminiSpeech');
       await assert.rejects(synthesizeSpeech({ text: 'Bonjour.', voice: 'Kore' }), (error: { code?: string }) => error.code === 'GEMINI_SPEECH_BILLING_REQUIRED');
-      assert.equal(appels.length, 1);
-    });
-
-    it('arrête la vidéo sans changer de modèle', async () => {
-      reponses = { 'veo-3.1-fast-generate-preview': { status: 402, body: PREPAYE } };
-      const { submitVeoGeneration } = await import('@server/services/veo');
-      await assert.rejects(
-        submitVeoGeneration({ prompt: 'Une couturière', negativePrompt: '', aspectRatio: '16:9', durationSeconds: 8 }),
-        (error: { code?: string }) => error.code === 'VEO_BILLING_REQUIRED',
-      );
       assert.equal(appels.length, 1);
     });
 
@@ -200,15 +143,5 @@ describe('Refus de Google', () => {
       const vue = await agent.get('/api/admin/overview').expect(200);
       assert.equal(vue.body.attention.googleCredits, true, 'les clients lisent « l’administrateur en a été informé » : il doit l’être');
     });
-  });
-
-  it('ne change pas de modèle vidéo quand le projet n’a plus de crédit', async () => {
-    reponses = { 'veo-3.1-fast-generate-preview': { status: 429, body: CREDITS } };
-    const { submitVeoGeneration } = await import('@server/services/veo');
-    await assert.rejects(
-      submitVeoGeneration({ prompt: 'Une couturière', negativePrompt: '', aspectRatio: '16:9', durationSeconds: 8 }),
-      (error: { code?: string }) => error.code === 'VEO_BILLING_REQUIRED',
-    );
-    assert.equal(appels.length, 1);
   });
 });

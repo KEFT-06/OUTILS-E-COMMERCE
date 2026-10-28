@@ -1,7 +1,6 @@
 import { useEffect, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
 import { toast } from 'sonner';
-import { AlertTriangle, Clapperboard, Download, ExternalLink, Info, Plus, Rocket, Sparkles, Trash2, Wand2, X } from 'lucide-react';
+import { AlertTriangle, Download, ExternalLink, Info, Plus, Rocket, Sparkles, Trash2, Wand2, X } from 'lucide-react';
 import { useCreditGate } from '@/app/providers/CreditGateProvider';
 import { useAuth } from '@/features/auth/AuthContext';
 import { PageHeader } from '@/shared/components/PageHeader';
@@ -21,7 +20,6 @@ import { useCachedState } from '@/shared/lib/apiCache';
 import { type ApiError, readApiError, toApiError } from '@/shared/lib/apiError';
 import { ComplianceBlockedError } from '@/shared/lib/complianceGate';
 import { formatDateFr } from '@/shared/lib/formatDate';
-import { VIDEO_SCREEN, videoFromKit } from '@/modules/creatifs/videoStart';
 import { KitIncompleteError, OBJECTIVE_LABELS, exportLaunchKit, missingForKit } from '@/modules/kit-lancement/launchKit';
 import { countryName } from '@server/shared/countries';
 import { CountryCombobox } from '@/shared/components/CountryCombobox';
@@ -76,7 +74,6 @@ function wordCount(text: string): number {
 export function LaunchKitView({ products, market, report = null }: { products: DigitalProductIdea[]; market: string | null; report?: MarketAnalysisReport | null }) {
   const productDrafts = useProductDrafts();
   const kitDrafts = useLaunchKitDrafts();
-  const navigate = useNavigate();
   const { account } = useAuth();
 
   const [config, setConfig, keepConfig] = useCachedState<LaunchKitConfig>('/api/launch-kit/config');
@@ -481,21 +478,6 @@ export function LaunchKitView({ products, market, report = null }: { products: D
                 </div>
               );
             })}
-            {/* Le script écrit ici part dans le brief de la vidéo : produit, public, temps de la méthode. */}
-            <div className="flex flex-col gap-3 border-t pt-4 sm:flex-row sm:items-center sm:justify-between">
-              <p className="text-sm text-muted-foreground">Ce script peut devenir une vidéo : son brief s’ouvre déjà rempli.</p>
-              <Button
-                className="shrink-0"
-                onClick={() =>
-                  void navigate(VIDEO_SCREEN, {
-                    state: videoFromKit(product, { format, beats: draft.scripts[String(format.durationSeconds)], objective: draft.objective, market }),
-                  })
-                }
-              >
-                <Clapperboard />
-                Créer la vidéo de ce script
-              </Button>
-            </div>
           </CardContent>
         </Card>
       )}

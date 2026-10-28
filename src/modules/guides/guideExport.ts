@@ -1,6 +1,6 @@
 import { REVIEW_LEVELS, type GuideSection, type ReviewLevel } from '@server/shared/guides';
 import { findLanguage } from '@server/shared/languages';
-import { type Guide, coversApi } from '@/modules/multilingue/guidesApi';
+import { type Guide, coversApi } from '@/modules/guides/guidesApi';
 import { ComplianceBlockedError, checkSectionsCompliance } from '@/shared/lib/complianceGate';
 import { triggerDownload } from '@/shared/lib/download';
 import type { ComplianceSection } from '@/shared/types/compliance';

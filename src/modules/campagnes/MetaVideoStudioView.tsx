@@ -1,9 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
 import { toast } from 'sonner';
 import {
   CheckCircle2,
-  Clapperboard,
   Clock,
   Copy,
   ExternalLink,
@@ -19,7 +17,6 @@ import {
   VolumeX,
 } from 'lucide-react';
 import { Bar, BarChart, CartesianGrid, XAxis, YAxis } from 'recharts';
-import { VIDEO_SCREEN, videoFromScript } from '@/modules/creatifs/videoStart';
 import { cn } from '@/shared/lib/utils';
 import type { MetaAdCampaign } from '@/shared/types/analysis';
 import type { DataProvenance } from '@/shared/types/provenance';
@@ -34,9 +31,6 @@ interface MetaVideoStudioViewProps {
   campaigns: MetaAdCampaign[];
   /** Provenance des campagnes du rapport. */
   provenance?: DataProvenance;
-  /** Public et pays de l'analyse : ils partent dans le brief de la vidéo. */
-  audience?: string | null;
-  market?: string | null;
 }
 
 /**
@@ -62,8 +56,7 @@ function cancelSpeech() {
   if (typeof window !== 'undefined' && 'speechSynthesis' in window) window.speechSynthesis.cancel();
 }
 
-export function MetaVideoStudioView({ campaigns, provenance, audience, market }: MetaVideoStudioViewProps) {
-  const navigate = useNavigate();
+export function MetaVideoStudioView({ campaigns, provenance }: MetaVideoStudioViewProps) {
   const [selectedId, setSelectedId] = useState<string | undefined>(campaigns[0]?.id);
   const [activeSceneIndex, setActiveSceneIndex] = useState(0);
   const [isPlaying, setIsPlaying] = useState(false);
@@ -337,18 +330,6 @@ export function MetaVideoStudioView({ campaigns, provenance, audience, market }:
                 <Button variant="outline" size="sm" onClick={() => void copyAdText()}>
                   <Copy />
                   Copier le texte
-                </Button>
-                {/* Le brief, en haut de l'écran, se remplit avec ce script. */}
-                <Button
-                  size="sm"
-                  onClick={() => {
-                    cancelSpeech();
-                    setIsPlaying(false);
-                    void navigate(VIDEO_SCREEN, { state: videoFromScript(selectedCampaign, { audience, market }) });
-                  }}
-                >
-                  <Clapperboard />
-                  Créer cette vidéo
                 </Button>
               </CardAction>
             </CardHeader>

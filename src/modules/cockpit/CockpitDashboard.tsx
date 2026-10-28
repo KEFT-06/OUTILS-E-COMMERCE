@@ -35,9 +35,7 @@ interface CockpitDashboardProps {
 const SERVICE_LABELS: Record<string, string> = {
   text: 'Analyse et rédaction',
   webSearch: 'Recherche web des analyses',
-  image: 'Visuels et couvertures',
-  video: 'Vidéos',
-  storybook: 'Storybook illustré',
+  storybook: 'Storybook',
   payments: 'Paiements',
   email: 'E-mails du compte',
   googleAuth: 'Connexion avec Google',

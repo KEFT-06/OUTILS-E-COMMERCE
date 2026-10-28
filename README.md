@@ -2,8 +2,9 @@
 
 **Lire le marché, produire le bon produit digital, le vendre.** Smart Creator est un site pour les
 créateurs de produits digitaux (ebooks, templates, formations), d'abord en Afrique francophone :
-analyse de niche sourcée, studio de production assisté par IA, créatifs publicitaires, kit de
-lancement, pages de vente, guides multilingues et suivi des ventes.
+analyse de niche sourcée, studio de production assisté par IA, contes, kit de lancement, pages de
+vente et suivi des ventes. Depuis le 28/10/2026, le site ne génère plus ni images, ni vidéos, ni
+traductions (section 11).
 
 > **VOIR · CRÉER · VENDRE** — chaque chiffre affiché porte sa source.
 
@@ -21,7 +22,7 @@ Ce fichier est la seule documentation du projet.
 8. [Données personnelles](#8-données-personnelles)
 9. [Paliers, points et paiement](#9-paliers-points-et-paiement)
 10. [Analyse de niche](#10-analyse-de-niche)
-11. [Guides multilingues](#11-guides-multilingues)
+11. [Retrait des visuels, vidéos et guides](#11-retrait-des-visuels-vidéos-et-guides)
 12. [E-mails, contact, audience et référencement](#12-e-mails-contact-audience-et-référencement)
 13. [Charte graphique](#13-charte-graphique)
 14. [Tests et vérifications](#14-tests-et-vérifications)
@@ -92,19 +93,17 @@ ne passe par la ligne de commande. Se connecter, puis activer un second facteur 
 | Voir | Analyse stratégique | `/app/analyse` | Les 5 taux, la concurrence, les produits proposés, le plan d'action |
 | Voir | Dossier PDF | `/app/dossier-pdf` | Le rapport A4 à télécharger, après contrôle de conformité |
 | Créer | Studio de création | `/app/studio` | Produits issus d'une analyse, créés à la main, depuis un texte collé ou depuis une vidéo ; rédaction, couverture, parcours audio (lecture par module, MP3) ; export PDF/DOCX |
-| Créer | Créatifs publicitaires | `/app/creatifs` | Visuels (Cloudflare Workers AI) et vidéos (fal.ai, Veo en secours), 12 méthodes publicitaires |
-| Créer | Storybook illustré | `/app/storybook` | Contes illustrés ancrés dans un pays |
+| Créer | Storybook | `/app/storybook` | Contes ancrés dans un pays : écrits, relus et corrigés, téléchargés en PDF |
 | Créer | Pages produits | `/app/pages-produits` | Pages de vente en 7 sections, export HTML |
-| Créer | Guides multilingues | `/app/multilingue` | Traduction, relecture, export (section 11) |
-| Créer | Mes créations | `/app/creations` | Tout ce que le compte a produit : ouvrages, visuels, vidéos (avec leur échéance), contes |
+| Créer | Mes créations | `/app/creations` | Tout ce que le compte a produit : ouvrages, rapports, contes ; guides, visuels et vidéos créés avant le 28/10/2026 (vidéos avec leur échéance) |
 | Vendre | Kit de lancement | `/app/kit-lancement` | Textes, scripts vidéo et boutons par marché, rédigés par l'IA |
-| Vendre | Structures de campagnes | `/app/campagnes` | Modèles de campagnes Meta Ads et TikTok |
+| Vendre | Structures de campagnes | `/app/campagnes` | Modèles de campagnes Meta Ads et TikTok, puis les scripts vidéo de la niche, scène par scène |
 | Vendre | Distribution | `/app/distribution` | Catalogue et ventes de la boutique Chariow |
 | Vendre | Affiliation | `/app/affiliation` | Parrainage Smart Creator (20 % des paiements des filleuls), liens UTM, suivi et invitations d'affiliés Chariow |
 | — | Mon compte | `/app/compte` | Profil, sécurité, paiement, connexions, données personnelles |
 
 **Après une analyse, tout ce qui se remplit l'est d'avance** (`src/shared/lib/analysisDefaults.ts`) :
-mot-clé de l'espionnage, boutique à suivre au radar, brief des créatifs et du conte, chiffres des
+mot-clé de l'espionnage, boutique à suivre au radar, brief du conte, chiffres des
 campagnes, page produit, kit de lancement, nouveau produit du Studio, liens UTM, prochaine niche à
 analyser. Rien n'y est inventé : ce que l'analyse n'a pas établi reste vide (un lien de paiement,
 par exemple).
@@ -166,8 +165,9 @@ Outil/
     ├── features/              Pages hors espace de travail : landing, auth, account, admin,
     │                          contact, legal
     ├── modules/               Un dossier par module, nommé comme son adresse : cockpit, niches,
-    │                          analyse, studio (+ export/), creatifs, storybook, pages-produits,
-    │                          multilingue, kit-lancement, campagnes, distribution, affiliation
+    │                          analyse, studio (+ export/), storybook, pages-produits, guides
+    │                          (impression des guides existants), kit-lancement, campagnes,
+    │                          distribution, affiliation, creations
     ├── shared/
     │   ├── ui/                Briques d'interface shadcn/ui et Magic UI, sans logique métier
     │   ├── components/        Composants métier partagés (BrandLogo, RateBadge, PlanCards…)
@@ -201,13 +201,10 @@ l'étude reprend son suivi au lieu d'être repayée si le serveur redémarre.
 
 | Travail | Fournisseur d'abord | Secours |
 | --- | --- | --- |
-| Tout texte rédigé (produits, kit, rapport rédigé, conte, traductions, relectures) | Groq, `openai/gpt-oss-120b` (`server/services/ai/text.ts`) | Gemini, en dernier recours |
+| Tout texte rédigé (produits, kit, rapport rédigé, conte) | Groq, `openai/gpt-oss-120b` (`server/services/ai/text.ts`) | Gemini, en dernier recours |
 | Lecture d'une image (vision) | Groq, `qwen/qwen3.8-27b` | — |
 | Transcription d'une vidéo (Vidéo → Produit, fichier envoyé) | Groq, Whisper `whisper-large-v3-turbo` | — ; un lien YouTube passe par Gemini |
-| Visuels, couvertures | Cloudflare Workers AI, FLUX.2 klein 4B (direction artistique par Groq) | Gemini |
 | Lecture à voix haute (parcours audio) | Cloudflare Workers AI, MeloTTS (une voix française) | Gemini (quatre voix) |
-| Vidéos publicitaires | fal.ai, Gemini Omni Flash 1.1 | Veo (clé Gemini) |
-| Conte illustré | Illustration maison : images Gemini avec images de référence, pour garder le même personnage d'une page à l'autre (`server/services/storybook/illustrate.ts`) — **bloquée tant que le projet Google l'est** | Gamma |
 
 Depuis le 25/10/2026, le projet Google de la clé Gemini est refusé par Google (« Your project has
 been denied access ») : le site fonctionne sans lui, et ce qui en dépend encore (lien YouTube,
@@ -230,15 +227,15 @@ pas. Témoin rapide : `GET /api/health` (`providers`, sans aucune clé).
 
 | Service | Rôle | Variables | Sans clé |
 | --- | --- | --- | --- |
-| **Groq** | Toute la rédaction (gpt-oss-120b), la vision (Qwen 3.8), la transcription Whisper, la direction artistique des couvertures | `GROQ_API_KEY`, `GROQ_MODEL`, `GROQ_JSON_MODEL`, `GROQ_VISION_MODEL`, `GROQ_TRANSCRIPTION_MODEL` | Rédaction sur Gemini seul ; Vidéo → Produit par fichier fermé |
-| **Gemini** | Dernier recours de la rédaction ; lien YouTube de Vidéo → Produit ; illustrations des contes ; secours des images, de la voix et de la vidéo (Veo) | `GEMINI_API_KEY`, `GEMINI_MODEL`, `GEMINI_FALLBACK_MODEL`, `VEO_VIDEO_MODEL` | Ces secours disparaissent. **Projet refusé par Google depuis le 25/10/2026** |
+| **Groq** | Toute la rédaction (gpt-oss-120b), la vision (Qwen 3.8), la transcription Whisper | `GROQ_API_KEY`, `GROQ_MODEL`, `GROQ_JSON_MODEL`, `GROQ_VISION_MODEL`, `GROQ_TRANSCRIPTION_MODEL` | Rédaction sur Gemini seul ; Vidéo → Produit par fichier fermé |
+| **Gemini** | Dernier recours de la rédaction ; lien YouTube de Vidéo → Produit ; secours de la voix ; suivi des vidéos Veo créées avant le 28/10/2026 | `GEMINI_API_KEY`, `GEMINI_MODEL`, `GEMINI_FALLBACK_MODEL`, `VEO_VIDEO_MODEL` | Ces secours disparaissent. **Projet refusé par Google depuis le 25/10/2026** |
 | **Perplexity** | Étude de marché et rédaction du rapport d'analyse | `PERPLEXITY_API_KEY`, `PERPLEXITY_RESEARCH_PRESET` | L'analyse n'avance aucun fait de marché et le dit |
-| **Cloudflare Workers AI** | Visuels et couvertures (FLUX.2 klein 4B, environ 95 images gratuites par jour), voix française du parcours audio (MeloTTS) | `CLOUDFLARE_ACCOUNT_ID` (32 caractères hexadécimaux), `CLOUDFLARE_AI_TOKEN` (droits Workers AI en lecture **et** écriture), `CLOUDFLARE_IMAGE_MODEL`, `CLOUDFLARE_IMAGE_MODEL_FAST` | Images et voix sur Gemini |
-| **fal.ai** | Vidéos publicitaires (Gemini Omni Flash 1.1, 720p, son compris, 4/6/8 s) | `FAL_KEY` (portée « API », pas « ADMIN »), `FAL_VIDEO_MODEL` | Vidéos sur Veo. Compte prépayé : à sec, la vidéo se ferme à l'écran 20 minutes après chaque refus |
+| **Cloudflare Workers AI** | Voix française du parcours audio (MeloTTS) | `CLOUDFLARE_ACCOUNT_ID` (32 caractères hexadécimaux), `CLOUDFLARE_AI_TOKEN` (droits Workers AI en lecture **et** écriture) | Voix sur Gemini |
+| **fal.ai** | Suivi et téléchargement des vidéos créées avant le 28/10/2026 | `FAL_KEY`, `FAL_VIDEO_MODEL` | Ces vidéos ne se suivent plus ; à retirer une fois toutes expirées |
 | **Firecrawl** | Lecture des vitrines Chariow pour le radar (la plateforme refuse le serveur en direct) | `FIRECRAWL_API_KEY`, `RADAR_FIRECRAWL_DAILY_PAGES` (défaut 30 pages par jour) | Vitrines lues par le collecteur (`collecteur/vitrines.mjs`) seulement |
 | **Apify** | Découverte de boutiques et mur d'espionnage (section 16) | `APIFY_TOKEN` | Le collecteur maison prend le relais |
-| **Supabase Storage** | Copie des vidéos et des illustrations au-delà de ce que garde le fournisseur | `SUPABASE_URL`, `SUPABASE_API_SECRET_KEY`, `CREATIVES_BUCKET` | Une vidéo n'est téléchargeable que 2 jours |
-| **Gamma** | Secours des contes illustrés | `GAMMA_API_KEY` | Contes sur l'illustration maison seule |
+| **Supabase Storage** | Copies des vidéos et pages des contes illustrés créés avant le 28/10/2026, gardées la durée du palier | `SUPABASE_URL`, `SUPABASE_API_SECRET_KEY`, `CREATIVES_BUCKET` | Une vidéo n'est téléchargeable que 2 jours |
+| **Gamma** | PDF des contes illustrés chez Gamma avant le 28/10/2026 | `GAMMA_API_KEY` | Ces anciens PDF ne se téléchargent plus |
 | **Stripe** | Paiement des paliers par carte | `STRIPE_API_KEY` (clé secrète `sk_…`), `STRIPE_WEBHOOK_SECRET` | Paiement par carte masqué |
 | **SebPay** | Paiement par Mobile Money | `SEBPAY_PUBLIC_KEY`, `SEBPAY_SECRET_KEY` | Mobile Money masqué. **Ne jamais créer de collecte « live » depuis un poste** |
 | **Google** (OAuth) | « Continuer avec Google » | `GOOGLE_OAUTH_CLIENT_ID`, `GOOGLE_OAUTH_CLIENT_SECRET` | Bouton masqué |
@@ -255,33 +252,15 @@ minute), JSON structuré sur gpt-oss, réponses en une à trois secondes. Une de
 ou trop rapprochée (429) rend les points et un message clair ; Gemini n'est plus qu'un dernier
 recours.
 
-**Pourquoi les images sont parties chez Cloudflare.** Higgsfield se payait par abonnement mensuel,
-dont les crédits périmaient sans report : on payait les mois sans visuel, et on perdait ce qu'on
-n'avait pas consommé. Cloudflare facture à l'image, de l'ordre de 0,015 $. Conséquence technique :
-Higgsfield déposait le fichier sur son stockage et rendait un lien à relayer, qui expirait au bout
-de sept jours ; un modèle d'image rend des OCTETS, que le serveur garde lui-même (`creative_images`).
-Un visuel ne périme donc plus.
-
-**Deux formes de requête chez Cloudflare, sur la même route.** Mesuré sur l'API, absent de toute
-documentation : la famille FLUX.2 REFUSE un corps JSON (400, « required properties at '/' are
-'multipart' ») et n'accepte qu'un formulaire multipart ; Phoenix répond les octets du JPEG sans
-enveloppe JSON. `server/services/ai/cloudflareImage.ts` déduit l'encodage du nom du modèle et la
-lecture du type de contenu de la réponse — à relire avant de changer `CLOUDFLARE_IMAGE_MODEL`.
-
-**Pourquoi FLUX.2 klein 4B.** Environ 104 neurones par image d'un mégapixel contre 1 364 pour le
-9B : une centaine d'images par jour dans la franchise gratuite de Cloudflare (10 000 neurones)
-au lieu de sept, sous licence Apache 2.0 (le 9B interdit l'usage commercial). Plus lent (16 à 40 s
-contre 3 à 6 s). `CLOUDFLARE_IMAGE_MODEL=@cf/black-forest-labs/flux-2-klein-9b` remet le 9B.
-
 **Vérifié contre les vrais services.**
 
 | Service | Date | Ce qui a été constaté |
 | --- | --- | --- |
-| Cloudflare | 24/09 et 25/10/2026 | Les quatre formats d'image ; MeloTTS : 16,7 s d'audio français rendues en MP3 |
+| Cloudflare | 25/10/2026 | MeloTTS : 16,7 s d'audio français rendues en MP3 ; production branchée le 26/10/2026 |
 | Groq | 25/10/2026 | JSON, texte et vision en 1 à 3 s ; Whisper : 35 s de français transcrites en 2 s ; Vidéo → Produit en 3 s |
 | Firecrawl | 18/10/2026 | Vitrines Chariow lues, 0 refus sur 28 boutiques |
 | Chariow | — | Catalogue et ventes lus avec la clé administrateur |
-| fal.ai | 26/10/2026 | Clé acceptée, suivi sur la racine de l'application (le chemin complet rend 405) ; **aucun rendu : solde épuisé** |
+| fal.ai | 26/10/2026 | Clé acceptée, suivi sur la racine de l'application (le chemin complet rend 405) ; aucun rendu fait avant le retrait de la création de vidéos |
 | Gemini | 25/10/2026 | 403 « Your project has been denied access » sur tous les modèles |
 
 Non vérifié à l'oreille : la voix MeloTTS (Whisper l'a relue avec quelques mots déformés).
@@ -324,7 +303,7 @@ pas mesurer et la seule route qui dépense : **section 16**.
 Un **administrateur** a tous les accès. Un utilisateur peut recevoir des privilèges un par un :
 voir le tableau de bord, consulter les utilisateurs, gérer les utilisateurs, recharger des points,
 voir les revenus, enregistrer des paiements, voir les vidéos et visuels créés, voir la sécurité et le
-journal, relire des guides.
+journal.
 Changer un rôle et attribuer des privilèges ne se délèguent pas. Un membre de l'équipe n'agit ni sur
 un administrateur ni sur son propre compte. Tout privilège exige un second facteur actif et une
 session ouverte avec lui.
@@ -410,16 +389,15 @@ que seul l'éditeur peut fournir sont surlignés « À compléter ».
 Les paliers vivent dans `server/config/plans.json` et les coûts dans
 `server/config/credit-costs.json`, modifiables sans redéployer.
 
-| Palier | Prix mensuel provisoire | Points / mois | Niches | Méthodes pub | Boutiques suivies | Vidéos gardées |
-| --- | --- | --- | --- | --- | --- | --- |
-| Gratuit | 0 | 3 | 3 | 2 | 1 | 24 h |
-| Plus | 4 900 FCFA · 7,99 € | 20 | 15 | 4 | 3 | 24 h |
-| Pro | 9 900 FCFA · 14,99 € | 60 | 50 | 7 | 5 | 30 jours |
-| Max | 19 900 FCFA · 29,99 € | 150 | 150 | 10 | 20 | 90 jours |
-| Elite Enterprise | 49 900 FCFA · 74,99 € | illimités | illimitées | toutes | illimitées | 90 jours |
+| Palier | Prix mensuel provisoire | Points / mois | Niches | Boutiques suivies | Vidéos d'avant gardées |
+| --- | --- | --- | --- | --- | --- |
+| Gratuit | 0 | 3 | 3 | 1 | 24 h |
+| Plus | 4 900 FCFA · 7,99 € | 20 | 15 | 3 | 24 h |
+| Pro | 9 900 FCFA · 14,99 € | 60 | 50 | 5 | 30 jours |
+| Max | 19 900 FCFA · 29,99 € | 150 | 150 | 20 | 90 jours |
+| Elite Enterprise | 49 900 FCFA · 74,99 € | illimités | illimitées | illimitées | 90 jours |
 
-Fermé au palier Gratuit : vidéos, contes illustrés, relecture native et comparaison de marché ; au
-palier Plus : relecture native. Les paliers Pro et au-delà ouvrent tout.
+Fermé au palier Gratuit : contes et comparaison de marché. Les paliers Plus et au-delà ouvrent tout.
 
 Un an payé d'avance vaut 10 mois. Les autres devises sont converties depuis l'euro puis arrondies.
 Chaque utilisateur ne voit que la devise de son pays. Toutes les limites sont dans
@@ -435,16 +413,8 @@ Chaque utilisateur ne voit que la devise de son pays. Toutes les limites sont da
 | Produit créé depuis un texte collé | 1 |
 | Produit tiré d'une vidéo | 6 |
 | Kit de lancement | 3 |
-| Visuel publicitaire · couverture | 1 |
-| Vidéo publicitaire | 12 |
-| Prolongation d'une vidéo (7 s, Veo seulement) | 8 |
-| Étude de la vidéo d'une publicité | 2 |
 | Lecture audio d'un module | 1 |
 | Écriture d'un conte | 3 |
-| Conte illustré (écriture et mise en page) | 15 |
-| Illustration d'un conte déjà écrit | 12 |
-| Traduction d'un guide (par langue) | 2 |
-| Relecture native (par langue) | 10 |
 
 ### Paiement par Mobile Money (SebPay)
 
@@ -507,21 +477,26 @@ affiche un bandeau tant que la clé est une clé de test.
 
 ---
 
-## 11. Guides multilingues
+## 11. Retrait des visuels, vidéos et guides
 
-Un guide s'écrit une fois (texte découpé par titres `#`, ou produit du Studio), puis se traduit
-langue par langue parmi 30 langues, dont plusieurs langues africaines.
+Décision du propriétaire, 28/10/2026 : le site ne génère plus ni images, ni vidéos, ni traductions.
+Sont retirés le module *Créatifs publicitaires* (visuels, vidéos, prolongation, étude de la vidéo
+d'une publicité), la génération de couvertures, l'illustration des contes, et le module *Guides
+multilingues* (traduction, relecture par l'auteur, réseau de relecteurs natifs et son privilège).
+Leurs routes de création n'existent plus côté serveur, leurs points ne figurent plus dans la grille.
 
-| Niveau | Ce qui est fait | Qui |
-| --- | --- | --- |
-| C | Traduction automatique, puis contrôles : section manquante, titres, chiffres et prix, liens, noms à garder | La rédaction (Groq), puis le serveur |
-| B | Relecture côte à côte avec l'original, corrections, validation | L'auteur |
-| A | Relecture native : tournures, ton, références culturelles | Un relecteur du réseau |
+**Ce qui a été créé avant reste à son auteur**, dans *Mes créations* :
 
-Les relecteurs (privilège *Relire des guides*) déclarent leurs langues, voient les demandes sans leur
-texte, découvrent le texte en prenant une demande et n'y ont plus accès après l'avoir rendue. Exports :
-PDF par l'impression du navigateur (toutes écritures, arabe de droite à gauche compris), Word et
-HTML. La couverture, générée sans texte par Cloudflare Workers AI, est recopiée en base dès qu'elle est prête.
+| Création d'avant | Ce qui reste |
+| --- | --- |
+| Visuels | Listés et téléchargeables, sans échéance (en base) |
+| Vidéos | Listées, téléchargeables jusqu'à l'échéance de leur palier (copie Supabase au-delà des 2 jours du fournisseur) ; une vidéo encore en rendu va au bout, un échec rend ses points |
+| Couvertures d'ouvrages | Toujours affichées et posées dans les exports PDF/DOCX ; un ouvrage sans couverture générée prend la couverture de mise en page (titre, sous-titre) |
+| Contes illustrés | PDF téléchargeable ; un conte encore en cours d'illustration est clos et ses points rendus |
+| Guides | Chaque version (originale et traductions) s'imprime en PDF (`/imprimer/guide/:id/:langue`) |
+
+Les anciennes adresses `/app/creatifs` et `/app/multilingue/…` mènent à *Mes créations*. Les
+scripts vidéo de la niche (du texte) sont passés dans *Structures de campagnes*.
 
 ---
 
@@ -603,8 +578,9 @@ vérification automatique chez GitHub.
 Environ 580 tests dans 101 fichiers (`server/tests/*.test.ts`, `src/**/*.test.ts`) couvrent
 l'authentification (TOTP RFC 6238, verrous, énumération, liens), les privilèges, les paliers et prix
 par pays, la facturation et le remboursement des générations, Stripe et SebPay, l'analyse de niche,
-la rédaction (Groq, Gemini), Vidéo → Produit, les images et la voix Cloudflare, les vidéos (fal.ai,
-Veo, copie archivée), le radar, l'espionnage, les alertes, les guides multilingues, les e-mails,
+la rédaction (Groq, Gemini), Vidéo → Produit, la voix Cloudflare, les créations d'avant le retrait
+(visuels, vidéos et leur copie archivée, contes), le conte écrit, le radar, l'espionnage, les
+alertes, les e-mails,
 l'audience, les données personnelles, le référencement et le préremplissage après une analyse.
 
 **Aucun test n'appelle un vrai fournisseur ni la vraie base.** `server/tests/support/helpers.ts`
@@ -764,8 +740,7 @@ le nombre de lignes servies.
 | Élément | Où |
 | --- | --- |
 | Identité de l'éditeur, hébergeurs, durée de conservation comptable, rétractation et remboursement, droit applicable | Pages légales (`À compléter`) |
-| Recharger le compte fal.ai (solde épuisé le 26/10/2026 : aucune vidéo ne part) | fal.ai/dashboard/billing |
-| Projet Google refusé (« denied access ») : Veo, lien YouTube, illustrations des contes, secours | Console Google Cloud, ou faire sans |
+| Projet Google refusé (« denied access ») : lien YouTube de Vidéo → Produit, secours de la rédaction et de la voix | Console Google Cloud, ou faire sans |
 | Offre Vercel *Pro* avant d'encaisser pour de vrai (l'offre *Hobby* exclut l'usage commercial) | Vercel |
 | Service d'e-mails et domaine vérifié | Variables chez Vercel |
 | `STRIPE_WEBHOOK_SECRET` et activation du compte Stripe pour les paiements réels (profil d'entreprise, puis clé `sk_live_…`) ; paiements Stripe encore en clé de test | Tableau de bord Stripe |

@@ -65,7 +65,7 @@ describe('Inscription et session', () => {
     assert.equal(forbidden.body.error.code, 'FORBIDDEN');
 
     await request(app).get('/api/marketplaces').expect(401);
-    await request(app).post('/api/creatives/visuals').send({}).expect(401);
+    await request(app).post('/api/storybook/stories').send({}).expect(401);
   });
 });
 

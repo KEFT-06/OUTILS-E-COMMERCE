@@ -166,8 +166,7 @@ function Confidentialite() {
           Les administrateurs de Smart Creator voient les informations de compte, les paiements et l’historique des
           connexions, pour l’assistance et la sécurité. Ils peuvent aussi ouvrir les vidéos et visuels générés, pour
           l’assistance et le contrôle du respect des conditions d’utilisation. Chacune de leurs actions, dont chaque
-          ouverture d’une vidéo ou d’un visuel, est inscrite dans un journal qu’ils ne peuvent pas effacer. Quand vous demandez la relecture d’une traduction, le relecteur désigné voit le guide
-          concerné.
+          ouverture d’une vidéo ou d’un visuel, est inscrite dans un journal qu’ils ne peuvent pas effacer.
         </p>
       </Section>
 
@@ -178,10 +177,10 @@ function Confidentialite() {
           navigateur.
         </p>
         <ul className="list-disc space-y-1.5 pl-5">
-          <li>Prestataires de rédaction et de traduction par intelligence artificielle : la niche et le marché d’une analyse avec l’étude et les sources trouvées, les textes à rédiger ou à traduire, le brief d’un storybook, la fiche d’un ouvrage (titre, public visé, promesse, titres des chapitres) et la description de sa couverture, la vidéo ou le lien YouTube d’un produit créé à partir d’une vidéo ;</li>
+          <li>Prestataires de rédaction par intelligence artificielle : la niche et le marché d’une analyse avec l’étude et les sources trouvées, les textes à rédiger, le brief d’un storybook, la fiche d’un ouvrage (titre, public visé, promesse, titres des chapitres), la vidéo ou le lien YouTube d’un produit créé à partir d’une vidéo ;</li>
+          <li>Prestataire de lecture à voix haute : le texte d’un module que vous faites lire pour le parcours audio ;</li>
           <li>Prestataire de recherche sur le web : la niche et le marché d’une analyse, sans aucune donnée de compte ;</li>
-          <li>Prestataire de création de visuels et de vidéos : le brief d’un visuel ou d’une vidéo ;</li>
-          <li>Prestataire de mise en page illustrée : le texte d’un storybook et la description de ses illustrations ;</li>
+          <li>Prestataire de mise en page illustrée : il conserve les contes illustrés créés avant le 28 octobre 2026 (leur texte et leurs illustrations), que vous téléchargez encore ;</li>
           <li>
             Chariow : avec votre propre clé, la consultation de votre catalogue, de vos ventes et de vos affiliés, et les
             adresses e-mail que vous saisissez pour inviter des affiliés — Chariow leur envoie alors un e-mail ;
@@ -276,7 +275,7 @@ function Conditions() {
       <Section title="Objet">
         <p>
           Smart Creator aide à lire un marché, à produire des produits digitaux et à les vendre : analyses de niche,
-          studio de produits, kits de lancement, pages produits, campagnes et guides multilingues. Ces conditions
+          studio de produits, kits de lancement, pages produits, campagnes et contes. Ces conditions
           s’appliquent dès la création d’un compte.
         </p>
       </Section>
@@ -312,17 +311,15 @@ function Conditions() {
       </Section>
       <Section title="Contenus générés">
         <p>
-          Les textes, visuels et vidéos sont produits par des modèles d’intelligence artificielle qui peuvent se tromper.
-          Relisez tout contenu avant de le diffuser ; vous restez responsable de ce que vous publiez. Les contes du
-          storybook ne passent pas par le vérificateur de conformité, et la cohérence d’un personnage d’une page à l’autre
-          n’est pas garantie.
+          Les textes sont produits par des modèles d’intelligence artificielle qui peuvent se tromper. Relisez tout
+          contenu avant de le diffuser ; vous restez responsable de ce que vous publiez.
         </p>
       </Section>
       <Section title="Conformité publicitaire">
         <p>
-          Le vérificateur de conformité signale les formulations à risque avant l’export d’une fiche produit, d’un guide,
-          d’une page de vente, d’un kit de lancement ou d’un dossier PDF ; ses règles sont rédigées en français, et les
-          visuels et vidéos n’y passent pas. Il ne remplace ni la
+          Le vérificateur de conformité signale les formulations à risque avant l’export d’une fiche produit, d’une page
+          de vente, d’un kit de lancement, d’un conte ou d’un dossier PDF ; ses règles sont rédigées en français. Il ne
+          remplace ni la
           modération des plateformes publicitaires, qui garde la décision finale, ni un avis juridique.
         </p>
       </Section>

@@ -19,6 +19,9 @@ import { providers } from '@server/env';
 
 export type TextService = GeminiService;
 
+/** Un rédacteur est-il branché ? Groq, ou Gemini en dernier recours. */
+export const textConfigured = (): boolean => groqConfigured() || providers.gemini;
+
 /** Convertit un schéma style Gemini (OBJECT, STRING…) en JSON Schema pour Groq. */
 export function toJsonSchema(schema: Record<string, unknown>): Record<string, unknown> {
   const typeMap: Record<string, string> = {

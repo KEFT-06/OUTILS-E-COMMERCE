@@ -3,7 +3,7 @@ import { useLocation, useNavigate } from 'react-router-dom';
 import { toast } from 'sonner';
 import {
   BookOpen,
-  Clapperboard,
+  Rocket,
   ClipboardPaste,
   Clock,
   ExternalLink,
@@ -65,7 +65,8 @@ import { useScreenMemory } from '@/shared/lib/apiCache';
 interface DigitalProductsViewProps {
   /** Rapport de la niche active : ses produits, sa provenance et ses sources. null : aucun rapport. */
   report: MarketAnalysisReport | null;
-  onSelectProductForAd: (product: DigitalProductIdea) => void;
+  /** Suite du parcours : le kit de lancement. */
+  onPrepareLaunch: () => void;
   onAnalyzeNiche: () => void;
 }
 
@@ -86,7 +87,7 @@ function originLabel(product: DigitalProductIdea): string | null {
   return null;
 }
 
-export function DigitalProductsView({ report, onSelectProductForAd, onAnalyzeNiche }: DigitalProductsViewProps) {
+export function DigitalProductsView({ report, onPrepareLaunch, onAnalyzeNiche }: DigitalProductsViewProps) {
   const { pricing, isLoading: isPricingLoading, error: pricingError } = usePricing();
   const money = useMoney();
   const drafts = useProductDrafts();
@@ -317,9 +318,9 @@ export function DigitalProductsView({ report, onSelectProductForAd, onAnalyzeNic
         actions={
           <div className="flex flex-wrap gap-2">
             {createActions}
-            <Button onClick={() => onSelectProductForAd(selectedProduct)}>
-              <Clapperboard />
-              Préparer les créatifs
+            <Button onClick={onPrepareLaunch}>
+              <Rocket />
+              Préparer le lancement
             </Button>
           </div>
         }

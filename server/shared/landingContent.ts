@@ -28,12 +28,11 @@ export const LANDING_GROUPS = [
   {
     id: 'creer',
     title: 'Créer',
-    pitch: 'Structurer le produit, ses visuels, ses scripts et sa page de vente.',
+    pitch: 'Structurer le produit, rédiger son contenu et sa page de vente.',
     features: [
-      'Studio de création : ebooks, modèles, formations et offres groupées',
-      'Créatifs publicitaires : visuels et vidéos aux formats des réseaux sociaux',
-      'Storybook illustré : contes pour enfants avec le même personnage à chaque page',
-      'Pages produits et guides multilingues',
+      'Studio de création : ebooks, modèles, formations et offres groupées, avec leur parcours audio',
+      'Storybook : contes pour enfants ancrés dans le pays de vos lecteurs, en PDF',
+      'Pages produits de vente en sept sections',
     ],
   },
   {
@@ -51,7 +50,7 @@ export const LANDING_COMMITMENTS = [
   },
   {
     title: 'La conformité a un droit de veto',
-    body: 'Promesses de gains chiffrées, avant/après trompeurs, témoignages non étayés : repérés avec une reformulation proposée. Fiche produit, guide, page de vente, kit de lancement et dossier PDF ne se téléchargent pas sans ce contrôle.',
+    body: 'Promesses de gains chiffrées, avant/après trompeurs, témoignages non étayés : repérés avec une reformulation proposée. Fiche produit, page de vente, kit de lancement et dossier PDF ne se téléchargent pas sans ce contrôle.',
   },
   {
     title: 'Le coût est annoncé avant',

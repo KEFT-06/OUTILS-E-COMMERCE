@@ -1,6 +1,5 @@
 import { env } from '@server/env';
 import { AppError, providerUnavailable } from '@server/middleware';
-import { cloudflareImagesConfigured } from '@server/services/ai/cloudflareImage';
 import { SPEECH_SAMPLE_RATE, type SpokenAudio, secondsOf } from '@server/services/ai/geminiSpeech';
 
 /**
@@ -20,7 +19,8 @@ import { SPEECH_SAMPLE_RATE, type SpokenAudio, secondsOf } from '@server/service
 const MODEL = '@cf/myshell-ai/melotts';
 const GAP = Buffer.alloc(Math.round(SPEECH_SAMPLE_RATE * 0.6) * 2);
 
-export const cloudflareSpeechConfigured = (): boolean => cloudflareImagesConfigured();
+/** Compte et jeton Workers AI : depuis le retrait des images (28/10/2026), Cloudflare ne sert plus qu'à la voix. */
+export const cloudflareSpeechConfigured = (): boolean => Boolean(env.CLOUDFLARE_ACCOUNT_ID && env.CLOUDFLARE_AI_TOKEN);
 
 /** Le PCM 16 bits mono d'un fichier WAV, et sa fréquence. Lève si le fichier n'en est pas un. */
 export function pcmOfWav(wav: Buffer): { pcm: Buffer; sampleRate: number } {

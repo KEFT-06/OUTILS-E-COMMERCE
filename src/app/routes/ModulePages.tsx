@@ -1,12 +1,10 @@
-import { lazy, Suspense, useMemo, useState, type ReactNode } from 'react';
+import { lazy, Suspense, type ReactNode } from 'react';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { Compass, PenSquare, Sparkles } from 'lucide-react';
 import { ACCOUNT_PATH, pathOf, type ModuleId } from '@/app/navigation';
 import { useWorkspace } from '@/app/providers/WorkspaceProvider';
 import { AccountView } from '@/features/account/AccountView';
 import { AnalysisProgress } from '@/modules/analyse/AnalysisProgress';
-import { videoFromScript } from '@/modules/creatifs/videoStart';
-import { scriptFor } from '@/shared/lib/analysisDefaults';
 import { PageHeader } from '@/shared/components/PageHeader';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/shared/ui/tabs';
 import { useCustomProducts } from '@/shared/stores/useCustomProducts';
@@ -49,17 +47,8 @@ const StrategicAnalysisView = lazy(() =>
 const DigitalProductsView = lazy(() =>
   import('@/modules/studio/DigitalProductsView').then((module) => ({ default: module.DigitalProductsView })),
 );
-const CreativeGeneratorPanel = lazy(() =>
-  import('@/modules/creatifs/CreativeGeneratorPanel').then((module) => ({ default: module.CreativeGeneratorPanel })),
-);
-const MyVisualsPanel = lazy(() =>
-  import('@/modules/creatifs/MyVisualsPanel').then((module) => ({ default: module.MyVisualsPanel })),
-);
-const MyVideosPanel = lazy(() =>
-  import('@/modules/creatifs/MyVideosPanel').then((module) => ({ default: module.MyVideosPanel })),
-);
 const MetaVideoStudioView = lazy(() =>
-  import('@/modules/creatifs/MetaVideoStudioView').then((module) => ({ default: module.MetaVideoStudioView })),
+  import('@/modules/campagnes/MetaVideoStudioView').then((module) => ({ default: module.MetaVideoStudioView })),
 );
 const LaunchKitView = lazy(() =>
   import('@/modules/kit-lancement/LaunchKitView').then((module) => ({ default: module.LaunchKitView })),
@@ -81,18 +70,6 @@ const CampaignBlueprintsView = lazy(() =>
 );
 const CreationsView = lazy(() => import('@/modules/creations/CreationsView').then((module) => ({ default: module.CreationsView })));
 const ReferralPanel = lazy(() => import('@/modules/affiliation/ReferralPanel').then((module) => ({ default: module.ReferralPanel })));
-const MultilingualGuidesView = lazy(() =>
-  import('@/modules/multilingue/MultilingualGuidesView').then((module) => ({ default: module.MultilingualGuidesView })),
-);
-const GuideWorkspaceView = lazy(() =>
-  import('@/modules/multilingue/GuideWorkspaceView').then((module) => ({ default: module.GuideWorkspaceView })),
-);
-const TranslationEditorView = lazy(() =>
-  import('@/modules/multilingue/TranslationEditorView').then((module) => ({ default: module.TranslationEditorView })),
-);
-const ReviewEditorView = lazy(() =>
-  import('@/modules/multilingue/ReviewEditorView').then((module) => ({ default: module.ReviewEditorView })),
-);
 
 function useGoTo() {
   const navigate = useNavigate();
@@ -263,7 +240,7 @@ export function AnalysePage() {
             <StrategicAnalysisView
               report={report}
               onNavigateToProducts={() => goTo('studio')}
-              onNavigateToMetaAds={() => goTo('creatifs')}
+              onNavigateToLaunch={() => goTo('kit-lancement')}
               onDelete={() => deleteReport(report.id)}
             />
           </div>
@@ -288,47 +265,9 @@ export function StudioPage() {
   return (
     <DigitalProductsView
       report={currentReport}
-      onSelectProductForAd={() => goTo('creatifs')}
+      onPrepareLaunch={() => goTo('kit-lancement')}
       onAnalyzeNiche={() => setAnalysisDialogOpen(true)}
     />
-  );
-}
-
-export function CreatifsPage() {
-  const { currentReport, isLoadingReport } = useWorkspace();
-  // Le brief que l'analyse ouverte permet de proposer : son premier script, avec son public et son pays.
-  const suggestion = useMemo(() => {
-    const script = scriptFor(currentReport);
-    return script ? videoFromScript(script, { audience: currentReport?.audience?.profile, market: currentReport?.market }).produit : null;
-  }, [currentReport]);
-  const [visualsVersion, setVisualsVersion] = useState(0);
-  const [videosVersion, setVideosVersion] = useState(0);
-  return (
-    <div className="space-y-8">
-      <PageHeader
-        eyebrow="Créer"
-        title="Créatifs publicitaires"
-        description="Générez une vidéo ou un visuel publicitaire structuré par une méthode (AIDA, PAS…), la couverture de votre livre, puis travaillez les scripts vidéo de la niche analysée."
-      />
-      <CreativeGeneratorPanel
-        onVisualCreated={() => setVisualsVersion((version) => version + 1)}
-        onVideoChanged={() => setVideosVersion((version) => version + 1)}
-        suggestion={suggestion}
-      />
-      <MyVideosPanel version={videosVersion} />
-      <MyVisualsPanel version={visualsVersion} />
-      {/* L'analyse n'est pas encore à l'écran : on ne dit pas qu'aucune niche n'a de campagne. */}
-      {isLoadingReport && !currentReport ? (
-        <Skeleton className="h-48 rounded-xl" />
-      ) : (
-        <MetaVideoStudioView
-          campaigns={currentReport?.adCampaigns ?? []}
-          provenance={currentReport?.dataProvenance?.adCampaigns}
-          audience={currentReport?.audience?.profile}
-          market={currentReport?.market}
-        />
-      )}
-    </div>
   );
 }
 
@@ -356,8 +295,27 @@ export function KitLancementPage() {
   );
 }
 
+/**
+ * Structures de campagnes, puis les scripts vidéo de la niche analysée, scène par scène. Les scripts
+ * vivaient dans « Créatifs publicitaires », retiré le 28/10/2026 avec la génération d'images et de
+ * vidéos : ce sont des textes, ils restent, à côté des campagnes qu'ils servent.
+ */
 export function CampagnesPage() {
-  return <CampaignBlueprintsView />;
+  const { currentReport, isLoadingReport } = useWorkspace();
+  return (
+    <div className="space-y-8">
+      <CampaignBlueprintsView />
+      {/* L'analyse n'est pas encore à l'écran : on ne dit pas qu'aucune niche n'a de campagne. */}
+      {isLoadingReport && !currentReport ? (
+        <Skeleton className="h-48 rounded-xl" />
+      ) : (
+        <MetaVideoStudioView
+          campaigns={currentReport?.adCampaigns ?? []}
+          provenance={currentReport?.dataProvenance?.adCampaigns}
+        />
+      )}
+    </div>
+  );
 }
 
 export function DistributionPage() {
@@ -403,24 +361,8 @@ export function AffiliationPage() {
   );
 }
 
-export function MultilinguePage() {
-  return <MultilingualGuidesView />;
-}
-
 export function CreationsPage() {
   return <CreationsView />;
-}
-
-export function GuidePage() {
-  return <GuideWorkspaceView />;
-}
-
-export function GuideTranslationPage() {
-  return <TranslationEditorView />;
-}
-
-export function GuideReviewPage() {
-  return <ReviewEditorView />;
 }
 
 export function AccountPage() {

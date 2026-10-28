@@ -1,17 +1,14 @@
 import { and, desc, eq, inArray, sql } from 'drizzle-orm';
 import { databaseKind, getDb } from '@server/db/client';
-import { adSearches, alerts, auditLogs, generations, spiedAds, storybooks, watches } from '@server/db/schema';
+import { adSearches, alerts, auditLogs, generations, spiedAds, watches } from '@server/db/schema';
 import { alertWatch } from '@server/services/alerts';
 import { MARKET_RUN_AUDIT_ACTION } from '@server/services/market';
 import { env, ignoredSettings, isProd, isServerless, providers } from '@server/env';
 import { lastGroqOutcome } from '@server/services/ai/groq';
 import { sebpayMode } from '@server/services/billing/sebpay';
 import { classifyGoogleRefusal, lastGoogleRefusal, recordGoogleRefusal } from '@server/services/ai/googleRefusal';
-import { lastImageOutcome } from '@server/services/ai/image';
+import { cloudflareSpeechConfigured } from '@server/services/ai/cloudflareSpeech';
 import { videoArchiveConfigured } from '@server/services/creatives/archive';
-import { falAppOf, falConfigured, falOutOfCreditSince } from '@server/services/fal';
-import { veoConfigured } from '@server/services/veo';
-import { ownIllustrationAvailable } from '@server/services/storybook/illustrate';
 import { firecrawlPagesToday } from '@server/services/radar/sources/firecrawl';
 
 /**
@@ -170,22 +167,22 @@ async function checkDatabase(): Promise<ServiceCheck> {
  * par le serveur.
  */
 function checkGroq(): ServiceCheck {
-  const base = { id: 'groq', name: 'Groq (direction artistique)', role: 'Écrit, d’après la fiche de l’ouvrage, la scène et les consignes que FLUX peint en couverture' };
+  const base = { id: 'groq', name: 'Groq (rédaction)', role: 'Rédige produits, kits, contes et rapports ; lit les images et transcrit les vidéos' };
   if (!providers.groq)
     return {
       ...base,
-      state: 'off',
-      detail: 'Aucune clé : les couvertures se font avec la consigne composée par le serveur.',
+      state: providers.gemini ? 'warning' : 'error',
+      detail: providers.gemini ? 'Aucune clé : la rédaction passe par Gemini seul.' : 'Aucune clé : la rédaction est fermée.',
       action: 'Créer une clé sur console.groq.com et la mettre dans GROQ_API_KEY.',
     };
   const last = lastGroqOutcome();
-  if (!last) return { ...base, state: 'ok', detail: `Clé présente · modèle ${env.GROQ_MODEL}. Aucune couverture demandée depuis le démarrage.`, action: null };
+  if (!last) return { ...base, state: 'ok', detail: `Clé présente · modèle ${env.GROQ_MODEL}. Aucune rédaction demandée depuis le démarrage.`, action: null };
   const quand = new Date(last.at).toLocaleString('fr-FR', { timeZone: env.REPORTING_TIMEZONE });
-  if (last.ok) return { ...base, state: 'ok', detail: `Modèle ${env.GROQ_MODEL} · dernière scène écrite le ${quand}.`, action: null };
+  if (last.ok) return { ...base, state: 'ok', detail: `Modèle ${env.GROQ_MODEL} · dernière réponse le ${quand}.`, action: null };
   return {
     ...base,
     state: 'warning',
-    detail: `Dernière demande sans réponse utilisable (${last.code}) le ${quand} : la couverture a été faite avec la consigne composée par le serveur.`,
+    detail: `Dernière demande sans réponse utilisable (${last.code}) le ${quand}${providers.gemini ? ' : Gemini a pris le relais.' : '.'}`,
     action:
       last.code === 'AUTH'
         ? 'Clé refusée : vérifier GROQ_API_KEY et le crédit du compte sur console.groq.com.'
@@ -223,11 +220,8 @@ async function checkGemini(): Promise<ServiceCheck> {
       return {
         ...base,
         state: 'error',
-        detail: `Clé acceptée, mais Google refuse toute génération : crédits prépayés épuisés (ou facturation absente) sur le projet de la clé. Rédaction, contes, voix et vidéos sont à l’arrêt ; ${
-          providers.cloudflareImages
-            ? 'les visuels publicitaires et les couvertures passent par Cloudflare, sans le titre lettré.'
-            : 'les images aussi, faute d’un second moteur (Cloudflare non configuré).'
-        }`,
+        detail:
+          'Clé acceptée, mais Google refuse toute génération : crédits prépayés épuisés (ou facturation absente) sur le projet de la clé. Ce qui en dépend est à l’arrêt : dernier recours de la rédaction, lien YouTube de Vidéo → Produit.',
         action: 'Recharger les crédits prépayés du projet de la clé : ai.studio/projects → Billing. Rien à redéployer : le site reprend dès que Google accepte.',
       };
     }
@@ -269,89 +263,26 @@ async function checkGemini(): Promise<ServiceCheck> {
 }
 
 /**
- * Couvertures : Cloudflare Workers AI en principal, Gemini en secours. L'état rapporté est celui
- * du fournisseur qui travaille réellement, et la ligne dit toujours lequel c'est — sans quoi une
- * facture Gemini inattendue resterait inexplicable.
+ * Voix française du parcours audio : MeloTTS chez Cloudflare Workers AI, seul usage restant de
+ * Cloudflare depuis le retrait de la génération d'images (28/10/2026). Le jeton est éprouvé par une
+ * lecture gratuite du catalogue des modèles : 401 ou 403, il est refusé.
  */
-function checkImages(): ServiceCheck {
-  const base = { id: 'images', name: 'Génération d’images', role: 'Couvertures des guides et des ebooks' };
-  const billing =
-    'Recharger les crédits prépayés du projet Google de la clé, ou y activer la facturation (ai.studio/projects → Billing) : l’offre gratuite n’autorise aucune image.';
-
-  if (!providers.cloudflareImages && !providers.gemini)
-    return {
-      ...base,
-      state: 'off',
-      detail: 'Aucun fournisseur d’images.',
-      action: 'Renseigner CLOUDFLARE_ACCOUNT_ID et CLOUDFLARE_AI_TOKEN, ou à défaut GEMINI_API_KEY.',
-    };
-
-  const { cloudflare, gemini } = lastImageOutcome();
-  const secours = providers.gemini ? 'Gemini prend le relais si la réserve du jour est vide.' : 'Aucun secours : sans clé Gemini, la réserve épuisée refuse les couvertures.';
-
-  if (providers.cloudflareImages) {
-    const horodate = (at: string) => new Date(at).toLocaleString('fr-FR', { timeZone: env.REPORTING_TIMEZONE });
-    // Configuré n'est pas éprouvé : un jeton sans le droit d'écriture ne se révèle qu'à la
-    // première image. On le dit, plutôt que d'afficher un vert qui ne repose sur rien.
-    if (!cloudflare)
-      return {
-        ...base,
-        state: 'warning',
-        detail: `Cloudflare ${env.CLOUDFLARE_IMAGE_MODEL} · aucune image demandée depuis le démarrage. ${secours}`,
-        action: 'Créer une couverture pour éprouver le jeton.',
-      };
-    if (cloudflare.ok)
-      return {
-        ...base,
-        state: 'ok',
-        detail: `Cloudflare ${env.CLOUDFLARE_IMAGE_MODEL} · dernière image produite le ${horodate(cloudflare.at)}${cloudflare.neurons ? ` (${Math.round(cloudflare.neurons)} neurones)` : ''}.`,
-        action: null,
-      };
-    if (cloudflare.code === 'CF_IMAGE_QUOTA_EXHAUSTED')
-      return {
-        ...base,
-        state: 'warning',
-        detail: `Réserve Cloudflare du jour épuisée depuis le ${horodate(cloudflare.at)}. ${secours}`,
-        action: 'Passer le compte Cloudflare en offre Workers Paid (5 $/mois) pour facturer au-delà au lieu de refuser.',
-      };
-    if (cloudflare.code === 'CF_IMAGE_ACCESS_DENIED')
-      return {
-        ...base,
-        state: 'error',
-        detail: 'Cloudflare refuse le jeton du serveur.',
-        action: 'Recréer le jeton avec les droits « Workers AI » en lecture ET en écriture, puis mettre à jour CLOUDFLARE_AI_TOKEN.',
-      };
+async function checkVoice(): Promise<ServiceCheck> {
+  const base = { id: 'voice', name: 'Voix française', role: 'Lecture à voix haute du parcours audio' };
+  if (!cloudflareSpeechConfigured())
     return {
       ...base,
       state: 'warning',
-      detail: `Dernière tentative Cloudflare refusée (${cloudflare.code}) le ${horodate(cloudflare.at)}. ${secours}`,
-      action: 'Réessayer une couverture ; si le refus persiste, vérifier le compte Cloudflare.',
+      detail: providers.gemini ? 'Aucun compte Cloudflare : la lecture passe par Gemini.' : 'Aucun compte Cloudflare : la lecture à voix haute est fermée.',
+      action: 'Renseigner CLOUDFLARE_ACCOUNT_ID et CLOUDFLARE_AI_TOKEN (droits Workers AI en lecture et écriture), puis redéployer.',
     };
-  }
-
-  // Gemini seul : plus coûteux, et sa facturation doit être ouverte.
-  if (!gemini)
-    return {
-      ...base,
-      state: 'warning',
-      detail: `Gemini ${env.GEMINI_IMAGE_MODEL} seul, faute de compte Cloudflare · pas encore vérifié depuis le démarrage.`,
-      action: `Renseigner CLOUDFLARE_ACCOUNT_ID et CLOUDFLARE_AI_TOKEN : une couverture y coûte une vingtaine de fois moins. Sinon : ${billing}`,
-    };
-  if (gemini.ok)
-    return {
-      ...base,
-      state: 'warning',
-      detail: `Gemini ${env.GEMINI_IMAGE_MODEL} seul, faute de compte Cloudflare · dernière image le ${new Date(gemini.at).toLocaleString('fr-FR', { timeZone: env.REPORTING_TIMEZONE })}.`,
-      action: 'Renseigner CLOUDFLARE_ACCOUNT_ID et CLOUDFLARE_AI_TOKEN : une couverture y coûte une vingtaine de fois moins.',
-    };
-  if (gemini.code === 'GEMINI_IMAGE_BILLING_REQUIRED')
-    return { ...base, state: 'error', detail: 'Google refuse les images : crédits prépayés épuisés, ou clé sur l’offre gratuite.', action: billing };
-  return {
-    ...base,
-    state: 'warning',
-    detail: `Dernière tentative Gemini refusée (${gemini.code}).`,
-    action: 'Réessayer une couverture ; si le refus persiste, vérifier la clé Gemini.',
-  };
+  const result = await probe(`${trimmed(env.CLOUDFLARE_AI_URL)}/accounts/${env.CLOUDFLARE_ACCOUNT_ID}/ai/models/search?per_page=1`, {
+    Authorization: `Bearer ${env.CLOUDFLARE_AI_TOKEN}`,
+  });
+  if (!result) return unreachable(base);
+  if (result.status === 401 || result.status === 403) return refused(base, 'CLOUDFLARE_AI_TOKEN');
+  if (result.status !== 200) return unreachable(base);
+  return { ...base, state: 'ok', detail: 'Jeton accepté · MeloTTS, une voix française, dans la franchise quotidienne de Cloudflare.', action: null };
 }
 
 async function checkPerplexity(): Promise<ServiceCheck> {
@@ -385,107 +316,11 @@ async function checkPerplexity(): Promise<ServiceCheck> {
   return unreachable(base);
 }
 
-async function checkGamma(): Promise<ServiceCheck> {
-  // Les contes sont d'abord illustrés par le serveur (même personnage à chaque page) ; Gamma n'est plus que le secours.
-  const base = { id: 'gamma', name: 'Gamma', role: 'Secours des storybooks : mise en page, illustrations et PDF' };
-  if (!providers.gamma)
-    return {
-      ...base,
-      state: 'off',
-      detail: ownIllustrationAvailable()
-        ? 'Aucune clé : les storybooks sont illustrés par le serveur, sans secours si le moteur d’images se ferme.'
-        : 'Aucune clé : les storybooks sont fermés.',
-      action: 'Créer une clé (offre Pro ou plus) dans Gamma → Settings → API keys, et la mettre dans GAMMA_API_KEY.',
-    };
-  const api = `${trimmed(env.GAMMA_API_URL)}/v1.0`;
-  const headers = { 'X-API-KEY': env.GAMMA_API_KEY ?? '' };
-  const result = await probe(`${api}/themes?limit=1`, headers);
-  if (!result) return unreachable(base);
-  if (result.status === 401 || result.status === 403) return refused(base, 'GAMMA_API_KEY');
-  if (result.status !== 200) return unreachable(base);
-
-  // Solde de crédits : lu sur le dernier conte, seul endroit où l'API le donne.
-  let credits = '';
-  const [latest] = await getDb().select({ ref: storybooks.generationRef }).from(storybooks).orderBy(desc(storybooks.createdAt)).limit(1);
-  if (latest) {
-    const generation = await probe(`${api}/generations/${encodeURIComponent(latest.ref)}`, headers);
-    const remaining = (generation?.body as { credits?: { remaining?: number } } | null)?.credits?.remaining;
-    if (typeof remaining === 'number') credits = ` · crédits restants : ${remaining.toLocaleString('fr-FR')}`;
-  }
-  return { ...base, state: 'ok', detail: `Clé acceptée · illustrations ${env.GAMMA_IMAGE_MODEL}${credits}.`, action: null };
-}
-
 /**
- * Vidéos : fal.ai, le moteur dès que sa clé est là (26/10/2026). La clé est éprouvée par une
- * lecture d'état sur une demande qui n'existe pas — gratuite : une clé refusée répond 401, une
- * clé acceptée 404. Le solde, lui, n'est lisible qu'avec une clé « ADMIN » (403 sinon) : un
- * compte à sec ne se voit qu'au premier rendu refusé, d'où l'action rappelée ici.
+ * Copie des vidéos (Veo, fal.ai) dans le stockage de Supabase : le fournisseur n'en garde une que
+ * deux jours. Plus aucune vidéo ne se crée depuis le 28/10/2026, mais celles d'avant restent gardées
+ * la durée de leur palier, puis effacées.
  */
-async function checkFal(): Promise<ServiceCheck> {
-  const base = { id: 'fal', name: 'fal.ai (vidéos)', role: 'Vidéos publicitaires, formats 9:16 et 16:9, son compris' };
-  if (!falConfigured())
-    return {
-      ...base,
-      state: 'off',
-      detail: veoConfigured() ? 'Aucune clé : les vidéos passent par Veo.' : 'Aucune clé : les vidéos sont fermées.',
-      action: 'Créer une clé de portée « API » sur fal.ai/dashboard/keys, la mettre dans FAL_KEY, puis redéployer.',
-    };
-  const result = await probe(`${trimmed(env.FAL_API_URL)}/${falAppOf(env.FAL_VIDEO_MODEL)}/requests/00000000-0000-0000-0000-000000000000/status`, {
-    Authorization: `Key ${env.FAL_KEY}`,
-  });
-  if (!result) return unreachable(base);
-  if (result.status === 401 || result.status === 403) return refused(base, 'FAL_KEY');
-  if (result.status !== 404 && result.status !== 200) return unreachable(base);
-  const sansSolde = await falOutOfCreditSince().catch(() => null);
-  if (sansSolde)
-    return {
-      ...base,
-      state: 'error',
-      detail: `Solde épuisé : un dépôt a été refusé le ${sansSolde.toLocaleString('fr-FR', { timeZone: env.REPORTING_TIMEZONE })}. Les vidéos sont fermées aux clients pendant 20 minutes après chaque refus, puis rouvertes à l'essai.`,
-      action: 'Recharger le compte sur fal.ai/dashboard/billing : la première vidéo acceptée rouvre tout.',
-    };
-  return {
-    ...base,
-    state: 'ok',
-    detail: `Clé acceptée · modèle ${env.FAL_VIDEO_MODEL}, en 720p. Prépayé, facturé à la seconde rendue.`,
-    action: 'Le solde ne se lit que sur fal.ai/dashboard/billing : sans solde, chaque vidéo est refusée et ses points rendus.',
-  };
-}
-
-/**
- * Vidéos : Veo, par la clé Gemini. Le modèle est interrogé (lecture, gratuite) : une clé
- * valide mais sans accès à Veo se voit ici, et non au premier client qui paie une vidéo.
- */
-async function checkVeo(): Promise<ServiceCheck> {
-  const base = {
-    id: 'veo',
-    name: 'Veo (vidéos)',
-    role: falConfigured() ? 'Secours des vidéos, et prolongation des vidéos déjà rendues par Veo' : 'Vidéos publicitaires, formats 9:16 et 16:9',
-  };
-  if (!env.GEMINI_API_KEY)
-    return { ...base, state: 'off', detail: 'Aucune clé Gemini : les vidéos sont fermées.', action: 'Renseigner GEMINI_API_KEY.' };
-  const result = await probe(`${trimmed(env.GEMINI_API_URL)}/v1beta/models/${encodeURIComponent(env.VEO_VIDEO_MODEL)}`, {
-    'x-goog-api-key': env.GEMINI_API_KEY,
-  });
-  if (!result) return unreachable(base);
-  if (result.status === 401 || result.status === 403) return refused(base, 'GEMINI_API_KEY');
-  if (result.status === 404)
-    return {
-      ...base,
-      state: 'error',
-      detail: `Le modèle ${env.VEO_VIDEO_MODEL} est inconnu de Google pour cette clé.`,
-      action: 'Vérifier VEO_VIDEO_MODEL, ou l’accès du projet Google de la clé aux modèles Veo.',
-    };
-  if (result.status !== 200) return unreachable(base);
-  return {
-    ...base,
-    state: 'ok',
-    detail: `Modèle ${env.VEO_VIDEO_MODEL} accessible · ${env.VEO_RESOLUTION} en 8 s, 720p en 4 et 6 s. Facturé à la seconde par Google.`,
-    action: null,
-  };
-}
-
-/** Copie des vidéos (Veo, fal.ai) dans le stockage de Supabase : le fournisseur n'en garde une que deux jours. */
 async function checkVideoArchive(): Promise<ServiceCheck> {
   const base = { id: 'video-archive', name: 'Copie des vidéos', role: 'Garde les vidéos au-delà des 2 jours du fournisseur' };
   if (!videoArchiveConfigured())
@@ -876,12 +711,9 @@ export async function checkServices(options: { refresh?: boolean } = {}): Promis
     Promise.resolve(checkSettings()),
     checkDatabase(),
     checkGemini(),
-    Promise.resolve(checkImages()),
     Promise.resolve(checkGroq()),
+    checkVoice(),
     checkPerplexity(),
-    checkGamma(),
-    checkFal(),
-    checkVeo(),
     checkVideoArchive(),
     checkChariow(),
     checkRadar(),

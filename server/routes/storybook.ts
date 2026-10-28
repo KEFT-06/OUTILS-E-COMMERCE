@@ -4,46 +4,38 @@ import { AppError, aiLimiter, asyncRoute, providerUnavailable, routeLimiter, val
 import { requireAuth, requireFeature } from '@server/middleware/auth';
 import { assertCompliantBrief } from '@server/services/compliance/guard';
 import { findOwnedGeneration, runBilledGeneration, settleGeneration } from '@server/services/generations';
+import { textConfigured } from '@server/services/ai/text';
 import {
+  type StoryDraft,
   type StorybookBrief,
   briefText,
   generationIdSchema,
   getStorybookGeneration,
   listStorybooks,
-  recordStorybook,
+  recordWrittenStorybook,
   sendStorybookPdf,
   sendStorybookPicture,
   storyDraftSchema,
   storybookBriefSchema,
-  submitStorybook,
   writeStory,
 } from '@server/services/storybook';
-import {
-  OWN_ENGINE,
-  OWN_PROVIDER,
-  beginIllustration,
-  getOwnStorybookStatus,
-  isOwnGeneration,
-  ownIllustrationAvailable,
-  startOwnIllustration,
-} from '@server/services/storybook/illustrate';
+import { OWN_PROVIDER, getOwnStorybookStatus, isOwnGeneration } from '@server/services/storybook/illustrate';
 
 /**
- * Storybook africain : conte rédigé par Gemini, illustré par le circuit « maison » (même
- * personnage à chaque page), Gamma en secours (server/services/storybook).
+ * Storybook africain : le conte est rédigé, relu et corrigé par son auteur, puis enregistré et
+ * téléchargé en PDF (server/services/storybook). L'illustration des pages est retirée depuis le
+ * 28/10/2026 avec la génération d'images ; les contes illustrés d'avant restent téléchargeables.
  */
 
 export const storybookRouter = Router();
 
 /**
- * Corps de la demande d'illustration : le brief, plus le conte approuvé dans l'aperçu.
+ * Corps de l'enregistrement : le brief, plus le conte tel que l'auteur l'a relu et corrigé.
  *
  * `story` doit être DÉCLARÉ ici : `validateBody` remplace le corps par le résultat de zod,
- * qui écarte toute clé non déclarée. Sans cette ligne, le texte validé par l'auteur
- * disparaissait en silence et le serveur en réécrivait un autre — l'aperçu n'aurait servi
- * à rien, et l'écriture aurait été payée deux fois.
+ * qui écarte toute clé non déclarée.
  */
-const illustrationBodySchema = storybookBriefSchema.extend({ story: storyDraftSchema.optional() });
+const writtenStoryBodySchema = storybookBriefSchema.extend({ story: storyDraftSchema });
 
 /**
  * Écrit le conte, et rien de plus.
@@ -73,7 +65,7 @@ storybookRouter.post(
       briefText(brief),
       'Le brief contient des formulations non conformes : corrigez-les avant de lancer l’écriture.',
     );
-    if (!providers.gemini) throw providerUnavailable('rédaction automatique');
+    if (!textConfigured()) throw providerUnavailable('rédaction automatique');
 
     const { result } = await runBilledGeneration({
       auth: req.auth!,
@@ -89,92 +81,24 @@ storybookRouter.post(
 );
 
 /**
- * Lance la création d'un conte.
- *
- * Ordre des contrôles : compte et palier, validation, conformité du brief, puis disponibilité de
- * la rédaction et d'au moins un circuit d'illustration. La conformité passe avant les fournisseurs
- * pour que l'auteur puisse corriger son brief même sur un serveur sans clé.
- *
- * L'ILLUSTRATION CHOISIT SON CIRCUIT TOUTE SEULE. Le circuit « maison » d'abord : il dessine une
- * planche des personnages et la donne en modèle à chaque page, ce qui garde le même visage d'un
- * bout à l'autre. S'il ne peut pas partir (moteur d'images fermé, stockage absent), le conte passe
- * par la mise en page externe au lieu d'échouer — l'auteur n'a rien à choisir ni à vérifier.
- *
- * Le corps peut porter un `story` : celui que l'auteur vient de lire et d'approuver dans
- * l'aperçu, éventuellement corrigé. Sans lui, le conte est écrit puis illustré d'un seul geste,
- * comme avant — mais alors les trois points de l'écriture ne sont pas facturés deux fois, car
- * cette route ne facture que l'illustration.
+ * Enregistre le conte relu et corrigé par son auteur : il rejoint « Mes contes » et se télécharge
+ * en PDF. Aucun point de plus — l'écriture a déjà été payée. Le texte corrigé passe la conformité :
+ * c'est lui, désormais, qui part dans le PDF.
  */
 storybookRouter.post(
-  '/generations',
+  '/books',
   requireAuth,
   requireFeature('storybook_generation'),
-  aiLimiter,
-  validateBody(illustrationBodySchema),
+  routeLimiter(30, 60),
+  validateBody(writtenStoryBodySchema),
   asyncRoute(async (req, res) => {
-    const brief = req.body as StorybookBrief;
-
+    const { story, ...brief } = req.body as StorybookBrief & { story: StoryDraft };
     await assertCompliantBrief(
-      briefText(brief),
-      'Le brief contient des formulations non conformes : corrigez-les avant de lancer la génération.',
+      [story.title, ...story.pages.flatMap((page) => [page.heading, page.text])].join('\n'),
+      'Le conte contient des formulations non conformes : corrigez-les avant de l’enregistrer.',
     );
-
-    if (!providers.gemini) throw providerUnavailable('rédaction automatique');
-    const maison = ownIllustrationAvailable();
-    if (!maison && !providers.gamma) throw providerUnavailable('mise en page illustrée');
-
-    /*
-      Le conte approuvé dans l'aperçu est réutilisé tel quel : le réécrire produirait une autre
-      histoire que celle que l'auteur vient de lire et de valider, ce qui viderait l'aperçu de
-      son sens et referait payer l'écriture.
-    */
-    /*
-      Le conte approuvé est relu depuis le corps validé, et non depuis la requête brute :
-      `validateBody` remplace `req.body` par le résultat de zod, qui écarte les clés non
-      déclarées. Le schéma de cette route déclare donc `story` — sans quoi le texte validé
-      par l'auteur disparaissait en silence, et le serveur en réécrivait un autre.
-    */
-    const approuve = storyDraftSchema.safeParse((req.body as { story?: unknown }).story);
-
-    /*
-      Le prix suit le travail réellement demandé, et rien d'autre.
-
-      Avec un texte approuvé, il ne reste que l'illustration : douze points, l'écriture ayant
-      déjà été payée trois. Sans texte, les deux étapes se font ici : quinze, comme avant.
-
-      Facturer douze dans les deux cas rendrait l'écriture gratuite pour qui appelle cette
-      route directement — un trou que l'aperçu ne doit pas ouvrir.
-    */
-    const { result } = await runBilledGeneration({
-      auth: req.auth!,
-      actionId: approuve.success ? 'storybook_illustration' : 'storybook_generation',
-      kind: 'storybook',
-      provider: 'gamma',
-      run: async () => {
-        const story = approuve.success ? approuve.data : await writeStory(brief);
-        if (maison) {
-          try {
-            return { ...(await startOwnIllustration(brief, story)), story, engine: OWN_ENGINE };
-          } catch (error) {
-            // Sans secours, l'échec est celui du conte : les points sont rendus et l'auteur le voit.
-            if (!providers.gamma) throw error;
-            console.warn('[conte] circuit maison indisponible, mise en page externe :', error instanceof Error ? error.message : error);
-          }
-        }
-        return { ...(await submitStorybook(brief, story)), story, engine: null };
-      },
-      describe: (created) => ({
-        providerRef: created.generationId,
-        state: 'pending',
-        fileFormat: 'pdf',
-        provider: created.engine === OWN_ENGINE ? OWN_PROVIDER : 'gamma',
-      }),
-    });
-    const storybookId = await recordStorybook(req.auth!, brief, result.generationId, result.story, result.engine);
-    // Les pages se dessinent après la réponse : l'écran suit leur avancée.
-    if (result.engine === OWN_ENGINE) beginIllustration(result.generationId);
-
-    res.status(202).json({ generationId: result.generationId, storybookId, title: result.story.title });
+    const storybookId = await recordWrittenStorybook(req.auth!, brief, story);
+    res.status(201).json({ storybookId, title: story.title });
   }),
 );
 

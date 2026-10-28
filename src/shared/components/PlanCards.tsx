@@ -1,5 +1,5 @@
 import type { ReactNode } from 'react';
-import { Bookmark, Check, Languages, Megaphone, Minus, Zap } from 'lucide-react';
+import { Bookmark, Check, Minus, Zap } from 'lucide-react';
 import { formatMoney } from '@server/shared/currency';
 import { formatPlanPrice, planIncludes } from '@/shared/lib/plans';
 import { cn } from '@/shared/lib/utils';
@@ -16,11 +16,8 @@ import { Skeleton } from '@/shared/ui/skeleton';
 const FEATURE_ORDER: FeatureId[] = [
   'niche_analysis',
   'ai_writing',
-  'image_generation',
-  'video_generation',
   'storybook_generation',
   'affiliate_invitations',
-  'native_review',
 ];
 
 function Offer({ included, icon: Icon, children }: { included: boolean; icon?: typeof Check; children: ReactNode }) {
@@ -50,8 +47,7 @@ function PlanCard({
   isCurrent: boolean;
   action?: ReactNode;
 }) {
-  const total = catalog.adFrameworksTotal;
-  const { savedNiches, adFrameworks, guideLanguages } = plan.limits;
+  const { savedNiches } = plan.limits;
   const freeMonths = 12 - catalog.pricing.yearlyMonthsCharged;
 
   return (
@@ -109,24 +105,6 @@ function PlanCard({
               <>
                 <strong className="font-semibold tabular-nums">{savedNiches}</strong> niche{savedNiches > 1 ? 's' : ''} enregistrée
                 {savedNiches > 1 ? 's' : ''}
-              </>
-            )}
-          </Offer>
-          <Offer included icon={Megaphone}>
-            {adFrameworks === null || adFrameworks >= total ? (
-              `Les ${total} méthodes publicitaires`
-            ) : (
-              <>
-                <strong className="font-semibold tabular-nums">{adFrameworks}</strong> méthodes publicitaires sur {total}
-              </>
-            )}
-          </Offer>
-          <Offer included icon={Languages}>
-            {guideLanguages === null ? (
-              'Guides traduits dans toutes les langues'
-            ) : (
-              <>
-                Guides traduits en <strong className="font-semibold tabular-nums">{guideLanguages}</strong> langue{guideLanguages > 1 ? 's' : ''}
               </>
             )}
           </Offer>

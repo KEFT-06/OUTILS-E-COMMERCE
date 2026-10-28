@@ -136,17 +136,17 @@ describe('Historique des connexions', () => {
     const member = await signUp(app, { name: 'Ibrahim Keita', email: 'ibrahim@exemple.com' });
 
     const before = await member.agent.get('/api/auth/me').expect(200);
-    assert.equal(before.body.account.features.video_generation, false, 'fermé au palier Gratuit');
+    assert.equal(before.body.account.features.storybook_generation, false, 'fermé au palier Gratuit');
 
     await admin.agent
       .put(`/api/admin/users/${member.account.id}/features`)
-      .send({ feature: 'video_generation', access: 'granted' })
+      .send({ feature: 'storybook_generation', access: 'granted' })
       .expect(200);
     const granted = await member.agent.get('/api/auth/me').expect(200);
-    assert.equal(granted.body.account.features.video_generation, true, 'ouvert dès la requête suivante');
+    assert.equal(granted.body.account.features.storybook_generation, true, 'ouvert dès la requête suivante');
 
     const { debitCredits } = await import('@server/services/accounts');
-    await debitCredits({ userId: member.account.id, cost: 2, actionId: 'image_generation', unlimited: false });
+    await debitCredits({ userId: member.account.id, cost: 2, actionId: 'product_revision', unlimited: false });
 
     const detail = await admin.agent.get(`/api/admin/users/${member.account.id}`).expect(200);
     assert.deepEqual(detail.body.creditsUsed, { cycle: 2, last30d: 2, total: 2, actions: 1 });

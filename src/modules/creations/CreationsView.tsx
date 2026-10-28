@@ -1,14 +1,14 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
-import { AlarmClock, BookOpen, Clapperboard, FileText, Headphones, Languages, PenSquare, Search, Trash2 } from 'lucide-react';
+import { AlarmClock, BookOpen, Clapperboard, Download, FileText, Headphones, PenSquare, Search, Trash2 } from 'lucide-react';
 import { toast } from 'sonner';
 import { formatAudioDuration } from '@server/shared/audio';
+import { findLanguage } from '@server/shared/languages';
 import { useWorkspace } from '@/app/providers/WorkspaceProvider';
-import { MyVideosPanel } from '@/modules/creatifs/MyVideosPanel';
-import { MyVisualsPanel } from '@/modules/creatifs/MyVisualsPanel';
-import { screenLine } from '@/modules/creatifs/videoStart';
+import { MyVideosPanel } from '@/modules/creations/MyVideosPanel';
+import { MyVisualsPanel } from '@/modules/creations/MyVisualsPanel';
 import { CoversCard, ReportsCard, StorybooksCard } from '@/modules/creations/OtherCreations';
-import type { GuideSummary } from '@/modules/multilingue/guidesApi';
+import type { GuideSummary } from '@/modules/guides/guidesApi';
 import { BookCover } from '@/shared/components/BookCover';
 import { PageHeader } from '@/shared/components/PageHeader';
 import { apiRequest } from '@/shared/lib/api';
@@ -39,9 +39,9 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/shared/ui/tabs';
  * Multilingue, les vidéos sous le générateur. Pour retrouver un texte ou une vidéo, il fallait se
  * souvenir de l'écran qui l'avait fait. Deux onglets ici : les textes, puis les vidéos et visuels.
  *
- * Depuis chaque texte, deux gestes sans rien ressaisir : le traduire, ou en tirer une vidéo.
- * Les vidéos, lourdes, ne sont conservées qu'un temps (selon le palier) : chacune dit ce qu'il
- * lui reste, et un bandeau prévient deux jours avant la suppression.
+ * Les guides, vidéos et visuels ne se créent plus (retirés le 28/10/2026) : ceux qui existent
+ * restent ici, téléchargeables. Les vidéos, lourdes, ne sont conservées qu'un temps (selon le
+ * palier) : chacune dit ce qu'il lui reste, et un bandeau prévient deux jours avant la suppression.
  */
 
 type Onglet = 'textes' | 'medias';
@@ -54,15 +54,6 @@ interface VideoEcheance {
 }
 
 const DEUX_JOURS_MS = 48 * 3_600_000;
-
-/** Ce qu'un ouvrage donne comme point de départ aux Créatifs : son titre, sa promesse, son public. */
-const departVideo = (product: DigitalProductIdea) => ({
-  produit: {
-    titre: product.title,
-    promesse: screenLine(product.transformationPromise, product.title),
-    public: product.targetAudience ?? '',
-  },
-});
 
 function ProductRow({
   product,
@@ -102,14 +93,6 @@ function ProductRow({
             <PenSquare />
             Ouvrir
           </Button>
-          <Button size="sm" variant="outline" onClick={() => void navigate('/app/multilingue', { state: { produit: product.id } })}>
-            <Languages />
-            Traduire
-          </Button>
-          <Button size="sm" variant="outline" onClick={() => void navigate('/app/creatifs', { state: departVideo(product) })}>
-            <Clapperboard />
-            Générer la vidéo associée
-          </Button>
           <Button size="sm" variant="ghost" className="text-muted-foreground hover:text-destructive" aria-label={`Supprimer « ${product.title} »`} onClick={() => onDelete(product)}>
             <Trash2 />
             Supprimer
@@ -120,9 +103,14 @@ function ProductRow({
   );
 }
 
+/**
+ * Un guide déjà écrit. Le module des guides est retiré (28/10/2026) : le guide ne s'ouvre plus
+ * pour être modifié ou traduit, mais chacune de ses versions se télécharge encore en PDF.
+ */
 function GuideRow({ guide }: { guide: GuideSummary }) {
-  const navigate = useNavigate();
   const langues = guide.translations.length;
+  // Une traduction encore en cours n'a pas de texte à imprimer.
+  const versions = [guide.sourceLanguage, ...guide.translations.filter((entry) => entry.status !== 'translating').map((entry) => entry.language)];
   return (
     <li className="flex items-start gap-4 rounded-lg border bg-card p-3">
       <span className="flex size-10 shrink-0 items-center justify-center rounded-md bg-muted">
@@ -138,22 +126,14 @@ function GuideRow({ guide }: { guide: GuideSummary }) {
           </p>
         </div>
         <div className="flex flex-wrap gap-2">
-          <Button asChild size="sm" variant="secondary">
-            <Link to={`/app/multilingue/${guide.id}`}>
-              <PenSquare />
-              Ouvrir
-            </Link>
-          </Button>
-          <Button asChild size="sm" variant="outline">
-            <Link to={`/app/multilingue/${guide.id}`} state={{ traduire: true }}>
-              <Languages />
-              Traduire le guide
-            </Link>
-          </Button>
-          <Button size="sm" variant="outline" onClick={() => void navigate('/app/creatifs', { state: { produit: { titre: guide.title, promesse: '', public: '' } } })}>
-            <Clapperboard />
-            Générer la vidéo associée
-          </Button>
+          {versions.map((language) => (
+            <Button key={language} asChild size="sm" variant={language === guide.sourceLanguage ? 'secondary' : 'outline'}>
+              <Link to={`/imprimer/guide/${guide.id}/${language}`} target="_blank" rel="noopener">
+                <Download />
+                PDF{versions.length > 1 ? ` · ${findLanguage(language)?.fr ?? language}` : ''}
+              </Link>
+            </Button>
+          ))}
         </div>
       </div>
     </li>
@@ -339,27 +319,26 @@ export function CreationsView() {
             </CardContent>
           </Card>
 
-          <Card>
-            <CardHeader>
-              <CardTitle>Guides multilingues</CardTitle>
-              <CardDescription>Vos guides et leurs traductions.</CardDescription>
-            </CardHeader>
-            <CardContent>
-              {guides === null ? (
-                <Skeleton className="h-24 rounded-lg" />
-              ) : guidesVisibles.length === 0 ? (
-                <p className="text-sm text-muted-foreground">
-                  {recherche ? 'Aucun guide ne porte ce titre.' : 'Aucun guide pour l’instant : « Traduire », sur un ouvrage ci-dessus, en crée un.'}
-                </p>
-              ) : (
-                <ul className="grid grid-cols-1 gap-3 lg:grid-cols-2">
-                  {guidesVisibles.map((guide) => (
-                    <GuideRow key={guide.id} guide={guide} />
-                  ))}
-                </ul>
-              )}
-            </CardContent>
-          </Card>
+          {/* Les guides ne se créent plus : la carte n'apparaît que pour un compte qui en a. */}
+          {guides !== null && guides.guides.length > 0 && (
+            <Card>
+              <CardHeader>
+                <CardTitle>Guides</CardTitle>
+                <CardDescription>Vos guides déjà écrits, à télécharger en PDF dans chacune de leurs langues.</CardDescription>
+              </CardHeader>
+              <CardContent>
+                {guidesVisibles.length === 0 ? (
+                  <p className="text-sm text-muted-foreground">Aucun guide ne porte ce titre.</p>
+                ) : (
+                  <ul className="grid grid-cols-1 gap-3 lg:grid-cols-2">
+                    {guidesVisibles.map((guide) => (
+                      <GuideRow key={guide.id} guide={guide} />
+                    ))}
+                  </ul>
+                )}
+              </CardContent>
+            </Card>
+          )}
 
           <ReportsCard recherche={recherche} />
           <StorybooksCard recherche={recherche} />

@@ -9,17 +9,14 @@ import { stripeMode } from '@server/services/billing/stripe';
 import { BlueprintsUnavailableError, getCampaignBlueprints } from '@server/services/blueprints';
 import { getRulesMetadata } from '@server/services/compliance';
 import { asComplianceRouteError } from '@server/services/compliance/guard';
-import { imagesConfigured, videoAvailable, videoExtensionAvailable } from '@server/services/creatives';
 import { CreditConfigUnavailableError, getCostTable } from '@server/services/credits';
-import { groqConfigured } from '@server/services/ai/groq';
 import { cloudflareSpeechConfigured } from '@server/services/ai/cloudflareSpeech';
+import { textConfigured } from '@server/services/ai/text';
 import { speechConfigured } from '@server/services/ai/geminiSpeech';
 import { convertAmount, currencyForCountry, getRates, isSupportedCurrency } from '@server/services/currency';
 import { LaunchKitUnavailableError, getLaunchKitConfig } from '@server/services/launchKit';
 import { FEATURES, PlansUnavailableError, getPlanConfig, planPrice } from '@server/services/plans';
 import { PricingUnavailableError, getPricing, pricingIn } from '@server/services/pricing';
-import { ownIllustrationAvailable } from '@server/services/storybook/illustrate';
-import { AD_FRAMEWORKS } from '@server/shared/adFrameworks';
 import { findCountry } from '@server/shared/countries';
 
 /**
@@ -79,11 +76,9 @@ catalogRouter.get(
   cachePublic(30),
   asyncRoute(async (_req, res) => {
     let database = false;
-    let video = false;
     try {
       await queryRows(sql`select 1`);
       database = true;
-      video = await videoAvailable();
     } catch (error) {
       console.error('[santé] base de données injoignable :', error instanceof Error ? error.message : error);
     }
@@ -92,24 +87,13 @@ catalogRouter.get(
       status: database ? 'ok' : 'degraded',
       database,
       providers: {
-        text: providers.gemini || providers.groq,
-        /*
-          Ces deux indicateurs lisaient encore `providers.higgsfield`, fournisseur abandonné :
-          en production, l'écran annonçait vidéos et couvertures indisponibles alors que Veo
-          (clé Gemini) et le moteur d'images (Cloudflare ou Gemini) répondaient.
-        */
-        image: imagesConfigured(),
-        // Faux aussi quand fal.ai vient de refuser un dépôt faute de solde : le bouton se ferme.
-        video,
-        // Prolonger une vidéo par étapes : propre à Veo, absent quand fal.ai rend les vidéos.
-        videoExtension: videoExtensionAvailable(),
-        storybook: providers.gamma || ownIllustrationAvailable(),
+        text: textConfigured(),
+        // Plus d'images, de vidéos ni d'illustrations depuis le 28/10/2026 : le conte n'a besoin que de la rédaction.
+        storybook: textConfigured(),
         webSearch: providers.webSearch,
         email: providers.email,
         payments: providers.payments,
         googleAuth: providers.googleAuth,
-        // Maquette et relecture des couvertures : sans elle, une couverture se fait quand même, plus simple.
-        artDirection: groqConfigured(),
         // Collecte et recherche publicitaires (Apify) : sans elle, l'espionnage ne se remplit pas.
         adLibrary: providers.apify,
         // Vitrines des boutiques lues par Firecrawl : sans elle, le radar les lit directement (refusé depuis le 11/10/2026).
@@ -169,7 +153,6 @@ catalogRouter.get(
           ratesSource: rates.source,
         },
         features: FEATURES,
-        adFrameworksTotal: AD_FRAMEWORKS.length,
         plans: config.plans.map((plan) => ({
           id: plan.id,
           label: plan.label,

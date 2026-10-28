@@ -1,3 +1,4 @@
+import { randomUUID } from 'node:crypto';
 import { Readable } from 'node:stream';
 import { pipeline } from 'node:stream/promises';
 import type { Response as ExpressResponse } from 'express';
@@ -10,6 +11,7 @@ import { AppError, marketSchema, providerUnavailable } from '@server/middleware'
 import type { RequestAuth } from '@server/middleware/auth';
 import { generateJson } from '@server/services/ai/text';
 import { OWN_ENGINE, resumeStalled, sendOwnStorybookPdf, sendOwnStorybookPicture } from '@server/services/storybook/illustrate';
+import { buildStorybookPdf } from '@server/services/storybook/pdf';
 import { countryName } from '@server/shared/countries';
 
 /**
@@ -357,12 +359,23 @@ export async function getStorybookGeneration(generationId: string): Promise<Stor
   };
 }
 
+/**
+ * Conte écrit, sans illustration. La génération d'images est retirée du site le 28/10/2026 : un conte
+ * relu par son auteur est enregistré tel quel, terminé, et son PDF se compose à la demande.
+ */
+export const TEXT_ENGINE = 'texte';
+
+export async function recordWrittenStorybook(auth: RequestAuth, brief: StorybookBrief, story: StoryDraft): Promise<string> {
+  return recordStorybook(auth, brief, `${TEXT_ENGINE}-${randomUUID()}`, story, TEXT_ENGINE, 'completed');
+}
+
 export async function recordStorybook(
   auth: RequestAuth,
   brief: StorybookBrief,
   generationId: string,
   story: StoryDraft,
   engine: string | null = null,
+  status: 'pending' | 'completed' = 'pending',
 ): Promise<string> {
   const [row] = await getDb()
     .insert(storybooks)
@@ -376,7 +389,7 @@ export async function recordStorybook(
       country: brief.country,
       pages: story.pages.length,
       story: story as unknown as Record<string, unknown>,
-      status: 'pending',
+      status,
     })
     .returning({ id: storybooks.id });
   return row!.id;
@@ -475,6 +488,15 @@ export async function sendStorybookPdf(auth: RequestAuth, storybookId: string | 
   const row = await ownedStorybook(auth, storybookId);
   if (row.status !== 'completed') throw new AppError(409, 'Le conte n’est pas encore prêt.', 'STORYBOOK_NOT_READY');
   if (row.engine === OWN_ENGINE) return sendOwnStorybookPdf(row, fileNameOf(row.title), res);
+  if (row.engine === TEXT_ENGINE) {
+    const story = row.story as unknown as StoryDraft;
+    const pdf = buildStorybookPdf({ title: story.title, language: row.language, pages: story.pages }, new Map());
+    res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader('Content-Disposition', `attachment; filename="${fileNameOf(row.title)}.pdf"`);
+    res.setHeader('Cache-Control', 'private, no-store');
+    res.end(pdf);
+    return;
+  }
   if (!env.GAMMA_API_KEY) throw providerUnavailable('mise en page illustrée');
 
   const pdf = await freshPdf(row.generationRef, row.gammaId);

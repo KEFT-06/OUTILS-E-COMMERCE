@@ -132,7 +132,8 @@ function cover(doc: jsPDF, story: PdfStory, picture: StoryPicture | undefined): 
   }
   const titleHeight = lines.length * lineHeight(size, 1.2);
   const bandHeight = 9 + titleHeight + 9;
-  const bandTop = HEIGHT - 14 - bandHeight;
+  // Avec une illustration, le titre se pose en bas de l'image ; sans elle (conte écrit), au centre de la page.
+  const bandTop = image ? HEIGHT - 14 - bandHeight : (HEIGHT - bandHeight) / 2;
   doc.setFillColor(...CREAM);
   doc.roundedRect(10, bandTop, bandWidth, bandHeight, 5, 5, 'F');
 
@@ -143,7 +144,8 @@ function cover(doc: jsPDF, story: PdfStory, picture: StoryPicture | undefined): 
   doc.setFont('helvetica', 'normal');
   doc.setFontSize(9.5);
   doc.setTextColor(...INK);
-  doc.text(story.language === 'en' ? 'An illustrated story' : 'Un conte illustré', WIDTH / 2, bandTop + bandHeight - 3.5, { align: 'center' });
+  const kind = image ? (story.language === 'en' ? 'An illustrated story' : 'Un conte illustré') : story.language === 'en' ? 'A story' : 'Un conte';
+  doc.text(kind, WIDTH / 2, bandTop + bandHeight - 3.5, { align: 'center' });
 }
 
 /** Corps le plus grand qui tient dans la hauteur donnée ; au plus petit, tout le texte est rendu quand même. */

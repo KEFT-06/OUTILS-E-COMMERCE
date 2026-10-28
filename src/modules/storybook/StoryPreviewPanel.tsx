@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Check, Pencil, Sparkles, Undo2, X } from 'lucide-react';
+import { Check, Pencil, Save, Undo2, X } from 'lucide-react';
 import type { StoryDraft } from '@/shared/types/storybook';
 import { Badge } from '@/shared/ui/badge';
 import { Button } from '@/shared/ui/button';
@@ -9,38 +9,20 @@ import { Spinner } from '@/shared/ui/spinner';
 import { Textarea } from '@/shared/ui/textarea';
 
 /**
- * Le conte, lu avant d'être illustré.
+ * Le conte, relu et corrigé avant d'être enregistré.
  *
- * Quinze points partaient à l'aveugle : l'auteur découvrait son histoire une fois le PDF
- * produit, et une histoire qui ne lui convenait pas était déjà entièrement illustrée — c'est
- * l'étape qui coûte. Écrire vaut maintenant trois points, illustrer douze. On peut donc
- * refuser une histoire pour un cinquième du prix.
- *
- * CE QUE CET ÉCRAN MONTRE, ET POURQUOI CHAQUE PARTIE Y EST :
- *
- *  · le TEXTE de chaque page, corrigeable à la main. C'est ce que l'enfant lira ;
- *  · la SCÈNE à illustrer, également corrigeable. Elle ne paraîtra pas dans le livre, mais
- *    c'est elle qui décide de l'image — la corriger est souvent plus utile que de corriger
- *    le texte, et personne ne le devinerait si elle restait cachée ;
- *  · la FICHE DU PERSONNAGE, en tête, et celle des personnages secondaires récurrents. Le
- *    serveur en tire une planche de référence, donnée en modèle à chaque illustration : c'est
- *    elle qui garde le même visage et les mêmes vêtements d'une page à l'autre. La corriger
- *    ici, c'est décider de l'apparence du personnage dans tout le livre.
- *
- * Rien n'est renvoyé au serveur tant que l'auteur n'a pas lancé l'illustration : tant qu'il
- * relit, il ne paie rien de plus.
+ * Depuis le 28/10/2026, les contes ne sont plus illustrés (génération d'images retirée du site) :
+ * l'écran ne montre plus que ce que le lecteur lira — le titre et le texte de chaque page —,
+ * corrigeables à la main. Enregistrer ne coûte rien : l'écriture a déjà été payée.
  */
 
 interface StoryPreviewPanelProps {
   story: StoryDraft;
-  /** Illustre le conte tel qu'il est à l'écran, corrections comprises. */
-  onIllustrate: (story: StoryDraft) => void;
+  /** Enregistre le conte tel qu'il est à l'écran, corrections comprises. */
+  onSave: (story: StoryDraft) => void;
   /** Réécrit une histoire entièrement neuve, au prix de l'écriture seule. */
   onRewrite: () => void;
   busy: boolean;
-  /** Points que coûte l'illustration, annoncés avant le geste. */
-  /** Null tant que la grille tarifaire n'est pas chargée : on n'annonce aucun chiffre plutôt qu'un faux. */
-  coutIllustration: number | null;
 }
 
 function ChampCorrigeable({
@@ -95,24 +77,22 @@ function ChampCorrigeable({
   );
 }
 
-export function StoryPreviewPanel({ story, onIllustrate, onRewrite, busy, coutIllustration }: StoryPreviewPanelProps) {
-  /** Copie de travail : l'original reste disponible tant que rien n'est illustré. */
+export function StoryPreviewPanel({ story, onSave, onRewrite, busy }: StoryPreviewPanelProps) {
+  /** Copie de travail : l'original reste disponible tant que rien n'est enregistré. */
   const [brouillon, setBrouillon] = useState<StoryDraft>(story);
   const modifie = JSON.stringify(brouillon) !== JSON.stringify(story);
 
-  const majPage = (rang: number, champ: 'text' | 'illustration' | 'heading', valeur: string) =>
+  const majTexte = (rang: number, valeur: string) =>
     setBrouillon((actuel) => ({
       ...actuel,
-      pages: actuel.pages.map((page, index) => (index === rang ? { ...page, [champ]: valeur } : page)),
+      pages: actuel.pages.map((page, index) => (index === rang ? { ...page, text: valeur } : page)),
     }));
 
   return (
     <Card className="border-brand-green-text/40">
       <CardHeader>
-        <CardTitle>Relisez avant d’illustrer</CardTitle>
-        <CardDescription>
-          Corrigez le texte si besoin, puis lancez l’illustration{coutIllustration === null ? '' : ` (${coutIllustration} points)`}.
-        </CardDescription>
+        <CardTitle>Relisez votre conte</CardTitle>
+        <CardDescription>Corrigez le texte si besoin, puis enregistrez-le : il rejoint « Mes contes » et se télécharge en PDF.</CardDescription>
       </CardHeader>
 
       <CardContent className="space-y-5">
@@ -121,39 +101,12 @@ export function StoryPreviewPanel({ story, onIllustrate, onRewrite, busy, coutIl
           {modifie && <Badge variant="brand">Corrigé</Badge>}
         </div>
 
-        <div className="space-y-2 rounded-lg border bg-muted/30 p-3">
-          <Input
-            value={brouillon.title}
-            onChange={(change) => setBrouillon((actuel) => ({ ...actuel, title: change.target.value }))}
-            aria-label="Titre du conte"
-            className="font-display text-lg font-extrabold"
-          />
-          {/*
-            Les fiches ne paraissent pas dans le livre : le serveur en tire la planche de
-            référence qui sert de modèle à chaque illustration. Elles décident de l'apparence
-            des personnages dans tout le livre.
-          */}
-          <ChampCorrigeable
-            label="Apparence du personnage principal — la même à chaque page"
-            valeur={brouillon.characterSheet}
-            lignes={3}
-            onChange={(valeur) => setBrouillon((actuel) => ({ ...actuel, characterSheet: valeur }))}
-          />
-          {(brouillon.cast ?? []).map((membre, rang) => (
-            <ChampCorrigeable
-              key={rang}
-              label={`Apparence de ${membre.name} — la même à chaque page`}
-              valeur={membre.sheet}
-              lignes={3}
-              onChange={(valeur) =>
-                setBrouillon((actuel) => ({
-                  ...actuel,
-                  cast: (actuel.cast ?? []).map((autre, index) => (index === rang ? { ...autre, sheet: valeur } : autre)),
-                }))
-              }
-            />
-          ))}
-        </div>
+        <Input
+          value={brouillon.title}
+          onChange={(change) => setBrouillon((actuel) => ({ ...actuel, title: change.target.value }))}
+          aria-label="Titre du conte"
+          className="font-display text-lg font-extrabold"
+        />
 
         <div className="space-y-4">
           {brouillon.pages.map((page, rang) => (
@@ -162,26 +115,15 @@ export function StoryPreviewPanel({ story, onIllustrate, onRewrite, busy, coutIl
                 Page {rang + 1}
                 {page.heading ? ` — ${page.heading}` : ''}
               </h3>
-              <ChampCorrigeable
-                label="Texte de la page"
-                valeur={page.text}
-                lignes={5}
-                onChange={(valeur) => majPage(rang, 'text', valeur)}
-              />
-              <ChampCorrigeable
-                label="Scène à illustrer — ne paraît pas dans le livre"
-                valeur={page.illustration}
-                lignes={3}
-                onChange={(valeur) => majPage(rang, 'illustration', valeur)}
-              />
+              <ChampCorrigeable label="Texte de la page" valeur={page.text} lignes={5} onChange={(valeur) => majTexte(rang, valeur)} />
             </section>
           ))}
         </div>
 
         <div className="flex flex-wrap gap-2 border-t pt-4">
-          <Button onClick={() => onIllustrate(brouillon)} disabled={busy}>
-            {busy ? <Spinner /> : <Sparkles />}
-            Illustrer ce conte{coutIllustration === null ? '' : ` — ${coutIllustration} points`}
+          <Button onClick={() => onSave(brouillon)} disabled={busy || !brouillon.title.trim()}>
+            {busy ? <Spinner /> : <Save />}
+            Enregistrer le conte
           </Button>
           {modifie && (
             <Button variant="ghost" onClick={() => setBrouillon(story)} disabled={busy}>
@@ -189,10 +131,6 @@ export function StoryPreviewPanel({ story, onIllustrate, onRewrite, busy, coutIl
               Revenir au texte d’origine
             </Button>
           )}
-          {/*
-            Réécrire coûte le prix de l'écriture, pas celui du tout : c'est précisément ce que
-            la séparation en deux étapes rend possible, et il faut que le bouton le dise.
-          */}
           <Button variant="outline" onClick={onRewrite} disabled={busy}>
             Écrire une autre histoire
           </Button>

@@ -2,66 +2,20 @@ import { Readable } from 'node:stream';
 import { pipeline } from 'node:stream/promises';
 import type { ReadableStream as NodeReadableStream } from 'node:stream/web';
 import type { Response as ExpressResponse } from 'express';
-import { z } from 'zod';
 import { env, isProd } from '@server/env';
-import { AppError, marketSchema } from '@server/middleware';
-import { type FalQueueStatus, falConfigured, falOutOfCredit, getFalGeneration, submitFalGeneration } from '@server/services/fal';
-import {
-  VEO_FORMATS,
-  type VeoGeneration,
-  fetchVeoMedia,
-  getVeoGeneration,
-  submitVeoExtension,
-  submitVeoGeneration,
-  veoConfigured,
-} from '@server/services/veo';
-import { cloudflareImagesConfigured } from '@server/services/ai/cloudflareImage';
-import { geminiImagesConfigured } from '@server/services/ai/geminiImage';
+import { AppError } from '@server/middleware';
+import { type FalQueueStatus, getFalGeneration } from '@server/services/fal';
+import { type VeoGeneration, fetchVeoMedia, getVeoGeneration } from '@server/services/veo';
 import { fetchArchivedVideo } from '@server/services/creatives/archive';
-import type { VisualBriefing } from '@server/services/creatives/artDirection';
-import { AD_FRAMEWORK_IDS, findAdFramework } from '@server/shared/adFrameworks';
-import { countryName } from '@server/shared/countries';
-import { VIDEO_LANGUAGE_CODES, findLanguage } from '@server/shared/languages';
 
 /**
- * Créatifs publicitaires : visuels et vidéos — feuille de route 4.1, 4.2 et 4.4.
+ * Créatifs DÉJÀ produits : où vit leur fichier, leur état chez le fournisseur, et le relais du
+ * fichier à son auteur.
  *
- * - Le niveau de conscience du prospect est obligatoire dans le schéma : il
- *   oriente toute la direction créative, et un créatif sans cible de conscience
- *   parle à tout le monde, donc à personne.
- * - Les trois formats du cahier des charges (1:1, 9:16, 16:9) sont ceux que les
- *   deux modèles retenus acceptent tous : Soul pour l'image, Kling 2.5 Turbo Pro
- *   pour la vidéo. Veo 3.1, par exemple, n'offre pas le 1:1.
+ * La création de visuels et de vidéos est retirée du site le 28/10/2026 (décision du propriétaire) :
+ * plus aucun brief, aucune consigne, aucun dépôt chez un fournisseur. Ce qui reste sert les
+ * créatifs d'avant, que leurs auteurs retrouvent dans « Mes créations ».
  */
-
-export const AWARENESS_LEVELS = [
-  'unaware',
-  'problem_aware',
-  'solution_aware',
-  'product_aware',
-  'most_aware',
-] as const;
-
-export type AwarenessLevel = (typeof AWARENESS_LEVELS)[number];
-
-/**
- * Direction créative par niveau de conscience (Eugene Schwartz, « Breakthrough
- * Advertising »). Rédigée en anglais : c'est la langue dans laquelle les modèles
- * d'image et de vidéo suivent le plus fidèlement une consigne.
- */
-const AWARENESS_DIRECTION: Record<AwarenessLevel, string> = {
-  unaware:
-    'Stop-the-scroll everyday-life scene that sparks curiosity and emotion, without showing or naming the product.',
-  problem_aware:
-    'Show the problem or frustration the audience lives with, in a recognisable and relatable way, without exaggeration.',
-  solution_aware:
-    'Show the desired outcome this kind of solution brings, focused on the benefit, without any before/after comparison.',
-  product_aware: 'Feature the product itself and what makes it different, clearly identifiable.',
-  most_aware: 'Feature the offer: the product with a clear, honest call to action and no fake urgency.',
-};
-
-export const CREATIVE_FORMATS = ['1:1', '9:16', '16:9'] as const;
-
 
 /**
  * Où vit le fichier d'un créatif — ce que le suivi a besoin de savoir, et rien d'autre.
@@ -80,41 +34,6 @@ export const CREATIVE_FORMATS = ['1:1', '9:16', '16:9'] as const;
 export type CreativeProvider = 'fal' | 'veo' | 'interne';
 
 /**
- * Un moteur d'images est-il utilisable ? Gemini, ou Cloudflare s'il est configuré.
- *
- * Le rendu interne n'était choisi que si Cloudflare était configuré : un serveur doté de la
- * seule clé Gemini renvoyait chaque visuel vers Higgsfield, abandonné — et l'écran répondait
- * « service non configuré » alors qu'un moteur d'images était bel et bien disponible.
- */
-export function imagesConfigured(): boolean {
-  return cloudflareImagesConfigured() || geminiImagesConfigured();
-}
-
-/** Le moteur des nouvelles vidéos : fal.ai d'abord, Veo en secours. */
-export function videoProvider(): 'fal' | 'veo' {
-  return falConfigured() ? 'fal' : 'veo';
-}
-
-export function videoConfigured(): boolean {
-  return falConfigured() || veoConfigured();
-}
-
-/**
- * Une vidéo peut-elle partir maintenant ? Le moteur doit être configuré, et fal.ai ne doit pas
- * avoir refusé un dépôt pour solde épuisé il y a peu : l'écran ferme alors le bouton au lieu de
- * laisser chaque client essuyer le même refus.
- */
-export async function videoAvailable(): Promise<boolean> {
-  if (videoProvider() === 'fal') return !(await falOutOfCredit());
-  return veoConfigured();
-}
-
-/** Prolonger une vidéo par étapes n'existe que chez Veo : avec fal.ai, l'option n'est pas proposée. */
-export function videoExtensionAvailable(): boolean {
-  return videoProvider() === 'veo' && veoConfigured();
-}
-
-/**
  * Jours pendant lesquels le fichier reste récupérable, par fournisseur ; null : sans limite.
  *
  * Une seule durée (sept jours, celle de Higgsfield) valait pour tous, et elle était fausse
@@ -131,229 +50,6 @@ export const PROVIDER_RETENTION_DAYS: Record<CreativeProvider, number | null> = 
   interne: null,
 };
 
-/** Longueur maximale du prompt acceptée par Kling. */
-const VIDEO_PROMPT_MAX = 2500;
-
-const baseBrief = {
-  productName: z.string().trim().min(1).max(120),
-  awarenessLevel: z.enum(AWARENESS_LEVELS),
-  format: z.enum(CREATIVE_FORMATS),
-  market: marketSchema,
-  audience: z.string().trim().max(300).optional(),
-  sceneDescription: z.string().trim().min(3).max(600),
-  onScreenText: z.string().trim().max(120).optional(),
-  visualStyle: z.string().trim().max(300).optional(),
-  /** Publicité (structurée par une méthode de rédaction) ou contenu non publicitaire. */
-  purpose: z.enum(['ad', 'content']).default('ad'),
-  adFramework: z.enum(AD_FRAMEWORK_IDS).optional(),
-  /** Message de chaque étape de la méthode, dans l'ordre ; vide : consigne par défaut de l'étape. */
-  frameworkBeats: z.array(z.string().trim().max(200)).max(6).optional(),
-};
-
-export const visualBriefSchema = z.object(baseBrief);
-
-/*
-  La vidéo n'accepte ni les mêmes formats ni les mêmes durées que l'image, et le schéma doit
-  le dire plutôt que de le laisser découvrir en production.
-
-  Veo ne rend que le 9:16 et le 16:9 — le carré est refusé par l'API, et aucun modèle vidéo
-  du catalogue Google ne le rend. Ses durées forment un JEU DISCRET de 4, 6 et 8 secondes :
-  5 et 7 sont refusés, alors même que le message d'erreur annonce « une valeur entre 4 et 8 ».
-
-  Les visuels, eux, gardent le carré : leur modèle sait le faire.
-*/
-export const videoBriefSchema = z.object({
-  ...baseBrief,
-  format: z.enum(VEO_FORMATS),
-  sceneDescription: z.string().trim().min(3).max(1500),
-  duration: z.union([z.literal(4), z.literal(6), z.literal(8)]),
-  /** Langue de la vidéo : celle de tout ce qui s'y entend. Absente : rien n'est imposé au moteur. */
-  language: z.enum(VIDEO_LANGUAGE_CODES).optional(),
-  /**
-   * Premier plan d'une vidéo longue, à prolonger ensuite par étapes de 7 s. Google ne prolonge
-   * qu'une vidéo en 720p : ce plan y est donc rendu, en 8 secondes.
-   */
-  extendable: z.boolean().optional(),
-});
-
-export type VisualBrief = z.infer<typeof visualBriefSchema>;
-export type VideoBrief = z.infer<typeof videoBriefSchema>;
-
-/** Texte soumis au vérificateur de conformité avant toute génération. */
-export function creativeText(brief: VisualBrief | VideoBrief): string {
-  return [
-    brief.productName,
-    brief.audience,
-    brief.sceneDescription,
-    brief.onScreenText,
-    brief.visualStyle,
-    ...(brief.frameworkBeats ?? []),
-  ]
-    .filter((part): part is string => Boolean(part))
-    .join('\n');
-}
-
-/** Longueur maximale retenue pour la consigne du modèle d'image. */
-const VISUAL_PROMPT_MAX = 3000;
-
-/**
- * Structure de la méthode publicitaire choisie ; consigne « contenu » sinon.
- *
- * UNE IMAGE PUBLICITAIRE EST UNE SEULE SCÈNE. La consigne listait les étapes de la méthode
- * « dans l'ordre de lecture », avec leur nom : le moteur en tirait une planche en quatre cases,
- * chacune légendée « ATTENTION », « INTEREST », « DESIRE », « ACTION », en anglais et avec des
- * textes inventés (« Modest d'apartment in Yaoundé ») — vu sur un vrai visuel le 04/10/2026.
- * Une image qu'aucun vendeur ne peut diffuser. La méthode guide désormais la composition d'une
- * scène unique, et le nom de ses étapes ne part plus dans la consigne d'une image.
- *
- * Pour une vidéo, les étapes restent une suite de temps — mais sans leur nom, qui finissait
- * incrusté à l'écran.
- */
-function frameworkLines(brief: VisualBrief | VideoBrief, durationSeconds?: number): string[] {
-  if (brief.purpose === 'content') {
-    return ['Purpose: organic content (presentation, tutorial or storytelling), not a hard-sell advertisement. No call to action.'];
-  }
-  const framework = findAdFramework(brief.adFramework);
-  if (!framework) return [];
-
-  const beats = framework.steps.map((step, index) => brief.frameworkBeats?.[index]?.trim() || step.direction);
-  if (durationSeconds) {
-    const count = beats.length;
-    const seconds = (value: number) => value.toFixed(1).replace(/\.0$/, '');
-    return [
-      `Advertising storytelling structure: ${framework.acronym}. It guides the sequence only: never show or say the names of its steps.`,
-      'Sequence the video in these beats, in this order:',
-      ...beats.map(
-        (beat, index) => `${index + 1}. (${seconds((index * durationSeconds) / count)}–${seconds(((index + 1) * durationSeconds) / count)} s) ${beat}`,
-      ),
-    ];
-  }
-  const role = (index: number) => (index === 0 ? 'What catches the eye first' : index === beats.length - 1 ? 'What the viewer is left wanting to do' : 'What the scene also makes visible');
-  return [
-    `The ${framework.acronym} advertising method guides how this single scene is composed. It is a guide for you, never something to draw: do not write or depict the names of its steps.`,
-    'Within that one scene:',
-    ...beats.map((beat, index) => `- ${role(index)}: ${beat}`),
-  ];
-}
-
-/**
- * Langue de la vidéo, choisie par l'auteur. Rien n'était dit au moteur : il parlait la langue qu'il
- * voulait — souvent l'anglais, pour un public qui ne le parle pas. La ligne fait partie des
- * garde-fous : elle part toujours, même quand la scène doit être raccourcie.
- */
-function spokenLanguageLines(brief: VisualBrief | VideoBrief): string[] {
-  const language = 'language' in brief ? findLanguage(brief.language) : undefined;
-  if (!language) return [];
-  return [`Language: everything heard in the video — voice-over, dialogue, any spoken word — is in ${language.en}, spoken naturally by a native speaker. No other language is heard.`];
-}
-
-/**
- * Consigne complète envoyée au modèle. Si elle dépasse sa limite, c'est la
- * description de scène qui est raccourcie : les garde-fous (marques, texte,
- * stéréotypes) partent toujours.
- */
-function buildPrompt(brief: VisualBrief | VideoBrief, options: { maxLength: number; durationSeconds?: number }): string {
-  const still = !options.durationSeconds;
-  const kind = brief.purpose === 'content' ? (still ? 'Content image' : 'Video content') : still ? 'Advertising image' : 'Advertising video';
-  const head = [
-    `${kind} for "${brief.productName}".`,
-    // Une image est UNE scène : sans cette ligne, le moteur rend volontiers une planche en plusieurs cases.
-    ...(still
-      ? ['ONE single image: one scene, one moment, one frame. Never a collage, a grid, a split screen, a storyboard, comic panels or a before/after pair.']
-      : []),
-    `Creative direction (prospect awareness level: ${brief.awarenessLevel.replace('_', ' ')}): ${AWARENESS_DIRECTION[brief.awarenessLevel]}`,
-  ];
-  const tail = [
-    ...frameworkLines(brief, options.durationSeconds),
-    `Setting and people grounded in ${countryName(brief.market, 'en')}, portrayed accurately and respectfully, without caricature or stereotypes.`,
-    ...(brief.audience ? [`Target audience: ${brief.audience}.`] : []),
-    ...(brief.visualStyle ? [`Visual style: ${brief.visualStyle}.`] : []),
-    brief.onScreenText
-      ? `The ONLY text allowed anywhere in the image is this one line, written once, exactly as given, same language and spelling: "${brief.onScreenText}". No other words at all: no captions, labels, headings, speech bubbles or interface text; any book cover, sign, screen or packaging in the scene stays blank or out of focus.`
-      : 'No text anywhere: no captions, labels, headings, speech bubbles, logos or watermarks; any book cover, sign, screen or packaging in the scene stays blank or out of focus.',
-    'No real brand logos, no celebrities, no invented testimonials, prices or figures.',
-    ...(options.durationSeconds
-      ? [`Duration: ${options.durationSeconds} seconds, smooth camera movement, the beats flowing naturally within one continuous take.`]
-      : []),
-    ...spokenLanguageLines(brief),
-  ];
-
-  const fixed = [...head, ...tail].join('\n').length + '\nScene: '.length;
-  const budget = Math.max(120, options.maxLength - fixed);
-  const scene =
-    brief.sceneDescription.length > budget ? `${brief.sceneDescription.slice(0, budget - 1)}…` : brief.sceneDescription;
-  return [...head, `Scene: ${scene}`, ...tail].join('\n').slice(0, options.maxLength);
-}
-
-/**
- * Consigne et format envoyés au moteur d'images. Fonction pure, testable sans appel réseau.
- *
- * `scene` : la scène écrite par la direction artistique (creatives/artDirection.ts). Elle prend la
- * place de la description de l'auteur, jamais celle des garde-fous qui l'entourent.
- */
-export function buildVisualInput(brief: VisualBrief, scene?: string | null) {
-  return {
-    prompt: buildPrompt(scene ? { ...brief, sceneDescription: scene } : brief, { maxLength: VISUAL_PROMPT_MAX }),
-    aspect_ratio: brief.format,
-  };
-}
-
-/** Le brief d'un visuel, tel que la direction artistique le reçoit. Fonction pure. */
-export function visualBriefingOf(brief: VisualBrief): VisualBriefing {
-  const framework = brief.purpose === 'content' ? null : findAdFramework(brief.adFramework);
-  return {
-    productName: brief.productName,
-    purpose: brief.purpose,
-    direction: AWARENESS_DIRECTION[brief.awarenessLevel],
-    beats: framework ? framework.steps.map((step, index) => brief.frameworkBeats?.[index]?.trim() || step.direction) : [],
-    audience: brief.audience,
-    idea: brief.sceneDescription,
-    style: brief.visualStyle,
-    market: countryName(brief.market, 'en'),
-    format: brief.format,
-    hasText: Boolean(brief.onScreenText),
-  };
-}
-
-/**
- * Corps envoyé au modèle vidéo. Fonction pure, testable sans appel réseau.
- *
- * `duration` part en CHAÎNE : le schéma de Kling chez fal.ai n'accepte que « 5 » ou « 10 »
- * sous forme de texte, et refuse le nombre par un 422 qui ne dit pas pourquoi.
- */
-export function buildVideoInput(brief: VideoBrief) {
-  return {
-    prompt: buildPrompt(brief, { maxLength: VIDEO_PROMPT_MAX, durationSeconds: brief.duration }),
-    /*
-      Veo accepte une consigne négative, là où le modèle d'image de Google n'en propose
-      aucune. C'est par elle que passe l'interdiction des marques et du texte à l'écran —
-      et ce n'est pas décoratif : les modèles récents dessinent spontanément des logos
-      existants dès que rien ne le leur interdit, ce qui ferait diffuser à un client une
-      publicité portant la marque d'autrui.
-    */
-    negativePrompt: 'distorted hands, unreadable text, brand logos, watermark',
-    aspectRatio: brief.format,
-    durationSeconds: brief.duration,
-  };
-}
-
-/**
- * Corps envoyé à fal.ai, selon la famille du modèle (schémas lus sur fal.ai le 26/10/2026) :
- *  - Veo 3.1 : durée en texte (« 8s »), consigne négative, son demandé explicitement ;
- *  - Gemini Omni Flash, et tout autre : durée en nombre, pas de consigne négative — les mêmes
- *    interdits (marques, texte illisible) passent alors dans la consigne elle-même.
- * Toujours en 720p : le palier le moins cher qui reste net sur un téléphone.
- */
-export function buildFalVideoInput(brief: VideoBrief, model: string) {
-  const input = buildVideoInput(brief);
-  const base = { aspect_ratio: input.aspectRatio, resolution: '720p' };
-  if (/\/veo3/.test(model)) {
-    return { ...base, prompt: input.prompt, negative_prompt: input.negativePrompt, duration: `${input.durationSeconds}s`, generate_audio: true };
-  }
-  return { ...base, prompt: `${input.prompt} Avoid: ${input.negativePrompt}.`, duration: input.durationSeconds };
-}
-
-/** États d'une génération, communs à tous les fournisseurs. « nsfw » : refusée par le filtre de sécurité. */
 export type CreativeState = 'queued' | 'in_progress' | 'completed' | 'failed' | 'nsfw' | 'canceled';
 
 export interface CreativeStatus {
@@ -422,62 +118,6 @@ function veoToClientStatus(generation: VeoGeneration): CreativeStatus {
 }
 
 /** `safe` : réglages les plus sûrs (720p), pour la dernière relance d'un rendu que le fournisseur a fait échouer. */
-export async function submitVideo(brief: VideoBrief, options: { safe?: boolean } = {}): Promise<CreativeStatus> {
-  if (videoProvider() === 'fal') return falToClientStatus(await submitFalGeneration(env.FAL_VIDEO_MODEL, buildFalVideoInput(brief, env.FAL_VIDEO_MODEL)));
-  const input = buildVideoInput(brief);
-  return veoToClientStatus(
-    await submitVeoGeneration({
-      prompt: input.prompt,
-      negativePrompt: input.negativePrompt,
-      aspectRatio: input.aspectRatio,
-      // Une vidéo longue part d'un plan de 8 s : c'est la base que Google prolonge.
-      durationSeconds: brief.extendable ? 8 : input.durationSeconds,
-      extendable: brief.extendable,
-      ...(options.safe ? { resolution: '720p' } : {}),
-    }),
-  );
-}
-
-/** Scène suivante d'une vidéo longue, décrite par l'auteur. */
-export const extensionSchema = z.object({
-  sceneDescription: z.string().trim().min(3).max(800),
-  /** Langue de la vidéo qu'on prolonge : la suite se dit dans la même. */
-  language: z.enum(VIDEO_LANGUAGE_CODES).optional(),
-});
-
-/**
- * Consigne d'une prolongation. Les deux garde-fous des créatifs y sont repris mot pour mot :
- * une prolongation n'accepte pas de consigne négative documentée, et sans eux le modèle
- * ajoute de lui-même texte et logos (constaté sur les images, voir services/ai/image.ts).
- */
-export function buildExtensionPrompt(scene: string, language?: string): string {
-  const spoken = findLanguage(language);
-  return [
-    `Continue the previous shot seamlessly: ${scene}`,
-    'Keep the same characters, setting, lighting and camera style as the end of the previous shot.',
-    'No text, no logos, no watermarks. No real brand logos.',
-    ...(spoken ? [`Everything heard is in ${spoken.en}, as in the previous shot. No other language is heard.`] : []),
-  ].join(' ');
-}
-
-/**
- * Lance la prolongation d'une vidéo Veo : ses octets partent chez Google avec la scène suivante.
- * La copie archivée est lue d'abord (elle ne dépend pas de la conservation de Google), puis
- * l'original chez Google à défaut.
- */
-export async function extendVideo(parentRequestId: string, scene: string, language?: string): Promise<CreativeStatus> {
-  let source = await fetchArchivedVideo(parentRequestId);
-  if (!source) {
-    const parent = await getVeoGeneration(parentRequestId);
-    if (parent.status !== 'completed' || !parent.mediaUrl) {
-      throw new AppError(409, 'La vidéo à prolonger n’est plus disponible.', 'VIDEO_NOT_EXTENDABLE');
-    }
-    source = await fetchVeoMedia(parent.mediaUrl);
-  }
-  const video = Buffer.from(await source.arrayBuffer());
-  return veoToClientStatus(await submitVeoExtension({ prompt: buildExtensionPrompt(scene, language), video }));
-}
-
 /**
  * État d'une génération chez son fournisseur. Le fournisseur est lu sur la génération
  * enregistrée : chez fal.ai, l'identifiant du modèle fait partie de l'adresse de suivi,
