@@ -2,6 +2,7 @@ import React, { Suspense, createContext, lazy, useCallback, useContext, useEffec
 import { useAuth } from '@/features/auth/AuthContext';
 import { toast } from 'sonner';
 import { reloadOnceForNewVersion } from '@/shared/lib/reloadForNewVersion';
+import { apiRequest } from '@/shared/lib/api';
 import { loadPlans, pointValueOf } from '@/shared/lib/plans';
 import { CreditAction, CreditCostTable, CreditQuote } from '@/shared/types/credits';
 
@@ -70,18 +71,7 @@ let costTableCache: CreditCostTable | null = null;
 async function loadCostTable(): Promise<CreditCostTable> {
   if (costTableCache) return costTableCache;
 
-  const response = await fetch('/api/credits/costs');
-
-  if (!response.ok) {
-    const payload = (await response.json().catch(() => null)) as
-      | { error?: { message?: string } }
-      | null;
-    throw new Error(
-      payload?.error?.message ?? `La grille tarifaire a répondu ${response.status}.`,
-    );
-  }
-
-  costTableCache = (await response.json()) as CreditCostTable;
+  costTableCache = await apiRequest<CreditCostTable>('/api/credits/costs');
   return costTableCache;
 }
 

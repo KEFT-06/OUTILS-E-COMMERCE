@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { apiRequest } from '@/shared/lib/api';
 import { useUserCurrency } from '@/shared/lib/money';
 import { PricingConfig } from '@/shared/types/pricing';
 
@@ -33,18 +34,7 @@ export function usePricing(): PricingState {
 
     let cancelled = false;
 
-    fetch(`/api/pricing/ranges?currency=${encodeURIComponent(currency)}`)
-      .then(async (response) => {
-        if (!response.ok) {
-          const payload = (await response.json().catch(() => null)) as
-            | { error?: { message?: string } }
-            | null;
-          throw new Error(
-            payload?.error?.message ?? `La table des prix a répondu ${response.status}.`,
-          );
-        }
-        return (await response.json()) as PricingConfig;
-      })
+    apiRequest<PricingConfig>(`/api/pricing/ranges?currency=${encodeURIComponent(currency)}`)
       .then((config) => {
         if (cancelled) return;
         pricingCache = config;

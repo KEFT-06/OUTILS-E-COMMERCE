@@ -17,7 +17,8 @@ import {
   DialogTitle,
 } from '@/shared/ui/dialog';
 import { useCachedState } from '@/shared/lib/apiCache';
-import { type ApiError, readApiError, toApiError } from '@/shared/lib/apiError';
+import { type ApiError, toApiError } from '@/shared/lib/apiError';
+import { apiRequest } from '@/shared/lib/api';
 import { ComplianceBlockedError } from '@/shared/lib/complianceGate';
 import { formatDateFr } from '@/shared/lib/formatDate';
 import { KitIncompleteError, OBJECTIVE_LABELS, exportLaunchKit, missingForKit } from '@/modules/kit-lancement/launchKit';
@@ -91,11 +92,7 @@ export function LaunchKitView({ products, market, report = null }: { products: D
 
   useEffect(() => {
     let cancelled = false;
-    fetch('/api/launch-kit/config')
-      .then(async (response) => {
-        if (!response.ok) throw await readApiError(response, `Le kit n'a pas pu être chargé (${response.status}).`);
-        return (await response.json()) as LaunchKitConfig;
-      })
+    apiRequest<LaunchKitConfig>('/api/launch-kit/config')
       .then((payload) => {
         // Retenue même si l'écran a été quitté entre-temps : elle servira à sa prochaine ouverture.
         keepConfig(payload);
@@ -305,7 +302,7 @@ export function LaunchKitView({ products, market, report = null }: { products: D
         </DialogContent>
       </Dialog>
 
-      {loadError && (
+      {loadError && !config && (
         <Alert variant="danger">
           <AlertTriangle />
           <AlertTitle>Kit indisponible</AlertTitle>

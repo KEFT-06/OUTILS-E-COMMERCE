@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { apiRequest } from '@/shared/lib/api';
 import { lastKnown, remember } from '@/shared/lib/apiCache';
 
 export interface ServerProviders {
@@ -31,9 +32,9 @@ export function useProviders(): ServerProviders | null {
 
   useEffect(() => {
     let cancelled = false;
-    fetch('/api/health')
-      .then((response) => (response.ok ? response.json() : null))
-      .then((data: { providers?: Record<string, boolean>; paymentMode?: 'test' | 'live' | null; mobileMoneyMode?: 'test' | 'live' | null } | null) => {
+    apiRequest<{ providers?: Record<string, boolean>; paymentMode?: 'test' | 'live' | null; mobileMoneyMode?: 'test' | 'live' | null }>('/api/health')
+      .catch(() => null)
+      .then((data) => {
         if (!cancelled && data?.providers) {
           const next: ServerProviders = {
             text: Boolean(data.providers.text),

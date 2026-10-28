@@ -3,6 +3,7 @@ import { findCountry } from '@server/shared/countries';
 import { formatMoney, roundPrice } from '@server/shared/currency';
 import { useAuth } from '@/features/auth/AuthContext';
 import { guessCountryCode } from '@/shared/lib/geo';
+import { apiRequest } from '@/shared/lib/api';
 
 /**
  * Montants affichés dans la devise du pays de l'utilisateur, et dans aucune autre
@@ -26,8 +27,7 @@ let pending: Promise<Rates | null> | null = null;
 /** Taux de change, chargés une fois pour toute la session (réponse gardée par le réseau de l'hébergeur). */
 export function loadRates(): Promise<Rates | null> {
   if (cache) return Promise.resolve(cache);
-  pending ??= fetch('/api/currency/rates')
-    .then((response) => (response.ok ? (response.json() as Promise<Rates>) : null))
+  pending ??= apiRequest<Rates>('/api/currency/rates')
     .then((rates) => {
       cache = rates;
       pending = null;

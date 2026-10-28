@@ -5,6 +5,8 @@
  * n'existe que pour qu'aucun document ne sorte sans mention si l'API est
  * momentanément absente ; il était auparavant recopié dans chaque composant.
  */
+import { apiRequest } from '@/shared/lib/api';
+
 export const FALLBACK_DISCLAIMER =
   'Smart Creator fournit des analyses basées sur des données publiques. ' +
   "Aucun résultat financier n'est garanti.";
@@ -22,9 +24,8 @@ export function fetchRequiredDisclaimer(): Promise<string> {
   if (cachedDisclaimer) return Promise.resolve(cachedDisclaimer);
   if (pendingRequest) return pendingRequest;
 
-  pendingRequest = fetch('/api/compliance/rules')
-    .then((response) => (response.ok ? response.json() : null))
-    .then((data: { requiredDisclaimer?: string } | null) => {
+  pendingRequest = apiRequest<{ requiredDisclaimer?: string }>('/api/compliance/rules')
+    .then((data) => {
       if (data?.requiredDisclaimer) cachedDisclaimer = data.requiredDisclaimer;
       return cachedDisclaimer ?? FALLBACK_DISCLAIMER;
     })

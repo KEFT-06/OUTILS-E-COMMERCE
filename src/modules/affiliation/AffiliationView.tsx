@@ -4,6 +4,7 @@ import { AlertTriangle, CheckCircle2, ChevronDown, Copy, ExternalLink, Info, Lin
 import { ConnectChariowLink } from '@/shared/components/ConnectChariowLink';
 import { PageHeader } from '@/shared/components/PageHeader';
 import { type ApiError, readApiError, toApiError } from '@/shared/lib/apiError';
+import { apiRequest } from '@/shared/lib/api';
 import { formatDateFr } from '@/shared/lib/formatDate';
 import { EMPTY_UTM, UTM_DOCUMENTATION_URL, type UtmFields, buildAffiliateLinks, buildUtmUrl, utmDefaultsOf } from '@/modules/affiliation/utm';
 import { useWorkspace } from '@/app/providers/WorkspaceProvider';
@@ -106,9 +107,7 @@ export function AffiliationView() {
     setLookupError(null);
     setAffiliate(null);
     try {
-      const response = await fetch(`/api/affiliation/chariow/affiliates/${encodeURIComponent(code)}`);
-      if (!response.ok) throw await readApiError(response, `La recherche a échoué (${response.status}).`);
-      setAffiliate((await response.json()) as AffiliateSummary);
+      setAffiliate(await apiRequest<AffiliateSummary>(`/api/affiliation/chariow/affiliates/${encodeURIComponent(code)}`));
     } catch (caught) {
       setLookupError(toApiError(caught, 'La recherche a échoué.'));
     } finally {

@@ -4,6 +4,7 @@ import { ArrowUpRight, CircleCheck, CircleDashed, Layers, Target, Zap } from 'lu
 import { pathOf, type ModuleId } from '@/app/navigation';
 import { useAuth } from '@/features/auth/AuthContext';
 import { PageHeader } from '@/shared/components/PageHeader';
+import { apiRequest } from '@/shared/lib/api';
 import { useCachedState } from '@/shared/lib/apiCache';
 import { useMoney } from '@/shared/lib/money';
 import { pointValueOf, usePlans } from '@/shared/lib/plans';
@@ -60,9 +61,8 @@ function useProviderStatus() {
 
   useEffect(() => {
     let cancelled = false;
-    fetch('/api/health')
-      .then((response) => (response.ok ? response.json() : Promise.reject(new Error(String(response.status)))))
-      .then((data: { providers?: Record<string, boolean> }) => {
+    apiRequest<{ providers?: Record<string, boolean> }>('/api/health')
+      .then((data) => {
         keepProviders(data.providers ?? {});
         if (!cancelled) setProviders(data.providers ?? {});
       })

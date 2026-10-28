@@ -6,7 +6,8 @@ import { ConnectChariowLink } from '@/shared/components/ConnectChariowLink';
 import { NoDataState } from '@/shared/components/NoDataState';
 import { PageHeader } from '@/shared/components/PageHeader';
 import { useCachedState } from '@/shared/lib/apiCache';
-import { type ApiError, readApiError, toApiError } from '@/shared/lib/apiError';
+import { type ApiError, toApiError } from '@/shared/lib/apiError';
+import { apiRequest } from '@/shared/lib/api';
 import { cn } from '@/shared/lib/utils';
 import type { MarketplaceInfo, MarketplaceProduct } from '@/shared/types/marketplaces';
 import { Alert, AlertDescription, AlertTitle } from '@/shared/ui/alert';
@@ -40,13 +41,7 @@ export function DistributionView() {
   useEffect(() => {
     let cancelled = false;
 
-    fetch('/api/marketplaces')
-      .then(async (response) => {
-        if (!response.ok) {
-          throw await readApiError(response, `Les connecteurs n'ont pas pu être chargés (${response.status}).`);
-        }
-        return (await response.json()) as { marketplaces: MarketplaceInfo[] };
-      })
+    apiRequest<{ marketplaces: MarketplaceInfo[] }>('/api/marketplaces')
       .then((payload) => {
         // Retenue même si l'écran a été quitté entre-temps : elle servira à sa prochaine ouverture.
         keepMarketplaces(payload.marketplaces);
@@ -173,11 +168,7 @@ function CatalogCard({ marketplace }: { marketplace: MarketplaceInfo }) {
     setIsLoadingCatalog(true);
     setCatalogError(null);
     try {
-      const response = await fetch(`/api/marketplaces/${encodeURIComponent(marketplace.id)}/products`);
-      if (!response.ok) {
-        throw await readApiError(response, `Le catalogue n'a pas pu être chargé (${response.status}).`);
-      }
-      setCatalog((await response.json()) as { products: MarketplaceProduct[]; truncated: boolean });
+      setCatalog(await apiRequest<{ products: MarketplaceProduct[]; truncated: boolean }>(`/api/marketplaces/${encodeURIComponent(marketplace.id)}/products`));
     } catch (caught) {
       setCatalogError(toApiError(caught, "Le catalogue n'a pas pu être chargé."));
     } finally {

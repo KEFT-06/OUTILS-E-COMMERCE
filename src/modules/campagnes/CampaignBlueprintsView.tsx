@@ -7,7 +7,8 @@ import { usePricing } from '@/modules/studio/usePricing';
 import { campaignNumbersOf } from '@/shared/lib/analysisDefaults';
 import { useCachedState, useScreenMemory } from '@/shared/lib/apiCache';
 import { usePrefill } from '@/shared/lib/prefill';
-import { type ApiError, readApiError, toApiError } from '@/shared/lib/apiError';
+import { type ApiError, toApiError } from '@/shared/lib/apiError';
+import { apiRequest } from '@/shared/lib/api';
 import { formatDateFr } from '@/shared/lib/formatDate';
 import { useUserCurrency } from '@/shared/lib/money';
 import { safeHttpUrl } from '@/shared/lib/safeUrl';
@@ -69,13 +70,7 @@ export function CampaignBlueprintsView() {
 
   useEffect(() => {
     let cancelled = false;
-    fetch('/api/campaigns/blueprints')
-      .then(async (response) => {
-        if (!response.ok) {
-          throw await readApiError(response, `Les structures n'ont pas pu être chargées (${response.status}).`);
-        }
-        return (await response.json()) as CampaignBlueprintConfig;
-      })
+    apiRequest<CampaignBlueprintConfig>('/api/campaigns/blueprints')
       .then((payload) => {
         // Retenue même si l'écran a été quitté entre-temps : elle servira à sa prochaine ouverture.
         keepConfig(payload);
@@ -107,7 +102,7 @@ export function CampaignBlueprintsView() {
         description="Des plans de campagne Meta et TikTok à reproduire dans le gestionnaire de publicités, chiffrés à partir de votre budget."
       />
 
-      {error && (
+      {error && !config && (
         <Alert variant="danger">
           <AlertTriangle />
           <AlertTitle>Structures indisponibles</AlertTitle>

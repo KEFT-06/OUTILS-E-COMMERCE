@@ -2,7 +2,8 @@ import { useEffect, useState } from 'react';
 import { AlertTriangle, TrendingUp } from 'lucide-react';
 import { ConnectChariowLink } from '@/shared/components/ConnectChariowLink';
 import { useCachedState } from '@/shared/lib/apiCache';
-import { type ApiError, readApiError, toApiError } from '@/shared/lib/apiError';
+import { type ApiError, toApiError } from '@/shared/lib/apiError';
+import { apiRequest } from '@/shared/lib/api';
 import { fractionDigits } from '@server/shared/currency';
 import { formatDateFr } from '@/shared/lib/formatDate';
 import { useMoney } from '@/shared/lib/money';
@@ -31,13 +32,7 @@ export function SalesSummaryCard() {
   useEffect(() => {
     let cancelled = false;
 
-    fetch(`/api/marketplaces/sales-summary?days=${PERIOD_DAYS}`)
-      .then(async (response) => {
-        if (!response.ok) {
-          throw await readApiError(response, `Les ventes n'ont pas pu être chargées (${response.status}).`);
-        }
-        return (await response.json()) as SalesSummaryResponse;
-      })
+    apiRequest<SalesSummaryResponse>(`/api/marketplaces/sales-summary?days=${PERIOD_DAYS}`)
       .then((payload) => {
         // Retenue même si l'écran a été quitté entre-temps : elle servira à sa prochaine ouverture.
         keepData(payload);
